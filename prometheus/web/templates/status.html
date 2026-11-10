@@ -1,0 +1,13 @@
+{% if mini %}
+  <span class="muted">Spent ${{ "%.2f"|format(budget.spent) }} of ${{ "%.2f"|format(budget.cap) }}{% if budget.warn %} ⚠{% endif %}
+  {% if stopped %} · <span class="error">STOPPED</span>{% endif %}{% if pending %} · <a href="/approvals">{{ pending }} waiting</a>{% endif %}</span>
+{% else %}
+  {% if task %}
+    <p>Task: <span class="status-{{ task.status }}">{{ task.status }}</span></p>
+    <ul class="plain">
+      {% for s in steps %}<li><strong>{{ s.agent }}</strong> — <span class="status-{{ s.status }}">{{ s.status }}</span>
+        <div class="muted">{{ s.goal }}</div></li>{% endfor %}
+    </ul>
+  {% else %}<p class="muted">Nothing running.</p>{% endif %}
+  <p class="muted">Models: {% for name, ok in models.items() %}{{ name }} {{ "✓" if ok else "✗" }} {% endfor %}</p>
+{% endif %}

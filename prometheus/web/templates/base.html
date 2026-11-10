@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Prometheus</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="/static/htmx.min.js"></script>
+</head>
+<body hx-headers='{"X-CSRF-Token": "{{ csrf }}"}'>
+<header>
+  <strong>Prometheus</strong>
+  <nav>
+    <a href="/">Chat</a><a href="/approvals">Approvals</a><a href="/memory">Memory</a>
+    <a href="/history">History</a><a href="/settings">Settings</a>
+  </nav>
+  <span class="spacer"></span>
+  <span id="status-mini" hx-get="/status?mini=1" hx-trigger="load, every 3s"></span>
+  {% if stopped %}
+    <button class="ok" hx-post="/kill/reset" hx-swap="none" hx-on::after-request="location.reload()">Resume</button>
+  {% else %}
+    <button class="danger" hx-post="/kill" hx-swap="none" hx-on::after-request="location.reload()">STOP ALL</button>
+  {% endif %}
+  <button hx-post="/logout" hx-swap="none" hx-on::after-request="location.href='/login'">Log out</button>
+</header>
+{% block body %}{% endblock %}
+</body>
+</html>

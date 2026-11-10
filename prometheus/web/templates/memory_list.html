@@ -1,0 +1,4 @@
+<ul class="plain">
+{% for m in memories %}<li>{{ m.text }} <button class="danger" hx-post="/memory/{{ m.id }}/delete" hx-target="#memory">Delete</button></li>
+{% else %}<li class="muted">Nothing saved yet.</li>{% endfor %}
+</ul>

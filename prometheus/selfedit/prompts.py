@@ -1,0 +1,59 @@
+"""Level 1 self-editing: prompt files in a local git repo, so every change can be rolled back."""
+from __future__ import annotations
+
+import re
+import shutil
+import subprocess
+from pathlib import Path
+
+PACKAGE_PROMPTS = Path(__file__).resolve().parent.parent / "prompts"
+NAME = re.compile(r"^[a-z_][a-z0-9_]{0,40}$")
+
+
+class PromptStore:
+    def __init__(self, folder: Path):
+        self.folder = Path(folder)
+        self.folder.mkdir(parents=True, exist_ok=True)
+        for f in PACKAGE_PROMPTS.glob("*.md"):
+            if not (self.folder / f.name).exists():
+                shutil.copy2(f, self.folder / f.name)
+        self._git_ok = shutil.which("git") is not None
+        if self._git_ok and not (self.folder / ".git").exists():
+            self._git("init", "-q")
+            self._git("add", "-A")
+            self._git("commit", "-q", "-m", "Initial prompts", "--allow-empty")
+
+    def _git(self, *args: str) -> str:
+        proc = subprocess.run(["git", "-c", "user.name=Prometheus", "-c", "user.email=prometheus@localhost",
+                               "-c", "commit.gpgsign=false", *args], cwd=self.folder, capture_output=True,
+                              text=True, timeout=30)
+        if proc.returncode:
+            raise RuntimeError(proc.stderr.strip()[:300])
+        return proc.stdout
+
+    def _path(self, name: str) -> Path:
+        if not NAME.match(name):
+            raise ValueError(f"Invalid prompt name: {name}")
+        return self.folder / f"{name}.md"
+
+    def get(self, name: str) -> str:
+        return self._path(name).read_text(encoding="utf-8")
+
+    def set(self, name: str, text: str, reason: str) -> None:
+        path = self._path(name)
+        path.write_text(text, encoding="utf-8")
+        if self._git_ok:
+            self._git("add", path.name)
+            self._git("commit", "-q", "-m", reason or f"Update {name}")
+
+    def history(self, name: str) -> list[tuple[str, str]]:
+        if not self._git_ok:
+            return []
+        out = self._git("log", "--format=%H%x09%s", "--", self._path(name).name)
+        return [tuple(line.split("\t", 1)) for line in out.splitlines() if "\t" in line]
+
+    def rollback(self, name: str, commit: str) -> None:
+        if not re.fullmatch(r"[0-9a-f]{7,40}", commit):
+            raise ValueError("Invalid version id")
+        old = self._git("show", f"{commit}:{self._path(name).name}")
+        self.set(name, old, f"Roll back {name} to {commit[:7]}")

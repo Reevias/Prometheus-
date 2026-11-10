@@ -1,0 +1,10 @@
+{% if result %}<p class="panel">{{ result }}</p>{% endif %}
+{% for a in approvals %}
+  <div class="panel" style="margin-bottom:12px">
+    <p><strong>{{ a.summary }}</strong> <span class="muted">({{ a.kind }})</span></p>
+    {% if a.payload.url %}<p class="muted">{{ a.payload.url }}</p>{% endif %}
+    {% if a.payload.diff %}<pre class="diff">{{ a.payload.diff }}</pre>{% endif %}
+    <button class="ok" hx-post="/approvals/{{ a.id }}" hx-vals='{"decision": "approve"}' hx-target="#approvals">Approve</button>
+    <button class="danger" hx-post="/approvals/{{ a.id }}" hx-vals='{"decision": "reject"}' hx-target="#approvals">Reject</button>
+  </div>
+{% else %}<p class="muted">Nothing is waiting.</p>{% endfor %}

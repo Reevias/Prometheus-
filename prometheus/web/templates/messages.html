@@ -1,0 +1,3 @@
+{% for m in messages %}<div class="msg {{ m.role }}"><span class="muted">{{ "You" if m.role == "user" else "Prometheus" }}</span>
+{{ m.text }}</div>{% else %}<p class="muted">No messages yet. Try: "sort my Downloads folder and summarise any PDFs about taxes".</p>{% endfor %}
+{% if busy %}<p class="muted">Working…</p>{% endif %}

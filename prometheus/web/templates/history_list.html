@@ -1,0 +1,8 @@
+{% if result %}<p class="panel">{{ result }}</p>{% endif %}
+<ul class="plain">
+{% for r in runs %}
+  <li><code>{{ r.id }}</code> — {{ r.count }} changes in <span class="muted">{{ r.root }}</span>
+    {% if r.undone %}<span class="muted">(undone)</span>{% elif r.active %}<span class="muted">(still running)</span>{% elif r.count %}
+      <button hx-post="/history/{{ r.id }}/undo" hx-target="#history" hx-confirm="Put these files back?">{{ "Retry undo" if r.last_undo else "Undo" }}</button>{% endif %}</li>
+{% else %}<li class="muted">No file changes yet.</li>{% endfor %}
+</ul>

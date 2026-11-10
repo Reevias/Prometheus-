@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block body %}
+<main class="single">
+  <h2>Settings</h2>
+  {% if error %}<p class="error">{{ error }}</p>{% endif %}{% if saved %}<p class="status-done">Saved.</p>{% endif %}
+  <form hx-post="/settings" hx-target="body" class="panel" style="display:grid;gap:10px">
+    <label>Spending cap for cloud AI (USD) <input name="budget_usd" value="{{ s.budget_usd }}" inputmode="decimal"></label>
+    <label>Local model (Ollama) <input name="ollama_model" value="{{ s.ollama_model }}"></label>
+    <label>Claude model <input name="anthropic_model" value="{{ s.anthropic_model }}"></label>
+    <label><input type="checkbox" name="allow_lan" value="1" {{ "checked" if s.allow_lan }}> Allow other devices on my Wi-Fi (needs restart, keep a strong password)</label>
+    <button type="submit">Save</button>
+  </form>
+  <h3>AI models</h3>
+  <ul class="plain">{% for name, ok in models.items() %}<li>{{ name }}: {{ "available" if ok else "not available" }}</li>{% endfor %}</ul>
+  <p class="muted">API keys are read from environment variables (ANTHROPIC_API_KEY, GITHUB_TOKEN) or the .env file in the data folder. They are never shown here.</p>
+  <p class="muted">Spent so far: ${{ "%.4f"|format(budget.spent) }} of ${{ "%.2f"|format(budget.cap) }}.</p>
+</main>
+{% endblock %}

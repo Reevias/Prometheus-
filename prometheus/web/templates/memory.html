@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block body %}
+<main class="single">
+  <h2>What Prometheus remembers about you</h2>
+  <div id="memory">{% include "memory_list.html" %}</div>
+  <form class="row" hx-post="/memory" hx-target="#memory" hx-on::after-request="this.reset()">
+    <input type="text" name="text" placeholder="Something to remember" required>
+    <button type="submit">Remember</button>
+  </form>
+  <p><button class="danger" hx-post="/memory/wipe" hx-target="#memory" hx-confirm="Forget everything?">Forget everything</button></p>
+</main>
+{% endblock %}
