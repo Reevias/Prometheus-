@@ -64,8 +64,10 @@ def test_known_sites_and_unknown_goals(make_ctx):
     ctx = make_ctx()
     assert Opener(launcher=opened.append).run("open github in the browser", {}, ctx).status == "done"
     assert opened == ["https://github.com/"]
-    result = Opener(launcher=opened.append).run("open gmail", {}, ctx)
-    assert result.status == "waiting_approval" and "mail.google.com" in ctx.store.approvals()[0].payload["url"]
+    result = Opener(launcher=opened.append).run("open gmail", {}, ctx)       # well-known: no approval needed
+    assert result.status == "done" and opened[-1] == "https://mail.google.com/" and ctx.store.approvals() == []
+    other = Opener(launcher=opened.append).run("open it", {"target": "https://some-unknown-site.example/"}, ctx)
+    assert other.status in ("waiting_approval", "failed") and opened[-1] == "https://mail.google.com/"
     gone = Opener(launcher=opened.append).run("do something", {}, ctx)
     assert gone.status == "failed" and "which website" in gone.summary.lower()
 

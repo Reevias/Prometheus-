@@ -68,6 +68,10 @@ class LaptopError(Exception):
     pass
 
 
+class AppNotInstalled(LaptopError):
+    """No app by that name is installed (so a website or the Microsoft Store may help)."""
+
+
 def _wipe(path: Path) -> None:
     """Overwrite then delete a file that held a password. If Windows won't let go of it, at least it is blank."""
     for attempt in range(5):
@@ -243,7 +247,12 @@ PACKAGE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{1,79}$")
 TERMINALS = {"powershell", "powershell_ise", "pwsh", "cmd", "conhost", "windowsterminal", "wt", "wsl", "wslhost",
              "bash", "mintty", "alacritty", "regedit", "mmc", "taskmgr", "openconsole"}
 NEVER_OPEN = TERMINALS | {"windows terminal", "windows powershell", "command prompt", "terminal", "registry editor",
-                          "task manager", "microsoft management console", "services"}
+                          "task manager", "microsoft management console", "services",
+                          # script runners and admin tools: harmless-looking names that can run or change anything
+                          "wscript", "cscript", "mshta", "rundll32", "regsvr32", "msiexec", "certutil", "bitsadmin",
+                          "schtasks", "sc", "netsh", "reg", "diskpart", "format", "bcdedit", "vssadmin", "wmic",
+                          "cipher", "takeown", "icacls", "net", "net1", "runas", "control", "msconfig", "gpedit",
+                          "secpol", "compmgmt", "devmgmt", "diskmgmt", "eventvwr", "perfmon", "powercfg", "sfc", "dism"}
 KEYS = {"enter": "{ENTER}", "ctrl+enter": "^{ENTER}", "tab": "{TAB}", "shift+tab": "+{TAB}", "esc": "{ESC}",
         "up": "{UP}", "down": "{DOWN}", "left": "{LEFT}", "right": "{RIGHT}", "backspace": "{BACKSPACE}",
         "delete": "{DELETE}", "home": "{HOME}", "end": "{END}", "pageup": "{PGUP}", "pagedown": "{PGDN}",
@@ -280,7 +289,25 @@ $n = $env:PROM_APP
 $app = Get-StartApps | Where-Object { $_.Name -eq $n } | Select-Object -First 1
 if (-not $app) { $app = Get-StartApps | Where-Object { $_.Name -like "*$n*" } | Select-Object -First 1 }
 if ($app) { Start-Process ('shell:AppsFolder\' + $app.AppID); 'opened ' + $app.Name }
-else { Start-Process -FilePath $n -ErrorAction Stop; 'opened ' + $n }
+else {
+  $c = Get-Command $n -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+  if (-not $c) { $c = Get-Command ($n + '.exe') -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1 }
+  if ($c) { Start-Process -FilePath $c.Source; 'opened ' + $c.Name } else { 'notfound' }
+}
+"""
+STORE_SCRIPT = r"""
+$q = $env:PROM_TEXT
+if ($q) { Start-Process ('ms-windows-store://search/?query=' + [uri]::EscapeDataString($q)) }
+else { Start-Process 'ms-windows-store://home' }
+'opened'
+"""
+# Finding an app to install by its name. The PowerShell module gives clean data; the text table is the fallback.
+FIND_SCRIPT = r"""
+$q = $env:PROM_TEXT
+try {
+  Import-Module Microsoft.WinGet.Client -ErrorAction Stop
+  Find-WinGetPackage -Query $q -ErrorAction Stop | Select-Object -First 8 Name, Id, Source | ConvertTo-Json -Compress
+} catch { 'TABLE'; winget search --query $q --accept-source-agreements --disable-interactivity }
 """
 CLOSE_SCRIPT = r"""
 $n = $env:PROM_APP; $c = 0
@@ -380,7 +407,62 @@ def app_open(self, name: str) -> str:
     if _blocked(name):
         raise LaptopError(f"Prometheus never opens {name}: terminals and admin tools are off limits.")
     out = _ps(self, OPEN_SCRIPT, {"PROM_APP": name})
-    return out.splitlines()[-1] if out else f"Asked Windows to open {name}."
+    last = out.splitlines()[-1].strip() if out.strip() else ""
+    if last == "notfound":
+        raise AppNotInstalled(f"{name} isn't installed on this laptop.")
+    return last or f"Asked Windows to open {name}."
+
+
+def store_open(self, query: str = "") -> str:
+    """Open the Microsoft Store, on a search for `query` if given."""
+    self._need_windows()
+    query = (query or "").strip()
+    if query and not APP.fullmatch(query):
+        raise LaptopError("That is not a valid app name to search for.")
+    _ps(self, STORE_SCRIPT, {"PROM_TEXT": query})
+    return f"Opened the Microsoft Store{' on ' + query if query else ''}."
+
+
+def parse_winget_table(text: str) -> list[dict]:
+    """Rows of `winget search` output (Name, Id, Version, Source), using the header's column positions."""
+    lines = [l.rstrip() for l in text.splitlines() if l.strip()]
+    head = next((i for i, l in enumerate(lines) if re.search(r"\bId\b", l) and re.search(r"\bName\b", l)), None)
+    if head is None:
+        return []
+    header = lines[head]
+    cols = [(m.group(), m.start()) for m in re.finditer(r"\S+", header)]
+    names = [c for c, _ in cols]
+    rows = []
+    for line in lines[head + 1:]:
+        if set(line) <= set("-─ "):
+            continue
+        cells = {}
+        for k, (col, start) in enumerate(cols):
+            end = cols[k + 1][1] if k + 1 < len(cols) else len(line)
+            cells[col] = line[start:end].strip()
+        if cells.get("Id") and PACKAGE.fullmatch(cells["Id"]):
+            rows.append({"name": cells.get("Name", ""), "id": cells["Id"], "source": cells.get("Source", "")})
+    return rows if "Id" in names else []
+
+
+def find_package(self, name: str) -> list[dict]:
+    """Apps matching a name, best first: [{name, id, source}]. Store apps have ids like 9NCBCSZSJRSB."""
+    self._need_windows()
+    name = _app_name(name)
+    out = _ps(self, FIND_SCRIPT, {"PROM_TEXT": name}, timeout=120)
+    if out.lstrip().startswith("TABLE"):
+        found = parse_winget_table(out.split("TABLE", 1)[1])
+    else:
+        try:
+            data = json.loads(out.strip() or "[]")
+        except ValueError:
+            data = []
+        data = [data] if isinstance(data, dict) else data
+        found = [{"name": str(d.get("Name", "")), "id": str(d.get("Id", "")), "source": str(d.get("Source", ""))}
+                 for d in data if isinstance(d, dict) and PACKAGE.fullmatch(str(d.get("Id", "")))]
+    low = name.lower()
+    found.sort(key=lambda r: (r["name"].lower() != low, low not in r["name"].lower(), r["source"] != "msstore"))
+    return found
 
 
 def app_close(self, name: str) -> str:
@@ -489,17 +571,20 @@ def power(self, mode: str) -> str:
             "restart": "Restarting in 30 seconds. Run `shutdown /a` to cancel."}.get(mode, f"Done: {mode}.")
 
 
-def install_app(self, package: str) -> str:
+def install_app(self, package: str, source: str = "") -> str:
     self._need_windows()
     if not isinstance(package, str) or not PACKAGE.fullmatch(package):
         raise LaptopError("A winget package id looks like Publisher.Name.")
-    code, out = self.run(["winget", "install", "--id", package, "-e", "--silent", "--accept-package-agreements",
-                          "--accept-source-agreements"], timeout=900)
+    if source not in ("", "winget", "msstore"):
+        raise LaptopError("Apps install from winget or the Microsoft Store only.")
+    argv = ["winget", "install", "--id", package, "-e", "--silent", "--accept-package-agreements",
+            "--accept-source-agreements"] + (["--source", source] if source else [])
+    code, out = self.run(argv, timeout=900)
     if code != 0:
         raise LaptopError(f"winget could not install {package}: {out.strip()[-200:]}")
     return f"Installed {package}."
 
 
 for _f in (app_open, app_close, window, apps_running, volume, mute, brightness, dark_mode, screenshot, type_text,
-           press_keys, click, power, install_app):
+           press_keys, click, power, install_app, store_open, find_package):
     setattr(Laptop, _f.__name__, _f)

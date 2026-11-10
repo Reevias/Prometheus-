@@ -12,8 +12,11 @@ Plans:
 - Inputs are key/value pairs of text. To use a result of an earlier step write the value as $stepN.key (for example
   $step1.pdfs). Write a list as JSON text, e.g. ["a.pdf", "b.pdf"]. Folders can be written relative to the user's
   home folder, e.g. Downloads.
-- Opening things: an app on this laptop (Notepad, Spotify, Chrome, VS Code, Settings) means the system agent with
-  action app_open and target = the app name. A website, a link or a video means the opener agent with target = the
+- Opening things: an app on this laptop (Notepad, Spotify, WhatsApp, Chrome, VS Code, Settings) means the system
+  agent with action app_open and target = the app name; if it isn't installed it opens the app's website by itself.
+  "Open the Microsoft Store" is system action store_open; "install X" is system action install_app with target = the
+  app's name (it finds the right package and asks the owner first). "Play X on Spotify" or "search X on Google" is
+  the opener with the site's search link, e.g. https://open.spotify.com/search/X. A website, a link or a video means the opener agent with target = the
   full link. "open youtube" means the website: opener with target https://www.youtube.com/ (only use app_open for
   YouTube if the person says the app). Always fill in every input; never leave one empty.
 - Looking things up: encyclopedic facts (people, places, history, science, definitions, "who/what was ...") that you

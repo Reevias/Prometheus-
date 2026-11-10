@@ -1,6 +1,7 @@
 """Opens things for the user: YouTube videos, GitHub repos, web links, and files in their default app.
 
-Safety: YouTube and GitHub links open straight away; any other site or any local file waits for approval;
+Safety: YouTube, GitHub and a fixed list of well-known sites (Spotify, Gmail, WhatsApp Web…) open straight away,
+with their search pages; any other site or any local file waits for approval;
 programs and scripts are never opened; addresses on the user's own computer or network are refused.
 """
 from __future__ import annotations
@@ -18,6 +19,8 @@ from prometheus.agents.base import UNTRUSTED_RULE, Agent, AgentContext, StepResu
 from prometheus.models.base import ProviderUnavailable
 from prometheus.safety.paths import PathBlocked
 from prometheus.safety.web import UnsafeURL, check_url
+from prometheus.sites import AUTO_HOSTS as SITE_HOSTS
+from prometheus.sites import SEARCH, SITES
 
 AUTO_HOSTS = {"www.youtube.com", "youtube.com", "m.youtube.com", "music.youtube.com", "youtu.be", "github.com"}
 VIDEO_ID = re.compile(r"(?:[?&]v=|youtu\.be/|/shorts/|/embed/|/live/)([\w-]{11})")
@@ -32,9 +35,9 @@ YOUTUBE_PATHS = re.compile(r"^/$|^/(watch|results|playlist)$|^/shorts/[\w-]{11}$
 YOUTU_BE_PATH = re.compile(r"^/[\w-]{11}$")
 GITHUB_REPO_PATH = re.compile(r"^/$|^/[A-Za-z0-9][A-Za-z0-9_.-]{0,99}/[A-Za-z0-9][A-Za-z0-9_.-]{0,99}/?$")
 TRANSCRIPT_CHARS = 12000
-KNOWN_SITES = {"youtube": "https://www.youtube.com/", "github": "https://github.com/", "google": "https://www.google.com/",
-               "gmail": "https://mail.google.com/", "wikipedia": "https://www.wikipedia.org/",
-               "maps": "https://maps.google.com/", "reddit": "https://www.reddit.com/"}
+KNOWN_SITES = SITES
+SPOTIFY_ITEM = re.compile(r"^/(track|album|playlist|artist|episode|show)/[A-Za-z0-9]{10,40}$|^/search/[^/]{1,200}$")
+WIKI_ARTICLE = re.compile(r"^/wiki/[^/:]{1,200}$")
 
 
 def infer_target(goal: str) -> str:
@@ -42,10 +45,10 @@ def infer_target(goal: str) -> str:
     m = re.search(r"https?://[^\s\"'<>]+", goal or "")
     if m:
         return m.group(0).rstrip(".,)")
-    words = set(re.findall(r"[a-z]+", (goal or "").lower()))
-    for site, url in KNOWN_SITES.items():
-        if site in words:
-            return url
+    text = " " + " ".join(re.findall(r"[a-z]+", (goal or "").lower())) + " "
+    for site in sorted(KNOWN_SITES, key=len, reverse=True):     # "youtube music" before "youtube"
+        if f" {site} " in text:
+            return KNOWN_SITES[site]
     return ""
 
 
@@ -77,7 +80,15 @@ def _auto_open(url: str) -> bool:
         return bool(YOUTU_BE_PATH.match(parts.path))
     if host in AUTO_HOSTS:
         return bool(YOUTUBE_PATHS.match(parts.path))
-    return False
+    if host not in SITE_HOSTS:
+        return False
+    if url in SITES.values() or (parts.path in ("", "/") and not parts.query):
+        return True                                   # the home page of a well-known site
+    if host == "open.spotify.com":
+        return bool(SPOTIFY_ITEM.match(parts.path)) and not parts.query
+    if host == "en.wikipedia.org":
+        return bool(WIKI_ARTICLE.match(parts.path)) or url.startswith(SEARCH["wikipedia"].split("{")[0])
+    return any(url.startswith(t.split("{")[0]) for t in SEARCH.values())   # a search results page
 
 
 def _truthy(value) -> bool:

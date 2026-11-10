@@ -1,10 +1,14 @@
 """Laptop control: a fixed list of actions (Wi-Fi, Bluetooth, location, battery). No free command line."""
 from __future__ import annotations
 
+import webbrowser
 from pathlib import Path
 
 from prometheus.agents.base import Agent, AgentContext, StepResult, register
-from prometheus.laptop import Laptop, LaptopError
+from prometheus.laptop import AppNotInstalled, Laptop, LaptopError
+from prometheus.sites import site_for
+
+open_site = webbrowser.open        # replaced in tests
 from prometheus.safety.approvals import TryAgain
 
 SUBMIT_KEYS = {"enter", "ctrl+enter"}
@@ -12,7 +16,7 @@ ASK_POWER = {"sleep", "shutdown", "restart", "logoff"}
 ACTIONS = {"wifi_status", "wifi_list", "wifi_connect", "wifi_disconnect", "bluetooth_status", "bluetooth_on",
            "bluetooth_off", "location", "battery", "apps_running", "app_open", "app_close", "window", "volume",
            "mute", "brightness", "dark_mode", "screenshot", "type_text", "press_keys", "click", "power",
-           "install_app"}
+           "install_app", "store_open"}
 READ = {"wifi_status", "wifi_list", "bluetooth_status", "location", "battery", "apps_running"}
 CHANGE = ACTIONS - READ
 
@@ -58,7 +62,9 @@ def perform(action: str, params: dict, lp: Laptop) -> str:
     if action == "power":
         return lp.power(str(params.get("mode", "")))
     if action == "install_app":
-        return lp.install_app(t)
+        return lp.install_app(t, str(params.get("source") or ""))
+    if action == "store_open":
+        return lp.store_open(str(t or ""))
     if action == "wifi_connect_open":
         return lp.wifi_connect_new(str(t or ""), None)
     raise LaptopError(f"'{action}' is not something I can do on the laptop.")
@@ -89,8 +95,11 @@ class SystemAgent(Agent):
                    "battery, apps_running, app_open (target = app name), app_close (target), window (target, mode = "
                    "minimize|maximize|restore|focus), volume (level 0-100), mute, brightness (level 0-100), dark_mode "
                    "(mode = on|off), screenshot, type_text (text, one line), press_keys (keys, e.g. ctrl+c, enter), "
-                   "click (x, y), power (mode = lock|sleep|shutdown|restart|logoff), install_app (target = winget "
-                   "id). Pressing Enter, clicking, power changes and installs wait for the owner's approval. "
+                   "click (x, y), power (mode = lock|sleep|shutdown|restart|logoff), store_open (target = app to search "
+                   "for in the Microsoft Store, or empty), install_app (target = the app's name, e.g. Spotify, or its "
+                   "winget id). app_open opens the installed app, or its website if it isn't installed (Spotify, "
+                   "WhatsApp, Netflix, Discord…). Pressing Enter, clicking, power changes and installs wait for the "
+                   "owner's approval. "
                    "If a Wi-Fi password is needed the app asks the owner for it; never put a password in the inputs.")
     tools = {"system_read", "system_change"}
     required_inputs = ("action",)
@@ -118,6 +127,40 @@ class SystemAgent(Agent):
         return StepResult("waiting_approval",
                           f"'{ssid}' needs a password I don't have. Type it on the Approvals page and I'll connect.")
 
+    def _app_open(self, ctx: AgentContext, name: str) -> StepResult:
+        """Open the installed app; if it isn't installed, its website (for well-known apps), else point to the Store."""
+        try:
+            text = self.laptop.app_open(name)
+            ctx.store.audit(self.name, "app_open", {"target": str(name)[:60]})
+            return StepResult("done", text)
+        except AppNotInstalled:
+            site = site_for(name)
+            if site:
+                open_site(site)
+                ctx.store.audit(self.name, "open_site", {"target": str(name)[:60], "url": site})
+                return StepResult("done", f"{name} isn't installed, so I opened {site} in your browser. Say "
+                                          f"'install {name}' if you want the app.", {"url": site})
+            return StepResult("failed", f"{name} isn't installed on this laptop. Say 'install {name}' and I'll find "
+                                        "it (installing waits for your approval), or 'open the Microsoft Store'.")
+
+    def _install(self, ctx: AgentContext, target: str) -> StepResult:
+        """Find the exact package first, so the approval names exactly what will be installed."""
+        target = target.strip()
+        lp = self.laptop
+        source = ""
+        if "." in target or (target.isalnum() and target.isupper() and len(target) >= 10):
+            package, label = target, target                         # already a winget or Store id
+        else:
+            found = lp.find_package(target)
+            if not found:
+                return StepResult("failed", f"I couldn't find an app called '{target}' in winget or the Microsoft "
+                                            "Store. Say 'open the Microsoft Store' to look yourself.")
+            best = found[0]
+            package, source, label = best["id"], best["source"], f"{best['name']} ({best['id']}, {best['source'] or 'winget'})"
+        ctx.approvals.request("laptop_action", f"Install {label}: installing software",
+                              {"action": "install_app", "target": package, "source": source})
+        return StepResult("waiting_approval", f"Found {label}. Approve installing it on the Approvals page.")
+
     def run(self, goal: str, inputs: dict, ctx: AgentContext) -> StepResult:
         action = str(inputs.get("action") or "").strip().lower()
         if action not in ACTIONS:
@@ -137,6 +180,14 @@ class SystemAgent(Agent):
                 result = self._wifi_connect(ctx, str(inputs.get("ssid") or "").strip())
                 ctx.store.audit(self.name, action, {"ssid": str(inputs.get("ssid") or "")[:32], "status": result.status})
                 return result
+            elif action == "app_open":
+                return self._app_open(ctx, str(inputs.get("target") or "").strip())
+            elif action == "install_app":
+                return self._install(ctx, str(inputs.get("target") or ""))
+            elif action == "store_open":
+                text = lp.store_open(str(inputs.get("target") or ""))
+                ctx.store.audit(self.name, action, {"target": str(inputs.get("target") or "")[:60]})
+                return StepResult("done", text)
             elif action in ACTIONS - {"wifi_status", "wifi_list", "wifi_connect", "wifi_disconnect", "bluetooth_status",
                                       "bluetooth_on", "bluetooth_off", "location", "battery", "apps_running"}:
                 why = needs_approval(action, inputs)
