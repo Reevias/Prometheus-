@@ -9,8 +9,9 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from prometheus.app import Services
-from prometheus.config import save_settings
+from prometheus.app import Services, apply_settings
+from prometheus.auth import verify_password
+from prometheus.config import KEY_NAMES, delete_secret, save_settings, secrets_set, set_secret
 
 WEB = Path(__file__).resolve().parent
 
@@ -64,7 +65,7 @@ def register_routes(app: FastAPI, services: Services) -> None:
         task = store.latest_task(chat) if chat else {}
         return page(request, "status.html", mini=bool(mini), task=task,
                     steps=store.steps(task["id"]) if task else [], budget=services.budget.state(),
-                    pending=len(store.approvals()), models=services.router.status() if not mini else {})
+                    pending=len(store.approvals()), models=services.router.status_detail() if not mini else [])
 
     @app.get("/approvals", response_class=HTMLResponse)
     def approvals(request: Request):
@@ -108,8 +109,9 @@ def register_routes(app: FastAPI, services: Services) -> None:
         return page(request, "history_list.html", runs=services.journal.runs(), result=result)
 
     def settings_page(request: Request, status_code: int = 200, **extra):
-        return page(request, "settings.html", status_code, s=services.settings, models=services.router.status(),
-                    budget=services.budget.state(), **extra)
+        keys = [{"name": name, "label": label, "set": secrets_set()[name]} for name, label in KEY_NAMES.items()]
+        return page(request, "settings.html", status_code, s=services.settings, models=services.router.status_detail(),
+                    budget=services.budget.state(), keys=keys, **extra)
 
     @app.get("/settings", response_class=HTMLResponse)
     def settings(request: Request):
@@ -117,7 +119,8 @@ def register_routes(app: FastAPI, services: Services) -> None:
 
     @app.post("/settings", response_class=HTMLResponse)
     def save(request: Request, budget_usd: str = Form(...), ollama_model: str = Form(...),
-             anthropic_model: str = Form(...), allow_lan: str = Form("")):
+             anthropic_model: str = Form(...), allow_lan: str = Form(""), openrouter_model: str = Form(""),
+             openrouter_fast_model: str = Form("")):
         try:
             budget = float(budget_usd)
             if not 0 <= budget <= 1000:
@@ -125,12 +128,40 @@ def register_routes(app: FastAPI, services: Services) -> None:
         except ValueError:
             return settings_page(request, 400, error="The spending cap must be a number between 0 and 1000.")
         new = replace(services.settings, budget_usd=budget, ollama_model=ollama_model.strip()[:100],
-                      anthropic_model=anthropic_model.strip()[:100], allow_lan=bool(allow_lan))
+                      anthropic_model=anthropic_model.strip()[:100], allow_lan=bool(allow_lan),
+                      openrouter_model=openrouter_model.strip()[:150] or services.settings.openrouter_model,
+                      openrouter_fast_model=openrouter_fast_model.strip()[:150])
         save_settings(new)
         services.settings.__dict__.update(new.__dict__)
-        services.budget.cap_usd = budget
+        apply_settings(services)
         store.audit("user", "settings", {"budget_usd": budget, "allow_lan": new.allow_lan})
         return settings_page(request, saved=True)
+
+    def _password_ok(password: str) -> bool:
+        return bool(services.settings.password_hash) and verify_password(password, services.settings.password_hash)
+
+    @app.post("/settings/keys", response_class=HTMLResponse)
+    def save_key(request: Request, name: str = Form(...), value: str = Form(...), password: str = Form("")):
+        if name not in KEY_NAMES:
+            return settings_page(request, 400, key_error="Unknown key.")
+        if not _password_ok(password):
+            return settings_page(request, 403, key_error="Wrong password. The key was not saved.")
+        try:
+            set_secret(name, value)
+        except ValueError as e:
+            return settings_page(request, 400, key_error=str(e))
+        store.audit("user", "key_saved", {"name": name})
+        return settings_page(request, key_saved=KEY_NAMES[name])
+
+    @app.post("/settings/keys/delete", response_class=HTMLResponse)
+    def remove_key(request: Request, name: str = Form(...), password: str = Form("")):
+        if name not in KEY_NAMES:
+            return settings_page(request, 400, key_error="Unknown key.")
+        if not _password_ok(password):
+            return settings_page(request, 403, key_error="Wrong password. The key was not removed.")
+        delete_secret(name)
+        store.audit("user", "key_removed", {"name": name})
+        return settings_page(request, key_saved="")
 
     @app.post("/kill")
     def kill():

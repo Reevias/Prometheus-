@@ -11,6 +11,7 @@ from prometheus.actions.files import FileActions
 from prometheus.actions.journal import Journal
 from prometheus.agents import REGISTRY
 from prometheus.agents.base import AgentContext
+from prometheus.agents.opener import open_link_handler, open_local_handler
 from prometheus.agents.repo_scout import clone_handler
 from prometheus.config import Settings, data_dir
 from prometheus.memory.store import Store
@@ -61,6 +62,22 @@ class Services:
         return thread
 
 
+def apply_settings(services: "Services") -> None:
+    """Make changed model names and the budget cap take effect without a restart."""
+    s, router = services.settings, services.router
+    services.budget.cap_usd = s.budget_usd
+    for name, model in (("openrouter", s.openrouter_model), ("anthropic", s.anthropic_model),
+                        ("ollama", s.ollama_model)):
+        provider = router.providers.get(name)
+        if provider is not None and hasattr(provider, "model") and model:
+            provider.model = model
+    research = [e for e in s.routes.get("research", [])]
+    if s.openrouter_fast_model:
+        research = [f"openrouter:{s.openrouter_fast_model}" if e == "openrouter" else e for e in research]
+    if "research" in router.routes and any(e.split(":")[0] in router.providers for e in research):
+        router.routes["research"] = research
+
+
 def build_services(settings: Settings, providers: dict[str, Provider] | None = None,
                    home: Path | None = None) -> Services:
     data = data_dir()
@@ -82,6 +99,8 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
     patcher = Patcher(PACKAGE_DIR, approvals, data / "backups")
     approvals.register("apply_patch", patcher.apply)
     approvals.register("clone_repo", lambda payload: clone_handler(payload, data / "quarantine"))
+    approvals.register("open_link", open_link_handler)
+    approvals.register("open_local", lambda payload: open_local_handler(payload, policy))
 
     def make_context(task_id: int, step_id: int) -> AgentContext:
         return AgentContext(task_id=task_id, step_id=step_id, store=store, router=router, policy=policy, files=files,

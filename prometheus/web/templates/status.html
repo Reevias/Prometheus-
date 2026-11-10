@@ -9,5 +9,5 @@
         <div class="muted">{{ s.goal }}</div></li>{% endfor %}
     </ul>
   {% else %}<p class="muted">Nothing running.</p>{% endif %}
-  <p class="muted">Models: {% for name, ok in models.items() %}{{ name }} {{ "✓" if ok else "✗" }} {% endfor %}</p>
+  <p class="muted">Models: {% for m in models %}{{ m.name }} {{ "resting" if m.resting else ("✓" if m.available else "✗") }} {% endfor %}</p>
 {% endif %}

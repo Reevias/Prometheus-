@@ -7,12 +7,27 @@
     <label>Spending cap for cloud AI (USD) <input name="budget_usd" value="{{ s.budget_usd }}" inputmode="decimal"></label>
     <label>Local model (Ollama) <input name="ollama_model" value="{{ s.ollama_model }}"></label>
     <label>Claude model <input name="anthropic_model" value="{{ s.anthropic_model }}"></label>
+    <label>OpenRouter model for planning and answers <input name="openrouter_model" value="{{ s.openrouter_model }}"></label>
+    <label>OpenRouter cheaper model for research (optional) <input name="openrouter_fast_model" value="{{ s.openrouter_fast_model }}"></label>
     <label><input type="checkbox" name="allow_lan" value="1" {{ "checked" if s.allow_lan }}> Allow other devices on my Wi-Fi (needs restart, keep a strong password)</label>
     <button type="submit">Save</button>
   </form>
+  <h3>API keys</h3>
+  {% if key_error %}<p class="error">{{ key_error }}</p>{% endif %}{% if key_saved %}<p class="status-done">{{ key_saved }} key saved.</p>{% endif %}
+  <p class="muted">Keys are stored on this laptop only and are never shown again. Saving or removing one needs your password.</p>
+  {% for k in keys %}
+  <form hx-post="/settings/keys" hx-target="body" class="panel keyrow">
+    <strong>{{ k.label }}</strong> <span class="{{ 'status-done' if k.set else 'muted' }}">{{ "set ✓" if k.set else "not set" }}</span>
+    <input type="hidden" name="name" value="{{ k.name }}">
+    <input type="password" name="value" placeholder="Paste the key" autocomplete="off" required>
+    <input type="password" name="password" placeholder="Your Prometheus password" autocomplete="current-password" required>
+    <button type="submit">Save</button>
+    {% if k.set %}<button type="submit" class="danger" hx-post="/settings/keys/delete" hx-target="body" formnovalidate>Remove</button>{% endif %}
+  </form>
+  {% endfor %}
   <h3>AI models</h3>
-  <ul class="plain">{% for name, ok in models.items() %}<li>{{ name }}: {{ "available" if ok else "not available" }}</li>{% endfor %}</ul>
-  <p class="muted">API keys are read from environment variables (ANTHROPIC_API_KEY, GITHUB_TOKEN) or the .env file in the data folder. They are never shown here.</p>
+  <ul class="plain">{% for m in models %}<li>{{ m.name }}: {% if m.resting %}<span class="status-running">resting {{ m.minutes_left }} min — {{ m.reason }}</span>{% elif m.available %}<span class="status-done">ready</span>{% else %}<span class="muted">not set up</span>{% endif %}{{ " (local)" if m.local }}</li>{% endfor %}</ul>
+  <p class="muted">Prometheus switches between ready models by itself. Your personal files only ever go to local models.</p>
   <p class="muted">Spent so far: ${{ "%.4f"|format(budget.spent) }} of ${{ "%.2f"|format(budget.cap) }}.</p>
 </main>
 {% endblock %}

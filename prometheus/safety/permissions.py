@@ -3,8 +3,8 @@ from __future__ import annotations
 
 from enum import Enum
 
-ALLOW_TOOLS = {"read_files", "move_files", "web_search", "web_fetch", "call_model", "github_search"}
-ASK_TOOLS = {"clone_repo", "apply_patch", "generate_media"}
+ALLOW_TOOLS = {"read_files", "move_files", "web_search", "web_fetch", "call_model", "github_search", "open_link"}
+ASK_TOOLS = {"clone_repo", "apply_patch", "generate_media", "open_other", "open_local"}
 
 
 class Decision(Enum):

@@ -155,9 +155,9 @@ class Orchestrator:
             reply = self.router.complete("plan", messages, system, json_schema=PLAN_SCHEMA, max_tokens=2000)
             return validate_plan(reply.text, self.registry)
 
-    def _finish(self, chat_id: int, task_id: int, status: str, answer: str) -> TaskOutcome:
+    def _finish(self, chat_id: int, task_id: int, status: str, answer: str, model: str = "") -> TaskOutcome:
         self.store.set_task_status(task_id, status, answer)
-        self.store.add_message(chat_id, "assistant", answer)
+        self.store.add_message(chat_id, "assistant", answer, model)
         return TaskOutcome(task_id, status, answer)
 
     def run(self, chat_id: int, text: str) -> TaskOutcome:
@@ -210,15 +210,17 @@ class Orchestrator:
         except Stopped as e:
             return self._finish(chat_id, task_id, "stopped", str(e))
 
+        written_by = ""
         report = "\n\n".join(
             f"Step {s.id} ({s.agent}, {s.status}):\n" + untrusted(s.result, s.agent) for s in self.store.steps(task_id))
         try:
             reply = self.router.complete("combine", [{"role": "user", "content": f"Request: {text}\n\n{report}"}],
                                          f"{self._prompt('combine')}\n\n{UNTRUSTED_RULE}", max_tokens=1500)
             answer = reply.text.strip()
+            written_by = f"{reply.provider} · {reply.model}"
         except (ProviderUnavailable, BudgetExceeded):
             answer = "\n".join(f"- {s.agent}: {s.status}. {s.result}" for s in self.store.steps(task_id))
         except Stopped as e:
             return self._finish(chat_id, task_id, "stopped", str(e))
         status = "failed" if bad and len(bad) == len(plan.steps) else "done"
-        return self._finish(chat_id, task_id, status, answer or "Done.")
+        return self._finish(chat_id, task_id, status, answer or "Done.", written_by)
