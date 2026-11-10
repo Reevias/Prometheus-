@@ -19,7 +19,7 @@
     </div>
     <form id="command" class="row command" hx-post="/chats/{{ chat_id }}/send" hx-target="#messages"
           hx-on::after-request="this.reset(); this.querySelector('textarea').style.height=''">
-      <textarea name="text" rows="1" placeholder="Tell Prometheus what to do" title="Enter sends. Shift+Enter starts a new line." required autofocus
+      <textarea name="text" rows="1" placeholder="Message Prometheus" title="Enter sends. Shift+Enter starts a new line." required autofocus
                 oninput="this.style.height=''; this.style.height=Math.min(this.scrollHeight, 160)+'px'"
                 onkeydown="if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); if (this.value.trim()) this.form.requestSubmit(); }"></textarea>
       <button type="submit" class="primary">Send</button>

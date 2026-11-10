@@ -1,6 +1,8 @@
 # Changelog
 
 ## 1.3 (not yet released)
+- A brain that answers plain questions directly, remembers the conversation and uses Claude plus cheap helper models.
+- New graphite interface with a red status signal.
 - Polished chat: formatted answers, a line naming what Prometheus is doing, no flicker, chats named from the first message.
 - System agent: Wi-Fi, Bluetooth, location and battery, using a fixed list of actions; passwords are typed into the Approvals page and go straight to Windows.
 - Antigravity agent through the Gemini API.

@@ -328,7 +328,7 @@ Reviews: every version gets a fresh security review before it reaches `main`; fi
 
 Status on 2026-11-10:
 - `main` holds v1 to v1.2 plus the repository files. GitHub Actions ran the full suite on **Windows and Linux: both passed** (commit ab30a46).
-- Branch `claude/prometheus-v1-3` holds v1.3 (305+ tests pass on Linux here). The chat polish is committed; the System agent, laptop module, Antigravity agent and password prompt were written afterwards and are **not yet committed or reviewed**.
+- Branch `claude/prometheus-v1-3` holds v1.3 (319 tests pass on Linux here): chat polish, System and Antigravity agents, password prompt, the smarter brain, the new graphite interface and the `website/` folder. **Not yet security-reviewed or merged to `main`.**
 - v1.2 security review: 1 critical + 4 important findings, all fixed (see section 19).
 - **Not tested on real hardware**: the Wi-Fi, Bluetooth, location and battery commands (tested only with a stand-in for Windows), a real Antigravity call, the desktop window, real OpenRouter/free-provider/YouTube calls.
 
@@ -369,6 +369,17 @@ Status on 2026-11-10:
 - Still blocked whatever else is allowed: Windows system folders, saved passwords and browser data, SSH keys,
   Prometheus's own safety code.
 
+**Brain and answers (owner decisions 2026-11-10, after the owner found it "extremely dumb")**
+- Cause found in the code: no chat history reached the planner, every message had to become an agent plan ("closest agent" rule), a second model call rewrote results, and the answer prompt forced filler. `openrouter/auto` also let OpenRouter pick any model.
+- Fixes (built): one call answers plain questions directly (`answer` field); the last 12 turns go to the planner; facts the owner asks to remember are saved (max 3 per message, with a source); planner, answer and `style.md` prompts rewritten; unmodified old prompt copies in the data folder are upgraded automatically; answers built from personal files are stored as `private` and replaced by a placeholder in later cloud calls.
+- Models: **Claude (Anthropic API, prepaid, auto-reload off) is the main brain** and writes plans and final answers; its cheaper helpers do sub-tasks: Claude Haiku 5.5, free providers, OpenRouter cheap models, and the local Ollama model (the only one allowed to read personal files). Default routes: plan/combine = anthropic, openrouter, ollama; research = anthropic:claude-haiku-5-5, openrouter, ollama; private = ollama. Prices per model are tracked (Opus 5.5 $4/$20, Sonnet 5.5 $2/$10, Haiku 5.5 $0.10/$0.50 per million tokens); Haiku gets no server-side fallback setting.
+- Writing style (the owner's words): depends on the question. A simple fact gets one line, no history. A big request (for example a computer science roadmap) gets structure, real links and explanation, and the owner wants PDFs for those. **PDF output is not built yet.**
+- Laptop control, owner's rule: do everything right away; **still ask first** for sending or posting anything, spending money, and installing software / power / security settings.
+- Interface: neutral graphite with red only for the status signal, the main button and the current item; answers are plain text; no glows, gradients or clipped corners (method: unslop by @heydamir, CC BY 4.0).
+
+**Old repository (owner decision 2026-11-10)**
+- The sign-up/login website was copied into `website/` here (all files byte-identical). The old repo `Reevias/Claude-testing-` is **left alone**: besides the website and the old Prometheus branch it holds five unrelated projects (a love-heart animation, a portable toolkit installer, flashcard/quiz screens, a watch tool, a trading strategy). The owner deletes that repo on GitHub when ready.
+
 **Final answers and privacy (found by the v1.2 review)**
 - A security review found that the step that writes the final answer sent document summaries to a cloud model. Fixed: if any step read personal files, the answer is written by a local model only, or shown as a plain list when no local model is running.
 - Every free provider is labelled "may log or train on prompts"; turning one on needs an "I understand" tick; saving a key does not switch one on. Free providers stay usable at the spending cap (paid use on the owner's account is not tracked).
@@ -405,12 +416,15 @@ YouTube-caption calls. The owner's first run on the laptop is the real test.
 
 ## 17. Open items
 
-- [ ] **Security review of v1.3** (laptop control, password prompt, Antigravity), fix what it finds, then merge to `main`.
-- [ ] Commit the uncommitted v1.3 work (System agent, laptop module, Antigravity agent, password prompt) to branch `claude/prometheus-v1-3` and push.
+- [ ] **Laptop control, the main goal**: apps and windows (open, close, switch, volume, brightness, dark mode, screenshots, typing and clicking), files and folders anywhere on the laptop, settings and hardware, browser and web tasks. Build in that order, test each. Rule: act right away except sending/posting, spending, install/power/security.
+- [ ] PDF output for big answers (roadmaps, study plans) with links.
+- [ ] Settings: choose the planner model and the helper models separately; show which model did what.
+- [ ] Ask the owner for 2 or 3 exact things that went wrong, to build a small test set of "basic tasks".
+- [ ] **Security review of v1.3** (laptop control, password prompt, Antigravity, chat history), fix what it finds, then merge to `main`.
 - [ ] **First real run on the laptop** from the new repo (`git clone https://github.com/Reevias/Prometheus-.git`), then report what breaks. Test Wi-Fi, Bluetooth and location commands there first.
-- [ ] Add the OpenRouter key in Settings; later a Gemini key (Argon, Antigravity) and a Claude API key (prepaid, auto-reload off).
+- [ ] Buy Anthropic API credit (prepaid, auto-reload off) and add the key in Settings: this is what makes answers good. Later a Gemini key (Argon, Antigravity).
 - [ ] Backup (File History / OneDrive) switched on before the first real sort.
-- [ ] After Prometheus runs from the new repo: remove only the Prometheus branch from `Claude-testing-` (ask the owner first).
+- [ ] Old repo `Claude-testing-`: left alone by the owner's choice; they delete it on GitHub when ready.
 - [ ] Polish still open: Settings page layout, the status panel, approvals page.
 - [ ] Antigravity the other way round: Prometheus as a tool server (MCP) that Antigravity can call.
 - [ ] v1.x voice ("Hey Prometheus" needs a custom wake-word model), gestures (confirm MediaPipe Hands on Windows), phone in the browser, Tailscale.

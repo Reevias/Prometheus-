@@ -76,4 +76,4 @@ def test_theme_has_no_downloads(app_client):
     client, _ = app_client()
     css = client.get("/static/style.css").text
     assert "@import" not in css and "http://" not in css and "https://" not in css
-    assert "#ff2d46" in css and "prefers-reduced-motion" in css
+    assert "--signal" in css and "prefers-reduced-motion" in css
