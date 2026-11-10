@@ -22,43 +22,32 @@ Try: *"sort my Downloads folder and summarise any PDFs about taxes"*.
 
 ## Install (Windows, PowerShell)
 
-You need **Python 3.12 or newer** (the newest works: check with `py -3 --version`) and **Git**.
+You need **Python 3.12 or newer** and **Git**. Then run this once in PowerShell:
 
 ```powershell
-git clone https://github.com/Reevias/Prometheus-.git
-cd Prometheus-
-py -3 -m venv .venv
-.venv\Scripts\activate
-pip install -e .
-prometheus init
+irm https://raw.githubusercontent.com/Reevias/Prometheus-/main/scripts/install-windows.ps1 | iex
 ```
 
-`prometheus init` asks you to choose a password (at least 10 characters).
+It downloads Prometheus to `%USERPROFILE%\Prometheus-`, installs it with the newest Python you have, asks you to
+choose a password (first time only, at least 10 characters) and puts a **Prometheus** shortcut on your desktop
+and in the Start menu.
 
 ## Run
 
-```powershell
-cd Prometheus-
-.venv\Scripts\activate
-prometheus serve
-```
+Double-click the **Prometheus** shortcut. It always opens this copy, never an older one. The version is shown in
+the window title.
 
-Open **http://127.0.0.1:8000** and log in. Stop it with **Ctrl+C**.
-
-### Desktop window
-
-To run Prometheus in its own window instead of a browser tab (uses the web engine built into Windows):
+To update: ask Prometheus to update itself (after your approval), or run:
 
 ```powershell
-pip install -e ".[desktop]"
-prometheus app
+cd $env:USERPROFILE\Prometheus-
+.venv\Scripts\python -m prometheus.cli update
 ```
 
-Check your setup any time:
+Other commands (after `.venv\Scripts\activate`): `prometheus serve` (browser tab at http://127.0.0.1:8000),
+`prometheus doctor` (checks the setup and warns if you are running an old copy), `prometheus shortcut`.
 
-```powershell
-prometheus doctor
-```
+**Meaning-based memory search (optional):** `ollama pull nomic-embed-text`. Without it, memory search uses words.
 
 ## AI models
 

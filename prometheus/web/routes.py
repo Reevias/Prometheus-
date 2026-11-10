@@ -112,7 +112,14 @@ def register_routes(app: FastAPI, services: Services) -> None:
     def memory(request: Request, q: str = ""):
         q = q.strip()[:200]
         found = store.recall(q, limit=30, kinds=("memory", "chat_note", "agent_note", "message")) if q else []
-        return page(request, "memory.html", memories=store.memories(), q=q, found=found)
+        passages = store.search_chunks(q, limit=10, include_private=True) if q else []
+        return page(request, "memory.html", memories=store.memories(), q=q, found=found, passages=passages,
+                    documents=store.documents())
+
+    @app.post("/documents/{doc_id}/delete", response_class=HTMLResponse)
+    def delete_document(request: Request, doc_id: int):
+        store.delete_document(doc_id)
+        return page(request, "document_list.html", documents=store.documents())
 
     @app.post("/memory", response_class=HTMLResponse)
     def add_memory(request: Request, text: str = Form(...)):
@@ -128,6 +135,8 @@ def register_routes(app: FastAPI, services: Services) -> None:
     @app.post("/memory/wipe", response_class=HTMLResponse)
     def wipe(request: Request):
         store.wipe_memories()
+        for d in store.documents(limit=100000):
+            store.delete_document(d.id)
         store.audit("user", "wipe_memories", {})
         return page(request, "memory_list.html", memories=[])
 

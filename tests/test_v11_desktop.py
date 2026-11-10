@@ -38,7 +38,7 @@ def test_desktop_opens_local_window_and_stops_server(tmp_home):
     code = run_desktop(Settings(password_hash=hash_password("a long password!")), webview=wv, server=server)
     assert code == 0 and wv.started and server.started and server.stopped
     title, url, kw = wv.windows[0]
-    assert title == "Prometheus" and url == "http://127.0.0.1:54321/"
+    assert title.startswith("Prometheus") and url == "http://127.0.0.1:54321/"
     assert kw["background_color"] == "#0d0709"
 
 

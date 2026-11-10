@@ -322,7 +322,7 @@ Trade-offs: monthly cost; personal files would leave the laptop, so the file/pho
 | **Laptop: files** | Moving, copying, finding and recycling files anywhere (and on other drives) is not built; the File Sorter works inside one folder |
 | **Laptop: browser** | No browser automation (forms, logins, downloads, reading the page you have open) |
 | **Laptop: testing** | None of the Windows commands has run on a real laptop; Wi-Fi status parsing assumes English Windows; no WPA3-only networks |
-| **Memory** | No meaning-based (embedding) search, no links between memories (graph), no replace-old-fact handling (Mem0/Zep style), no scheduled tidy-up (gbrain "dream cycle"); a running summary of old chat turns exists |
+| **Memory** | No links between memories (graph), no replace-old-fact handling (Mem0/Zep style), no scheduled tidy-up (gbrain "dream cycle"). Built: running chat summaries; chunked documents with word + meaning search (v1.4; meaning search needs `ollama pull nomic-embed-text`) |
 | **Output** | No PDF, Word, Excel or slide generation (the owner wants PDFs with links for roadmaps); no image or video generation (needs a cloud GPU) |
 | **Photos** | Photo content tagging (SigLIP) and OCR (EasyOCR) from the v1.1 plan are not built |
 | **Interaction** | No voice (wake word "Hey Prometheus", speech-to-text, spoken replies), no hand gestures |
@@ -330,7 +330,8 @@ Trade-offs: monthly cost; personal files would leave the laptop, so the file/pho
 | **Autonomy** | No scheduler or proactive tasks (reminders, daily summary, watching something); background jobs do not survive a restart |
 | **Connectors** | Gmail, Calendar, Drive, Notion not connected (owner: later); Hermes agent not set up; Gemini Argon works only as an ordinary free provider |
 | **Self-editing** | AI-written tools can be proposed and approved but are not run (needs a real sandbox) |
-| **Packaging** | No installer, no start with Windows, no tray icon; no cost dashboard per model |
+| **Packaging** | No start with Windows, no tray icon; no cost dashboard per model. Built (v1.4): `scripts/install-windows.ps1`, desktop and Start-menu shortcut, `prometheus update`, old-copy warning in `prometheus doctor` |
+| **Security testing** | No automatic prompt-injection test run (garak, from the owner's stars, could probe the local model); offensive tools in the stars (evilginx2, sliver, cameradar, maigret, Deep-Live-Cam) are deliberately not part of Prometheus |
 
 ## 17c. Reference projects for holding context (researched 2026-11-10)
 
@@ -347,6 +348,8 @@ which must not be wiped as a whole).
 | **v1.1** | OpenRouter as the main brain; API keys saved from Settings (password needed, never shown again); automatic model switching (5-minute rest on failure, drop to free/local at the cap, each answer shows its model); Opener agent (YouTube play + caption summary, GitHub, websites, files); desktop window (`prometheus app`); red "ember" theme |
 | **v1.2** | Skill folders (`SKILL.md` + `references/`) written from the reference repos, with a Guide agent and a Skills page; catalog of free providers with a searchable settings list (three need no key); memory recall (word forms, partial words, ranking, sources) and Memory page search |
 | **v1.3 (built, not yet security-reviewed or merged)** | Polished chat (formatted answers, bubbles with times and a Copy button, a "working on…" line that names the current step, no flicker, chats named from the first message, example prompts, Enter to send); **System agent** (Wi-Fi status/list/connect/disconnect, Bluetooth on/off/status, location, battery) with a fixed list of actions; **password prompt on the Approvals page** for things like a Wi-Fi password (goes straight to Windows, never stored, logged or shown to a model); **Antigravity agent** (Google's cloud agent through the Gemini API, every job needs approval); complete GitHub repo (MIT licence, tests on Windows and Linux in GitHub Actions, contributing, security and changelog files) |
+
+| **v1.4** | **Memory chunking**: long web pages and files are split into overlapping small chunks (about 250 tokens, 15% overlap) inside bigger parent chunks (about 1000 tokens), cut at headings, paragraphs and sentences first; search runs on the small chunks and the model reads the parent around each match; word search (BM25) and meaning search (local Ollama embeddings) are merged by rank (RRF); private file chunks never reach a cloud model; research and documents agents send only the best passages; the planner sees saved web passages; Memory page lists and deletes saved pages and files. **Always the new app**: install script, shortcuts, `prometheus update` (pull + install packages), version in the window title, old-copy warning. **From the owner's GitHub stars**: a learning-roadmap skill (OSSU, developer-roadmap, free-programming-books, system-design-primer, build-your-own-x, LLMs-from-scratch and others) and a secret check (idea from trufflehog) that blocks keys in GitHub posts and self-edits |
 
 Reviews: every version gets a fresh security review before it reaches `main`; findings are fixed test-first.
 

@@ -49,6 +49,10 @@ class Research(Agent):
             except (UnsafeURL, httpx.HTTPError):
                 continue
             if text:
+                # Keep the whole page in memory as chunks; send only the parts that answer the question.
+                doc_id = ctx.store.add_document(f"web:{url}", r.get("title") or url, url, text, private=False)
+                if len(text) > PAGE_CHARS:
+                    text = ctx.store.best_passages(doc_id, query, PAGE_CHARS)
                 pages.append((url, text[:PAGE_CHARS]))
         if not pages:
             return StepResult("failed", f"No readable web pages found for: {query}")

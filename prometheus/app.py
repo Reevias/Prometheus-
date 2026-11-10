@@ -95,6 +95,13 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
     home = Path(home or Path.home())
     store = Store(data / "memory.db")
     store.mark_interrupted()
+    if providers is None and settings.embed_model:
+        try:
+            from prometheus.models.ollama import OllamaEmbedder
+
+            store.embedder = OllamaEmbedder(settings.embed_model, settings.ollama_url)
+        except ValueError:   # Ollama is not on this laptop: never send file text elsewhere to embed it
+            store.embedder = None
     sweep_wifi_profiles()
     policy = PathPolicy(home=home, data_dir=data, code_dir=CODE_DIR)
     journal = Journal(data / "journals")

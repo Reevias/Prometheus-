@@ -10,8 +10,9 @@
   {% if q %}
   <h3>Results for "{{ q }}"</h3>
   <ul class="plain">
-    {% for h in found %}<li>{{ h.text[:600] }}<div class="muted">{{ {"memory": "memory", "chat_note": "chat note", "agent_note": "agent note", "message": "message"}[h.kind] }}{% if h.source %}, {{ h.source }}{% endif %}</div></li>
-    {% else %}<li class="muted">Nothing found. Try fewer or different words.</li>{% endfor %}
+    {% for h in found %}<li>{{ h.text[:600] }}<div class="muted">{{ {"memory": "memory", "chat_note": "chat note", "agent_note": "agent note", "message": "message"}[h.kind] }}{% if h.source %}, {{ h.source }}{% endif %}</div></li>{% endfor %}
+    {% for c in passages %}<li>{{ c.match[:600] }}<div class="muted">{{ "file" if c.private else "page" }}, {{ c.title }}</div></li>{% endfor %}
+    {% if not found and not passages %}<li class="muted">Nothing found. Try fewer or different words.</li>{% endif %}
   </ul>
   <div id="memory" hidden></div>
   {% else %}
@@ -20,6 +21,9 @@
     <input type="text" name="text" placeholder="Something to remember" required>
     <button type="submit">Remember</button>
   </form>
+  <h3>Saved pages and files</h3>
+  <p class="muted">Long texts the agents read, split into small searchable parts. File text stays on this laptop.</p>
+  <div id="documents">{% include "document_list.html" %}</div>
   {% endif %}
   <p><button class="danger" hx-post="/memory/wipe" hx-swap="none" hx-on::after-request="location.href='/memory'" hx-confirm="Forget everything?">Forget everything</button></p>
 </main>

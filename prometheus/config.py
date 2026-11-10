@@ -53,6 +53,7 @@ class Settings:
     routes: dict[str, list[str]] = field(default_factory=_default_routes)
     ollama_model: str = "qwen3.5:2b"
     ollama_url: str = "http://127.0.0.1:11434"
+    embed_model: str = "nomic-embed-text"       # local model for meaning-based memory search ("" = words only)
     anthropic_model: str = "claude-opus-5-5"
     openrouter_model: str = "openrouter/auto"   # strong model: planning and final answers
     github_repo: str = "Reevias/Prometheus-"    # the repository Prometheus may read and update

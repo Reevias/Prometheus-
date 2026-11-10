@@ -7,6 +7,7 @@ import re
 import sqlite3
 import threading
 import time
+from array import array
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -30,16 +31,25 @@ CREATE TABLE IF NOT EXISTS approvals (id INTEGER PRIMARY KEY, kind TEXT NOT NULL
     payload TEXT NOT NULL, status TEXT NOT NULL, created REAL NOT NULL);
 CREATE TABLE IF NOT EXISTS costs (id INTEGER PRIMARY KEY, provider TEXT NOT NULL, model TEXT NOT NULL,
     usd REAL NOT NULL, tokens_in INTEGER NOT NULL, tokens_out INTEGER NOT NULL, created REAL NOT NULL);
+CREATE TABLE IF NOT EXISTS documents (id INTEGER PRIMARY KEY, key TEXT NOT NULL UNIQUE, title TEXT NOT NULL,
+    source TEXT NOT NULL, private INTEGER NOT NULL, hash TEXT NOT NULL, chars INTEGER NOT NULL,
+    created REAL NOT NULL, updated REAL NOT NULL);
+CREATE TABLE IF NOT EXISTS chunks (id INTEGER PRIMARY KEY, doc_id INTEGER NOT NULL, parent_id INTEGER,
+    seq INTEGER NOT NULL, text TEXT NOT NULL, start INTEGER NOT NULL, end INTEGER NOT NULL);
+CREATE INDEX IF NOT EXISTS chunks_doc ON chunks (doc_id);
+CREATE TABLE IF NOT EXISTS chunk_vectors (chunk_id INTEGER PRIMARY KEY, model TEXT NOT NULL, vec BLOB NOT NULL);
 """
 
 # The search index matches word forms ("taxes" finds "tax") through the porter stemmer.
 INDEX_SQL = ("CREATE VIRTUAL TABLE search_index USING fts5(kind UNINDEXED, ref_id UNINDEXED, body, "
              "tokenize='porter unicode61')")
-INDEX_VERSION = 2
+INDEX_VERSION = 3
 STOPWORDS = frozenset("a an and are as at be by for from has have i in is it me my of on or that the this to was "
                       "what when where which who will with you your do does did can could should would please "
                       "about into than then them they their there here just some any".split())
-KIND_WEIGHT = {"memory": 1.5, "chat_note": 1.2, "agent_note": 1.0, "message": 0.8}
+KIND_WEIGHT = {"memory": 1.5, "chat_note": 1.2, "agent_note": 1.0, "message": 0.8, "chunk": 1.0}
+RRF_K = 60                 # reciprocal rank fusion: how much a top rank counts over a lower one
+EMBED_BATCH = 16
 RECENCY_DAYS = 30.0
 
 
@@ -69,6 +79,29 @@ class Recalled:
     text: str
     source: str
     created: float
+    score: float
+
+
+@dataclass
+class Document:
+    id: int
+    key: str
+    title: str
+    source: str
+    private: bool
+    chars: int
+    chunks: int
+    updated: float
+
+
+@dataclass
+class ChunkHit:
+    doc_id: int
+    title: str
+    source: str
+    private: bool
+    match: str       # the small chunk that matched
+    context: str     # the larger parent chunk around it, for the model to read
     score: float
 
 
@@ -105,6 +138,7 @@ class Store:
         path.parent.mkdir(parents=True, exist_ok=True)
         self._lock = threading.RLock()
         self._db = sqlite3.connect(str(path), check_same_thread=False)
+        self.embedder = None   # optional: turns text into vectors for meaning-based search (local Ollama only)
         self._db.row_factory = sqlite3.Row
         with self._lock:
             self._db.execute("PRAGMA journal_mode=WAL")
@@ -134,6 +168,8 @@ class Store:
                             ("message", "messages")):
             self._db.execute(f"INSERT INTO search_index (kind, ref_id, body) SELECT ?, id, text FROM {table}",
                              (kind,))
+        self._db.execute("INSERT INTO search_index (kind, ref_id, body) "
+                         "SELECT 'chunk', id, text FROM chunks WHERE parent_id IS NOT NULL")
         self._db.execute(f"PRAGMA user_version = {INDEX_VERSION}")
 
     # -- helpers ---------------------------------------------------------
@@ -343,6 +379,9 @@ class Store:
         elif kind == "agent_note":
             rows = self._rows("SELECT text, 'agent: ' || agent AS source, created FROM agent_notes WHERE id = ?",
                               (ref_id,))
+        elif kind == "chunk":
+            rows = self._rows("SELECT c.text, d.title AS source, d.updated AS created FROM chunks c "
+                              "JOIN documents d ON d.id = c.doc_id WHERE c.id = ? AND d.private = 0", (ref_id,))
         elif kind == "message":
             rows = self._rows("SELECT m.text, 'chat: ' || c.title AS source, m.created FROM messages m "
                               "LEFT JOIN chats c ON c.id = m.chat_id WHERE m.id = ?", (ref_id,))
@@ -391,3 +430,182 @@ class Store:
         except sqlite3.OperationalError:
             return []
         return [SearchHit(r["kind"], int(r["ref_id"]), r["snip"]) for r in rows]
+
+    # -- documents: long text split into chunks ------------------------------------
+    def add_document(self, key: str, title: str, source: str, text: str, private: bool) -> int:
+        """Save a long text (a web page, a file) as searchable chunks. Saving the same text again does nothing."""
+        from prometheus.memory.chunking import MAX_DOC_CHARS, chunk_text, text_hash
+
+        text = (text or "")[:MAX_DOC_CHARS]
+        digest, now = text_hash(text), time.time()
+        old = self._rows("SELECT id, hash, private FROM documents WHERE key = ?", (key,))
+        if old and old[0]["hash"] == digest and bool(old[0]["private"]) == bool(private):
+            return int(old[0]["id"])
+        parents = chunk_text(text)
+        children: list[tuple[int, str]] = []
+        with self._lock:
+            if old:
+                doc_id = int(old[0]["id"])
+                self._drop_chunks(doc_id)
+                self._db.execute("UPDATE documents SET title = ?, source = ?, private = ?, hash = ?, chars = ?, "
+                                 "updated = ? WHERE id = ?", (title, source, int(private), digest, len(text), now,
+                                                              doc_id))
+            else:
+                doc_id = self._db.execute(
+                    "INSERT INTO documents (key, title, source, private, hash, chars, created, updated) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    (key, title, source, int(private), digest, len(text), now, now)).lastrowid
+            seq = 0
+            for parent in parents:
+                pid = self._db.execute("INSERT INTO chunks (doc_id, parent_id, seq, text, start, end) "
+                                       "VALUES (?, NULL, ?, ?, ?, ?)",
+                                       (doc_id, seq, parent.text, parent.start, parent.end)).lastrowid
+                seq += 1
+                for child in parent.children:
+                    cid = self._db.execute("INSERT INTO chunks (doc_id, parent_id, seq, text, start, end) "
+                                           "VALUES (?, ?, ?, ?, ?, ?)",
+                                           (doc_id, pid, seq, child.text, child.start, child.end)).lastrowid
+                    seq += 1
+                    self._db.execute("INSERT INTO search_index (kind, ref_id, body) VALUES ('chunk', ?, ?)",
+                                     (cid, child.text))
+                    children.append((cid, child.text))
+            self._db.commit()
+        self._embed_chunks(children)
+        return int(doc_id)
+
+    def _drop_chunks(self, doc_id: int) -> None:
+        ids = [r["id"] for r in self._db.execute("SELECT id FROM chunks WHERE doc_id = ?", (doc_id,))]
+        for i in range(0, len(ids), 500):
+            part = ids[i:i + 500]
+            marks = ",".join("?" for _ in part)
+            self._db.execute(f"DELETE FROM search_index WHERE kind = 'chunk' AND ref_id IN ({marks})", part)
+            self._db.execute(f"DELETE FROM chunk_vectors WHERE chunk_id IN ({marks})", part)
+        self._db.execute("DELETE FROM chunks WHERE doc_id = ?", (doc_id,))
+
+    def _embed_chunks(self, children: list[tuple[int, str]]) -> None:
+        embedder = self.embedder
+        if embedder is None or not children:
+            return
+        for i in range(0, len(children), EMBED_BATCH):
+            batch = children[i:i + EMBED_BATCH]
+            try:
+                vectors = embedder.embed([t for _, t in batch])
+            except Exception:   # no embedding model: plain word search still works
+                return
+            with self._lock:
+                for (cid, _), vec in zip(batch, vectors):
+                    self._db.execute("INSERT OR REPLACE INTO chunk_vectors (chunk_id, model, vec) VALUES (?, ?, ?)",
+                                     (cid, embedder.model, array("f", vec).tobytes()))
+                self._db.commit()
+
+    def delete_document(self, doc_id: int) -> None:
+        with self._lock:
+            self._drop_chunks(doc_id)
+            self._db.execute("DELETE FROM documents WHERE id = ?", (doc_id,))
+            self._db.commit()
+
+    def documents(self, limit: int = 200) -> list[Document]:
+        rows = self._rows("SELECT d.*, (SELECT COUNT(*) FROM chunks c WHERE c.doc_id = d.id "
+                          "AND c.parent_id IS NOT NULL) AS n FROM documents d ORDER BY d.updated DESC LIMIT ?",
+                          (limit,))
+        return [Document(r["id"], r["key"], r["title"], r["source"], bool(r["private"]), r["chars"], r["n"],
+                         r["updated"]) for r in rows]
+
+    def document_id(self, key: str) -> int | None:
+        rows = self._rows("SELECT id FROM documents WHERE key = ?", (key,))
+        return int(rows[0]["id"]) if rows else None
+
+    def _word_ranks(self, query: str, where: str, args: tuple) -> list[int]:
+        terms = self._terms(query)
+        if not terms:
+            return []
+        match = " OR ".join(f'"{t}"*' for t in terms)
+        try:
+            rows = self._rows(
+                "SELECT s.ref_id AS id FROM search_index s JOIN chunks c ON c.id = s.ref_id "
+                f"JOIN documents d ON d.id = c.doc_id WHERE search_index MATCH ? AND s.kind = 'chunk' {where} "
+                "ORDER BY bm25(search_index) LIMIT 80", (match, *args))
+        except sqlite3.OperationalError:
+            return []
+        return [int(r["id"]) for r in rows]
+
+    def _meaning_ranks(self, query: str, where: str, args: tuple) -> list[int]:
+        embedder = self.embedder
+        if embedder is None:
+            return []
+        try:
+            q = embedder.embed([query])[0]
+        except Exception:
+            return []
+        qn = math.sqrt(sum(x * x for x in q)) or 1.0
+        rows = self._rows("SELECT v.chunk_id AS id, v.vec FROM chunk_vectors v JOIN chunks c ON c.id = v.chunk_id "
+                          f"JOIN documents d ON d.id = c.doc_id WHERE v.model = ? {where}", (embedder.model, *args))
+        scored = []
+        for r in rows:
+            vec = array("f")
+            vec.frombytes(r["vec"])
+            if len(vec) != len(q):
+                continue
+            dot = sum(a * b for a, b in zip(q, vec))
+            norm = math.sqrt(sum(b * b for b in vec)) or 1.0
+            scored.append((dot / (qn * norm), int(r["id"])))
+        scored.sort(reverse=True)
+        return [cid for sim, cid in scored[:80] if sim > 0.3]
+
+    def search_chunks(self, query: str, limit: int = 4, include_private: bool = False,
+                      doc_ids: list[int] | None = None) -> list[ChunkHit]:
+        """Best passages for a question. Word search and (when available) meaning search are merged by rank;
+        each hit carries the small chunk that matched and the bigger parent chunk around it."""
+        where, args = "", ()
+        if not include_private:
+            where += " AND d.private = 0"
+        if doc_ids is not None:
+            if not doc_ids:
+                return []
+            where += f" AND d.id IN ({','.join('?' for _ in doc_ids)})"
+            args = tuple(int(i) for i in doc_ids)
+        fused: dict[int, float] = {}
+        for ranks in (self._word_ranks(query, where, args), self._meaning_ranks(query, where, args)):
+            for rank, cid in enumerate(ranks):
+                fused[cid] = fused.get(cid, 0.0) + 1.0 / (RRF_K + rank + 1)
+        if not fused:
+            return []
+        hits, seen_parents = [], set()
+        for cid, score in sorted(fused.items(), key=lambda kv: kv[1], reverse=True):
+            rows = self._rows("SELECT c.text, c.parent_id, p.text AS ptext, d.id AS doc_id, d.title, d.source, "
+                              "d.private FROM chunks c JOIN chunks p ON p.id = c.parent_id "
+                              "JOIN documents d ON d.id = c.doc_id WHERE c.id = ?", (cid,))
+            if not rows or rows[0]["parent_id"] in seen_parents:
+                continue
+            r = rows[0]
+            seen_parents.add(r["parent_id"])
+            hits.append(ChunkHit(int(r["doc_id"]), r["title"], r["source"], bool(r["private"]), r["text"],
+                                 r["ptext"], score))
+            if len(hits) >= limit:
+                break
+        return hits
+
+    def best_passages(self, doc_id: int, question: str, budget: int) -> str:
+        """The parts of one document that best answer a question, in reading order, within `budget` characters."""
+        hits = self.search_chunks(question, limit=12, include_private=True, doc_ids=[doc_id]) if question else []
+        rows = self._rows("SELECT text, start FROM chunks WHERE doc_id = ? AND parent_id IS NULL ORDER BY seq",
+                          (doc_id,))
+        if not hits:
+            out, used = [], 0
+            for r in rows:
+                if used + len(r["text"]) > budget:
+                    break
+                out.append(r["text"])
+                used += len(r["text"])
+            return "\n\n".join(out) or (rows[0]["text"][:budget] if rows else "")
+        start_of = {r["text"]: r["start"] for r in rows}
+        picked, used = [], 0
+        for h in hits:
+            if used + len(h.context) > budget:
+                continue
+            picked.append(h.context)
+            used += len(h.context)
+        if not picked:
+            return hits[0].context[:budget]
+        picked.sort(key=lambda t: start_of.get(t, 0))
+        return "\n\n[…]\n\n".join(picked)

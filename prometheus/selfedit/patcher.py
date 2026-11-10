@@ -66,6 +66,11 @@ class Patcher:
         return rel, path
 
     def _check(self, new_src: str) -> str | None:
+        from prometheus.safety.secrets import secret_problem
+
+        problem = secret_problem(new_src)
+        if problem:
+            return problem
         try:
             ast.parse(new_src)
         except SyntaxError as e:

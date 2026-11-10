@@ -8,6 +8,9 @@ from prometheus.agents.base import UNTRUSTED_RULE, Agent, AgentContext, StepResu
 from prometheus.agents.textutil import extract_text
 from prometheus.safety.paths import PathBlocked
 
+READ_CHARS = 400_000     # read this much of each file and save it to memory in chunks
+SEND_CHARS = 6000        # the local model sees only the best-matching passages, up to this much
+
 JUDGE_SCHEMA = {
     "type": "object",
     "properties": {"relevant": {"type": "boolean"}, "summary": {"type": "string"}},
@@ -40,10 +43,14 @@ class Documents(Agent):
             except PathBlocked:
                 problems.append(f"{Path(raw).name}: not allowed")
                 continue
-            text = extract_text(path)
+            text = extract_text(path, limit=READ_CHARS)
             if not text.strip():
                 problems.append(f"{path.name}: no readable text")
                 continue
+            # Saved as private chunks: later questions find the right part, and it never reaches a cloud model.
+            doc_id = ctx.store.add_document(f"file:{path}", path.name, str(path), text, private=True)
+            if len(text) > SEND_CHARS:
+                text = ctx.store.best_passages(doc_id, question or goal, SEND_CHARS)
             ask = (f"Question: {question or 'summarise it'}\n" + untrusted(text, path.name)
                    + "\nIs this document relevant to the question? Give a short summary. Answer in JSON.")
             # ProviderUnavailable propagates: the orchestrator pauses the task with its message.

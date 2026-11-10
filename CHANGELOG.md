@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.4
+- Memory chunking: long pages and files are saved as small overlapping chunks inside bigger parent chunks; search finds the small chunk and the model reads the parent. Word search plus optional meaning search with a local embedding model.
+- Research and Documents agents send only the passages that answer the question; the planner sees saved web passages.
+- Memory page lists saved pages and files and can delete them.
+- `scripts/install-windows.ps1`, `prometheus shortcut` and `prometheus update`, so the Prometheus shortcut always opens the newest copy; `prometheus doctor` warns about an old copy.
+- Learning-roadmap skill built from curated lists (OSSU, developer-roadmap, free-programming-books and more).
+- Secret check: API keys and tokens are blocked from GitHub posts and self-edits.
+
 ## 1.3
 - Works on Python 3.12 and newer (tested on 3.12 to 3.14).
 - Fixes from real use: "open youtube" works; the planner must fill required inputs; switch models by chat (after approval); older chat turns are summarised so long chats keep their context.

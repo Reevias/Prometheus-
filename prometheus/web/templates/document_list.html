@@ -1,0 +1,4 @@
+<ul class="plain">
+{% for d in documents %}<li>{{ d.title }} <span class="muted">({{ "file on this laptop" if d.private else d.source }}, {{ d.chunks }} parts)</span> <button class="danger" hx-post="/documents/{{ d.id }}/delete" hx-target="#documents">Delete</button></li>
+{% else %}<li class="muted">Nothing saved yet.</li>{% endfor %}
+</ul>

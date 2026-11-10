@@ -6,6 +6,7 @@ import threading
 import time
 
 from prometheus.config import Settings
+from prometheus.launcher import version
 
 BACKGROUND = "#0d0709"
 
@@ -52,7 +53,7 @@ def run_desktop(settings: Settings, webview=None, server=None) -> int:
     server = server or LocalServer(settings)
     try:
         port = server.start()
-        webview.create_window("Prometheus", f"http://127.0.0.1:{port}/", width=1220, height=780,
+        webview.create_window(f"Prometheus {version()}", f"http://127.0.0.1:{port}/", width=1220, height=780,
                               min_size=(860, 560), background_color=BACKGROUND)
         webview.start()
         return 0

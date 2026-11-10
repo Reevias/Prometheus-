@@ -17,6 +17,8 @@ PACKAGE_PROMPTS = Path(__file__).resolve().parent.parent / "prompts"
 REF = re.compile(r"^\$step(\d+)\.(\w+)$")
 
 HISTORY_TURNS = 12
+PASSAGES = 3
+PASSAGE_CHARS = 1000
 HISTORY_CHARS = 1500
 SUMMARY_EVERY = 10
 MAX_REMEMBER = 3
@@ -230,8 +232,13 @@ class Orchestrator:
         newest = [m.text for m in self.store.memories()[-3:]]
         remembered = list(dict.fromkeys(relevant + newest))
         memories = "\n".join(f"- {m[:400]}" for m in remembered) or "(none)"
-        messages = list(history or []) + [
-            {"role": "user", "content": f"Things to remember about the user:\n{memories}\n\nRequest: {text}"}]
+        content = f"Things to remember about the user:\n{memories}\n\n"
+        # Passages from web pages read before (never private files: this goes to the planning model).
+        passages = self.store.search_chunks(text, limit=PASSAGES, include_private=False)
+        if passages:
+            content += "Saved passages that may help:\n" + "\n".join(
+                untrusted(h.match[:PASSAGE_CHARS], h.source or h.title) for h in passages) + "\n\n"
+        messages = list(history or []) + [{"role": "user", "content": content + f"Request: {text}"}]
         reply = self.router.complete("plan", messages, system, json_schema=PLAN_SCHEMA, max_tokens=4000)
         label = f"{reply.provider} · {reply.model}"
         try:

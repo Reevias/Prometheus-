@@ -1,4 +1,4 @@
-"""Command line: prometheus init | serve | app | doctor."""
+"""Command line: prometheus init | serve | app | doctor | update | shortcut."""
 from __future__ import annotations
 
 import argparse
@@ -68,13 +68,47 @@ def _app(args) -> int:
     return run_desktop(settings)
 
 
+def _update(args) -> int:
+    from prometheus.launcher import update
+
+    try:
+        print(update())
+    except RuntimeError as e:
+        print(e)
+        return 1
+    return 0
+
+
+def _shortcut(args) -> int:
+    from prometheus.launcher import make_shortcuts
+
+    try:
+        made = make_shortcuts()
+    except RuntimeError as e:
+        print(e)
+        return 1
+    for link in made:
+        print(f"Shortcut: {link}")
+    if not made:
+        print("Could not make the shortcuts.")
+        return 1
+    print("From now on, open Prometheus with the Prometheus shortcut on your desktop or Start menu.")
+    return 0
+
+
 def _doctor(args) -> int:
     from prometheus.memory.store import Store
     from prometheus.models.router import build_router
     from prometheus.safety.budget import Budget
     from prometheus.safety.killswitch import KillSwitch
 
+    from prometheus.launcher import CODE_DIR, old_copy_warning, version
+
     settings = load_settings()
+    print(f"Prometheus:  {version()}  ({CODE_DIR})")
+    warning = old_copy_warning()
+    if warning:
+        print(f"WARNING:     {warning}")
     print(f"Python:      {sys.version.split()[0]}")
     print(f"Data folder: {data_dir()}")
     print(f"Password:    {'set' if settings.password_hash else 'not set (run prometheus init)'}")
@@ -97,8 +131,11 @@ def main(argv: list[str] | None = None) -> int:
     p_serve.add_argument("--port", type=int)
     sub.add_parser("app", help="open Prometheus in its own desktop window")
     sub.add_parser("doctor", help="check the setup")
+    sub.add_parser("update", help="download and install the newest version")
+    sub.add_parser("shortcut", help="make desktop and Start-menu shortcuts that open this copy")
     args = parser.parse_args(argv)
-    return {"init": _init, "serve": _serve, "app": _app, "doctor": _doctor}[args.command](args)
+    return {"init": _init, "serve": _serve, "app": _app, "doctor": _doctor, "update": _update,
+            "shortcut": _shortcut}[args.command](args)
 
 
 if __name__ == "__main__":

@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import base64
 import re
-import subprocess
 import time
 from pathlib import Path
 
@@ -41,15 +40,13 @@ def _check_path(path: str, write: bool = False) -> str:
 
 
 def update_self(code_dir: Path) -> str:
-    """Download the newest version (fast-forward only). The app must be restarted afterwards."""
-    code_dir = Path(code_dir)
-    if not (code_dir / ".git").exists():
-        raise GitHubError("This copy of Prometheus is not a Git checkout, so it can't update itself.")
-    proc = subprocess.run(["git", "-C", str(code_dir), "pull", "--ff-only", "origin", "main"], capture_output=True,
-                          text=True, timeout=120)
-    if proc.returncode != 0:
-        raise GitHubError("The update did not go through (you may have local changes). " + (proc.stderr or "")[-200:])
-    return "Updated to the newest version. Restart Prometheus to use it.\n" + (proc.stdout or "")[-300:]
+    """Download the newest version (fast-forward only) and install new packages. Restart afterwards."""
+    from prometheus.launcher import update
+
+    try:
+        return update(Path(code_dir))
+    except RuntimeError as e:
+        raise GitHubError(str(e)) from e
 
 
 @register
@@ -148,7 +145,12 @@ class GitHubAgent(Agent):
         return "Opened " + pr["html_url"] + " (you review and merge it; main was not touched)."
 
     def perform_write(self, p: dict) -> str:
+        from prometheus.safety.secrets import secret_problem
+
         action = str(p.get("action", ""))
+        problem = secret_problem(" ".join(str(p.get(k, "")) for k in ("title", "body", "content", "path")))
+        if problem:
+            raise GitHubError(problem)
         if action == "create_issue":
             return self._create_issue(p)
         if action == "comment":
@@ -171,6 +173,11 @@ class GitHubAgent(Agent):
                 ctx.use(self.name, "github_write")
                 shown = {k: str(inputs.get(k, ""))[:8000] for k in ("title", "body", "number", "path", "content")
                          if inputs.get(k) not in (None, "")}
+                from prometheus.safety.secrets import secret_problem
+
+                problem = secret_problem(" ".join(shown.values()))
+                if problem:        # never even queued: the approval would store the secret
+                    return StepResult("failed", problem)
                 what = {"create_issue": "Create an issue", "comment": "Post a comment", "update_self":
                         "Update Prometheus to the newest version", "propose_change": "Open a pull request"}[action]
                 ctx.approvals.request("github_action", f"{what} on {repo}", {"action": action, **shown})

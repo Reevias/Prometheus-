@@ -7,7 +7,7 @@ from prometheus.skillbook import SkillBook
 
 SKILLS = Path(prometheus.__file__).resolve().parent / "skills"
 EXPECTED = {"research", "task-planning", "memory", "models", "coding", "understand-software", "explain-code",
-            "file-sorting", "video"}
+            "file-sorting", "video", "learning-roadmap"}
 
 
 def test_every_folder_is_a_valid_skill():

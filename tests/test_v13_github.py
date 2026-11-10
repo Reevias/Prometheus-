@@ -166,7 +166,8 @@ def test_update_self_only_fast_forwards_in_a_git_checkout(tmp_path, monkeypatch)
         update_self(tmp_path)
     (tmp_path / ".git").mkdir()
     msg = update_self(tmp_path)
-    assert calls[-1] == ["git", "-C", str(tmp_path), "pull", "--ff-only", "origin", "main"]
+    assert ["git", "-C", str(tmp_path), "pull", "--ff-only", "origin", "main"] in calls
+    assert calls[-1][1:5] == ["-m", "pip", "install", "--quiet"]      # new packages get installed too
     assert "restart" in msg.lower()
 
 
