@@ -28,10 +28,10 @@ Details for each step live in [`brief.md`](brief.md).
 
 ## Stage 1 — Plan on paper (Claude)
 
-9. ✅ Claude writes the **spec** (`docs/prometheus/spec.md`). You read it and say "ok" or "change".
+9. ✅ Claude writes the **spec** (`docs/spec.md`). You read it and say "ok" or "change".
 10. ✅ Claude writes the **build plan**: small steps, each with tests.
 
-## Stage 2 — Build version 1 ✅ built (run it on your laptop: see `prometheus/README.md`)
+## Stage 2 — Build version 1 ✅ built (run it on your laptop: see `README.md`)
 
 Claude builds and tests each piece here, then pushes it to GitHub.
 
