@@ -306,7 +306,7 @@ Trade-offs: monthly cost; personal files would leave the laptop, so the file/pho
 ## 16. Decisions made by Claude (user: "everything as you say")
 
 - Prometheus lives in **this repo** in a separate `prometheus/` folder (code) and `docs/prometheus/` (docs); can move to its own repo later.
-- Python **3.12** (fits OpenJarvis `>=3.10,<3.14`).
+- Python **3.12 or newer, no upper limit** (owner asked for the latest). Tested here on 3.12 and 3.14; GitHub Actions tests 3.12, 3.13 and 3.14 on Windows and Linux.
 - Voice: faster-whisper `base.en` + Kokoro + openWakeWord "Hey Prometheus"; in v1.1.
 - Photo tagging: SigLIP 2 (small); OCR: EasyOCR (RapidOCR fallback); memory search embeddings: EmbeddingGemma or nomic-embed (pick by test).
 - Build it here in the cloud session, test with fake files, push to GitHub; the user pulls and runs on Windows.

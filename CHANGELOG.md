@@ -1,6 +1,7 @@
 # Changelog
 
-## 1.3 (not yet released)
+## 1.3
+- Works on Python 3.12 and newer (tested on 3.12 to 3.14).
 - A brain that answers plain questions directly, remembers the conversation and uses Claude plus cheap helper models.
 - New graphite interface with a red status signal.
 - Polished chat: formatted answers, a line naming what Prometheus is doing, no flicker, chats named from the first message.

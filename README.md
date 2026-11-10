@@ -22,12 +22,12 @@ Try: *"sort my Downloads folder and summarise any PDFs about taxes"*.
 
 ## Install (Windows, PowerShell)
 
-You need **Python 3.12** (`py -3.12 --version`) and **Git**.
+You need **Python 3.12 or newer** (the newest works: check with `py -3 --version`) and **Git**.
 
 ```powershell
 git clone https://github.com/Reevias/Prometheus-.git
 cd Prometheus-
-py -3.12 -m venv .venv
+py -3 -m venv .venv
 .venv\Scripts\activate
 pip install -e .
 prometheus init
