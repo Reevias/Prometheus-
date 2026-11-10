@@ -13,7 +13,8 @@ Design: [`docs/spec.md`](docs/spec.md) · Roadmap: [`docs/guide.md`](docs/guide.
 |---|---|
 | File Sorter | Sorts a folder into Images/Year/Month, Documents, Music, Videos, Archives, Installers, Code, Duplicates |
 | Documents | Reads PDFs, Word and text files **on your laptop** and summarises the ones that match |
-| Research | Searches the web and writes a summary with sources |
+| Research | Searches the web and writes a summary with sources (falls back to Wikipedia if search fails) |
+| Wikipedia | Looks up facts, people, places, history and science on Wikipedia, with the article as the source. Free, no key |
 | Repo Scout | Finds GitHub projects for a need; clones only after you approve, and never runs them |
 | Guide | Explains how to do something from one of Prometheus's skills (how-to guides) |
 | Opener | Plays a YouTube video (and can summarise it from its captions), opens a GitHub repo, a website, or a file in its normal app. Never runs programs |

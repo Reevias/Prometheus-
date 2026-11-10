@@ -28,6 +28,15 @@ class Research(Agent):
         self.search = search or ddg_search
         self.http = http or httpx.Client(headers={"User-Agent": "Prometheus/0.1 (personal assistant)"})
 
+    def _wikipedia_backup(self, query: str, n: int, ctx: AgentContext) -> list[tuple[str, str]]:
+        from prometheus.agents.wikipedia import WikipediaError, best_part, wiki_articles
+
+        try:
+            articles = wiki_articles(query, min(n, 2), self.http)
+        except WikipediaError:
+            return []
+        return [(url, best_part(ctx, title, url, text, query, PAGE_CHARS)) for title, url, text in articles]
+
     def run(self, goal: str, inputs: dict, ctx: AgentContext) -> StepResult:
         for tool in ("web_search", "web_fetch", "call_model"):
             ctx.use(self.name, tool)
@@ -35,8 +44,8 @@ class Research(Agent):
         max_sources = max(1, min(int(inputs.get("max_sources", 3)), 6))
         try:
             results = self.search(query, max_sources * 2)
-        except Exception as e:
-            return StepResult("failed", f"Web search failed: {e}")
+        except Exception:
+            results = []          # search engine down or rate-limited: Wikipedia below still gives an answer
         pages = []
         for r in results:
             if len(pages) >= max_sources:
@@ -54,6 +63,8 @@ class Research(Agent):
                 if len(text) > PAGE_CHARS:
                     text = ctx.store.best_passages(doc_id, query, PAGE_CHARS)
                 pages.append((url, text[:PAGE_CHARS]))
+        if not pages:
+            pages = self._wikipedia_backup(query, max_sources, ctx)
         if not pages:
             return StepResult("failed", f"No readable web pages found for: {query}")
         blocks = "\n\n".join(f"[{i}] " + untrusted(text, url) for i, (url, text) in enumerate(pages, 1))

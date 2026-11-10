@@ -1,6 +1,7 @@
 # Changelog
 
 ## 1.4
+- Wikipedia agent (free, no key) for encyclopedic facts; web research falls back to Wikipedia when search fails. Articles are saved as chunks so later questions reuse them.
 - Memory chunking: long pages and files are saved as small overlapping chunks inside bigger parent chunks; search finds the small chunk and the model reads the parent. Word search plus optional meaning search with a local embedding model.
 - Research and Documents agents send only the passages that answer the question; the planner sees saved web passages.
 - Memory page lists saved pages and files and can delete them.
