@@ -11,6 +11,7 @@ from fastapi.templating import Jinja2Templates
 
 from prometheus.app import Services, apply_settings
 from prometheus.auth import verify_password
+from prometheus.catalog import catalog_updated, load_catalog
 from prometheus.config import KEY_NAMES, delete_secret, save_settings, secrets_set, set_secret
 
 WEB = Path(__file__).resolve().parent
@@ -129,9 +130,38 @@ def register_routes(app: FastAPI, services: Services) -> None:
         return page(request, "history_list.html", runs=services.journal.runs(), result=result)
 
     def settings_page(request: Request, status_code: int = 200, **extra):
-        keys = [{"name": name, "label": label, "set": secrets_set()[name]} for name, label in KEY_NAMES.items()]
-        return page(request, "settings.html", status_code, s=services.settings, models=services.router.status_detail(),
-                    budget=services.budget.state(), keys=keys, **extra)
+        have = secrets_set()
+        state = {m["name"]: m for m in services.router.status_detail()}
+        s = services.settings
+
+        def row(pid, name, key_name, **kw):
+            st = state.get(pid, {})
+            return {"id": pid, "name": name, "key_name": key_name, "key_set": bool(key_name and have.get(key_name)),
+                    "ready": bool(st.get("available")) and not st.get("resting"), "resting": st.get("resting", False),
+                    "reason": st.get("reason", ""), **kw}
+
+        rows = [
+            row("ollama", "Ollama", "", kind="local", note="Runs on this laptop. Free and private.", models=[],
+                model=s.ollama_model, keyless=True, supported=True, logs=False, signup="", toggle=False, on=True),
+            row("openrouter", "OpenRouter", "OPENROUTER_API_KEY", kind="cloud", note="One key, many models.",
+                models=[], model=s.openrouter_model, keyless=False, supported=True, logs=False,
+                signup="openrouter.ai/keys", toggle=False, on=True),
+            row("anthropic", "Claude (Anthropic)", "ANTHROPIC_API_KEY", kind="cloud", note="Paid per use.", models=[],
+                model=s.anthropic_model, keyless=False, supported=True, logs=False,
+                signup="console.anthropic.com", toggle=False, on=True),
+        ]
+        for p in load_catalog():
+            rows.append(row(p.id, p.name, p.key_name, kind="free", note=p.description, models=list(p.models),
+                            model=s.provider_models.get(p.id) or (p.models[0] if p.models else ""),
+                            keyless=p.keyless, supported=p.supported, logs=p.logs_prompts,
+                            signup=p.signup_url.replace("https://", ""), toggle=p.supported,
+                            on=p.id in s.enabled_providers, why=p.why_unsupported))
+        # ready first, then usable without a key, then needs a key, then not supported
+        rows.sort(key=lambda r: (not r["ready"], not r["supported"], not (r["keyless"] or r["key_set"]),
+                                 r["name"].lower()))
+        other_keys = [{"name": "GITHUB_TOKEN", "label": KEY_NAMES["GITHUB_TOKEN"], "set": have["GITHUB_TOKEN"]}]
+        return page(request, "settings.html", status_code, s=s, providers=rows, other_keys=other_keys,
+                    budget=services.budget.state(), catalog_date=catalog_updated(), **extra)
 
     @app.get("/settings", response_class=HTMLResponse)
     def settings(request: Request):
@@ -186,8 +216,30 @@ def register_routes(app: FastAPI, services: Services) -> None:
         except OSError:
             return settings_page(request, 500, key_error="The key file is busy. Try again in a moment.")
         services.router.clear_rest()
+        owner = next((p.id for p in load_catalog() if p.key_name == name), None)
+        if owner and owner not in services.settings.enabled_providers:   # a saved key switches the provider on
+            services.settings.enabled_providers.append(owner)
+            save_settings(services.settings)
+        apply_settings(services)
         store.audit("user", "key_saved", {"name": name})
         return settings_page(request, key_saved=KEY_NAMES[name])
+
+    @app.post("/settings/providers", response_class=HTMLResponse)
+    def set_provider(request: Request, id: str = Form(...), enabled: str = Form(""), model: str = Form("")):
+        info = next((p for p in load_catalog() if p.id == id), None)
+        if info is None or not info.supported:
+            return settings_page(request, 400, key_error="Unknown provider.")
+        s = services.settings
+        on = [p for p in s.enabled_providers if p != id] + ([id] if enabled else [])
+        s.enabled_providers[:] = on
+        model = model.strip()[:150]
+        if model:
+            s.provider_models[id] = model
+        save_settings(s)
+        apply_settings(services)
+        services.router.clear_rest()
+        store.audit("user", "provider", {"id": id, "enabled": bool(enabled), "model": model})
+        return settings_page(request, saved=True)
 
     @app.post("/settings/keys/delete", response_class=HTMLResponse)
     def remove_key(request: Request, name: str = Form(...), password: str = Form("")):

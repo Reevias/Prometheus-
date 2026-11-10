@@ -10,6 +10,8 @@ import time
 from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 
+from prometheus.catalog import load_catalog
+
 
 def data_dir() -> Path:
     """Where Prometheus keeps its data (never inside the code folder)."""
@@ -45,6 +47,8 @@ class Settings:
     anthropic_model: str = "claude-opus-5-5"
     openrouter_model: str = "openrouter/auto"   # strong model: planning and final answers
     openrouter_fast_model: str = ""             # cheaper model for research summaries ("" = same as above)
+    enabled_providers: list[str] = field(default_factory=list)       # free providers the user switched on
+    provider_models: dict[str, str] = field(default_factory=dict)    # chosen model per free provider
     password_hash: str = ""
     task_folders_note: str = ""
 
@@ -81,6 +85,8 @@ KEY_NAMES = {
     "GEMINI_API_KEY": "Gemini (Argon)",
     "GITHUB_TOKEN": "GitHub",
 }
+for _p in load_catalog():
+    KEY_NAMES.setdefault(_p.key_name, _p.name)
 _SECRETS_LOCK = threading.RLock()
 _KEY_VALUE = re.compile(r"^[\x21-\x7e]{4,500}$")   # plain printable characters only, no spaces or line breaks
 

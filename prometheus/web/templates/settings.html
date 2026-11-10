@@ -12,22 +12,59 @@
     <label class="check"><input type="checkbox" name="allow_lan" value="1" {{ "checked" if s.allow_lan }}> Allow other devices on my Wi-Fi (needs restart, keep a strong password)</label>
     <button type="submit" class="primary">Save settings</button>
   </form>
-  <h3>API keys</h3>
+  <h3>AI providers and keys</h3>
   {% if key_error %}<p class="error">{{ key_error }}</p>{% endif %}{% if key_saved %}<p class="status-done">{{ key_saved }} key saved.</p>{% endif %}
-  <p class="muted">Keys are stored on this laptop only and are never shown again. Saving or removing one needs your password.</p>
-  {% for k in keys %}
-  <form hx-post="/settings/keys" hx-target="body" class="panel keyrow">
+  <p class="muted">Keys stay on this laptop and are never shown again. Saving or removing one needs your password.
+  Prometheus switches between ready providers by itself. Your personal files only ever go to local models.</p>
+  <input type="search" id="provider-search" placeholder="Search providers (name, model, 'no key', 'ready')" autocomplete="off"
+         oninput="for (const r of document.querySelectorAll('.provider')) r.hidden = !r.dataset.find.includes(this.value.toLowerCase())">
+  {% for p in providers %}
+  <div class="panel provider" data-find="{{ (p.name ~ ' ' ~ p.id ~ ' ' ~ p.models|join(' ') ~ ' ' ~ ('no key needed' if p.keyless else 'needs key') ~ ' ' ~ ('ready' if p.ready else '') ~ ' ' ~ p.kind)|lower }}">
+    <div class="provider-head">
+      <strong>{{ p.name }}</strong>
+      {% if not p.supported %}<span class="muted">not supported yet: {{ p.why }}</span>
+      {% elif p.resting %}<span class="status-running">resting: {{ p.reason }}</span>
+      {% elif p.ready %}<span class="status-done">ready</span>
+      {% elif p.toggle and not p.on %}<span class="muted">off</span>
+      {% elif p.keyless %}<span class="muted">not reachable</span>
+      {% else %}<span class="muted">needs a key</span>{% endif %}
+      {% if p.kind == "local" %}<span class="tag">local, private</span>{% endif %}
+      {% if p.keyless and p.kind == "free" %}<span class="tag">no key needed</span>{% endif %}
+      {% if p.logs %}<span class="tag warn">may log or train on prompts</span>{% endif %}
+    </div>
+    <p class="muted">{{ p.note }}{% if p.signup %} Get a key at <code>{{ p.signup }}</code>{% endif %}</p>
+    {% if p.toggle %}
+    <form class="row" hx-post="/settings/providers" hx-target="body">
+      <input type="hidden" name="id" value="{{ p.id }}">
+      <label class="check"><input type="checkbox" name="enabled" value="1" {{ "checked" if p.on }}> Use it</label>
+      <input type="text" name="model" value="{{ p.model }}" list="models-{{ p.id }}" placeholder="Model name">
+      <datalist id="models-{{ p.id }}">{% for m in p.models %}<option value="{{ m }}">{% endfor %}</datalist>
+      <button type="submit">Save</button>
+    </form>
+    {% endif %}
+    {% if p.key_name and p.supported %}
+    <form class="row" hx-post="/settings/keys" hx-target="body">
+      <input type="hidden" name="name" value="{{ p.key_name }}">
+      <span class="{{ 'status-done' if p.key_set else 'muted' }}">{{ "key set ✓" if p.key_set else ("key optional" if p.keyless else "no key") }}</span>
+      <input type="password" name="value" placeholder="Paste the key" autocomplete="off" required>
+      <input type="password" name="password" placeholder="Your Prometheus password" autocomplete="current-password" required>
+      <button type="submit">Save key</button>
+      {% if p.key_set %}<button type="submit" class="danger" hx-post="/settings/keys/delete" hx-target="body" formnovalidate>Remove</button>{% endif %}
+    </form>
+    {% endif %}
+  </div>
+  {% endfor %}
+  <p class="muted">Free provider list last updated {{ catalog_date }} (from the awesome-free-llm-apis project). Limits and models change often.</p>
+  <h3>Other keys</h3>
+  {% for k in other_keys %}
+  <form hx-post="/settings/keys" hx-target="body" class="panel row">
     <strong>{{ k.label }}</strong> <span class="{{ 'status-done' if k.set else 'muted' }}">{{ "set ✓" if k.set else "not set" }}</span>
     <input type="hidden" name="name" value="{{ k.name }}">
     <input type="password" name="value" placeholder="Paste the key" autocomplete="off" required>
     <input type="password" name="password" placeholder="Your Prometheus password" autocomplete="current-password" required>
-    <button type="submit">Save</button>
-    {% if k.set %}<button type="submit" class="danger" hx-post="/settings/keys/delete" hx-target="body" formnovalidate>Remove</button>{% endif %}
+    <button type="submit">Save key</button>
   </form>
   {% endfor %}
-  <h3>AI models</h3>
-  <ul class="plain">{% for m in models %}<li>{{ m.name }}: {% if m.resting %}<span class="status-running">resting {{ m.minutes_left }} min — {{ m.reason }}</span>{% elif m.available %}<span class="status-done">ready</span>{% else %}<span class="muted">not set up</span>{% endif %}{{ " (local)" if m.local }}</li>{% endfor %}</ul>
-  <p class="muted">Prometheus switches between ready models by itself. Your personal files only ever go to local models.</p>
   <p class="muted">Spent so far: ${{ "%.4f"|format(budget.spent) }} of ${{ "%.2f"|format(budget.cap) }}.</p>
 </main>
 {% endblock %}

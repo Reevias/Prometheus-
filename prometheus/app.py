@@ -65,7 +65,9 @@ class Services:
 
 
 def apply_settings(services: "Services") -> None:
-    """Make changed model names and the budget cap take effect without a restart."""
+    """Make changed models, providers and the budget cap take effect without a restart."""
+    from prometheus.models.router import build_routes
+
     s, router = services.settings, services.router
     services.budget.cap_usd = s.budget_usd
     for name, model in (("openrouter", s.openrouter_model), ("anthropic", s.anthropic_model),
@@ -73,11 +75,14 @@ def apply_settings(services: "Services") -> None:
         provider = router.providers.get(name)
         if provider is not None and hasattr(provider, "model") and model:
             provider.model = model
-    research = [e for e in s.routes.get("research", [])]
-    if s.openrouter_fast_model:
-        research = [f"openrouter:{s.openrouter_fast_model}" if e == "openrouter" else e for e in research]
-    if "research" in router.routes and any(e.split(":")[0] in router.providers for e in research):
-        router.routes["research"] = research
+    for name, provider in router.providers.items():
+        if hasattr(provider, "enabled"):
+            provider.enabled = name in s.enabled_providers
+            if s.provider_models.get(name):
+                provider.model = s.provider_models[name]
+    for purpose, entries in build_routes(s).items():
+        if purpose != "private" and any(e.split(":")[0] in router.providers for e in entries):
+            router.routes[purpose] = entries
 
 
 def build_services(settings: Settings, providers: dict[str, Provider] | None = None,

@@ -11,7 +11,8 @@ from typing import Callable
 from prometheus.config import Settings
 from prometheus.models.anthropic_provider import AnthropicProvider
 from prometheus.models.base import PrivacyViolation, Provider, ProviderUnavailable, Reply
-from prometheus.models.gemini import GeminiProvider
+from prometheus.catalog import load_catalog
+from prometheus.models.compat import OpenAICompatProvider
 from prometheus.models.ollama import OllamaProvider
 from prometheus.models.openrouter import OpenRouterProvider
 from prometheus.safety.budget import Budget, BudgetExceeded
@@ -96,15 +97,36 @@ class ModelRouter:
         raise ProviderUnavailable(message)
 
 
+CLOUD_PURPOSES = ("plan", "combine", "research")
+
+
+def build_routes(settings: Settings) -> dict[str, list[str]]:
+    """The user's routes, plus every free provider they switched on (cloud purposes only, never private)."""
+    routes = {purpose: list(entries) for purpose, entries in settings.routes.items()}
+    if settings.openrouter_fast_model and "research" in routes:
+        routes["research"] = [f"openrouter:{settings.openrouter_fast_model}" if e == "openrouter" else e
+                              for e in routes["research"]]
+    known = {p.id for p in load_catalog()}
+    for pid in settings.enabled_providers:
+        if pid not in known:
+            continue
+        model = settings.provider_models.get(pid, "")
+        entry = f"{pid}:{model}" if model else pid
+        for purpose in CLOUD_PURPOSES:
+            names = routes.setdefault(purpose, [])
+            if not any(split_entry(e)[0] == pid for e in names):
+                local = [e for e in names if split_entry(e)[0] == "ollama"]
+                names[:] = [e for e in names if e not in local] + [entry] + local   # local stays the last resort
+    return routes
+
+
 def build_router(settings: Settings, budget: Budget, killswitch: KillSwitch) -> ModelRouter:
     providers: dict[str, Provider] = {
         "openrouter": OpenRouterProvider(model=settings.openrouter_model),
         "anthropic": AnthropicProvider(model=settings.anthropic_model),
         "ollama": OllamaProvider(settings.ollama_model, settings.ollama_url),
-        "gemini": GeminiProvider(),
     }
-    routes = {purpose: list(entries) for purpose, entries in settings.routes.items()}
-    if settings.openrouter_fast_model and "research" in routes:
-        routes["research"] = [f"openrouter:{settings.openrouter_fast_model}" if e == "openrouter" else e
-                              for e in routes["research"]]
-    return ModelRouter(providers, routes, budget, killswitch)
+    for info in load_catalog():
+        providers[info.id] = OpenAICompatProvider(info, model=settings.provider_models.get(info.id, ""),
+                                                  enabled=info.id in settings.enabled_providers)
+    return ModelRouter(providers, build_routes(settings), budget, killswitch)

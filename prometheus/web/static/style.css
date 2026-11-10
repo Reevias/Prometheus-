@@ -105,3 +105,13 @@ body.login h1 { font-size: 30px; letter-spacing: .06em; display: flex; align-ite
 body.login button { background: var(--ember); border-color: var(--ember); color: #1a0508; font-weight: 600; }
 
 @media (max-width: 980px) { main { grid-template-columns: 1fr; } .chat { min-height: 0; } .keyrow { grid-template-columns: 1fr; } }
+
+/* providers */
+#provider-search { width: 100%; margin: 6px 0 12px; font-size: 16px; padding: 10px 12px; }
+.provider { margin-bottom: 10px; }
+.provider[hidden] { display: none; }
+.provider-head { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+.provider form.row { flex-wrap: wrap; align-items: center; }
+.provider form.row input[type=password] { flex: 1; min-width: 150px; }
+.tag { font-size: 12px; padding: 1px 7px; border: 1px solid var(--line-hot); color: var(--muted); }
+.tag.warn { border-color: var(--warn); color: var(--warn); }
