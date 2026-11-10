@@ -14,7 +14,7 @@ Details for each step live in [`brief.md`](brief.md).
 3. ✅ Revoke the leaked Ollama key.
 4. ✅ Get the Claude API key and save it:
    `setx ANTHROPIC_API_KEY "your-key"` → close and reopen PowerShell.
-5. 👉 Finish installing **OpenPrometheus**, then tell Claude:
+5. 👉 Finish installing **OpenJarvis**, then tell Claude:
    - does it start?
    - does it work with Claude?
    - how much RAM does it use? (Task Manager → Memory)

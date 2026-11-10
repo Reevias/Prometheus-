@@ -1,5 +1,7 @@
 # Prometheus
 
+[![Tests](https://github.com/Reevias/Prometheus-/actions/workflows/tests.yml/badge.svg)](https://github.com/Reevias/Prometheus-/actions/workflows/tests.yml)
+
 Your personal AI brain. It runs on your own laptop, in a browser tab. You type a task, a lead AI splits it into
 steps, agents do the steps and share one memory, and you get one answer. Every file change can be undone.
 
@@ -114,3 +116,11 @@ Your data lives in `%LOCALAPPDATA%\Prometheus` (memory, undo history, prompts, s
 uv venv -p 3.12 .venv && uv pip install -e ".[dev]"
 .venv/bin/pytest -q
 ```
+
+## More
+
+- [Changelog](CHANGELOG.md)
+- [Security](SECURITY.md)
+- [Contributing](CONTRIBUTING.md)
+- [All decisions so far](docs/brief.md)
+- Licence: [MIT](LICENSE)

@@ -6,7 +6,7 @@ Status: **requirements complete, design defaults approved** (user: "everything a
 every decision made so far so nothing is lost. The design spec comes after the
 section-by-section design review.
 
-Last updated: 2026-11-09
+Last updated: 2026-11-10
 
 ---
 
@@ -44,7 +44,7 @@ The full vision is four projects. Each gets its own spec, plan and build.
 3. Phone app (Android: files, photos, notifications, voice).
 4. Extras (more gestures, smart features).
 
-**Base framework:** OpenPrometheus (Apache-2.0) with Claude as the engine, our own
+**Base framework:** OpenJarvis (Apache-2.0) with Claude as the engine, our own
 code as plugins in one clearly separated folder. Fallback if it is too heavy on
 8 GB: our own small Python engine.
 
@@ -97,9 +97,9 @@ where the AI inserted the same block twice):
 Lesson from Brahma's "Crucible": blocking a list of Python imports and running the
 code as a normal process with a timeout is **not** a real sandbox (blocklists are
 easy to bypass, and the code keeps the user's full permissions). Use real
-isolation (OpenPrometheus WASM sandbox) for AI-written code.
+isolation (OpenJarvis WASM sandbox) for AI-written code.
 
-References to study: jcode "self dev mode", OpenPrometheus learning loop (DSPy) and
+References to study: jcode "self dev mode", OpenJarvis learning loop (DSPy) and
 WASM sandbox, Brahma "Crucible"/"Auto-Heal" (ideas only — see licenses).
 
 ## 7. Must-have safety features
@@ -139,11 +139,11 @@ Still missing: `assistant.py` (the friend's brain and self-edit code) and the fr
 
 ## 9. Interface, voice, gestures, reporting
 
-- **UI:** a lightweight browser tab (extend the OpenPrometheus frontend).
+- **UI:** a lightweight browser tab (extend the OpenJarvis frontend).
 - **Gestures (MediaPipe Hands, only when switched on, low resolution/FPS):**
   thumbs up = approve, open palm = stop all agents, swipe = next, a gesture to wake/mute. No mouse control.
 - **Voice (chosen by Claude, user delegated):** speech-to-text **faster-whisper `base.en`** on CPU;
-  text-to-speech **Kokoro** (already in OpenPrometheus, fast on CPU), **Chatterbox Nano** as an option to compare;
+  text-to-speech **Kokoro** (already in OpenJarvis, fast on CPU), **Chatterbox Nano** as an option to compare;
   voice and gestures ship in **v1.1, right after v1** (v1 is tested by typing).
 - **Wake word:** **yes** ("Hey Prometheus": openWakeWord has no ready model for this name — train a custom one (its training notebook makes synthetic samples), or use the pre-trained "Hey Jarvis" model meanwhile; to verify), plus gesture wake and push-to-talk.
 - **Reporting:** notifications, spoken replies, live status screen, daily summary.
@@ -172,12 +172,12 @@ Additional brains and helpers (user, 2026-11-09):
 | Name | Role |
 |---|---|
 | **Claude** | **Main brain**: lead AI / planner ("my brain is mainly you") |
-| **Hermes Agent** | Not set up yet; will run on the user's **desktop** (a second machine). Later: connect it over Tailscale and/or import its skills into OpenPrometheus. |
+| **Hermes Agent** | Not set up yet; will run on the user's **desktop** (a second machine). Later: connect it over Tailscale and/or import its skills into OpenJarvis. |
 | **Gemini 4 Argon** (Google) | Second brain: deep reasoning, second opinions, backup when Claude's credit runs out, image understanding of non-private images. Needs a Gemini API key (later). Same privacy rule as Claude: no personal files. |
 | **Repo Scout** (new agent) | Searches GitHub for repos that fit a task, shows a short list with license and safety notes, and **waits for the user's approval** before cloning or using anything. Found code always runs in the sandbox first. |
 
 Connectors (Gmail, Drive, calendar, …): the user connects them later.
-Long-term memory: user believes it is handled (OpenPrometheus memory). We still define the shared-memory layout on top of it (tasks, agent notes, chat notes, global memories) and verify it on the user's PC.
+Long-term memory: user believes it is handled (OpenJarvis memory). We still define the shared-memory layout on top of it (tasks, agent notes, chat notes, global memories) and verify it on the user's PC.
 
 ## 10b. Setup checklist (user's PC)
 
@@ -191,17 +191,17 @@ Commands from each tool's docs; not yet run on the user's machine.
 - [ ] Install **jcode**: `irm https://jcode.sh/install.ps1 | iex` (PowerShell); run with `--provider claude`.
 - [x] Get a **Claude API key**; store it with `setx ANTHROPIC_API_KEY "<key>"` (never paste it in chat or commit it).
 - [x] **Revoke the Ollama API key that was posted in chat** and create a new one; store as `OLLAMA_API_KEY`.
-- [ ] Finish the OpenPrometheus install and report: does it start, does the Claude engine work, RAM use.
+- [ ] Finish the OpenJarvis install and report: does it start, does the Claude engine work, RAM use.
 
 ## 11. Component status
 
-Already covered by OpenPrometheus / chosen tools: local model (Ollama), embeddings,
+Already covered by OpenJarvis / chosen tools: local model (Ollama), embeddings,
 vector memory (FAISS + BM25), web search (DuckDuckGo/Tavily), webpage reading,
 PDF reading, speech-to-text (faster-whisper), text-to-speech (Kokoro),
 browser UI, code sandbox (WASM), approval store.
 
-Partly covered: phone link (OpenPrometheus Telegram channel works as a quick interim
-phone connection), image generation (OpenPrometheus only ships paid DALL·E — still
+Partly covered: phone link (OpenJarvis Telegram channel works as a quick interim
+phone connection), image generation (OpenJarvis only ships paid DALL·E — still
 need open source), undo (approvals exist, undo does not).
 
 Handled by us (no search needed): duplicate photos (imagehash), photo info/EXIF
@@ -225,7 +225,7 @@ Later: Android file manager reference, open-source image and video generation on
 | Chatterbox (Resemble AI, MIT) | ✅ fits | Spoken replies. **Nano (110M) runs on CPU** ~3× realtime on 8 cores; Turbo (350M) for better quality. Alternative to Kokoro. Voice cloning only with consent. |
 | free-llm-api-resources | 🟡 fits as a list | Free text-model APIs (Groq etc.) for cheap model routing. Not video. The linked copy is stale (last commit 2024-08) — use the maintained original. |
 | open-generative-ai (MIT) | 🟡 reference only | Nice media studio UI, but generation runs through the **paid MuAPI** service; local generation needs an NVIDIA/AMD GPU. Not our free video engine. |
-| pgvector | ⏸ not for v1 | Postgres vector search. Needs a Postgres server (extra RAM, setup on Windows). OpenPrometheus FAISS + BM25 covers v1; reconsider if memory must be shared across machines. |
+| pgvector | ⏸ not for v1 | Postgres vector search. Needs a Postgres server (extra RAM, setup on Windows). OpenJarvis FAISS + BM25 covers v1; reconsider if memory must be shared across machines. |
 | TidyByte (Krinal24/folders-organizer, PR #7 merged) | ✅ design fits, ⚠️ **no license** | Almost exactly our file-sorter agent: rules first (duplicates by hash, installers), AI suggests in batches (gemma3:4b via Ollama), user reviews and edits the plan, plain code applies it. PR #7 adds the undo: crash-safe journal saved after every change, never overwrites, deletes go to the Recycle Bin, skips files changed since the scan, stays inside the folder, 19 tests. Gaps: renames-in-place not supported, undo is per whole run, deleted files must be restored from the Recycle Bin by hand. No LICENSE file → ideas only unless the author allows reuse. Author is not a friend of the user → **we write our own version of the design**; reuse code only if the author adds a license or gives written permission. |
 | EasyOCR (Apache-2.0) | ✅ fits | OCR. CPU mode (`gpu=False`) works; needs CPU PyTorch (shared with Chatterbox/SigLIP). Last commit 2025-12. Lighter fallback: RapidOCR. |
 | EmbeddingGemma | 🟡 different job | Text-only embedding model → **cannot tag photos**. Good candidate for memory search instead of nomic-embed. |
@@ -234,7 +234,7 @@ Later: Android file manager reference, open-source image and video generation on
 
 ## 12. Licenses
 
-- OpenPrometheus, Microsoft JARVIS, jcode, Craft Anything, REA, Understand-Anything,
+- OpenJarvis, Microsoft JARVIS, jcode, Craft Anything, REA, Understand-Anything,
   GPT Researcher, deep-research: MIT / Apache-2.0 — fine to use.
 - Brahma AI Evo: personal-use, no-distribution license — **ideas only, no code**.
 - Friend's Prometheus: ideas only until the friend agrees to code reuse.
@@ -282,8 +282,8 @@ No system is unhackable; these rules make Prometheus a hard target and limit dam
 - **Folder access** (user: "everything on my laptop"; Claude's safe version): agents may read the whole **user folder** (`C:\Users\<you>`); moves happen only in the folder named in the task.
   Always blocked, even with full access: Windows/system folders, Program Files, browser profiles, `.ssh`, password managers, the Prometheus code itself (except via the self-edit pipeline).
 - Each agent has a **tool allowlist**; no agent gets a raw shell. Code runs only in the sandbox.
-- Web fetches cannot reach `localhost` or private network addresses (SSRF protection, OpenPrometheus `ssrf.py`).
-- Text from files, web pages and repos is **data, never instructions** (prompt-injection rule + OpenPrometheus injection scanner).
+- Web fetches cannot reach `localhost` or private network addresses (SSRF protection, OpenJarvis `ssrf.py`).
+- Text from files, web pages and repos is **data, never instructions** (prompt-injection rule + OpenJarvis injection scanner).
 - Never delete — Recycle Bin + undo journal.
 
 **Code from outside**
@@ -295,7 +295,7 @@ No system is unhackable; these rules make Prometheus a hard target and limit dam
 - Run Prometheus under a **standard (non-admin) Windows account**.
 - Turn on **File History or OneDrive backup** before the first real sort.
 - Audit log of every action; kill switch (button, voice word, open palm).
-- Keep Windows, Python, Ollama and OpenPrometheus updated.
+- Keep Windows, Python, Ollama and OpenJarvis updated.
 
 ## 15. If the laptop is not enough
 
@@ -306,23 +306,80 @@ Trade-offs: monthly cost; personal files would leave the laptop, so the file/pho
 ## 16. Decisions made by Claude (user: "everything as you say")
 
 - Prometheus lives in **this repo** in a separate `prometheus/` folder (code) and `docs/prometheus/` (docs); can move to its own repo later.
-- Python **3.12** (fits OpenPrometheus `>=3.10,<3.14`).
+- Python **3.12** (fits OpenJarvis `>=3.10,<3.14`).
 - Voice: faster-whisper `base.en` + Kokoro + openWakeWord "Hey Prometheus"; in v1.1.
 - Photo tagging: SigLIP 2 (small); OCR: EasyOCR (RapidOCR fallback); memory search embeddings: EmbeddingGemma or nomic-embed (pick by test).
 - Build it here in the cloud session, test with fake files, push to GitHub; the user pulls and runs on Windows.
 - Phone in a browser at home (password) → later Tailscale for anywhere → later the real Android app.
 
+## 18. What is built (kept up to date)
+
+Repository: **Reevias/Prometheus-** (moved out of `Claude-testing-` on 2026-11-10; the website stays in the old repo,
+which must not be wiped as a whole).
+
+| Version | What it added |
+|---|---|
+| **v1** | Standalone Python core (not built on OpenJarvis): lead AI (plan → pick → run → combine), shared SQLite memory, File Sorter, Documents, Research and Repo Scout agents, path policy, undo journal + Recycle Bin, permissions, approvals, budget cap, kill switch, approval-gated self-editing, password-protected browser UI, `prometheus init / serve / doctor` |
+| **v1.1** | OpenRouter as the main brain; API keys saved from Settings (password needed, never shown again); automatic model switching (5-minute rest on failure, drop to free/local at the cap, each answer shows its model); Opener agent (YouTube play + caption summary, GitHub, websites, files); desktop window (`prometheus app`); red "ember" theme |
+| **v1.2** | Skill folders (`SKILL.md` + `references/`) written from the reference repos, with a Guide agent and a Skills page; catalog of free providers with a searchable settings list (three need no key); memory recall (word forms, partial words, ranking, sources) and Memory page search |
+| **v1.3 (in progress)** | Polished chat and GUI; System agent (Wi-Fi, Bluetooth, location, laptop status); Antigravity agent through the Gemini API; complete GitHub repo (license, CI, contributing and security docs) |
+
+Reviews: every version gets a fresh security review before it reaches `main`; findings are fixed test-first.
+
+## 19. Decisions since the first build
+
+**Models and keys**
+- OpenRouter is the main brain until a Claude API key exists. A Claude *subscription* may only be used inside the
+  official Claude Code app; jcode's `--provider claude` signs in with the subscription, so it is not used.
+- Free providers are opt-in ("Use it"). Several may log or train on prompts; they carry a warning label. None can
+  ever be a route for personal files. Ollama cloud models (`:cloud`) and a remote Ollama do not count as local.
+- Keys live in `<data>/.env`, a key saved in the app wins over `setx`, changing a key needs the password, and
+  5 wrong passwords log the user out.
+
+**Opening things**
+- Only plain YouTube video/search pages and GitHub repository pages open without asking. Other sites and local
+  files need approval. Only documents and media can be opened; programs, scripts, installers, web pages, disk
+  images and macro-enabled Office files never are.
+
+**Skills**
+- One folder per kind of task; the lead AI reads only names and one-line descriptions, then the guide, then a
+  reference file when needed. Built-in: research, task-planning, memory, models, coding, understand-software,
+  explain-code, file-sorting, video. User skills go in `<data>/skills/`. A skill is instructions the AI follows,
+  so skills from other people need the user's approval. Self-editing cannot touch skills.
+- Sources and reuse: gpt-researcher, deep-research, jcode, Craft Anything, REA, Understand-Anything, Graphify,
+  gbrain, freellmapi, OpenJarvis, Microsoft JARVIS (permissive licences: methods described in our own words);
+  awesome-free-llm-apis (CC0: data bundled); TidyByte (no licence: design only); Brahma (ideas only).
+
+**Memory**
+- One shared `memory.db`. Method follows gbrain: each memory records its source; search mixes exact words, word
+  forms and partial words, ranks better and newer matches first. Meaning-based search with a local embedding
+  model is a later option.
+
+**Laptop control (v1.3, user decision 2026-11-10)**
+- "Complete automation": listed system actions (switch Wi-Fi, Bluetooth on/off, read location and status) run
+  straight away and are logged. It is a fixed list of actions, never a free command line.
+- A Wi-Fi password is typed into a box in the app and goes straight to Windows: never to an AI model, memory or logs.
+- Still blocked whatever else is allowed: Windows system folders, saved passwords and browser data, SSH keys,
+  Prometheus's own safety code.
+
+**Antigravity (v1.3, user decision 2026-11-10)**
+- Direction chosen: Prometheus sends jobs to Google's Antigravity agent through the Gemini API (needs a Gemini API
+  key; it is a cloud service, so no personal files). The other direction (Antigravity calling Prometheus as an MCP
+  tool server) is a later option.
+
+**Repository**
+- Licence: MIT. Tests run on GitHub for Windows and Linux on every push.
+
+**Not tested yet (as of v1.2)**: anything on real Windows, the desktop window, real OpenRouter / free-provider /
+YouTube-caption calls. The owner's first run on the laptop is the real test.
+
 ## 17. Open items
 
-- [ ] OpenPrometheus install result on the user's PC (does it run, Claude engine works, RAM use).
-- [ ] Revoke the leaked Ollama key; get the Claude API key (see 10b).
-- [ ] Turn off auto-reload in the Anthropic console (billing).
-- [ ] Later: Gemini API key for Argon; Hermes on the desktop.
+- [ ] **First real run on the laptop** from the new repo (`git clone https://github.com/Reevias/Prometheus-.git`), then report what breaks.
+- [ ] Add the OpenRouter key in Settings; later a Gemini key (Argon, Antigravity) and a Claude API key (prepaid, auto-reload off).
 - [ ] Backup (File History / OneDrive) switched on before the first real sort.
-- [ ] Pick the exact wake/mute gesture.
-- [ ] Phone link (notifications, remote access): deferred to the phone-app project.
-- [ ] Optional: ask TidyByte's author (Krinal24) to add a license so its code can be reused.
-- [ ] Friend's `assistant.py` + permission to reuse.
-- [ ] Hand tracking: confirm MediaPipe Hands works on Windows (only remaining search).
-- [x] Design defaults approved.
-- [ ] Written spec → user review → implementation plan → build.
+- [ ] After Prometheus runs from the new repo: remove only the Prometheus branch from `Claude-testing-` (ask the owner first).
+- [ ] When a Claude key is added: route the final-answer step to the local model whenever documents were read.
+- [ ] v1.x voice ("Hey Prometheus" needs a custom wake-word model), gestures (confirm MediaPipe Hands on Windows), phone in the browser, Tailscale.
+- [ ] Later: OpenJarvis sandbox for running AI-written tools; Hermes on the desktop; image/video generation on a cloud GPU; Android app.
+- [ ] Optional: ask TidyByte's author (Krinal24) to add a licence; friend's `assistant.py` + permission to reuse.
