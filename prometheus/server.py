@@ -21,9 +21,11 @@ def _login_page(message: str = "") -> str:
     return ("<!doctype html><html lang='en'><head><meta charset='utf-8'>"
             "<meta name='viewport' content='width=device-width, initial-scale=1'><title>Prometheus</title>"
             "<link rel='stylesheet' href='/static/style.css'></head><body class='login'>"
-            "<form method='post' action='/login'><h1><span class='core'></span>Prometheus</h1>" + note +
+            "<canvas class='orb orb-login' data-orb data-state='idle' aria-hidden='true'></canvas>"
+            "<form method='post' action='/login'><h1>Prometheus</h1>" + note +
             "<label>Password <input type='password' name='password' autofocus required></label>"
-            "<button type='submit'>Log in</button></form></body></html>")
+            "<button type='submit'>Log in</button></form>"
+            "<script src='/static/orb.js'></script></body></html>")
 
 
 def create_app(services: Services) -> FastAPI:

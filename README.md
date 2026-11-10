@@ -2,6 +2,8 @@
 
 [![Tests](https://github.com/Reevias/Prometheus-/actions/workflows/tests.yml/badge.svg)](https://github.com/Reevias/Prometheus-/actions/workflows/tests.yml)
 
+![Prometheus login screen](docs/login-orb.png)
+
 Your personal AI brain. It runs on your own laptop, in a browser tab. You type a task, a lead AI splits it into
 steps, agents do the steps and share one memory, and you get one answer. Every file change can be undone.
 

@@ -1,6 +1,7 @@
 # Changelog
 
 ## 1.4
+- The orb: an ember core inside a turning wireframe globe, with orbiting sparks and flickering rays. Big on the login screen and on an empty chat, small in the status panel; it speeds up while Prometheus works and turns grey after STOP ALL. One light canvas, capped frame rate, pauses when hidden, still for reduced motion.
 - Smarter chat names: a quick name from the first message (greetings and "can you" dropped), then a short specific name from the planner during the first two requests. A name you choose is never changed.
 - Rename and delete chats (delete removes the chat's messages, notes, steps, memory parts and its file in the Prometheus memory folder; a running chat can't be deleted).
 - Search chats: the box above the chat list finds words in any message or chat name, shows the matching lines and jumps to the exact message.

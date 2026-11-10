@@ -7,6 +7,7 @@
   <meta name="htmx-config" content='{"responseHandling": [{"code": "204", "swap": false}, {"code": "[23]..", "swap": true}, {"code": "[45]..", "swap": true, "error": true}]}'>
   <link rel="stylesheet" href="/static/style.css">
   <script src="/static/htmx.min.js"></script>
+  <script src="/static/orb.js" defer></script>
 </head>
 <body hx-headers='{"X-CSRF-Token": "{{ csrf }}"}'>
 <header>
@@ -26,5 +27,14 @@
   <button hx-post="/logout" hx-swap="none" hx-on::after-request="location.href='/login'">Log out</button>
 </header>
 {% block body %}{% endblock %}
+<script>
+  // The orbs follow the header signal: busy while a task runs, grey after STOP ALL.
+  function syncOrbs() {
+    const core = document.querySelector("#core .core");
+    const state = !core ? "idle" : core.classList.contains("stopped") ? "stopped" : core.classList.contains("busy") ? "busy" : "idle";
+    document.querySelectorAll("canvas[data-orb]").forEach((c) => { if (c.dataset.state !== state) c.dataset.state = state; });
+  }
+  document.body.addEventListener("htmx:afterSwap", () => { syncOrbs(); if (window.PrometheusOrb) PrometheusOrb.start(); });
+</script>
 </body>
 </html>

@@ -7,6 +7,7 @@
 </div>
 {% else %}
 <div class="empty">
+  <canvas class="orb orb-hero" data-orb data-state="idle" aria-hidden="true"></canvas>
   <p class="h">What should Prometheus do?</p>
   <p class="muted">Pick an example or type your own.</p>
   {% for example in ["Sort my Downloads folder and summarise any PDFs about taxes", "Research how solar panels work and give me the sources", "Play a lofi study mix on YouTube", "How do I use jcode with OpenRouter?"] %}

@@ -38,6 +38,7 @@
     </script>
   </section>
   <aside class="panel">
+    <canvas class="orb orb-side" data-orb data-small data-state="idle" aria-hidden="true"></canvas>
     <h3>Status</h3>
     <div hx-get="/status?chat={{ chat_id }}" hx-trigger="load, every 2s [document.visibilityState === 'visible']"></div>
     <h3>Notes for this chat</h3>
