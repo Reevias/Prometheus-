@@ -46,8 +46,8 @@ class PathPolicy:
         if not _inside(path, self.home):
             return True
         if _inside(path, self.data_dir):
-            secrets = (self.data_dir / ".env", self.data_dir / "settings.json")
-            return any(_norm(path) == _norm(s) for s in secrets)
+            name = os.path.normcase(path.name).lower()   # keys, password hash and their temp/backup copies
+            return path.parent == self.data_dir and (name.startswith(".env") or name.startswith("settings."))
         if any(_inside(path, b) for b in self._blocked):
             return True
         rel_parts = path.relative_to(self.home).parts if _norm(path) != _norm(self.home) else ()

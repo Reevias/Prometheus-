@@ -39,6 +39,10 @@ class ModelRouter:
             if p is None or not p.is_local:
                 raise PrivacyViolation(f"'{entry}' is not a local model; personal files may only use local models.")
 
+    def clear_rest(self) -> None:
+        """Wake every resting model (called when a key is added or changed)."""
+        self._resting.clear()
+
     def status(self) -> dict[str, bool]:
         return {name: p.available() for name, p in self.providers.items()}
 
@@ -67,7 +71,8 @@ class ModelRouter:
             if self._resting.get(name, (0.0, ""))[0] > self.clock():
                 errors.append(f"{name}: resting ({self._resting[name][1]})")
                 continue
-            free = provider.is_local or (model or "").endswith(":free")
+            used_model = model or getattr(provider, "model", "") or ""
+            free = provider.is_local or (name == "openrouter" and used_model.endswith(":free"))
             if not free and self.budget.state().stopped:
                 over_budget = True   # cap reached: skip paid models, keep looking for a free or local one
                 continue

@@ -13,20 +13,30 @@ class AnthropicProvider:
     is_local = False
 
     def __init__(self, model: str = "claude-opus-5-5", client=None, name: str = "anthropic",
-                 effort: str = "high"):
+                 effort: str = "high", client_factory=None):
         self.name = name
         self.model = model
         self.effort = effort
         self._client = client
+        self._fixed_client = client is not None
+        self._client_key = None
+        self._client_factory = client_factory
 
     def available(self) -> bool:
         return bool(get_secret("ANTHROPIC_API_KEY"))
 
     def _get_client(self):
-        if self._client is None:
-            import anthropic
+        if self._fixed_client:
+            return self._client
+        key = get_secret("ANTHROPIC_API_KEY")
+        if self._client is None or key != self._client_key:   # the key was added or changed in Settings
+            if self._client_factory is not None:
+                self._client = self._client_factory(key)
+            else:
+                import anthropic
 
-            self._client = anthropic.Anthropic(api_key=get_secret("ANTHROPIC_API_KEY"))
+                self._client = anthropic.Anthropic(api_key=key)
+            self._client_key = key
         return self._client
 
     def complete(self, messages: list[dict], system: str, json_schema: dict | None = None,

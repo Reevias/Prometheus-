@@ -31,6 +31,7 @@ def create_app(services: Services) -> FastAPI:
     app.state.services = services
     sessions, limiter = Sessions(), LoginLimiter()
     app.state.sessions = sessions
+    app.state.limiter = limiter
 
     @app.middleware("http")
     async def guard(request: Request, call_next):

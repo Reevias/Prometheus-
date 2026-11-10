@@ -4,7 +4,9 @@ from __future__ import annotations
 import json
 import os
 import sys
+import re
 import threading
+import time
 from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 
@@ -79,15 +81,18 @@ KEY_NAMES = {
     "GEMINI_API_KEY": "Gemini (Argon)",
     "GITHUB_TOKEN": "GitHub",
 }
-_SECRETS_LOCK = threading.Lock()
+_SECRETS_LOCK = threading.RLock()
+_KEY_VALUE = re.compile(r"^[\x21-\x7e]{4,500}$")   # plain printable characters only, no spaces or line breaks
 
 
 def _read_env_file() -> dict[str, str]:
     env_file = data_dir() / ".env"
     out: dict[str, str] = {}
-    if not env_file.exists():
-        return out
-    for line in env_file.read_text(encoding="utf-8").splitlines():
+    with _SECRETS_LOCK:
+        if not env_file.exists():
+            return out
+        text = env_file.read_text(encoding="utf-8")
+    for line in text.split("\n"):
         line = line.strip()
         if not line or line.startswith("#") or "=" not in line:
             continue
@@ -99,13 +104,24 @@ def _read_env_file() -> dict[str, str]:
 
 def _write_env_file(values: dict[str, str]) -> None:
     env_file = data_dir() / ".env"
-    tmp = env_file.with_suffix(".tmp")
-    tmp.write_text("".join(f"{k}={v}\n" for k, v in values.items()), encoding="utf-8")
+    tmp = env_file.with_name(".env.tmp")
     try:
-        os.chmod(tmp, 0o600)
-    except OSError:
-        pass
-    os.replace(tmp, env_file)
+        tmp.write_text("".join(f"{k}={v}\n" for k, v in values.items()), encoding="utf-8")
+        try:
+            os.chmod(tmp, 0o600)
+        except OSError:
+            pass
+        for attempt in range(6):   # Windows refuses to replace a file another thread is reading
+            try:
+                os.replace(tmp, env_file)
+                break
+            except PermissionError:
+                if attempt == 5:
+                    raise
+                time.sleep(0.05)
+    finally:
+        if tmp.exists():           # never leave a second copy of the keys behind
+            tmp.unlink()
 
 
 def get_secret(name: str) -> str | None:
@@ -117,7 +133,7 @@ def set_secret(name: str, value: str) -> None:
     value = value.strip()
     if name not in KEY_NAMES:
         raise ValueError(f"Unknown key name: {name}")
-    if not value or len(value) > 500 or any(c in value for c in "\r\n\0") or " " in value:
+    if not _KEY_VALUE.match(value):
         raise ValueError("That doesn't look like a valid key.")
     with _SECRETS_LOCK:
         values = _read_env_file()

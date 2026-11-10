@@ -66,7 +66,8 @@ def register_routes(app: FastAPI, services: Services) -> None:
         task = store.latest_task(chat) if chat else {}
         return page(request, "status.html", mini=bool(mini), core=bool(core), busy=bool(services.running), task=task,
                     steps=store.steps(task["id"]) if task else [], budget=services.budget.state(),
-                    pending=len(store.approvals()), models=services.router.status_detail() if not mini else [])
+                    pending=len(store.approvals()),
+                    models=services.router.status_detail() if not (mini or core) else [])
 
     @app.get("/approvals", response_class=HTMLResponse)
     def approvals(request: Request):
@@ -141,16 +142,32 @@ def register_routes(app: FastAPI, services: Services) -> None:
     def _password_ok(password: str) -> bool:
         return bool(services.settings.password_hash) and verify_password(password, services.settings.password_hash)
 
+    def _key_gate(request: Request, password: str):
+        """Password check for key changes, with the same guess limit as login. Returns an error response or None."""
+        client = "keys:" + (request.client.host if request.client else "unknown")
+        if not app.state.limiter.attempt(client):
+            app.state.sessions.drop(request.cookies.get("prom_session"))
+            store.audit("user", "key_guess_lockout", {"client": client})
+            return HTMLResponse("Too many wrong passwords. You have been logged out; wait 5 minutes.", status_code=429)
+        if not _password_ok(password):
+            return settings_page(request, 403, key_error="Wrong password. Nothing was changed.")
+        app.state.limiter.reset(client)
+        return None
+
     @app.post("/settings/keys", response_class=HTMLResponse)
     def save_key(request: Request, name: str = Form(...), value: str = Form(...), password: str = Form("")):
         if name not in KEY_NAMES:
             return settings_page(request, 400, key_error="Unknown key.")
-        if not _password_ok(password):
-            return settings_page(request, 403, key_error="Wrong password. The key was not saved.")
+        denied = _key_gate(request, password)
+        if denied is not None:
+            return denied
         try:
             set_secret(name, value)
         except ValueError as e:
             return settings_page(request, 400, key_error=str(e))
+        except OSError:
+            return settings_page(request, 500, key_error="The key file is busy. Try again in a moment.")
+        services.router.clear_rest()
         store.audit("user", "key_saved", {"name": name})
         return settings_page(request, key_saved=KEY_NAMES[name])
 
@@ -158,9 +175,14 @@ def register_routes(app: FastAPI, services: Services) -> None:
     def remove_key(request: Request, name: str = Form(...), password: str = Form("")):
         if name not in KEY_NAMES:
             return settings_page(request, 400, key_error="Unknown key.")
-        if not _password_ok(password):
-            return settings_page(request, 403, key_error="Wrong password. The key was not removed.")
-        delete_secret(name)
+        denied = _key_gate(request, password)
+        if denied is not None:
+            return denied
+        try:
+            delete_secret(name)
+        except OSError:
+            return settings_page(request, 500, key_error="The key file is busy. Try again in a moment.")
+        services.router.clear_rest()
         store.audit("user", "key_removed", {"name": name})
         return settings_page(request, key_saved="")
 

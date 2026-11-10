@@ -24,17 +24,19 @@ class LocalServer:
         from prometheus.app import build_services
         from prometheus.server import create_app
 
-        with socket.socket() as s:
-            s.bind(("127.0.0.1", 0))
-            port = s.getsockname()[1]
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.bind(("127.0.0.1", 0))          # bound once and handed to the server, so nothing else can take the port
+        port = sock.getsockname()[1]
         config = uvicorn.Config(create_app(build_services(self.settings)), host="127.0.0.1", port=port,
                                 log_level="warning")
         self._server = uvicorn.Server(config)
-        self._thread = threading.Thread(target=self._server.run, daemon=True)
+        self._thread = threading.Thread(target=self._server.run, kwargs={"sockets": [sock]}, daemon=True)
         self._thread.start()
         deadline = time.time() + 15
         while not self._server.started and time.time() < deadline:
             time.sleep(0.05)
+        if not self._server.started:
+            raise RuntimeError("Prometheus did not start in time")
         return port
 
     def stop(self) -> None:
@@ -48,8 +50,8 @@ def run_desktop(settings: Settings, webview=None, server=None) -> int:
     if webview is None:
         import webview  # pywebview
     server = server or LocalServer(settings)
-    port = server.start()
     try:
+        port = server.start()
         webview.create_window("Prometheus", f"http://127.0.0.1:{port}/", width=1220, height=780,
                               min_size=(860, 560), background_color=BACKGROUND)
         webview.start()

@@ -22,14 +22,23 @@ from prometheus.safety.web import UnsafeURL, check_url
 AUTO_HOSTS = {"www.youtube.com", "youtube.com", "m.youtube.com", "music.youtube.com", "youtu.be", "github.com"}
 VIDEO_ID = re.compile(r"(?:[?&]v=|youtu\.be/|/shorts/|/embed/|/live/)([\w-]{11})")
 REPO = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,99}/[A-Za-z0-9][A-Za-z0-9_.-]{0,99}$")
-NEVER_OPEN = {".exe", ".msi", ".bat", ".cmd", ".com", ".scr", ".ps1", ".psm1", ".vbs", ".vbe", ".js", ".jse", ".wsf",
-              ".wsh", ".hta", ".lnk", ".reg", ".dll", ".jar", ".py", ".pyw", ".sh", ".cpl", ".msc", ".pif", ".url",
-              ".appref-ms", ".application", ".gadget", ".inf", ".scf", ".app", ".command", ".desktop"}
+# Only these kinds of files may be opened (documents and media). Programs, scripts, installers, web pages,
+# disk images, shortcuts and macro-enabled Office files are never opened.
+OPENABLE = {".pdf", ".txt", ".md", ".csv", ".log", ".json", ".rtf", ".epub", ".docx", ".xlsx", ".pptx", ".odt", ".ods",
+            ".odp", ".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".heic", ".tif", ".tiff", ".mp3", ".wav",
+            ".flac", ".m4a", ".ogg", ".mp4", ".mov", ".mkv", ".avi", ".webm"}
+SAFE_URL = re.compile(r"^[A-Za-z0-9._~:/?#&=%+-]+$")
+YOUTUBE_PATHS = re.compile(r"^/(watch|results|playlist)$|^/shorts/[\w-]{11}$")
+YOUTU_BE_PATH = re.compile(r"^/[\w-]{11}$")
+GITHUB_REPO_PATH = re.compile(r"^/[A-Za-z0-9][A-Za-z0-9_.-]{0,99}/[A-Za-z0-9][A-Za-z0-9_.-]{0,99}/?$")
 TRANSCRIPT_CHARS = 12000
 
 
 def video_id(url: str) -> str | None:
-    host = (urlsplit(url).hostname or "").lower()
+    try:
+        host = (urlsplit(url).hostname or "").lower()
+    except ValueError:
+        return None
     if host not in AUTO_HOSTS or host == "github.com":
         return None
     m = VIDEO_ID.search(url)
@@ -37,8 +46,23 @@ def video_id(url: str) -> str | None:
 
 
 def _auto_open(url: str) -> bool:
-    parts = urlsplit(url)
-    return parts.scheme == "https" and (parts.hostname or "").lower() in AUTO_HOSTS and not parts.username
+    """True only for a plain YouTube video/search page or a GitHub repository home page."""
+    if not SAFE_URL.match(url):
+        return False
+    try:
+        parts = urlsplit(url)
+        host = (parts.hostname or "").lower()
+        if parts.scheme != "https" or parts.username or parts.port:
+            return False
+    except ValueError:
+        return False
+    if host == "github.com":
+        return bool(GITHUB_REPO_PATH.match(parts.path)) and not parts.query
+    if host == "youtu.be":
+        return bool(YOUTU_BE_PATH.match(parts.path))
+    if host in AUTO_HOSTS:
+        return bool(YOUTUBE_PATHS.match(parts.path))
+    return False
 
 
 def _truthy(value) -> bool:
@@ -78,6 +102,8 @@ def fetch_transcript(vid: str) -> str:
 
 def open_link_handler(payload: dict, launcher: Callable[[str], object] = webbrowser.open) -> str:
     url = str(payload.get("url", ""))
+    if not SAFE_URL.match(url):
+        raise ValueError("That link contains characters a normal link doesn't have.")
     try:
         check_url(url)
     except UnsafeURL as e:
@@ -91,10 +117,13 @@ def _checked_local(raw: str, policy) -> Path:
         path = policy.check_read(Path(raw))
     except PathBlocked as e:
         raise ValueError(str(e)) from e
+    if ":" in Path(raw).name:
+        raise ValueError("File names with ':' are not opened.")
     if not path.exists():
         raise ValueError(f"Not found: {path.name}")
-    if path.is_file() and path.suffix.lower() in NEVER_OPEN:
-        raise ValueError(f"{path.name} is a program or script. Prometheus never runs those.")
+    if not path.is_dir() and path.suffix.lower() not in OPENABLE:
+        raise ValueError(f"{path.name} is not a document, picture, sound or video. Prometheus only opens those, "
+                         "never programs, scripts or installers.")
     return path
 
 
@@ -161,9 +190,11 @@ class Opener(Agent):
         return StepResult("done", "\n".join(parts), {"url": url})
 
     def _web(self, ctx: AgentContext, url: str) -> StepResult:
+        if not SAFE_URL.match(url):
+            return StepResult("failed", "I won't open that link: it contains characters a normal link doesn't have.")
         try:
             check_url(url)
-        except UnsafeURL as e:
+        except (UnsafeURL, ValueError) as e:
             return StepResult("failed", f"I won't open that link: {e}")
         if _auto_open(url):
             ctx.use(self.name, "open_link")
@@ -180,7 +211,7 @@ class Opener(Agent):
             path = _checked_local(str(resolve_folder(target, ctx.home)), ctx.policy)
         except ValueError as e:
             return StepResult("failed", f"I can't open that: {e}")
-        ctx.approvals.request("open_local", f"Open {path.name} on this laptop", {"path": str(path)})
+        ctx.approvals.request("open_local", f"Open this on your laptop: {path}", {"path": str(path)})
         return StepResult("waiting_approval", f"Approve opening {path.name} on the Approvals page.", {})
 
     def run(self, goal: str, inputs: dict, ctx: AgentContext) -> StepResult:
@@ -189,6 +220,8 @@ class Opener(Agent):
             return StepResult("failed", "Nothing to open: no target was given.")
         kind = str(inputs.get("kind") or "").strip().lower()
         is_url = target.startswith(("http://", "https://"))
+        if is_url and not SAFE_URL.match(target):
+            return StepResult("failed", "I won't open that link: it contains characters a normal link doesn't have.")
         if not kind:
             if is_url:
                 kind = "youtube" if video_id(target) else "web"
