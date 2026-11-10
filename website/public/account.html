@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>My account · My Website</title>
+  <link rel="icon" href="assets/images/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="css/styles.css">
+  <script src="js/main.js" defer></script>
+  <script src="js/auth.js" defer></script>
+</head>
+<body class="auth-page">
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="site-header">
+    <div class="container header-inner">
+      <a class="logo" href="./">My Website</a>
+      <a class="back-link" href="./">&larr; Back to home</a>
+    </div>
+  </header>
+
+  <main id="main" class="auth-main">
+    <div class="auth-card account-card" data-account hidden>
+      <div class="avatar" aria-hidden="true" data-field="initial"></div>
+      <h1>Hi, <span data-field="name"></span>!</h1>
+      <p class="auth-sub">You're logged in.</p>
+
+      <div class="notice" data-unverified hidden>
+        <p><strong>Please confirm your email.</strong> We sent a link to <span data-field="email"></span>.</p>
+        <button class="btn btn-sm btn-ghost" type="button" data-resend>Resend email</button>
+        <p class="notice-status" role="status" aria-live="polite"></p>
+      </div>
+
+      <dl class="account-details">
+        <div><dt>Name</dt><dd data-field="name"></dd></div>
+        <div><dt>Email</dt><dd><span data-field="email"></span> <span class="badge" data-field="status"></span></dd></div>
+        <div><dt>Member since</dt><dd data-field="createdAt"></dd></div>
+      </dl>
+
+      <button class="btn btn-ghost btn-block" type="button" data-logout>Log out</button>
+    </div>
+    <p class="loading" data-loading>Loading your account…</p>
+  </main>
+</body>
+</html>

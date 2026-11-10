@@ -1,0 +1,28 @@
+{
+  "name": "claude-testing-",
+  "version": "1.0.0",
+  "description": "Website with email account sign-up and login",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "test": "node --test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Reevias/Claude-testing-.git"
+  },
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Reevias/Claude-testing-/issues"
+  },
+  "homepage": "https://github.com/Reevias/Claude-testing-#readme",
+  "dependencies": {
+    "better-sqlite3": "^13.0.3",
+    "express": "^5.2.1"
+  },
+  "private": true,
+  "engines": {
+    "node": ">=22"
+  }
+}

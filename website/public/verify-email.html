@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Confirm email · My Website</title>
+  <link rel="icon" href="assets/images/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="css/styles.css">
+  <script src="js/main.js" defer></script>
+  <script src="js/auth.js" defer></script>
+</head>
+<body class="auth-page">
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="site-header">
+    <div class="container header-inner">
+      <a class="logo" href="./">My Website</a>
+      <a class="back-link" href="./">&larr; Back to home</a>
+    </div>
+  </header>
+
+  <main id="main" class="auth-main">
+    <div class="auth-card account-card" data-verify>
+      <div class="status-icon" aria-hidden="true" data-verify-icon>&hellip;</div>
+      <h1 data-verify-title>Confirming your email…</h1>
+      <p class="auth-sub" data-verify-message>Just a moment.</p>
+      <a class="btn btn-block" href="account.html" data-verify-action hidden>Go to my account</a>
+    </div>
+  </main>
+</body>
+</html>

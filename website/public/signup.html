@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Create account · My Website</title>
+  <link rel="icon" href="assets/images/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="css/styles.css">
+  <script src="js/main.js" defer></script>
+  <script src="js/auth.js" defer></script>
+</head>
+<body class="auth-page">
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="site-header">
+    <div class="container header-inner">
+      <a class="logo" href="./">My Website</a>
+      <a class="back-link" href="./">&larr; Back to home</a>
+    </div>
+  </header>
+
+  <main id="main" class="auth-main">
+    <div class="auth-card">
+      <h1>Create your account</h1>
+      <p class="auth-sub">It only takes a minute. All you need is an email.</p>
+
+      <form class="auth-form" data-auth-form="signup" novalidate>
+        <div class="form-alert" role="alert" hidden></div>
+        <div class="field">
+          <label for="name">Full name</label>
+          <input id="name" name="name" type="text" autocomplete="name" required aria-describedby="name-error" autofocus>
+          <p class="field-error" id="name-error"></p>
+        </div>
+        <div class="field">
+          <label for="email">Email</label>
+          <input id="email" name="email" type="email" autocomplete="email" required aria-describedby="email-error">
+          <p class="field-error" id="email-error"></p>
+        </div>
+        <div class="field">
+          <div class="field-row">
+            <label for="password">Password</label>
+          </div>
+          <div class="password-wrap">
+            <input id="password" name="password" type="password" autocomplete="new-password" required minlength="8" aria-describedby="password-hint password-error">
+            <button type="button" class="toggle-password" aria-controls="password" aria-pressed="false">Show</button>
+          </div>
+          <div class="strength" aria-hidden="true"><span></span></div>
+          <p class="field-hint" id="password-hint">Use at least 8 characters. Longer is stronger.</p>
+          <p class="field-error" id="password-error"></p>
+        </div>
+        <button class="btn btn-block" type="submit">Create account</button>
+      </form>
+
+      <p class="auth-switch">Already have an account? <a href="login.html">Log in</a></p>
+    </div>
+  </main>
+</body>
+</html>

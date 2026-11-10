@@ -123,4 +123,5 @@ uv venv -p 3.12 .venv && uv pip install -e ".[dev]"
 - [Security](SECURITY.md)
 - [Contributing](CONTRIBUTING.md)
 - [All decisions so far](docs/brief.md)
+- [`website/`](website/): the separate sign-up/login website moved here from the old repository
 - Licence: [MIT](LICENSE)
