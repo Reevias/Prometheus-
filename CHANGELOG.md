@@ -1,6 +1,10 @@
 # Changelog
 
 ## 1.4
+- Outputs: under Notes, every file and folder a chat created, found, moved or renamed, with Open and Show in folder. Documents and media open in their app (notes from the vault open in Obsidian); code and other types are only shown in their folder, so nothing is run by accident.
+- Obsidian: connect your vault in Settings (vaults Obsidian knows are found by themselves; needs your password). Search, read and create notes, list recent ones, open a note in Obsidian. New notes never overwrite and can be undone; answers from notes stay on the laptop.
+- Dark and light mode toggle in the top bar (remembered on this laptop).
+- Text can be selected and copied anywhere in the desktop window.
 - GitHub: reads any public repository (give owner/name or a link): what it is, stars, licence, README and main files, commits, issues and files. The GitHub key is only ever sent for Prometheus's own repository; other repositories are read without it (the key, limited to one repository, made GitHub answer "not found"). Changes are still only made to its own repository.
 - Updates itself: checks GitHub every 6 hours (first check 90 s after start), installs new versions by fast-forward only and never during a task; the top bar says when a restart is needed, and the background copy restarts itself when idle. "Update by itself" in Settings.
 - Voice, warmer and quicker: Kokoro voices Heart (default) or Fable replace Piper; "Yes sir." the moment a command is heard, "Yes sir?" when only the name was said; a command said in the same breath is used straight away (no second listen); Whisper is told to expect "Hello Prometheus"; every new command starts with "Hello Prometheus". Missing voice models download by themselves. Measured on varied spoken takes: 0 false wakes in 50.

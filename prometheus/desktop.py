@@ -79,7 +79,8 @@ def run_desktop(settings: Settings, webview=None, server=None) -> int:
     try:
         port = server.start()
         webview.create_window(f"Prometheus {version()}", f"http://127.0.0.1:{port}/", width=1220, height=780,
-                              min_size=(860, 560), background_color=BACKGROUND)
+                              min_size=(860, 560), background_color=BACKGROUND,
+                              text_select=True)          # pywebview blocks selecting and copying text unless asked
         webview.start()
         return 0
     except Exception as e:

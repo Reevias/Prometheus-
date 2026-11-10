@@ -87,6 +87,29 @@
   </div>
   {% endif %}
 
+  <h3>Obsidian</h3>
+  {% if obsidian_error %}<p class="error">{{ obsidian_error }}</p>{% endif %}
+  <div class="panel" style="display:grid;gap:10px">
+    {% if s.obsidian_vault %}
+      <p style="margin:0">Connected: <strong>{{ s.obsidian_vault }}</strong>. Ask things like “search my notes for taxes” or
+      “save this as a note”. Answers from your notes are written on this laptop only.</p>
+      <form hx-post="/settings/obsidian/disconnect" hx-target="body"><button type="submit" class="danger">Disconnect</button></form>
+    {% else %}
+      <p class="muted" style="margin:0">Connect your vault so Prometheus can search, read and create notes and open them in Obsidian.
+      It needs your Prometheus password.</p>
+      {% for v in vaults %}
+      <form class="row" hx-post="/settings/obsidian" hx-target="body"><input type="hidden" name="folder" value="{{ v }}">
+        <span>{{ v }}</span>
+        <input type="password" name="password" placeholder="Your Prometheus password" autocomplete="current-password" required>
+        <button type="submit" class="primary">Connect</button></form>
+      {% endfor %}
+      <form class="row" hx-post="/settings/obsidian" hx-target="body">
+        <input type="text" name="folder" placeholder="{{ 'Or another vault folder' if vaults else 'Your vault folder, e.g. C:\\Users\\you\\Documents\\Notes' }}" required>
+        <input type="password" name="password" placeholder="Your Prometheus password" autocomplete="current-password" required>
+        <button type="submit">Connect</button></form>
+    {% endif %}
+  </div>
+
   <h3>Places Prometheus may use</h3>
   {% if place_error %}<p class="error">{{ place_error }}</p>{% endif %}
   <p class="muted">Prometheus can find, copy, move and rename files in these places, and every change can be undone on

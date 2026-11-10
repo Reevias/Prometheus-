@@ -22,6 +22,7 @@ def _login_page(message: str = "") -> str:
     note = f'<p class="error">{html.escape(message)}</p>' if message else ""
     return ("<!doctype html><html lang='en'><head><meta charset='utf-8'>"
             "<meta name='viewport' content='width=device-width, initial-scale=1'><title>Prometheus</title>"
+            "<script>try{var t=localStorage.getItem('prom-theme');if(t)document.documentElement.dataset.theme=t}catch(e){}</script>"
             "<link rel='stylesheet' href='/static/style.css'></head><body class='login'>"
             "<canvas class='orb orb-login' data-orb data-state='idle' aria-hidden='true'></canvas>"
             "<form method='post' action='/login'><h1>Prometheus</h1>" + note +

@@ -103,6 +103,35 @@ def system_open(path: str) -> None:
         subprocess.run(["open" if sys.platform == "darwin" else "xdg-open", path], check=False, timeout=15)
 
 
+def reveal(path: str) -> None:
+    """Show a folder, or the folder holding a file with the file selected (Explorer on Windows)."""
+    p = Path(path)
+    if sys.platform == "win32":
+        explorer = Path(os.environ.get("SystemRoot", r"C:\Windows")) / "explorer.exe"
+        argv = [str(explorer), str(p)] if p.is_dir() else [str(explorer), f"/select,{p}"]
+        subprocess.Popen(argv)               # noqa: S603 - fixed program, path checked by the caller
+    else:
+        subprocess.run(["open" if sys.platform == "darwin" else "xdg-open", str(p if p.is_dir() else p.parent)],
+                       check=False, timeout=15)
+
+
+def open_output(path: str, how: str, policy, opener=None, revealer=None) -> str:
+    """Open something listed under Outputs. Documents and media open in their app; anything else (code, scripts,
+    unknown types) is only shown in its folder, because opening those could run them."""
+    opener, revealer = opener or system_open, revealer or reveal
+    p = Path(policy.check_read(path))
+    if not p.exists():
+        return "It isn't there any more."
+    if how == "folder" or p.is_dir():
+        revealer(str(p))
+        return "Shown in its folder." if not p.is_dir() else "Opened the folder."
+    if p.suffix.lower() in OPENABLE:
+        opener(str(p))
+        return f"Opened {p.name}."
+    revealer(str(p))
+    return f"{p.name} isn't a document or media file, so it is shown in its folder instead of opened."
+
+
 def find_video(query: str) -> str | None:
     try:
         from ddgs import DDGS

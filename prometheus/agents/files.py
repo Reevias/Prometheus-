@@ -30,6 +30,7 @@ RUNNABLE = {".exe", ".bat", ".cmd", ".ps1", ".psm1", ".vbs", ".vbe", ".js", ".js
             ".scr", ".com", ".lnk", ".url", ".reg", ".hta", ".cpl", ".pif", ".jar", ".appx", ".msix", ".sh", ".dll",
             ".sys", ".inf", ".application", ".gadget", ".scf", ".library-ms"}
 FIND_LIMIT = 50
+OUTPUTS_SHOWN = 10              # found files listed under the chat
 LIST_LIMIT = 200
 SCAN_ENTRIES = 300_000          # stop a search after this many files and folders...
 SCAN_SECONDS = 25.0             # ...or this long, and say so
@@ -218,6 +219,8 @@ class Files(Agent):
                         break
         found.sort(key=lambda f: -(f[1].st_mtime if f[1] else 0))
         shown = found[:FIND_LIMIT]
+        for p, st in shown[:OUTPUTS_SHOWN]:
+            ctx.store.add_output(ctx.task_id, str(p), "found", is_dir=st is None)
         lines = [f"- {p}" + (f" ({human_size(st.st_size)}, {datetime.fromtimestamp(st.st_mtime):%Y-%m-%d})"
                              if st else " (folder)") for p, st in shown]
         summary = f"Found {len(found)}{'+' if len(found) >= FIND_LIMIT * 4 else ''} matching item(s)"
@@ -257,6 +260,7 @@ class Files(Agent):
         path = self._place(str(inputs.get("path") or ""), ctx)
         if not path.exists():
             return StepResult("failed", f"{path} doesn't exist.")
+        ctx.store.add_output(ctx.task_id, str(path), "found", is_dir=path.is_dir())
         st = path.stat()
         when = f"changed {datetime.fromtimestamp(st.st_mtime):%Y-%m-%d %H:%M}"
         if path.is_dir():
@@ -273,7 +277,7 @@ class Files(Agent):
         return StepResult("done", text, {"paths": [str(path)]})
 
     # -- changing -----------------------------------------------------------------
-    def _run_changes(self, ctx: AgentContext, root: Path, work) -> tuple[list[str], list[str]]:
+    def _run_changes(self, ctx: AgentContext, root: Path, work, kind: str = "created") -> tuple[list[str], list[str]]:
         files: FileActions = ctx.files
         run = files.journal.start(root)
         done, problems = [], []
@@ -281,6 +285,8 @@ class Files(Agent):
             for label, call in work:
                 ctx.killswitch.check()
                 res = call(run)
+                if res.status == "done" and res.new_path is not None:
+                    ctx.store.add_output(ctx.task_id, str(res.new_path), kind, is_dir=Path(res.new_path).is_dir())
                 (done if res.status == "done" else problems).append(
                     f"{label}" + (f" → {res.new_path}" if res.status == "done" and res.new_path else f": {res.detail}"
                                   if res.status != "done" else ""))
@@ -324,7 +330,7 @@ class Files(Agent):
                 work.append((name, lambda run, s=src: ctx.files.move(run, s, dest, dest_root)))
             else:
                 work.append((name, lambda run, s=src: ctx.files.copy(run, s, dest, dest_root)))
-        done, problems = self._run_changes(ctx, dest_root, work)
+        done, problems = self._run_changes(ctx, dest_root, work, "moved" if move else "created")
         return self._report("Moved" if move else "Copied", done, problems)
 
     def _rename(self, inputs: dict, ctx: AgentContext) -> StepResult:
@@ -332,7 +338,7 @@ class Files(Agent):
         new_name = str(inputs.get("new_name") or "").strip()
         root = self._root(ctx.policy.check_read(src), ctx)
         done, problems = self._run_changes(ctx, root, [(src.name, lambda run: ctx.files.rename(run, src, new_name,
-                                                                                                 root))])
+                                                                                                 root))], "renamed")
         return self._report("Renamed", done, problems)
 
     def _make_folder(self, inputs: dict, ctx: AgentContext) -> StepResult:

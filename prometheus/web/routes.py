@@ -121,6 +121,44 @@ def register_routes(app: FastAPI, services: Services) -> None:
             store.audit("user", "delete_chat", {"chat_id": chat_id})
         return Response(status_code=204, headers={"HX-Redirect": "/"})
 
+    @app.get("/chats/{chat_id}/outputs", response_class=HTMLResponse)
+    def chat_outputs(request: Request, chat_id: int):
+        items = []
+        for o in store.outputs(chat_id):
+            o["name"] = Path(o["path"]).name or o["path"]
+            o["exists"] = Path(o["path"]).exists()
+            items.append(o)
+        return page(request, "outputs.html", outputs=items)
+
+    @app.post("/outputs/{output_id}/{how}")
+    def open_an_output(request: Request, output_id: int, how: str):
+        from prometheus.agents.opener import open_output
+        from prometheus.safety.paths import PathBlocked
+
+        item = store.output(output_id)
+        if item is None or how not in ("open", "folder"):
+            return Response("Not found.", status_code=404)
+        vault = services.settings.obsidian_vault
+        if how == "open" and vault and item["path"].lower().endswith(".md"):
+            from prometheus.agents import obsidian
+
+            note, folder = Path(item["path"]), Path(vault)
+            try:
+                note.resolve().relative_to(folder.resolve())
+                services.policy.check_read(note)
+                obsidian.open_uri(obsidian.Vault(folder.resolve()).uri(note.resolve()))
+                return Response(f"Opened {note.stem} in Obsidian.", status_code=200)
+            except (ValueError, PathBlocked):
+                pass
+        try:
+            text = open_output(item["path"], how, services.policy)
+        except PathBlocked:
+            return Response("That place is not allowed any more.", status_code=403)
+        except OSError as e:
+            return Response(f"Windows couldn't open it: {e.strerror or e}", status_code=500)
+        store.audit("user", "open_output", {"path": item["path"], "how": how})
+        return Response(text, status_code=200)
+
     @app.post("/chats/{chat_id}/notes", response_class=HTMLResponse)
     def add_note(request: Request, chat_id: int, text: str = Form(...)):
         if text.strip():
@@ -262,6 +300,7 @@ def register_routes(app: FastAPI, services: Services) -> None:
         return page(request, "settings.html", status_code, s=s, providers=rows, other_keys=other_keys,
                     heads=head_choices(services.router), head=s.head_model,
                     voice=services.voice.describe() if services.voice is not None else None,
+                    vaults=[str(v) for v in __import__("prometheus.agents.obsidian", fromlist=["x"]).detect_vaults()],
                     voices=__import__("prometheus.voice.engines", fromlist=["VOICES"]).VOICES,
                     home=str(services.home), bad_places=bad_places,
                     budget=services.budget.state(), catalog_date=catalog_updated(), **extra)
@@ -451,6 +490,40 @@ def register_routes(app: FastAPI, services: Services) -> None:
         services.settings.auto_update = bool(on)
         save_settings(services.settings)
         store.audit("user", "auto_update", {"on": bool(on)})
+        return settings_page(request, saved=True)
+
+    @app.post("/settings/obsidian", response_class=HTMLResponse)
+    def connect_obsidian(request: Request, folder: str = Form(...), password: str = Form("")):
+        from prometheus.safety.paths import extra_root_problem
+
+        denied = _key_gate(request, password)
+        if denied is not None:
+            return denied
+        path = Path(folder.strip().strip('"')).expanduser()
+        if not path.is_dir():
+            return settings_page(request, 400, obsidian_error=f"{folder} isn't a folder.")
+        resolved = path.resolve()
+        s = services.settings
+        inside_home = services.policy.root_for(resolved) is not None
+        if not inside_home:
+            problem = extra_root_problem(str(resolved), services.home)
+            if problem:
+                return settings_page(request, 400, obsidian_error=problem)
+            if str(resolved) not in s.extra_folders:
+                s.extra_folders.append(str(resolved))
+        if services.policy.is_blocked(resolved) and inside_home:
+            return settings_page(request, 400, obsidian_error="That folder is in a blocked place.")
+        s.obsidian_vault = str(resolved)
+        save_settings(s)
+        apply_settings(services)
+        store.audit("user", "obsidian_connected", {"vault": str(resolved)})
+        return settings_page(request, saved=True)
+
+    @app.post("/settings/obsidian/disconnect", response_class=HTMLResponse)
+    def disconnect_obsidian(request: Request):
+        services.settings.obsidian_vault = ""
+        save_settings(services.settings)
+        store.audit("user", "obsidian_disconnected", {})
         return settings_page(request, saved=True)
 
     @app.post("/settings/free", response_class=HTMLResponse)

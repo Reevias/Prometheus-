@@ -18,7 +18,8 @@ KNOWN_OLD: dict[str, set[str]] = {
                 "449a424b78bba16dd63fe18bd016e4b629c57eaced42bfe43dfee6f187546490",
                 "bee3bc588912d11df58603a929b03e65621688839a21e14cb8c556fbf5548c04",
                 "9c67749d9b12fe06c46bf3934c4e01295b1c70c72bd66fdced17a3cbc68a33b3",
-                "f60b627e964e2eea3d189dd0ac92dcffd6ac7defd44d8f2db5cd09876f22b19f"},
+                "f60b627e964e2eea3d189dd0ac92dcffd6ac7defd44d8f2db5cd09876f22b19f",
+                "64614938dee6b44a452ab495ded2eec3c12c100a27a6c76547b5048b38f390c5"},
     "combine": {"24165848dd711163a1f1400ad502d25d6217a5496062d8462a981ab801bf935d"},
 }
 NAME = re.compile(r"^[a-z_][a-z0-9_]{0,40}$")

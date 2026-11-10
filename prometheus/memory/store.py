@@ -40,6 +40,9 @@ CREATE INDEX IF NOT EXISTS chunks_doc ON chunks (doc_id);
 CREATE TABLE IF NOT EXISTS chat_segments (id INTEGER PRIMARY KEY, chat_id INTEGER NOT NULL, topic TEXT NOT NULL,
     first_msg INTEGER NOT NULL, last_msg INTEGER NOT NULL, doc_id INTEGER NOT NULL, started REAL NOT NULL);
 CREATE INDEX IF NOT EXISTS chat_segments_topic ON chat_segments (topic);
+CREATE TABLE IF NOT EXISTS outputs (id INTEGER PRIMARY KEY, chat_id INTEGER NOT NULL, path TEXT NOT NULL,
+    kind TEXT NOT NULL, is_dir INTEGER NOT NULL, created REAL NOT NULL);
+CREATE INDEX IF NOT EXISTS outputs_chat ON outputs (chat_id);
 CREATE TABLE IF NOT EXISTS chunk_vectors (chunk_id INTEGER PRIMARY KEY, model TEXT NOT NULL, vec BLOB NOT NULL);
 """
 
@@ -221,6 +224,27 @@ class Store:
         rows = self._rows("SELECT named_by FROM chats WHERE id = ?", (chat_id,))
         return rows[0]["named_by"] if rows else "auto"
 
+    # -- outputs: files and folders a chat created or found, shown under the chat ---------------
+    def add_output(self, task_id: int, path: str, kind: str, is_dir: bool = False) -> None:
+        """kind: 'created' or 'found'. The same path shows once per chat (the newest kind wins)."""
+        rows = self._rows("SELECT chat_id FROM tasks WHERE id = ?", (task_id,))
+        if not rows:
+            return
+        chat_id = int(rows[0]["chat_id"])
+        with self._lock:
+            self._db.execute("DELETE FROM outputs WHERE chat_id = ? AND path = ?", (chat_id, str(path)))
+            self._db.execute("INSERT INTO outputs (chat_id, path, kind, is_dir, created) VALUES (?, ?, ?, ?, ?)",
+                             (chat_id, str(path), kind, int(is_dir), time.time()))
+            self._db.commit()
+
+    def outputs(self, chat_id: int, limit: int = 30) -> list[dict]:
+        return [dict(r) for r in self._rows("SELECT * FROM outputs WHERE chat_id = ? ORDER BY created DESC, id DESC "
+                                            "LIMIT ?", (chat_id, limit))]
+
+    def output(self, output_id: int) -> dict | None:
+        rows = self._rows("SELECT * FROM outputs WHERE id = ?", (output_id,))
+        return dict(rows[0]) if rows else None
+
     def delete_chat(self, chat_id: int) -> list[str]:
         """Remove a chat with everything that came from it. Returns the topics it touched."""
         topics = sorted({s["topic"] for s in self.segments(chat_id=chat_id)})
@@ -241,6 +265,7 @@ class Store:
                 db.executemany(f"DELETE FROM search_index WHERE kind = '{kind}' AND ref_id = ?", [(i,) for i in ids])
                 db.execute(f"DELETE FROM {table} WHERE chat_id = ?", (chat_id,))
             db.execute("DELETE FROM chat_segments WHERE chat_id = ?", (chat_id,))
+            db.execute("DELETE FROM outputs WHERE chat_id = ?", (chat_id,))
             db.execute("DELETE FROM chats WHERE id = ?", (chat_id,))
             db.commit()
         return topics

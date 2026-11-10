@@ -7,6 +7,18 @@
   --sans: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, sans-serif;
   --mono: "Cascadia Mono", Consolas, "SF Mono", monospace;
   --ease: cubic-bezier(.2, .7, .2, 1);
+  --login-bg: #060506; --glass: rgba(21, 23, 26, .72); --orb-backdrop: transparent;
+}
+/* Light: warm paper surfaces, the same red signal (a shade darker so it reads on white). */
+html[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f4f3f0; --surface: #ffffff; --raised: #ebe9e5; --line: rgba(24, 22, 20, .10); --line-strong: rgba(24, 22, 20, .22);
+  --text: #18191c; --text-2: #4a4f58; --text-3: #6c717a;
+  --signal: #d42a3e; --action: #c8263a; --action-hover: #b31f32;
+  --ok: #1d8152; --warn: #9a6400; --bad: #c4283a;
+  --login-bg: #efede9; --glass: rgba(255, 255, 255, .8);
+  /* the orb glows on a dark disc in light mode, so it keeps its fire instead of washing out on white */
+  --orb-backdrop: radial-gradient(circle at 50% 50%, #14100f 0, #14100f 52%, rgba(20, 16, 15, 0) 70%);
 }
 * { box-sizing: border-box; }
 html { color-scheme: dark; }
@@ -122,8 +134,8 @@ ul.plain li.current { box-shadow: inset 2px 0 0 var(--signal); padding-left: 12p
 .approval .row { margin-top: 0; }
 
 /* login */
-body.login { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 24px 16px; background: #060506; }
-body.login form { position: relative; display: grid; gap: 16px; width: min(360px, 100%); padding: 24px; background: rgba(21, 23, 26, .72); border: 1px solid var(--line); border-radius: 16px; margin-top: -32px; }
+body.login { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 24px 16px; background: var(--login-bg); }
+body.login form { position: relative; display: grid; gap: 16px; width: min(360px, 100%); padding: 24px; background: var(--glass); border: 1px solid var(--line); border-radius: 16px; margin-top: -32px; }
 body.login h1 { font-size: 24px; font-weight: 500; letter-spacing: .02em; margin: 0; text-align: center; }
 body.login button { background: var(--action); border-color: var(--action); color: #fff; font-weight: 500; padding: 12px; }
 
@@ -156,3 +168,18 @@ button.mic { display: inline-flex; align-items: center; gap: 8px; font-size: 13p
 .mic-thinking .mic-dot { background: var(--warn); }
 .mic-error .mic-dot { background: var(--bad); }
 @media (prefers-reduced-motion: reduce) { .mic-dot { animation: none !important; } }
+
+/* outputs: files and folders a chat made or found */
+ul.outputs li { display: grid; gap: 4px; }
+.out-name { font-size: 13px; color: var(--text); word-break: break-all; }
+.out-meta .tag { font-size: 11px; }
+.out-actions { display: flex; gap: 8px; }
+.out-actions button { font-size: 12px; padding: 4px 10px; }
+ul.outputs li.gone .out-name { color: var(--text-3); text-decoration: line-through; }
+
+/* dark / light toggle */
+.theme-toggle { display: inline-flex; align-items: center; justify-content: center; padding: 6px 8px; color: var(--text-2); }
+.theme-toggle .i-moon { display: none; }
+html[data-theme="light"] .theme-toggle .i-sun { display: none; }
+html[data-theme="light"] .theme-toggle .i-moon { display: inline; }
+canvas.orb { background: var(--orb-backdrop); border-radius: 50%; }

@@ -1,0 +1,12 @@
+<ul class="plain outputs">
+  {% for o in outputs %}
+  <li class="{{ 'gone' if not o.exists }}">
+    <div class="out-name" title="{{ o.path }}">{{ o.name }}{{ "/" if o.is_dir }}</div>
+    <div class="out-meta"><span class="tag">{{ o.kind }}</span>{% if not o.exists %} <span class="muted">not there any more</span>{% endif %}</div>
+    {% if o.exists %}<div class="out-actions">
+      <button type="button" hx-post="/outputs/{{ o.id }}/open" hx-swap="none">Open</button>
+      {% if not o.is_dir %}<button type="button" hx-post="/outputs/{{ o.id }}/folder" hx-swap="none">Show in folder</button>{% endif %}
+    </div>{% endif %}
+  </li>
+  {% else %}<li class="muted">Files and folders Prometheus makes or finds in this chat show up here.</li>{% endfor %}
+</ul>
