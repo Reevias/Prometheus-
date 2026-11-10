@@ -4,6 +4,17 @@
     {% if m.role != "user" %}<button type="button" class="copy" title="Copy this answer" onclick="navigator.clipboard.writeText(this.closest('.msg').querySelector('.body').innerText); this.textContent='Copied'">Copy</button>{% endif %}</div>
   <div class="body">{% if m.role == "user" %}{{ m.text }}{% else %}{{ m.text|md }}{% endif %}</div>
   {% if m.model %}<div class="model-tag">{{ m.model }}</div>{% endif %}
+  {% if m.role == "assistant" and m.model != "reminder" %}
+  <div class="rate" id="rate-{{ m.id }}">{% set r = ratings.get(m.id) %}
+    <button type="button" class="{{ 'on' if r and r.rating > 0 }}" title="Good answer" aria-label="Good answer"
+            hx-post="/messages/{{ m.id }}/rate" hx-vals='{"rating": "1"}' hx-target="#rate-{{ m.id }}" hx-swap="outerHTML">
+      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M7 10v11H3V10h4zm0 0l4-8a2 2 0 0 1 2 2v4h6a2 2 0 0 1 2 2.3l-1.4 8A2 2 0 0 1 17.6 21H7"/></svg></button>
+    <button type="button" class="{{ 'on' if r and r.rating < 0 }}" title="Could be better: I'll rewrite it" aria-label="Could be better"
+            hx-post="/messages/{{ m.id }}/rate" hx-vals='{"rating": "-1"}' hx-prompt="What should be better? (optional)"
+            hx-target="#rate-{{ m.id }}" hx-swap="outerHTML">
+      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M17 14V3h4v11h-4zm0 0l-4 8a2 2 0 0 1-2-2v-4H5a2 2 0 0 1-2-2.3l1.4-8A2 2 0 0 1 6.4 3H17"/></svg></button>
+    {% if r and r.rating < 0 %}<span class="muted">Thanks, rewriting it.</span>{% elif r %}<span class="muted">Thanks.</span>{% endif %}
+  </div>{% endif %}
 </div>
 {% else %}
 <div class="empty">

@@ -38,7 +38,11 @@ def create_app(services: Services, background: bool = False) -> FastAPI:
             services.voice.start_if_enabled()
         if services.daily is not None:          # end of each day: repo of the day, then updating
             services.daily.start(background=background)
+        if services.reminders is not None:
+            services.reminders.start()
         yield
+        if services.reminders is not None:
+            services.reminders.stop()
         if services.daily is not None:
             services.daily.stop()
         if services.voice is not None:

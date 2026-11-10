@@ -26,6 +26,10 @@ WEB = Path(__file__).resolve().parent
 REPO_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,38}/[A-Za-z0-9._-]{1,100}$")
 
 
+def clean_note(text: str) -> str:
+    return " ".join((text or "").split())[:500]
+
+
 def register_routes(app: FastAPI, services: Services) -> None:
     templates = Jinja2Templates(directory=str(WEB / "templates"))
     templates.env.filters["md"] = render_message
@@ -53,13 +57,14 @@ def register_routes(app: FastAPI, services: Services) -> None:
     def messages_partial(request: Request, chat_id: int):
         busy = chat_id in services.running
         return page(request, "messages.html", messages=store.messages(chat_id), busy=busy,
+                    ratings=store.ratings_for(chat_id),
                     doing=current_step(chat_id) if busy else "")
 
     def chat_page(request: Request, chat_id: int):
         busy = chat_id in services.running
         return page(request, "chat.html", chats=store.chats(), chat_id=chat_id, chat_title=store.chat_title(chat_id),
                     heads=head_choices(services.router), head=services.settings.head_model,
-                    messages=store.messages(chat_id),
+                    messages=store.messages(chat_id), ratings=store.ratings_for(chat_id),
                     notes=store.chat_notes(chat_id), busy=busy, doing=current_step(chat_id) if busy else "")
 
     @app.get("/", response_class=HTMLResponse)
@@ -120,6 +125,57 @@ def register_routes(app: FastAPI, services: Services) -> None:
                 services.archive.forget(chat_id, topics)
             store.audit("user", "delete_chat", {"chat_id": chat_id})
         return Response(status_code=204, headers={"HX-Redirect": "/"})
+
+    @app.post("/messages/{message_id}/rate", response_class=HTMLResponse)
+    def rate_message(request: Request, message_id: int, rating: str = Form(...)):
+        msg = store.message(message_id)
+        if msg is None or msg.role != "assistant":
+            return Response(status_code=404)
+        value = 1 if rating.strip() == "1" else -1
+        note = clean_note(unquote(request.headers.get("HX-Prompt", "")))
+        store.rate(message_id, value, note)
+        store.audit("user", "rate", {"message": message_id, "rating": value})
+        if value < 0 and msg.chat_id not in services.running:
+            services.start_rewrite(msg.chat_id, message_id, note)
+        return page(request, "rate.html", m=msg, r=store.rating(message_id))
+
+    @app.post("/memory/learn", response_class=HTMLResponse)
+    def learn_now(request: Request):
+        from prometheus.learning import learn
+
+        try:
+            done = learn(services) or "Nothing new to learn yet: rate a few answers first."
+        except Exception as e:
+            done = f"Couldn't learn right now ({type(e).__name__}). It will try again tonight."
+        return memory_page(request, lesson=done)
+
+    @app.post("/memory/lessons/{commit}", response_class=HTMLResponse)
+    def restore_lessons(request: Request, commit: str):
+        try:
+            services.prompts.rollback("learned", commit)
+        except (ValueError, RuntimeError):
+            return memory_page(request, lesson="That version couldn't be restored.")
+        store.audit("user", "lessons_restored", {"commit": commit[:12]})
+        return memory_page(request, lesson="Restored that version.")
+
+    @app.post("/memory/lessons-reset", response_class=HTMLResponse)
+    def reset_lessons(request: Request):
+        from prometheus.learning import HEADER
+
+        services.prompts.set("learned", HEADER + "(Reset by the owner.)\n", "Reset by the owner")
+        return memory_page(request, lesson="Cleared what Prometheus learned. Older versions can still be restored.")
+
+    @app.get("/reminders/list", response_class=HTMLResponse)
+    def reminder_list(request: Request):
+        from prometheus.reminders import describe
+
+        items = [dict(r, when=describe(r["due"])) for r in store.reminders()]
+        return page(request, "reminders.html", reminders=items)
+
+    @app.post("/reminders/{reminder_id}/cancel", response_class=HTMLResponse)
+    def cancel_reminder(request: Request, reminder_id: int):
+        store.cancel_reminder(reminder_id)
+        return reminder_list(request)
 
     @app.get("/chats/{chat_id}/outputs", response_class=HTMLResponse)
     def chat_outputs(request: Request, chat_id: int):
@@ -209,13 +265,23 @@ def register_routes(app: FastAPI, services: Services) -> None:
         store.audit("user", "repo_of_day", {"on": bool(on)})
         return settings_page(request, saved=True)
 
+    def memory_page(request: Request, lesson: str = ""):
+        return memory(request, "", lesson)
+
     @app.get("/memory", response_class=HTMLResponse)
-    def memory(request: Request, q: str = ""):
+    def memory(request: Request, q: str = "", lesson: str = ""):
         q = q.strip()[:200]
         found = store.recall(q, limit=30, kinds=("memory", "chat_note", "agent_note", "message")) if q else []
         passages = store.search_chunks(q, limit=10, include_private=True) if q else []
         archive = services.archive
+        from prometheus.learning import current_rules
+
+        try:
+            lessons_text, lessons_history = services.prompts.get("learned"), services.prompts.history("learned")[:8]
+        except (OSError, RuntimeError, ValueError):
+            lessons_text, lessons_history = "", []
         return page(request, "memory.html", memories=store.memories(), q=q, found=found, passages=passages,
+                    lessons=current_rules(lessons_text), lessons_history=lessons_history, lesson=lesson,
                     documents=store.documents(), topics=store.topics(),
                     folder=str(archive.folder) if archive else "")
 

@@ -413,6 +413,23 @@ def app_open(self, name: str) -> str:
     return last or f"Asked Windows to open {name}."
 
 
+NOTIFY_SCRIPT = r"""
+[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] > $null
+$t = [Windows.UI.Notifications.ToastNotificationManager]::GetTemplateContent([Windows.UI.Notifications.ToastTemplateType]::ToastText02)
+$x = $t.GetElementsByTagName('text')
+$x.Item(0).AppendChild($t.CreateTextNode('Prometheus')) > $null
+$x.Item(1).AppendChild($t.CreateTextNode($env:PROM_TEXT)) > $null
+$app = '{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\WindowsPowerShell\v1.0\powershell.exe'
+[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier($app).Show([Windows.UI.Notifications.ToastNotification]::new($t))
+"""
+
+
+def notify(self, text: str) -> None:
+    """A Windows notification (with its sound). The text travels in an environment variable."""
+    self._need_windows()
+    _ps(self, NOTIFY_SCRIPT, {"PROM_TEXT": str(text)[:300]})
+
+
 def store_open(self, query: str = "") -> str:
     """Open the Microsoft Store, on a search for `query` if given."""
     self._need_windows()
@@ -586,5 +603,5 @@ def install_app(self, package: str, source: str = "") -> str:
 
 
 for _f in (app_open, app_close, window, apps_running, volume, mute, brightness, dark_mode, screenshot, type_text,
-           press_keys, click, power, install_app, store_open, find_package):
+           press_keys, click, power, install_app, store_open, find_package, notify):
     setattr(Laptop, _f.__name__, _f)

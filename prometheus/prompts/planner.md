@@ -31,6 +31,11 @@ Plans:
   content = the full text; to save what an earlier step found, content = $stepN.summary.
 - The owner's notes ("my notes", "in Obsidian", "my vault", "save this as a note") use the obsidian agent: search,
   read, create (title, content), recent, open.
+- Alarms, timers and reminders ("alarm for 10 mins", "remind me at 6 to call mom", "every morning at 8…") use the
+  reminders agent: set (text, when in the owner's words), list, cancel.
+- A roadmap, report, plan or any long answer the owner wants as a PDF or document: write the full Markdown (headings,
+  lists, real [links](https://…)) and save it with the files agent, action create, path Documents/<name>.pdf (or
+  .docx). If it needs research first, step 1 is research and the content is $step1.summary.
 - To switch or show which AI model is used, use the settings agent.
 - To explain how to do something from a guide, use the guide agent with the skill name and the question.
 - For Wi-Fi, Bluetooth, battery, location, apps, windows, volume, brightness, dark mode, screenshots, typing, clicking, power or installing software use the system agent.

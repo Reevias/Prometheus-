@@ -27,6 +27,18 @@
     {% for t in topics %}<li><a href="/memory/topic?t={{ t.topic | urlencode }}">{{ t.topic }}</a> <span class="muted">({{ t.chats }} chat{{ "s" if t.chats != 1 }})</span></li>
     {% else %}<li class="muted">No topics yet. They appear after your next chat.</li>{% endfor %}
   </ul>
+  <h3>How Prometheus answers you</h3>
+  {% if lesson %}<p class="status-done">{{ lesson }}</p>{% endif %}
+  <p class="muted">Learned from your 👍 and 👎 on answers, every night (or now). Every answer follows these.</p>
+  <ul class="plain">{% for r in lessons %}<li>{{ r }}</li>{% else %}<li class="muted">Nothing learned yet. Rate a few answers.</li>{% endfor %}</ul>
+  <div class="row">
+    <button type="button" hx-post="/memory/learn" hx-target="body">Learn now</button>
+    <button type="button" class="danger" hx-post="/memory/lessons-reset" hx-target="body" hx-confirm="Forget what Prometheus learned about how to answer you?">Reset</button>
+  </div>
+  {% if lessons_history|length > 1 %}<details><summary class="muted">Earlier versions</summary><ul class="plain">
+    {% for commit, why in lessons_history[1:] %}<li>{{ why }} <button type="button" hx-post="/memory/lessons/{{ commit }}" hx-target="body">Restore</button></li>{% endfor %}
+  </ul></details>{% endif %}
+
   <h3>Saved pages and files</h3>
   <p class="muted">Long texts the agents read, split into small searchable parts. File text stays on this laptop.</p>
   <div id="documents">{% include "document_list.html" %}</div>

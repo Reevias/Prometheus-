@@ -43,6 +43,10 @@ CREATE INDEX IF NOT EXISTS chat_segments_topic ON chat_segments (topic);
 CREATE TABLE IF NOT EXISTS outputs (id INTEGER PRIMARY KEY, chat_id INTEGER NOT NULL, path TEXT NOT NULL,
     kind TEXT NOT NULL, is_dir INTEGER NOT NULL, created REAL NOT NULL);
 CREATE INDEX IF NOT EXISTS outputs_chat ON outputs (chat_id);
+CREATE TABLE IF NOT EXISTS reminders (id INTEGER PRIMARY KEY, chat_id INTEGER NOT NULL, text TEXT NOT NULL,
+    due REAL NOT NULL, repeat TEXT NOT NULL DEFAULT '', state TEXT NOT NULL DEFAULT 'waiting', created REAL NOT NULL);
+CREATE TABLE IF NOT EXISTS feedback (message_id INTEGER PRIMARY KEY, rating INTEGER NOT NULL, note TEXT NOT NULL,
+    created REAL NOT NULL, learned INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS chunk_vectors (chunk_id INTEGER PRIMARY KEY, model TEXT NOT NULL, vec BLOB NOT NULL);
 """
@@ -225,6 +229,67 @@ class Store:
         rows = self._rows("SELECT named_by FROM chats WHERE id = ?", (chat_id,))
         return rows[0]["named_by"] if rows else "auto"
 
+    # -- reminders -------------------------------------------------------------------------
+    def add_reminder(self, chat_id: int, text: str, due: float, repeat: str = "") -> int:
+        return self._write("INSERT INTO reminders (chat_id, text, due, repeat, created) VALUES (?, ?, ?, ?, ?)",
+                           (chat_id, text, due, repeat, time.time()))
+
+    def reminders(self, chat_id: int | None = None) -> list[dict]:
+        sql = "SELECT * FROM reminders WHERE state = 'waiting'" + (" AND chat_id = ?" if chat_id is not None else "")
+        return [dict(r) for r in self._rows(sql + " ORDER BY due", (chat_id,) if chat_id is not None else ())]
+
+    def reminders_due(self, now: float) -> list[dict]:
+        return [dict(r) for r in self._rows("SELECT * FROM reminders WHERE state = 'waiting' AND due <= ? "
+                                            "ORDER BY due", (now,))]
+
+    def reminder_fired(self, reminder_id: int, next_due: float | None) -> None:
+        if next_due is None:
+            self._write("UPDATE reminders SET state = 'done' WHERE id = ?", (reminder_id,))
+        else:
+            self._write("UPDATE reminders SET due = ? WHERE id = ?", (next_due, reminder_id))
+
+    def cancel_reminder(self, reminder_id: int) -> bool:
+        rows = self._rows("SELECT id FROM reminders WHERE id = ? AND state = 'waiting'", (reminder_id,))
+        if rows:
+            self._write("UPDATE reminders SET state = 'cancelled' WHERE id = ?", (reminder_id,))
+        return bool(rows)
+
+    # -- feedback on answers: what Prometheus learns from -------------------------------------
+    def rate(self, message_id: int, rating: int, note: str = "") -> None:
+        self._write("INSERT OR REPLACE INTO feedback (message_id, rating, note, created, learned) VALUES (?, ?, ?, ?, 0)",
+                    (message_id, 1 if rating > 0 else -1, note[:500], time.time()))
+
+    def rating(self, message_id: int) -> dict | None:
+        rows = self._rows("SELECT * FROM feedback WHERE message_id = ?", (message_id,))
+        return dict(rows[0]) if rows else None
+
+    def ratings_for(self, chat_id: int) -> dict[int, dict]:
+        rows = self._rows("SELECT f.* FROM feedback f JOIN messages m ON m.id = f.message_id WHERE m.chat_id = ?",
+                          (chat_id,))
+        return {int(r["message_id"]): dict(r) for r in rows}
+
+    def feedback_to_learn(self, limit: int = 40) -> list[dict]:
+        """New ratings with the question and the answer (never answers holding private file details)."""
+        rows = self._rows(
+            "SELECT f.*, m.text AS answer, m.chat_id, m.private, "
+            "(SELECT u.text FROM messages u WHERE u.chat_id = m.chat_id AND u.id < m.id AND u.role = 'user' "
+            " ORDER BY u.id DESC LIMIT 1) AS question FROM feedback f JOIN messages m ON m.id = f.message_id "
+            "WHERE f.learned = 0 AND m.private = 0 ORDER BY f.created DESC LIMIT ?", (limit,))
+        return [dict(r) for r in rows]
+
+    def mark_learned(self, message_ids: list[int]) -> None:
+        with self._lock:
+            self._db.executemany("UPDATE feedback SET learned = 1 WHERE message_id = ?", [(i,) for i in message_ids])
+            self._db.commit()
+
+    def message(self, message_id: int):
+        rows = self._rows("SELECT * FROM messages WHERE id = ?", (message_id,))
+        if not rows:
+            return None
+        r = rows[0]
+        return Message(r["id"], r["chat_id"], r["role"], r["text"], r["created"], r["model"], bool(r["private"]),
+                       r["topic"])
+
     # -- small saved values (last daily run, repositories already suggested…) ----------------------
     def kv_get(self, key: str, default=None):
         rows = self._rows("SELECT value FROM kv WHERE key = ?", (key,))
@@ -275,6 +340,7 @@ class Store:
                 db.execute(f"DELETE FROM {table} WHERE chat_id = ?", (chat_id,))
             db.execute("DELETE FROM chat_segments WHERE chat_id = ?", (chat_id,))
             db.execute("DELETE FROM outputs WHERE chat_id = ?", (chat_id,))
+            db.execute("UPDATE reminders SET state = 'cancelled' WHERE chat_id = ?", (chat_id,))
             db.execute("DELETE FROM chats WHERE id = ?", (chat_id,))
             db.commit()
         return topics

@@ -175,6 +175,17 @@ class Orchestrator:
         self.prompts_dir = Path(prompts_dir) if prompts_dir else PACKAGE_PROMPTS
         self.skills = skills
 
+    def _style(self) -> str:
+        """The writing rules plus what the owner has taught Prometheus by rating answers."""
+        style = self._prompt("style")
+        try:
+            learned = [l for l in self._prompt("learned").splitlines() if l.startswith("- ")]
+        except OSError:
+            learned = []
+        if learned:
+            style += "\n\nWhat this owner has taught you (follow these, they win over the rules above):\n" + "\n".join(learned)
+        return style
+
     def _prompt(self, name: str) -> str:
         path = self.prompts_dir / f"{name}.md"
         if not path.exists():
@@ -249,7 +260,7 @@ class Orchestrator:
 
     def _plan(self, text: str, history: list[dict] | None = None, chat_id: int | None = None) -> Plan:
         agents = "\n".join(f"- {name}: {cls.description}" for name, cls in self.registry.items())
-        system = f"{self._prompt('planner')}\n\nWriting rules:\n{self._prompt('style')}\n\nAgents:\n{agents}"
+        system = f"{self._prompt('planner')}\n\nWriting rules:\n{self._style()}\n\nAgents:\n{agents}"
         catalog = self.skills.catalog_text() if self.skills else ""
         if catalog:
             system += ("\n\nSkills (how-to guides). For each step set \"skill\" to the name of the one guide that "
@@ -377,7 +388,7 @@ class Orchestrator:
         purpose = "private" if private else "combine"
         try:
             reply = self.router.complete(purpose, [{"role": "user", "content": f"Request: {text}\n\n{report}"}],
-                                         f"{self._prompt('combine')}\n\nWriting rules:\n{self._prompt('style')}\n\n{UNTRUSTED_RULE}",
+                                         f"{self._prompt('combine')}\n\nWriting rules:\n{self._style()}\n\n{UNTRUSTED_RULE}",
                                          max_tokens=3000)
             answer = reply.text.strip()
             written_by = f"{reply.provider} · {reply.model}"

@@ -57,6 +57,24 @@ class Services:
     voice: object = None
     updater: object = None
     daily: object = None
+    reminders: object = None
+
+    def start_rewrite(self, chat_id: int, message_id: int, note: str = "") -> threading.Thread:
+        """Rewrite an answer the owner marked 'could be better', in the background."""
+        from prometheus.learning import rewrite
+
+        def work():
+            try:
+                self.running[chat_id] = True
+                rewrite(self, message_id, note)
+            except Exception as e:      # no model right now: say so in the chat
+                self.store.add_message(chat_id, "assistant", f"I couldn't rewrite that just now ({e}).", "rewrite")
+            finally:
+                self.running.pop(chat_id, None)
+
+        thread = threading.Thread(target=work, daemon=True)
+        thread.start()
+        return thread
 
     def start_task(self, chat_id: int, text: str) -> threading.Thread:
         """Run a task in the background so the browser can keep polling."""
@@ -188,6 +206,17 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
     from prometheus.repo_of_day import RepoOfTheDay
 
     services.daily = DailyJobs(services)
+    from prometheus.reminders import ReminderClock
+
+    def _notify(text: str) -> None:
+        import sys
+
+        if sys.platform == "win32":
+            from prometheus.laptop import Laptop
+
+            Laptop().notify(text)
+
+    services.reminders = ReminderClock(services, notify=_notify)
     approvals.register("add_skill", lambda payload: RepoOfTheDay(services).add(payload))
     return services
 

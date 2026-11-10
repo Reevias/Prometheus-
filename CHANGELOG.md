@@ -1,6 +1,9 @@
 # Changelog
 
 ## 1.4
+- Alarms, timers and reminders: "alarm for 10 mins", "remind me at 6 to call mom", "every day at 8am tell me the weather". They ring with a Windows notification, are spoken if voice is on, appear in the chat, survive restarts (fired at the next start if missed), and are listed under "Coming up" with Cancel.
+- PDF output: the files agent writes PDFs from Markdown with headings, lists and clickable links (Word too). Roadmaps and long answers can be saved straight away, with research first if needed.
+- Learns how you like answers: 👍 / 👎 on every answer (👎 asks what should be better and rewrites it at once). Each night Prometheus turns the ratings into a short list of rules that every answer follows; the Memory page shows them, with Learn now, Reset and earlier versions to restore.
 - Repo of the day: every evening at 23:30 Prometheus reads github.com/trending, picks the new repository gaining the most stars, and puts it on the Approvals page with an Open link button. Approving adds it to the skill library at once (a guide plus its README kept as data); nothing is cloned or run. Nothing is hidden (the owner decides); repositories about tracking people, accounts or security are labelled "sensitive" on the card.
 - Updates run every evening after the repo of the day (or soon after start if the laptop was off), with no approval; "update yourself" in chat also runs straight away.
 - Outputs: under Notes, every file and folder a chat created, found, moved or renamed, with Open and Show in folder. Documents and media open in their app (notes from the vault open in Obsidian); code and other types are only shown in their folder, so nothing is run by accident.

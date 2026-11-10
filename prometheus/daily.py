@@ -32,6 +32,13 @@ class DailyJobs:
         store, s = self.services.store, self.services.settings
         store.kv_set("daily_last", self.clock())
         done = []
+        try:
+            from prometheus.learning import learn
+
+            lesson = learn(self.services) if getattr(self.services, "prompts", None) is not None else ""
+            done.append(f"Learned: {lesson}" if lesson else "Nothing new to learn.")
+        except Exception as e:               # no model available tonight: the ratings wait for tomorrow
+            done.append(f"Learning skipped: {type(e).__name__}")
         if getattr(s, "repo_of_day", True):
             try:
                 from prometheus.repo_of_day import RepoOfTheDay

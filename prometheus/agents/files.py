@@ -152,7 +152,8 @@ class Files(Agent):
         "folder or 'anywhere', kind = images/documents/videos/music/archives/code/pdf, modified = today/this week/"
         "this month/this year, min_size_mb), list (folder), info (path), copy (paths, to), move (paths, to), "
         "rename (path, new_name), recycle (paths; sends to the Recycle Bin), make_folder (path), create (path = new "
-        "file name with its type, e.g. Documents/notes.md, shopping.txt, plan.docx; content = the text to put in it, "
+        "file name with its type, e.g. Documents/notes.md, shopping.txt, plan.docx, roadmap.pdf; content = the full "
+        "text in Markdown (headings, lists, [links](https://…) stay clickable in PDFs), "
         "or $stepN.summary to save what an earlier step wrote; Markdown headings become Word headings). find returns "
         "'paths' that later steps can use as $stepN.paths. Every change can be undone on the History page.")
     tools = {"read_files", "move_files"}
@@ -362,9 +363,15 @@ class Files(Agent):
             path, suffix = path.with_suffix(".txt"), ".txt"
         if suffix in RUNNABLE:
             return StepResult("failed", f"Prometheus never creates {suffix} files: Windows runs them when opened.")
-        if suffix not in TEXT_TYPES and suffix != ".docx":
-            return StepResult("failed", f"I can create text, Markdown, CSV, code and Word (.docx) files, not {suffix}.")
-        data = word_document(content) if suffix == ".docx" else content.encode("utf-8")
+        if suffix not in TEXT_TYPES and suffix not in (".docx", ".pdf"):
+            return StepResult("failed", f"I can create text, Markdown, CSV, code, Word (.docx) and PDF files, "
+                                        f"not {suffix}.")
+        if suffix == ".pdf":
+            from prometheus.actions.pdf import markdown_pdf
+
+            data = markdown_pdf(content, path.stem)
+        else:
+            data = word_document(content) if suffix == ".docx" else content.encode("utf-8")
         if len(data) > MAX_NEW_FILE:
             return StepResult("failed", "That is too much text for one new file.")
         root = self._root(path, ctx)

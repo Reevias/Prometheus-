@@ -128,4 +128,4 @@ def test_daily_runs_repo_then_update():
     services = SimpleNamespace(store=store, settings=SimpleNamespace(repo_of_day=False),
                                updater=SimpleNamespace(check_once=lambda: calls.append("update") or ""))
     jobs = DailyJobs(services, clock=lambda: 1000.0)
-    assert jobs.run_once() == ["No update needed."] and calls == ["update"] and store.kv["daily_last"] == 1000.0
+    assert jobs.run_once() == ["Nothing new to learn.", "No update needed."] and calls == ["update"] and store.kv["daily_last"] == 1000.0

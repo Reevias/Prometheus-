@@ -183,3 +183,9 @@ ul.outputs li.gone .out-name { color: var(--text-3); text-decoration: line-throu
 html[data-theme="light"] .theme-toggle .i-sun { display: none; }
 html[data-theme="light"] .theme-toggle .i-moon { display: inline; }
 canvas.orb { background: var(--orb-backdrop); border-radius: 50%; }
+
+/* rating an answer: how Prometheus learns */
+.rate { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
+.rate button { padding: 3px 7px; color: var(--text-3); border-color: transparent; background: transparent; }
+.rate button:hover, .rate button.on { color: var(--text); border-color: var(--line-strong); }
+.rate .muted { font-size: 12px; }

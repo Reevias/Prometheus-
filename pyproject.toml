@@ -12,6 +12,7 @@ license = "MIT"
 license-files = ["LICENSE"]
 authors = [{name = "Reevias"}]
 dependencies = [
+    "fpdf2>=2.7",
     "fastapi>=0.115",
     "uvicorn>=0.30",
     "jinja2>=3.1",
@@ -28,7 +29,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "fpdf2>=2.7"]
+dev = ["pytest>=8"]
 desktop = ["pywebview>=5.0"]
 antigravity = ["google-genai>=1.0"]
 voice = ["vosk>=0.3.45", "faster-whisper>=1.1", "kokoro-onnx>=0.4", "sounddevice>=0.5", "numpy>=1.26"]
