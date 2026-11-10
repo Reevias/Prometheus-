@@ -22,6 +22,7 @@ PASSAGE_CHARS = 1000
 CHAT_PASSAGES = 3          # parts of earlier chats fetched per request (never whole chats)
 CHAT_PASSAGE_CHARS = 1200
 KNOWN_TOPICS = 40
+NAME_UNTIL = 2             # the planner may improve a chat's name during its first two requests
 HISTORY_CHARS = 1500
 SUMMARY_EVERY = 10
 MAX_REMEMBER = 3
@@ -32,7 +33,7 @@ PRIVATE_PLACEHOLDER = "(an answer with details from your files, written on your 
 
 PLAN_SCHEMA = {
     "type": "object",
-    "properties": {"answer": {"type": "string"}, "topic": {"type": "string"},
+    "properties": {"answer": {"type": "string"}, "topic": {"type": "string"}, "title": {"type": "string"},
                    "remember": {"type": "array", "items": {"type": "string"}},
                    "steps": {"type": "array", "items": {
         "type": "object",
@@ -52,7 +53,7 @@ PLAN_SCHEMA = {
         "required": ["id", "agent", "goal", "skill", "inputs", "depends_on"],
         "additionalProperties": False,
     }}},
-    "required": ["answer", "topic", "remember", "steps"],
+    "required": ["answer", "topic", "title", "remember", "steps"],
     "additionalProperties": False,
 }
 
@@ -68,6 +69,7 @@ class Plan:
     remember: list[str] = field(default_factory=list)  # facts the user asked to remember
     model: str = ""                                    # which model wrote the plan or answer
     topic: str = ""                                    # what the request is about, e.g. "weather"
+    title: str = ""                                    # a short name for the chat
 
 
 @dataclass
@@ -109,6 +111,7 @@ def validate_plan(raw: str, registry: dict) -> Plan:
         answer = str(data.get("answer") or "").strip()
         remember = [str(r) for r in (data.get("remember") or []) if isinstance(r, (str, int, float))]
         topic = str(data.get("topic") or "")
+        title = str(data.get("title") or "")
     except (ValueError, AttributeError, TypeError) as e:
         raise PlanError(f"The plan is not valid JSON with a 'steps' list ({e}).") from e
     if not isinstance(steps, list) or len(steps) > MAX_STEPS:
@@ -138,7 +141,7 @@ def validate_plan(raw: str, registry: dict) -> Plan:
                       "skill": str(s.get("skill") or "").strip(),
                       "inputs": inputs, "depends_on": list(deps)})
         seen.add(sid)
-    return Plan(clean, answer=answer, remember=remember, topic=topic)
+    return Plan(clean, answer=answer, remember=remember, topic=topic, title=title)
 
 
 def resolve_inputs(inputs: dict, results: dict[int, StepResult], private_steps: frozenset[int] = frozenset(),
@@ -252,6 +255,9 @@ class Orchestrator:
         system += ("\n\nTopic: set \"topic\" to 1 to 3 lowercase words naming what this request is about (for example "
                    "weather, taxes, python learning). Reuse one of these earlier topics when it fits: "
                    + (", ".join(known) if known else "(none yet)"))
+        system += ("\n\nTitle: set \"title\" to a short, specific name for this conversation (2 to 6 words, "
+                   "for example \"Delhi weather this week\" or \"Fix Python loop error\"; no quotes, no full stop). "
+                   "Name what the conversation is about, not the greeting.")
         system += f"\n\n{UNTRUSTED_RULE}"
         relevant = [h.text for h in self.store.recall(text, limit=8, kinds=("memory", "chat_note"))]
         newest = [m.text for m in self.store.memories()[-3:]]
@@ -277,6 +283,17 @@ class Orchestrator:
             plan = validate_plan(reply.text, self.registry)
         plan.model = label
         return plan
+
+    def _name_chat(self, chat_id: int, proposed: str) -> None:
+        """Give the chat the planner's name during its first two requests, unless the owner named it."""
+        from prometheus.memory.titles import clean_title
+
+        title = clean_title(proposed)
+        if not title or self.store.chat_named_by(chat_id) == "user":
+            return
+        asked = sum(1 for m in self.store.messages(chat_id) if m.role == "user")
+        if asked <= NAME_UNTIL and title != self.store.chat_title(chat_id):
+            self.store.rename_chat(chat_id, title)
 
     def _finish(self, chat_id: int, task_id: int, status: str, answer: str, model: str = "",
                 private: bool = False, topic: str = "") -> TaskOutcome:
@@ -304,6 +321,7 @@ class Orchestrator:
         topic = normalize_topic(plan.topic, [t["topic"] for t in self.store.topics(KNOWN_TOPICS)])
         if topic:
             self.store.set_message_topic(user_msg, topic)
+        self._name_chat(chat_id, plan.title)
         if not plan.steps:                        # no tools needed: the plan call already wrote the answer
             return self._finish(chat_id, task_id, "done", plan.answer, plan.model, topic=topic)
 

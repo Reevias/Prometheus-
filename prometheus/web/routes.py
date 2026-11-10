@@ -5,15 +5,19 @@ import re
 import time
 from dataclasses import replace
 from pathlib import Path
+from urllib.parse import unquote
 
 from fastapi import FastAPI, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from markupsafe import Markup, escape
 
 from prometheus.app import Services, apply_settings
 from prometheus.auth import verify_password
 from prometheus.catalog import catalog_updated, load_catalog
+from prometheus.memory.store import MARK_END, MARK_START
+from prometheus.memory.titles import PLACEHOLDERS, clean_title, quick_title
 from prometheus.web.render import render_message
 from prometheus.config import KEY_NAMES, delete_secret, save_settings, secrets_set, set_secret
 
@@ -24,6 +28,8 @@ REPO_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,38}/[A-Za-z0-9._-]{1,100}$
 def register_routes(app: FastAPI, services: Services) -> None:
     templates = Jinja2Templates(directory=str(WEB / "templates"))
     templates.env.filters["md"] = render_message
+    templates.env.filters["marked"] = lambda t: Markup(str(escape(t)).replace(MARK_START, "<mark>")
+                                                       .replace(MARK_END, "</mark>"))
     templates.env.filters["clock"] = lambda ts: time.strftime("%H:%M", time.localtime(ts)) if ts else ""
     templates.env.filters["day"] = lambda ts: time.strftime("%Y-%m-%d", time.localtime(ts)) if ts else ""
     app.mount("/static", StaticFiles(directory=str(WEB / "static")), name="static")
@@ -50,7 +56,8 @@ def register_routes(app: FastAPI, services: Services) -> None:
 
     def chat_page(request: Request, chat_id: int):
         busy = chat_id in services.running
-        return page(request, "chat.html", chats=store.chats(), chat_id=chat_id, messages=store.messages(chat_id),
+        return page(request, "chat.html", chats=store.chats(), chat_id=chat_id, chat_title=store.chat_title(chat_id),
+                    messages=store.messages(chat_id),
                     notes=store.chat_notes(chat_id), busy=busy, doing=current_step(chat_id) if busy else "")
 
     @app.get("/", response_class=HTMLResponse)
@@ -62,6 +69,13 @@ def register_routes(app: FastAPI, services: Services) -> None:
     @app.post("/chats")
     def new_chat():
         return RedirectResponse(f"/chats/{store.create_chat('New chat')}", status_code=303)
+
+    @app.get("/chats/search", response_class=HTMLResponse)
+    def search_chats(request: Request, q: str = "", current: int = 0):
+        q = q.strip()[:200]
+        if not q:
+            return page(request, "chat_list.html", chats=store.chats(), chat_id=current)
+        return page(request, "chat_search.html", hits=store.search_chats(q), q=q, chat_id=current)
 
     @app.get("/chats/{chat_id}", response_class=HTMLResponse)
     def show_chat(request: Request, chat_id: int):
@@ -79,11 +93,31 @@ def register_routes(app: FastAPI, services: Services) -> None:
         text = text.strip()[:4000]
         if text and chat_id not in services.running:
             title = dict(store.chats()).get(chat_id, "")
-            if title in ("New chat", "First chat") and not store.messages(chat_id):
-                short = " ".join(text.split())
-                store.rename_chat(chat_id, short[:45] + ("…" if len(short) > 45 else ""))
+            if title in PLACEHOLDERS and not store.messages(chat_id) and store.chat_named_by(chat_id) != "user":
+                store.rename_chat(chat_id, quick_title(text))      # the planner may improve it in a moment
             services.start_task(chat_id, text)
         return messages_partial(request, chat_id)
+
+    @app.post("/chats/{chat_id}/rename")
+    def rename(request: Request, chat_id: int, title: str = Form("")):
+        # The new name comes from the form, or from htmx's prompt box.
+        title = clean_title(title or unquote(request.headers.get("HX-Prompt", "")))
+        if title and chat_id in dict(store.chats()):
+            store.rename_chat(chat_id, title, by="user")
+            if services.archive:
+                services.archive.sync(chat_id)          # the chat's file gets the new name
+        return Response(status_code=204, headers={"HX-Refresh": "true"})
+
+    @app.post("/chats/{chat_id}/delete")
+    def delete_chat(request: Request, chat_id: int):
+        if chat_id in services.running:
+            return Response("Stop the running task first (STOP ALL), then delete the chat.", status_code=409)
+        if chat_id in dict(store.chats()):
+            topics = store.delete_chat(chat_id)
+            if services.archive:
+                services.archive.forget(chat_id, topics)
+            store.audit("user", "delete_chat", {"chat_id": chat_id})
+        return Response(status_code=204, headers={"HX-Redirect": "/"})
 
     @app.post("/chats/{chat_id}/notes", response_class=HTMLResponse)
     def add_note(request: Request, chat_id: int, text: str = Form(...)):

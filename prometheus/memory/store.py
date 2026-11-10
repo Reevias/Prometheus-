@@ -51,6 +51,7 @@ STOPWORDS = frozenset("a an and are as at be by for from has have i in is it me 
                       "what when where which who will with you your do does did can could should would please "
                       "about into than then them they their there here just some any".split())
 KIND_WEIGHT = {"memory": 1.5, "chat_note": 1.2, "agent_note": 1.0, "message": 0.8, "chunk": 1.0}
+MARK_START, MARK_END = "\ue000", "\ue001"
 RRF_K = 60                 # reciprocal rank fusion: how much a top rank counts over a lower one
 EMBED_BATCH = 16
 RECENCY_DAYS = 30.0
@@ -154,6 +155,8 @@ class Store:
             if "summary" not in {r["name"] for r in self._db.execute("PRAGMA table_info(chats)")}:
                 self._db.execute("ALTER TABLE chats ADD COLUMN summary TEXT NOT NULL DEFAULT ''")
                 self._db.execute("ALTER TABLE chats ADD COLUMN summary_upto INTEGER NOT NULL DEFAULT 0")
+            if "named_by" not in {r["name"] for r in self._db.execute("PRAGMA table_info(chats)")}:
+                self._db.execute("ALTER TABLE chats ADD COLUMN named_by TEXT NOT NULL DEFAULT 'auto'")
             if "private" not in {r["name"] for r in self._db.execute("PRAGMA table_info(messages)")}:
                 self._db.execute("ALTER TABLE messages ADD COLUMN private INTEGER NOT NULL DEFAULT 0")
                 # Answers saved before this existed may hold details from personal files: treat them all as private.
@@ -210,8 +213,65 @@ class Store:
     def set_summary(self, chat_id: int, text: str, upto: int) -> None:
         self._write("UPDATE chats SET summary = ?, summary_upto = ? WHERE id = ?", (text, upto, chat_id))
 
-    def rename_chat(self, chat_id: int, title: str) -> None:
-        self._write("UPDATE chats SET title = ? WHERE id = ?", (title, chat_id))
+    def rename_chat(self, chat_id: int, title: str, by: str = "auto") -> None:
+        """by='user' marks a name the owner chose: automatic naming never changes it again."""
+        self._write("UPDATE chats SET title = ?, named_by = ? WHERE id = ?", (title, by, chat_id))
+
+    def chat_named_by(self, chat_id: int) -> str:
+        rows = self._rows("SELECT named_by FROM chats WHERE id = ?", (chat_id,))
+        return rows[0]["named_by"] if rows else "auto"
+
+    def delete_chat(self, chat_id: int) -> list[str]:
+        """Remove a chat with everything that came from it. Returns the topics it touched."""
+        topics = sorted({s["topic"] for s in self.segments(chat_id=chat_id)})
+        for doc_id in self.document_keys(f"chat:{chat_id}:").values():
+            self.delete_document(doc_id)
+        with self._lock:
+            db = self._db
+            task_ids = [r["id"] for r in db.execute("SELECT id FROM tasks WHERE chat_id = ?", (chat_id,))]
+            for tid in task_ids:
+                notes = [r["id"] for r in db.execute("SELECT id FROM agent_notes WHERE task_id = ?", (tid,))]
+                db.executemany("DELETE FROM search_index WHERE kind = 'agent_note' AND ref_id = ?",
+                               [(n,) for n in notes])
+                db.execute("DELETE FROM agent_notes WHERE task_id = ?", (tid,))
+                db.execute("DELETE FROM steps WHERE task_id = ?", (tid,))
+            db.execute("DELETE FROM tasks WHERE chat_id = ?", (chat_id,))
+            for kind, table in (("message", "messages"), ("chat_note", "chat_notes")):
+                ids = [r["id"] for r in db.execute(f"SELECT id FROM {table} WHERE chat_id = ?", (chat_id,))]
+                db.executemany(f"DELETE FROM search_index WHERE kind = '{kind}' AND ref_id = ?", [(i,) for i in ids])
+                db.execute(f"DELETE FROM {table} WHERE chat_id = ?", (chat_id,))
+            db.execute("DELETE FROM chat_segments WHERE chat_id = ?", (chat_id,))
+            db.execute("DELETE FROM chats WHERE id = ?", (chat_id,))
+            db.commit()
+        return topics
+
+    def search_chats(self, query: str, limit: int = 20, per_chat: int = 3) -> list[dict]:
+        """Chats whose name or messages match, newest first, each with up to `per_chat` matching snippets.
+        Matched words sit between MARK_START and MARK_END (private-use characters, so user text can't fake them)."""
+        terms = self._terms(query)
+        found: dict[int, dict] = {}
+        if terms:
+            match = " OR ".join(f'"{t}"*' for t in terms)
+            try:
+                rows = self._rows(
+                    "SELECT m.id, m.chat_id, snippet(search_index, 2, char(57344), char(57345), '…', 10) AS snip "
+                    "FROM search_index s JOIN messages m ON m.id = s.ref_id "
+                    "WHERE search_index MATCH ? AND s.kind = 'message' ORDER BY bm25(search_index) LIMIT 300",
+                    (match,))
+            except sqlite3.OperationalError:
+                rows = []
+            for r in rows:
+                hit = found.setdefault(int(r["chat_id"]), {"chat_id": int(r["chat_id"]), "snippets": []})
+                if len(hit["snippets"]) < per_chat:
+                    hit["snippets"].append({"message_id": int(r["id"]), "text": r["snip"]})
+        like = "%" + query.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+        if query.strip():
+            for r in self._rows("SELECT id FROM chats WHERE title LIKE ? ESCAPE '\\'", (like,)):
+                found.setdefault(int(r["id"]), {"chat_id": int(r["id"]), "snippets": []})
+        titles = dict(self.chats())
+        out = [dict(h, title=titles[h["chat_id"]]) for h in found.values() if h["chat_id"] in titles]
+        out.sort(key=lambda h: h["chat_id"], reverse=True)
+        return out[:limit]
 
     def chats(self) -> list[tuple[int, str]]:
         return [(r["id"], r["title"]) for r in self._rows("SELECT id, title FROM chats ORDER BY id DESC")]

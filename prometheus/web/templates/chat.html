@@ -5,13 +5,18 @@
     <form hx-post="/chats" hx-swap="none" hx-on::after-request="location.href=event.detail.xhr.responseURL || '/'">
       <button type="submit">+ New chat</button>
     </form>
-    <ul class="plain">
-      {% for id, title in chats %}
-        <li class="{{ 'current' if id == chat_id }}"><a href="/chats/{{ id }}">{{ title }}</a></li>
-      {% endfor %}
-    </ul>
+    <input type="search" name="q" class="chat-search" placeholder="Search chats" autocomplete="off" aria-label="Search chats"
+           hx-get="/chats/search" hx-vals='{"current": {{ chat_id }}}' hx-trigger="input changed delay:300ms, search" hx-target="#chat-list">
+    <div id="chat-list">{% include "chat_list.html" %}</div>
   </section>
   <section class="panel chat">
+    <div class="chat-head">
+      <h2 title="{{ chat_title }}">{{ chat_title }}</h2>
+      <button type="button" hx-post="/chats/{{ chat_id }}/rename" hx-prompt="New name for this chat" hx-swap="none">Rename</button>
+      <button type="button" class="danger" hx-post="/chats/{{ chat_id }}/delete" hx-swap="none"
+              hx-confirm="Delete this chat and everything Prometheus kept from it? This can't be undone."
+              hx-on::after-request="if (event.detail.xhr.status === 409) alert(event.detail.xhr.responseText)">Delete</button>
+    </div>
     <div id="messages" hx-get="/chats/{{ chat_id }}/messages" hx-trigger="every 2s [document.visibilityState === 'visible']"
          hx-vals='js:{have: document.querySelectorAll("#messages .msg").length, busy: document.querySelector("#messages .working") ? 1 : 0}'
          hx-on::after-swap="this.scrollTop = this.scrollHeight">
@@ -24,7 +29,13 @@
                 onkeydown="if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); if (this.value.trim()) this.form.requestSubmit(); }"></textarea>
       <button type="submit" class="primary">Send</button>
     </form>
-    <script>document.getElementById('messages').scrollTop = 1e9;</script>
+    <script>
+      (function () {
+        const box = document.getElementById('messages');
+        const hit = location.hash && document.getElementById(location.hash.slice(1));
+        if (hit) { hit.scrollIntoView({block: 'center'}); hit.classList.add('found'); } else { box.scrollTop = 1e9; }
+      })();
+    </script>
   </section>
   <aside class="panel">
     <h3>Status</h3>

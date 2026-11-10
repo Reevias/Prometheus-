@@ -132,6 +132,18 @@ class ChatArchive:
             except OSError:      # a locked or read-only file never stops the chat
                 pass
 
+    def forget(self, chat_id: int, topics: list[str]) -> None:
+        """After a chat is deleted: remove its file and drop it from the topic files and the index."""
+        with self._lock:
+            try:
+                for old in (self.folder / "chats").glob(f"* ({chat_id}).md"):
+                    old.unlink(missing_ok=True)
+                for topic in topics:
+                    self._write_topic(topic)
+                self._write_index()
+            except OSError:
+                pass
+
     def sync_all(self) -> None:
         """Backfill: archive chats that have no segments yet (for example chats from before this version)."""
         done = {s["chat_id"] for s in self.store.segments()}

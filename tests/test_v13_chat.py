@@ -76,7 +76,7 @@ def test_chat_gets_its_title_from_the_first_message(app_client):
     client.post(f"/chats/{chat}/send", data={"text": "sort my Downloads folder and summarise any PDFs about taxes"},
                 headers=h)
     title = dict(services.store.chats())[chat]
-    assert title.startswith("sort my Downloads folder") and len(title) <= 48
+    assert title.startswith("Sort my Downloads folder") and len(title) <= 60
     client.post(f"/chats/{chat}/send", data={"text": "something else"}, headers=h)
     assert dict(services.store.chats())[chat] == title
 

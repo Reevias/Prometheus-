@@ -1,5 +1,5 @@
 {% for m in messages %}
-<div class="msg {{ m.role }}">
+<div class="msg {{ m.role }}" id="m{{ m.id }}">
   <div class="meta"><span class="who">{{ "You" if m.role == "user" else "Prometheus" }}</span><span class="when">{{ m.created|clock }}</span>
     {% if m.role != "user" %}<button type="button" class="copy" title="Copy this answer" onclick="navigator.clipboard.writeText(this.closest('.msg').querySelector('.body').innerText); this.textContent='Copied'">Copy</button>{% endif %}</div>
   <div class="body">{% if m.role == "user" %}{{ m.text }}{% else %}{{ m.text|md }}{% endif %}</div>

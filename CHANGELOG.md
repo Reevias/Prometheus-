@@ -1,6 +1,9 @@
 # Changelog
 
 ## 1.4
+- Smarter chat names: a quick name from the first message (greetings and "can you" dropped), then a short specific name from the planner during the first two requests. A name you choose is never changed.
+- Rename and delete chats (delete removes the chat's messages, notes, steps, memory parts and its file in the Prometheus memory folder; a running chat can't be deleted).
+- Search chats: the box above the chat list finds words in any message or chat name, shows the matching lines and jumps to the exact message.
 - Chat memory by topic: the planner names the topic of every request; each chat is split into topic parts, saved as chunks, and parts on the same topic are linked across chats. A new request fetches only the few matching parts of earlier chats, never whole chats; private answers are never fetched for cloud models.
 - Every chat is also saved as files in the "Prometheus memory" folder in your home folder (chats/, topics/, index.md). Agents can read it but never move or change it.
 - Memory page lists topics; each topic page links every chat about it.

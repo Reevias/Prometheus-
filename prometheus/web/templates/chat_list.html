@@ -1,0 +1,5 @@
+<ul class="plain">
+  {% for id, title in chats %}
+    <li class="{{ 'current' if id == chat_id }}"><a href="/chats/{{ id }}">{{ title }}</a></li>
+  {% endfor %}
+</ul>

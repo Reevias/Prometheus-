@@ -1,0 +1,8 @@
+<ul class="plain">
+  {% for h in hits %}
+    <li class="{{ 'current' if h.chat_id == chat_id }}"><a href="/chats/{{ h.chat_id }}">{{ h.title }}</a>
+      {% for sn in h.snippets %}<a class="snippet" href="/chats/{{ h.chat_id }}#m{{ sn.message_id }}">{{ sn.text | marked }}</a>{% endfor %}</li>
+  {% else %}
+    <li class="muted">No chat mentions "{{ q }}".</li>
+  {% endfor %}
+</ul>
