@@ -13,6 +13,7 @@ Design: [`docs/spec.md`](docs/spec.md) · Roadmap: [`docs/guide.md`](docs/guide.
 
 | Agent | Does |
 |---|---|
+| Files | Finds files anywhere you allow (your user folder plus drives you add in Settings) and copies, moves, renames or recycles them; every change can be undone |
 | File Sorter | Sorts a folder into Images/Year/Month, Documents, Music, Videos, Archives, Installers, Code, Duplicates |
 | Documents | Reads PDFs, Word and text files **on your laptop** and summarises the ones that match |
 | Research | Searches the web and writes a summary with sources (falls back to Wikipedia if search fails) |

@@ -251,7 +251,12 @@ def register_routes(app: FastAPI, services: Services) -> None:
         rows.sort(key=lambda r: (not r["supported"], not r["ready"], not r["key_set"], r["kind"] != "paid",
                                  not r["keyless"], r["name"].lower()))
         other_keys = [{"name": "GITHUB_TOKEN", "label": KEY_NAMES["GITHUB_TOKEN"], "set": have["GITHUB_TOKEN"]}]
+        from prometheus.safety.paths import extra_root_problem
+
+        bad_places = {f: extra_root_problem(f, services.home) for f in s.extra_folders}
+        bad_places = {f: why for f, why in bad_places.items() if why}
         return page(request, "settings.html", status_code, s=s, providers=rows, other_keys=other_keys,
+                    home=str(services.home), bad_places=bad_places,
                     budget=services.budget.state(), catalog_date=catalog_updated(), **extra)
 
     @app.get("/settings", response_class=HTMLResponse)
@@ -331,6 +336,35 @@ def register_routes(app: FastAPI, services: Services) -> None:
         apply_settings(services)
         services.router.clear_rest()
         store.audit("user", "provider", {"id": id, "enabled": bool(enabled)})
+        return settings_page(request, saved=True)
+
+    @app.post("/settings/places", response_class=HTMLResponse)
+    def add_place(request: Request, folder: str = Form(...), password: str = Form("")):
+        from prometheus.safety.paths import extra_root_problem
+
+        denied = _key_gate(request, password)
+        if denied is not None:
+            return denied
+        folder = folder.strip().strip('"')[:400]
+        problem = extra_root_problem(folder, services.home)
+        if problem:
+            return settings_page(request, 400, place_error=problem)
+        resolved = str(Path(folder).expanduser().resolve())
+        s = services.settings
+        if resolved not in s.extra_folders:
+            s.extra_folders.append(resolved)
+            save_settings(s)
+            apply_settings(services)
+            store.audit("user", "place_added", {"folder": resolved})
+        return settings_page(request, saved=True)
+
+    @app.post("/settings/places/remove", response_class=HTMLResponse)
+    def remove_place(request: Request, folder: str = Form(...)):
+        s = services.settings
+        s.extra_folders = [f for f in s.extra_folders if f != folder]
+        save_settings(s)
+        apply_settings(services)
+        store.audit("user", "place_removed", {"folder": folder})
         return settings_page(request, saved=True)
 
     @app.post("/settings/free", response_class=HTMLResponse)

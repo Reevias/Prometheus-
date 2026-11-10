@@ -116,6 +116,45 @@ class FileActions:
             return problem
         return self._relocate(run_id, "rename", path, path.with_name(new_name), root)
 
+    def copy(self, run_id: str, src: Path, dest_dir: Path, root: Path) -> ActionResult:
+        """Copy a file or folder into dest_dir (inside root). The source may be anywhere Prometheus may read.
+        Never overwrites: a clash gets a "(1)" name. Undo sends the copy to the Recycle Bin."""
+        root = Path(root).resolve()
+        try:
+            source = self.policy.check_read(src)
+            if Path(src).is_symlink():
+                raise PathBlocked(f"Links are never copied: {src}")
+            target_dir = self.policy.check_change(dest_dir, root)
+        except PathBlocked as e:
+            return ActionResult("skipped", str(e))
+        if not source.exists():
+            return ActionResult("skipped", "No longer exists.")
+        if source.is_dir() and (target_dir == source or source in target_dir.parents):
+            return ActionResult("skipped", "Can't copy a folder into itself.")
+        try:
+            self._make_dirs(run_id, root, target_dir)
+            target = _unique(target_dir / source.name)
+            if source.is_dir():
+                shutil.copytree(source, target, symlinks=True)
+            else:
+                shutil.copy2(source, target)
+        except OSError as e:
+            return ActionResult("skipped", f"Could not copy: {e.strerror or e}")
+        self.journal.record(run_id, {"op": "copy", "source": str(source), "to": str(target.relative_to(root)),
+                                     "undone": False})
+        return ActionResult("done", "Copied.", target)
+
+    def make_folder(self, run_id: str, folder: Path, root: Path) -> ActionResult:
+        root = Path(root).resolve()
+        try:
+            target = self.policy.check_change(folder, root)
+        except PathBlocked as e:
+            return ActionResult("skipped", str(e))
+        if target.exists():
+            return ActionResult("skipped", "That folder already exists.", target)
+        self._make_dirs(run_id, root, target)
+        return ActionResult("done", "Folder made.", target)
+
     def recycle(self, run_id: str, src: Path, root: Path, expected: FileStamp | None = None) -> ActionResult:
         root = Path(root).resolve()
         path, problem = self._precheck(src, root, expected)
@@ -134,6 +173,18 @@ class FileActions:
             return
         if entry["op"] == "recycle":
             report.problems.append(f"{entry['from']}: in Recycle Bin (restore it from there)")
+            return
+        if entry["op"] == "copy":       # undoing a copy: the copy goes to the Recycle Bin, the original stays
+            copy = (root / entry["to"]).resolve()
+            try:
+                self.policy.check_change(copy, root)
+                if copy.exists():
+                    self.trash(str(copy))
+            except (PathBlocked, OSError) as e:
+                report.problems.append(f"{entry['to']}: {e}")
+                return
+            entry["undone"] = True
+            report.restored += 1
             return
         current, original = (root / entry["to"]).resolve(), (root / entry["from"]).resolve()
         try:

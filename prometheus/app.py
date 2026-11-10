@@ -75,6 +75,7 @@ def apply_settings(services: "Services") -> None:
 
     s, router = services.settings, services.router
     services.budget.cap_usd = s.budget_usd
+    services.policy.extra_roots = usable_extra_folders(s, services.home)
     for name, model in (("openrouter", s.openrouter_model), ("anthropic", s.anthropic_model),
                         ("ollama", s.ollama_model)):
         provider = router.providers.get(name)
@@ -90,6 +91,13 @@ def apply_settings(services: "Services") -> None:
     for purpose, entries in build_routes(s).items():
         if purpose != "private" and any(e.split(":")[0] in router.providers for e in entries):
             router.routes[purpose] = entries
+
+
+def usable_extra_folders(settings: Settings, home: Path) -> list[Path]:
+    """The extra places from Settings that are still safe to use (checked again at every start)."""
+    from prometheus.safety.paths import extra_root_problem
+
+    return [Path(f).resolve() for f in settings.extra_folders if not extra_root_problem(f, home)]
 
 
 def build_services(settings: Settings, providers: dict[str, Provider] | None = None,
@@ -112,7 +120,8 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
     archive = ChatArchive(store, memory_folder)
     store.listeners.append(archive.sync)
     threading.Thread(target=archive.sync_all, daemon=True).start()   # file away chats from older versions
-    policy = PathPolicy(home=home, data_dir=data, code_dir=CODE_DIR, protected=(memory_folder,))
+    policy = PathPolicy(home=home, data_dir=data, code_dir=CODE_DIR, protected=(memory_folder,),
+                        extra_roots=usable_extra_folders(settings, home))
     journal = Journal(data / "journals")
     files = FileActions(policy, journal)
     permissions = Permissions({name: cls.tools for name, cls in REGISTRY.items()})
@@ -126,6 +135,9 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
     prompts = PromptStore(data / "prompts")
     patcher = Patcher(PACKAGE_DIR, approvals, data / "backups")
     approvals.register("apply_patch", patcher.apply)
+    from prometheus.agents.files import recycle_handler
+
+    approvals.register("recycle_files", lambda payload: recycle_handler(payload, policy, files))
     approvals.register("clone_repo", lambda payload: clone_handler(payload, data / "quarantine"))
     approvals.register("open_link", open_link_handler)
     approvals.register("open_local", lambda payload: open_local_handler(payload, policy))

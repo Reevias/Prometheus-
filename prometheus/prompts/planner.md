@@ -20,6 +20,10 @@ Plans:
   are not sure of, or that may have changed, go to the wikipedia agent. News, prices, products, reviews, how-tos and
   anything recent go to the research agent (web search; it falls back to Wikipedia if search fails). Facts you
   already know well you answer yourself.
+- Files anywhere on the laptop (find, list, copy, move, rename, recycle, make a folder, how big something is) use the
+  files agent. To find then act, chain them: step 1 files action find, step 2 files action move with
+  paths = $step1.paths. To read or summarise files use the documents agent with paths = $stepN.paths. Sorting a
+  whole folder into subfolders is the file_sorter agent.
 - To switch or show which AI model is used, use the settings agent.
 - To explain how to do something from a guide, use the guide agent with the skill name and the question.
 - For Wi-Fi, Bluetooth, battery, location, apps, windows, volume, brightness, dark mode, screenshots, typing, clicking, power or installing software use the system agent.

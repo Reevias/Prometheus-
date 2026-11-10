@@ -43,7 +43,7 @@
       {% if p.key_set %}<button type="submit" class="danger" hx-post="/settings/keys/delete" hx-target="body" formnovalidate>Remove</button>{% endif %}
     </form>
     {% endif %}
-    {% if p.toggle %}
+    {% if p.toggle and (p.keyless or p.key_set or p.off) %}
     <form hx-post="/settings/providers" hx-target="body"><input type="hidden" name="id" value="{{ p.id }}">
       <input type="hidden" name="enabled" value="{{ '1' if p.off else '' }}">
       <button type="submit" class="link">{{ "Switch it back on" if p.off else "Switch it off" }}</button></form>
@@ -51,6 +51,22 @@
   </div>
   {% endfor %}
   <p class="muted">Free AI list from the awesome-free-llm-apis project, updated {{ catalog_date }}. Free limits change often.</p>
+
+  <h3>Places Prometheus may use</h3>
+  {% if place_error %}<p class="error">{{ place_error }}</p>{% endif %}
+  <p class="muted">Prometheus can find, copy, move and rename files in these places, and every change can be undone on
+  the History page. System folders, browser data, passwords, <code>.ssh</code> and its own files stay blocked everywhere.</p>
+  <ul class="plain">
+    <li>{{ home }} <span class="muted">(your user folder, always)</span></li>
+    {% for f in s.extra_folders %}<li>{{ f }} {% if f in bad_places %}<span class="error">can't be used: {{ bad_places[f] }}</span>{% endif %}
+      <form hx-post="/settings/places/remove" hx-target="body" style="display:inline"><input type="hidden" name="folder" value="{{ f }}">
+      <button type="submit" class="danger">Remove</button></form></li>{% endfor %}
+  </ul>
+  <form class="row" hx-post="/settings/places" hx-target="body">
+    <input type="text" name="folder" placeholder="A drive or folder, for example D:\ or E:\Photos" required>
+    <input type="password" name="password" placeholder="Your Prometheus password" autocomplete="current-password" required>
+    <button type="submit">Add place</button>
+  </form>
 
   <h3>General</h3>
   <form hx-post="/settings" hx-target="body" class="panel" style="display:grid;gap:10px">
