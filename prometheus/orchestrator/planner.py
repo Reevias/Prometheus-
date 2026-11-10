@@ -153,6 +153,9 @@ def resolve_inputs(inputs: dict, results: dict[int, StepResult], private_steps: 
             sid, field = int(m.group(1)), m.group(2)
             if sid in private_steps and not allow_private:
                 raise PlanError(f"Step {sid} holds private data from your files; it can't be sent to the web or cloud.")
+            if sid in results and field == "summary" and field not in results[sid].data:
+                out[key] = results[sid].summary          # the text a step wrote, e.g. to save it in a file
+                continue
             if sid not in results or field not in results[sid].data:
                 raise PlanError(f"Step result {value} does not exist.")
             out[key] = results[sid].data[field]

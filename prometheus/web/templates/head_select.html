@@ -1,0 +1,8 @@
+<label class="head-pick" title="The lead AI plans tasks and answers simple questions itself. Pick a cheap one to save money.">
+  <span class="muted">Brain</span>
+  <select name="head" hx-post="/settings/head" hx-trigger="change" hx-swap="none">
+    <option value="" {{ "selected" if not head }}>Auto (best available)</option>
+    {% for entry, label in heads %}<option value="{{ entry }}" {{ "selected" if entry == head }}>{{ label }}</option>{% endfor %}
+    {% if head and head not in heads|map("first")|list %}<option value="{{ head }}" selected>{{ head }} (not set up now)</option>{% endif %}
+  </select>
+</label>

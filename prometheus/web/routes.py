@@ -17,6 +17,7 @@ from prometheus.app import Services, apply_settings
 from prometheus.auth import verify_password
 from prometheus.catalog import catalog_updated, load_catalog
 from prometheus.memory.store import MARK_END, MARK_START
+from prometheus.models.router import head_choices
 from prometheus.memory.titles import PLACEHOLDERS, clean_title, quick_title
 from prometheus.web.render import render_message
 from prometheus.config import KEY_NAMES, delete_secret, save_settings, secrets_set, set_secret
@@ -57,6 +58,7 @@ def register_routes(app: FastAPI, services: Services) -> None:
     def chat_page(request: Request, chat_id: int):
         busy = chat_id in services.running
         return page(request, "chat.html", chats=store.chats(), chat_id=chat_id, chat_title=store.chat_title(chat_id),
+                    heads=head_choices(services.router), head=services.settings.head_model,
                     messages=store.messages(chat_id),
                     notes=store.chat_notes(chat_id), busy=busy, doing=current_step(chat_id) if busy else "")
 
@@ -256,6 +258,7 @@ def register_routes(app: FastAPI, services: Services) -> None:
         bad_places = {f: extra_root_problem(f, services.home) for f in s.extra_folders}
         bad_places = {f: why for f, why in bad_places.items() if why}
         return page(request, "settings.html", status_code, s=s, providers=rows, other_keys=other_keys,
+                    heads=head_choices(services.router), head=s.head_model,
                     home=str(services.home), bad_places=bad_places,
                     budget=services.budget.state(), catalog_date=catalog_updated(), **extra)
 
@@ -366,6 +369,17 @@ def register_routes(app: FastAPI, services: Services) -> None:
         apply_settings(services)
         store.audit("user", "place_removed", {"folder": folder})
         return settings_page(request, saved=True)
+
+    @app.post("/settings/head")
+    def set_head(request: Request, head: str = Form("")):
+        head = head.strip()
+        if head and head not in {e for e, _ in head_choices(services.router)}:
+            return Response("That model isn't set up.", status_code=400)
+        services.settings.head_model = head
+        save_settings(services.settings)
+        apply_settings(services)
+        store.audit("user", "head_model", {"head": head or "auto"})
+        return Response(status_code=204)
 
     @app.post("/settings/free", response_class=HTMLResponse)
     def set_free(request: Request, on: str = Form("")):

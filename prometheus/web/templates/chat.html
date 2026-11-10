@@ -12,6 +12,7 @@
   <section class="panel chat">
     <div class="chat-head">
       <h2 title="{{ chat_title }}">{{ chat_title }}</h2>
+      {% include "head_select.html" %}
       <button type="button" hx-post="/chats/{{ chat_id }}/rename" hx-prompt="New name for this chat" hx-swap="none">Rename</button>
       <button type="button" class="danger" hx-post="/chats/{{ chat_id }}/delete" hx-swap="none"
               hx-confirm="Delete this chat and everything Prometheus kept from it? This can't be undone."

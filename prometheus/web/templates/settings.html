@@ -9,6 +9,12 @@
   another AI by itself if one is busy or out of credit. Keys stay on this laptop and are never shown again; adding or
   removing one needs your Prometheus password. Your personal files only ever go to the local model.</p>
   <p><strong>Working now:</strong> {% for p in providers if p.ready %}{{ p.name }}{{ ", " if not loop.last }}{% else %}<span class="muted">nothing yet. Add a key below, or start Ollama.</span>{% endfor %}</p>
+  <div class="panel" style="display:grid;gap:8px">
+    {% include "head_select.html" %}
+    <p class="muted">The brain plans every task and answers simple questions by itself. Pick Claude Haiku or a free AI to
+    keep simple questions cheap. If the one you pick is down, Prometheus only falls back to free or local AIs, never to a
+    paid one. Research summaries and file reading are not affected.</p>
+  </div>
   <form class="row" hx-post="/settings/free" hx-target="body">
     <label class="check"><input type="checkbox" name="on" value="1" {{ "checked" if s.free_no_key }} onchange="this.form.requestSubmit()">
       Also use free AIs that need no key (they may keep what you send them; never used for your files)</label>

@@ -23,7 +23,9 @@ Plans:
 - Files anywhere on the laptop (find, list, copy, move, rename, recycle, make a folder, how big something is) use the
   files agent. To find then act, chain them: step 1 files action find, step 2 files action move with
   paths = $step1.paths. To read or summarise files use the documents agent with paths = $stepN.paths. Sorting a
-  whole folder into subfolders is the file_sorter agent.
+  whole folder into subfolders is the file_sorter agent. To make a new file (notes, a list, a plan, code, a Word
+  document) use the files agent with action create, path = the name with its type (e.g. Documents/plan.docx) and
+  content = the full text; to save what an earlier step found, content = $stepN.summary.
 - To switch or show which AI model is used, use the settings agent.
 - To explain how to do something from a guide, use the guide agent with the skill name and the question.
 - For Wi-Fi, Bluetooth, battery, location, apps, windows, volume, brightness, dark mode, screenshots, typing, clicking, power or installing software use the system agent.

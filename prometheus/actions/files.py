@@ -144,6 +144,23 @@ class FileActions:
                                      "undone": False})
         return ActionResult("done", "Copied.", target)
 
+    def create(self, run_id: str, path: Path, data: bytes, root: Path) -> ActionResult:
+        """Write a NEW file. Never overwrites: a clash gets a "(1)" name. Undo sends it to the Recycle Bin."""
+        root = Path(root).resolve()
+        try:
+            target = self.policy.check_change(path, root)
+        except PathBlocked as e:
+            return ActionResult("skipped", str(e))
+        try:
+            self._make_dirs(run_id, root, target.parent)
+            target = _unique(target)
+            with open(target, "xb") as f:          # "x": fails rather than replace anything
+                f.write(data)
+        except OSError as e:
+            return ActionResult("skipped", f"Could not write the file: {e.strerror or e}")
+        self.journal.record(run_id, {"op": "create", "to": str(target.relative_to(root)), "undone": False})
+        return ActionResult("done", "Created.", target)
+
     def make_folder(self, run_id: str, folder: Path, root: Path) -> ActionResult:
         root = Path(root).resolve()
         try:
@@ -174,7 +191,7 @@ class FileActions:
         if entry["op"] == "recycle":
             report.problems.append(f"{entry['from']}: in Recycle Bin (restore it from there)")
             return
-        if entry["op"] == "copy":       # undoing a copy: the copy goes to the Recycle Bin, the original stays
+        if entry["op"] in ("copy", "create"):   # undo: the copy or new file goes to the Recycle Bin
             copy = (root / entry["to"]).resolve()
             try:
                 self.policy.check_change(copy, root)

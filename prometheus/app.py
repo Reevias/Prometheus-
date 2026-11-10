@@ -75,6 +75,7 @@ def apply_settings(services: "Services") -> None:
 
     s, router = services.settings, services.router
     services.budget.cap_usd = s.budget_usd
+    router.head = s.head_model
     services.policy.extra_roots = usable_extra_folders(s, services.home)
     for name, model in (("openrouter", s.openrouter_model), ("anthropic", s.anthropic_model),
                         ("ollama", s.ollama_model)):
@@ -132,6 +133,7 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
         router = build_router(settings, budget, killswitch)
     else:
         router = ModelRouter(providers, settings.routes, budget, killswitch)
+    router.head = settings.head_model
     prompts = PromptStore(data / "prompts")
     patcher = Patcher(PACKAGE_DIR, approvals, data / "backups")
     approvals.register("apply_patch", patcher.apply)

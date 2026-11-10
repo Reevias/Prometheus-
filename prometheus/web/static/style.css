@@ -143,3 +143,5 @@ canvas.orb { display: block; pointer-events: none; }
 .orb-login { width: min(64vh, 92vw, 560px); aspect-ratio: 1; }
 .orb-hero { width: min(300px, 70vw); aspect-ratio: 1; margin: -24px auto -16px; }
 .orb-side { width: 100%; max-width: 200px; aspect-ratio: 1; margin: -12px auto 0; }
+.head-pick { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; }
+.head-pick select { max-width: 240px; font-size: 13px; padding: 6px 8px; }

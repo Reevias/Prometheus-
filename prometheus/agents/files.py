@@ -20,7 +20,15 @@ from prometheus.agents.file_sorter import TYPES, is_system_file
 from prometheus.safety.paths import PathBlocked, PathPolicy
 
 READ_ACTIONS = {"find", "list", "info"}
-CHANGE_ACTIONS = {"copy", "move", "rename", "recycle", "make_folder"}
+CHANGE_ACTIONS = {"copy", "move", "rename", "recycle", "make_folder", "create"}
+MAX_NEW_FILE = 2_000_000
+TEXT_TYPES = {".txt", ".md", ".markdown", ".csv", ".tsv", ".json", ".html", ".htm", ".css", ".xml", ".yaml", ".yml",
+              ".ini", ".toml", ".log", ".py", ".java", ".c", ".cpp", ".h", ".cs", ".go", ".rs", ".ts", ".sql", ".tex",
+              ".srt", ".rtf"}
+# Types Windows runs when they are double-clicked: Prometheus never writes them.
+RUNNABLE = {".exe", ".bat", ".cmd", ".ps1", ".psm1", ".vbs", ".vbe", ".js", ".jse", ".wsf", ".wsh", ".msi", ".msp",
+            ".scr", ".com", ".lnk", ".url", ".reg", ".hta", ".cpl", ".pif", ".jar", ".appx", ".msix", ".sh", ".dll",
+            ".sys", ".inf", ".application", ".gadget", ".scf", ".library-ms"}
 FIND_LIMIT = 50
 LIST_LIMIT = 200
 SCAN_ENTRIES = 300_000          # stop a search after this many files and folders...
@@ -142,7 +150,9 @@ class Files(Agent):
         "folders added in Settings). Actions: find (query = words in the name or a pattern like *.pdf, where = "
         "folder or 'anywhere', kind = images/documents/videos/music/archives/code/pdf, modified = today/this week/"
         "this month/this year, min_size_mb), list (folder), info (path), copy (paths, to), move (paths, to), "
-        "rename (path, new_name), recycle (paths; sends to the Recycle Bin), make_folder (path). find returns "
+        "rename (path, new_name), recycle (paths; sends to the Recycle Bin), make_folder (path), create (path = new "
+        "file name with its type, e.g. Documents/notes.md, shopping.txt, plan.docx; content = the text to put in it, "
+        "or $stepN.summary to save what an earlier step wrote; Markdown headings become Word headings). find returns "
         "'paths' that later steps can use as $stepN.paths. Every change can be undone on the History page.")
     tools = {"read_files", "move_files"}
     private_outputs = True
@@ -332,6 +342,33 @@ class Files(Agent):
                                                                                                          root))])
         return self._report("Made", done, problems)
 
+    def _create(self, inputs: dict, ctx: AgentContext) -> StepResult:
+        raw = str(inputs.get("path") or inputs.get("name") or "").strip()
+        content = inputs.get("content")
+        content = "" if content is None else (content if isinstance(content, str) else str(content))
+        if not raw:
+            return StepResult("failed", "Say the new file's name, for example Documents/notes.md.")
+        if len(Path(raw).parts) == 1:              # just a name: it goes in Documents
+            raw = "Documents/" + raw
+        path = resolve_place(raw, ctx.home)
+        suffix = path.suffix.lower()
+        if not suffix:
+            path, suffix = path.with_suffix(".txt"), ".txt"
+        if suffix in RUNNABLE:
+            return StepResult("failed", f"Prometheus never creates {suffix} files: Windows runs them when opened.")
+        if suffix not in TEXT_TYPES and suffix != ".docx":
+            return StepResult("failed", f"I can create text, Markdown, CSV, code and Word (.docx) files, not {suffix}.")
+        data = word_document(content) if suffix == ".docx" else content.encode("utf-8")
+        if len(data) > MAX_NEW_FILE:
+            return StepResult("failed", "That is too much text for one new file.")
+        root = self._root(path, ctx)
+        work = [(path.name, lambda run: ctx.files.create(run, path, data, root))]
+        done, problems = self._run_changes(ctx, root, work)
+        result = self._report("Created", done, problems)
+        made = [d.split(" → ", 1)[1] for d in done if " → " in d]
+        result.data["paths"] = made
+        return result
+
     def _recycle(self, inputs: dict, ctx: AgentContext) -> StepResult:
         sources = [str(resolve_place(p, ctx.home)) for p in _paths(inputs.get("paths") or inputs.get("path"))]
         if not sources:
@@ -345,6 +382,29 @@ class Files(Agent):
             return StepResult("waiting_approval", f"Sending {len(sources)} items to the Recycle Bin is waiting for "
                                                   "your approval on the Approvals page.")
         return recycle_paths(sources, ctx.policy, ctx.files, ctx.killswitch)
+
+
+def word_document(text: str) -> bytes:
+    """A .docx from plain text or simple Markdown: # headings, - bullets, 1. numbered items, **bold** stays as text."""
+    import io
+
+    import docx
+
+    doc = docx.Document()
+    for line in (text or "").splitlines():
+        stripped = line.strip()
+        heading = re.match(r"^(#{1,4})\s+(.*)$", stripped)
+        if heading:
+            doc.add_heading(heading.group(2).strip(), level=len(heading.group(1)))
+        elif re.match(r"^[-*•]\s+", stripped):
+            doc.add_paragraph(re.sub(r"^[-*•]\s+", "", stripped), style="List Bullet")
+        elif re.match(r"^\d+[.)]\s+", stripped):
+            doc.add_paragraph(re.sub(r"^\d+[.)]\s+", "", stripped), style="List Number")
+        elif stripped:
+            doc.add_paragraph(stripped.replace("**", ""))
+    out = io.BytesIO()
+    doc.save(out)
+    return out.getvalue()
 
 
 def recycle_paths(paths: list[str], policy: PathPolicy, files: FileActions, killswitch=None) -> StepResult:

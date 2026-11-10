@@ -19,6 +19,7 @@ from prometheus.safety.budget import Budget, BudgetExceeded
 from prometheus.safety.killswitch import KillSwitch
 
 REST_SECONDS = 300
+HEAD_PURPOSES = ("plan", "combine")       # the lead AI: plans tasks, answers simple questions, writes final answers
 
 
 def split_entry(entry: str) -> tuple[str, str | None]:
@@ -35,6 +36,7 @@ class ModelRouter:
         self.killswitch = killswitch
         self.clock = clock
         self._resting: dict[str, tuple[float, str]] = {}
+        self.head = ""          # the lead AI chosen by hand ("" = follow the routes)
         for entry in routes.get("private", []):
             p = providers.get(split_entry(entry)[0])
             if p is None or not p.is_local:
@@ -57,12 +59,28 @@ class ModelRouter:
                         "reason": reason if resting else "", "minutes_left": int((until - now) // 60) + 1 if resting else 0})
         return out
 
+    def is_free(self, entry: str) -> bool:
+        name, model = split_entry(entry)
+        p = self.providers.get(name)
+        if p is None:
+            return False
+        model = model or getattr(p, "model", "") or ""
+        return bool(p.is_local or getattr(p, "is_free", False) or (name == "openrouter" and model.endswith(":free")))
+
+    def entries_for(self, purpose: str) -> list[str]:
+        """The order to try. With a hand-picked lead AI, planning and answers use it first and then only free or
+        local models, so a choice made to save money never falls back to a paid one."""
+        route = list(self.routes.get(purpose, []))
+        if self.head and purpose in HEAD_PURPOSES:
+            return [self.head] + [e for e in route if e != self.head and self.is_free(e)]
+        return route
+
     def complete(self, purpose: str, messages: list[dict], system: str, json_schema: dict | None = None,
                  max_tokens: int = 4096) -> Reply:
         self.killswitch.check()
         errors: list[str] = []
         over_budget = False
-        for entry in self.routes.get(purpose, []):
+        for entry in self.entries_for(purpose):
             name, model = split_entry(entry)
             provider = self.providers.get(name)
             if provider is None or not provider.available():
@@ -99,6 +117,30 @@ class ModelRouter:
 
 
 CLOUD_PURPOSES = ("plan", "combine", "research")
+CLAUDE_CHOICES = (("claude-opus-5-5", "Claude Opus 5.5 (smartest, $4/$20 per million tokens)"),
+                  ("claude-sonnet-5-5", "Claude Sonnet 5.5 ($2/$10 per million tokens)"),
+                  ("claude-haiku-5-5", "Claude Haiku 5.5 (cheap, $0.10/$0.50 per million tokens)"))
+
+
+def head_choices(router: "ModelRouter") -> list[tuple[str, str]]:
+    """Lead AIs that can be picked right now: (route entry, label). Only ones that are set up appear."""
+    out = []
+    for name, p in router.providers.items():
+        if not p.available():
+            continue
+        model = getattr(p, "model", "") or ""
+        entry = f"{name}:{model}" if model else name
+        if name == "anthropic":
+            out += [(f"anthropic:{m}", label) for m, label in CLAUDE_CHOICES]
+        elif name == "ollama":
+            out.append((entry, f"On this laptop: {model or 'local model'} (free, private, slower)"))
+        elif name == "openrouter":
+            out.append((entry, f"OpenRouter: {model or 'default'}"))
+        else:
+            info = getattr(p, "info", None)
+            label = info.name if info else name
+            out.append((entry, f"{label}: {model} (free)" if model else f"{label} (free)"))
+    return out
 
 
 def provider_on(info, settings: Settings) -> bool:
