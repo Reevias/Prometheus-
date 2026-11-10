@@ -25,6 +25,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "fpdf2>=2.7"]
+desktop = ["pywebview>=5.0"]
 
 [project.scripts]
 prometheus = "prometheus.cli:main"

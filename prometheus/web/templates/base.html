@@ -9,17 +9,18 @@
 </head>
 <body hx-headers='{"X-CSRF-Token": "{{ csrf }}"}'>
 <header>
-  <strong>Prometheus</strong>
+  <span class="brand"><span id="core" hx-get="/status?core=1" hx-trigger="load, every 2s [document.visibilityState === 'visible']" hx-swap="innerHTML"><span class="core"></span></span>Prometheus</span>
   <nav>
-    <a href="/">Chat</a><a href="/approvals">Approvals</a><a href="/memory">Memory</a>
-    <a href="/history">History</a><a href="/settings">Settings</a>
+    {% for href, label in [("/", "Chat"), ("/approvals", "Approvals"), ("/memory", "Memory"), ("/history", "History"), ("/settings", "Settings")] %}
+    <a href="{{ href }}" {% if nav == href %}aria-current="page"{% endif %}>{{ label }}</a>
+    {% endfor %}
   </nav>
   <span class="spacer"></span>
-  <span id="status-mini" hx-get="/status?mini=1" hx-trigger="load, every 3s"></span>
+  <span id="status-mini" hx-get="/status?mini=1" hx-trigger="load, every 4s [document.visibilityState === 'visible']"></span>
   {% if stopped %}
     <button class="ok" hx-post="/kill/reset" hx-swap="none" hx-on::after-request="location.reload()">Resume</button>
   {% else %}
-    <button class="danger" hx-post="/kill" hx-swap="none" hx-on::after-request="location.reload()">STOP ALL</button>
+    <button class="danger" hx-post="/kill" hx-swap="none" hx-on::after-request="location.reload()">Stop all</button>
   {% endif %}
   <button hx-post="/logout" hx-swap="none" hx-on::after-request="location.href='/login'">Log out</button>
 </header>

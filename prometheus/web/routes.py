@@ -22,7 +22,8 @@ def register_routes(app: FastAPI, services: Services) -> None:
     store = services.store
 
     def page(request: Request, name: str, status_code: int = 200, **ctx):
-        base = {"csrf": getattr(request.state, "csrf", ""), "stopped": services.killswitch.is_set}
+        base = {"csrf": getattr(request.state, "csrf", ""), "stopped": services.killswitch.is_set,
+                "nav": "/" if request.url.path.startswith("/chats") else request.url.path}
         return templates.TemplateResponse(request, name, {**base, **ctx}, status_code=status_code)
 
     def chat_page(request: Request, chat_id: int):
@@ -61,9 +62,9 @@ def register_routes(app: FastAPI, services: Services) -> None:
         return page(request, "notes.html", notes=store.chat_notes(chat_id))
 
     @app.get("/status", response_class=HTMLResponse)
-    def status(request: Request, chat: int | None = None, mini: int = 0):
+    def status(request: Request, chat: int | None = None, mini: int = 0, core: int = 0):
         task = store.latest_task(chat) if chat else {}
-        return page(request, "status.html", mini=bool(mini), task=task,
+        return page(request, "status.html", mini=bool(mini), core=bool(core), busy=bool(services.running), task=task,
                     steps=store.steps(task["id"]) if task else [], budget=services.budget.state(),
                     pending=len(store.approvals()), models=services.router.status_detail() if not mini else [])
 

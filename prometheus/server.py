@@ -18,9 +18,10 @@ OPEN_PATHS = ("/login",)
 
 def _login_page(message: str = "") -> str:
     note = f'<p class="error">{html.escape(message)}</p>' if message else ""
-    return ("<!doctype html><html><head><meta charset='utf-8'><title>Prometheus login</title>"
+    return ("<!doctype html><html lang='en'><head><meta charset='utf-8'>"
+            "<meta name='viewport' content='width=device-width, initial-scale=1'><title>Prometheus</title>"
             "<link rel='stylesheet' href='/static/style.css'></head><body class='login'>"
-            "<form method='post' action='/login'><h1>Prometheus</h1>" + note +
+            "<form method='post' action='/login'><h1><span class='core'></span>Prometheus</h1>" + note +
             "<label>Password <input type='password' name='password' autofocus required></label>"
             "<button type='submit'>Log in</button></form></body></html>")
 

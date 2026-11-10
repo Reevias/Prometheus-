@@ -13,6 +13,7 @@ Design: [`docs/spec.md`](docs/spec.md) · Roadmap: [`docs/guide.md`](docs/guide.
 | Documents | Reads PDFs, Word and text files **on your laptop** and summarises the ones that match |
 | Research | Searches the web and writes a summary with sources |
 | Repo Scout | Finds GitHub projects for a need; clones only after you approve, and never runs them |
+| Opener | Plays a YouTube video (and can summarise it from its captions), opens a GitHub repo, a website, or a file in its normal app. Never runs programs |
 
 Try: *"sort my Downloads folder and summarise any PDFs about taxes"*.
 
@@ -41,6 +42,15 @@ prometheus serve
 
 Open **http://127.0.0.1:8000** and log in. Stop it with **Ctrl+C**.
 
+### Desktop window
+
+To run Prometheus in its own window instead of a browser tab (uses the web engine built into Windows):
+
+```powershell
+pip install -e ".[desktop]"
+prometheus app
+```
+
 Check your setup any time:
 
 ```powershell
@@ -49,13 +59,20 @@ prometheus doctor
 
 ## AI models
 
-- **Local (free, private):** start Ollama and keep `qwen3.5:2b` pulled. Personal files only ever go to local models.
-- **Claude (later):** set your key, then restart Prometheus:
-  `setx ANTHROPIC_API_KEY "your-key"` (close and reopen PowerShell). Use prepaid credit with auto-reload off,
-  and set a spending cap in **Settings**.
-- **Gemini 4 Argon:** coming in v1.1.
+Add keys in **Settings → API keys** (paste the key, type your Prometheus password, Save). Keys stay on this
+laptop, are never shown again, and work straight away.
 
-Without any model, file sorting by rules still works; planning needs Ollama or a key.
+- **OpenRouter (main brain for now):** one key, many models. Pick the model names in Settings
+  (the default `openrouter/auto` lets OpenRouter choose).
+- **Local (free, private):** start Ollama and keep `qwen3.5:2b` pulled. Personal files only ever go to local models.
+- **Claude:** add an Anthropic key later. Use prepaid credit with auto-reload off.
+- **Gemini 4 Argon:** coming later.
+
+Prometheus switches models by itself: if one is down, out of credit or rate-limited it rests for 5 minutes and
+the next one takes over; when the spending cap is reached it drops to free and local models. Each answer shows
+which model wrote it.
+
+Without any model, file sorting by rules still works; planning needs a model.
 
 ## Safety
 
@@ -65,6 +82,8 @@ Without any model, file sorting by rules still works; planning needs Ollama or a
   are always blocked.
 - Text from files and web pages is treated as data, never as instructions.
 - Web requests can't reach your own network or computer.
+- YouTube and GitHub links open straight away; any other website or any file on your laptop waits for your
+  approval; programs and scripts are never opened.
 - Cloning repos and self-edits wait on the **Approvals** page. The safety code itself can't be self-edited.
 - **STOP ALL** at the top of every page stops every agent at once.
 

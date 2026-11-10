@@ -11,18 +11,18 @@
       {% endfor %}
     </ul>
   </section>
-  <section class="panel">
-    <div id="messages" hx-get="/chats/{{ chat_id }}/messages" hx-trigger="every 2s">
+  <section class="panel chat">
+    <div id="messages" hx-get="/chats/{{ chat_id }}/messages" hx-trigger="every 2s [document.visibilityState === 'visible']">
       {% include "messages.html" %}
     </div>
-    <form class="row" hx-post="/chats/{{ chat_id }}/send" hx-target="#messages" hx-on::after-request="this.reset()">
-      <input type="text" name="text" placeholder="Tell Prometheus what to do…" required autocomplete="off">
-      <button type="submit">Send</button>
+    <form class="row command" hx-post="/chats/{{ chat_id }}/send" hx-target="#messages" hx-on::after-request="this.reset()">
+      <input type="text" name="text" placeholder="Tell Prometheus what to do" required autocomplete="off" autofocus>
+      <button type="submit" class="primary">Send</button>
     </form>
   </section>
   <aside class="panel">
     <h3>Status</h3>
-    <div hx-get="/status?chat={{ chat_id }}" hx-trigger="load, every 2s"></div>
+    <div hx-get="/status?chat={{ chat_id }}" hx-trigger="load, every 2s [document.visibilityState === 'visible']"></div>
     <h3>Notes for this chat</h3>
     <ul class="plain" id="notes">{% for n in notes %}<li>{{ n.text }}</li>{% endfor %}</ul>
     <form class="row" hx-post="/chats/{{ chat_id }}/notes" hx-target="#notes" hx-on::after-request="this.reset()">

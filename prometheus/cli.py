@@ -1,4 +1,4 @@
-"""Command line: prometheus init | serve | doctor."""
+"""Command line: prometheus init | serve | app | doctor."""
 from __future__ import annotations
 
 import argparse
@@ -52,6 +52,22 @@ def _serve(args) -> int:
     return 0
 
 
+def _app(args) -> int:
+    settings = load_settings()
+    if not settings.password_hash:
+        print("No password yet. Run:  prometheus init")
+        return 2
+    try:
+        import webview  # noqa: F401
+    except ImportError:
+        print('The desktop window needs one extra package. Run:  pip install -e ".[desktop]"')
+        print("Until then, use:  prometheus serve")
+        return 2
+    from prometheus.desktop import run_desktop
+
+    return run_desktop(settings)
+
+
 def _doctor(args) -> int:
     from prometheus.memory.store import Store
     from prometheus.models.router import build_router
@@ -79,9 +95,10 @@ def main(argv: list[str] | None = None) -> int:
     p_serve = sub.add_parser("serve", help="start the browser app")
     p_serve.add_argument("--host")
     p_serve.add_argument("--port", type=int)
+    sub.add_parser("app", help="open Prometheus in its own desktop window")
     sub.add_parser("doctor", help="check the setup")
     args = parser.parse_args(argv)
-    return {"init": _init, "serve": _serve, "doctor": _doctor}[args.command](args)
+    return {"init": _init, "serve": _serve, "app": _app, "doctor": _doctor}[args.command](args)
 
 
 if __name__ == "__main__":

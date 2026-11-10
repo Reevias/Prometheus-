@@ -9,8 +9,8 @@
     <label>Claude model <input name="anthropic_model" value="{{ s.anthropic_model }}"></label>
     <label>OpenRouter model for planning and answers <input name="openrouter_model" value="{{ s.openrouter_model }}"></label>
     <label>OpenRouter cheaper model for research (optional) <input name="openrouter_fast_model" value="{{ s.openrouter_fast_model }}"></label>
-    <label><input type="checkbox" name="allow_lan" value="1" {{ "checked" if s.allow_lan }}> Allow other devices on my Wi-Fi (needs restart, keep a strong password)</label>
-    <button type="submit">Save</button>
+    <label class="check"><input type="checkbox" name="allow_lan" value="1" {{ "checked" if s.allow_lan }}> Allow other devices on my Wi-Fi (needs restart, keep a strong password)</label>
+    <button type="submit" class="primary">Save settings</button>
   </form>
   <h3>API keys</h3>
   {% if key_error %}<p class="error">{{ key_error }}</p>{% endif %}{% if key_saved %}<p class="status-done">{{ key_saved }} key saved.</p>{% endif %}
