@@ -222,6 +222,11 @@ class GitHubAgent(Agent):
             if other and action in WRITE_ACTIONS:
                 return StepResult("failed", "Prometheus only changes its own repository. For other repositories it "
                                             "can read: about, status, read_file, list_issues, list_prs.")
+            if action == "update_self":                  # updating needs no approval (the owner's choice)
+                ctx.use(self.name, "github_read")
+                text = update_self(self.code_dir)
+                ctx.store.audit(self.name, "update_self", {})
+                return StepResult("done", text)
             if action in WRITE_ACTIONS:
                 ctx.use(self.name, "github_write")
                 shown = {k: str(inputs.get(k, ""))[:8000] for k in ("title", "body", "number", "path", "content")

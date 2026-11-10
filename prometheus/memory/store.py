@@ -43,6 +43,7 @@ CREATE INDEX IF NOT EXISTS chat_segments_topic ON chat_segments (topic);
 CREATE TABLE IF NOT EXISTS outputs (id INTEGER PRIMARY KEY, chat_id INTEGER NOT NULL, path TEXT NOT NULL,
     kind TEXT NOT NULL, is_dir INTEGER NOT NULL, created REAL NOT NULL);
 CREATE INDEX IF NOT EXISTS outputs_chat ON outputs (chat_id);
+CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS chunk_vectors (chunk_id INTEGER PRIMARY KEY, model TEXT NOT NULL, vec BLOB NOT NULL);
 """
 
@@ -223,6 +224,14 @@ class Store:
     def chat_named_by(self, chat_id: int) -> str:
         rows = self._rows("SELECT named_by FROM chats WHERE id = ?", (chat_id,))
         return rows[0]["named_by"] if rows else "auto"
+
+    # -- small saved values (last daily run, repositories already suggested…) ----------------------
+    def kv_get(self, key: str, default=None):
+        rows = self._rows("SELECT value FROM kv WHERE key = ?", (key,))
+        return json.loads(rows[0]["value"]) if rows else default
+
+    def kv_set(self, key: str, value) -> None:
+        self._write("INSERT OR REPLACE INTO kv (key, value) VALUES (?, ?)", (key, json.dumps(value)))
 
     # -- outputs: files and folders a chat created or found, shown under the chat ---------------
     def add_output(self, task_id: int, path: str, kind: str, is_dir: bool = False) -> None:

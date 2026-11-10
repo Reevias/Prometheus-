@@ -1,6 +1,8 @@
 # Changelog
 
 ## 1.4
+- Repo of the day: every evening at 23:30 Prometheus reads github.com/trending, picks the new repository gaining the most stars, and puts it on the Approvals page with an Open link button. Approving adds it to the skill library at once (a guide plus its README kept as data); nothing is cloned or run. Repositories for tracking or spying on people (e.g. Sherlock), stealing accounts, malware, phishing, attacks, deepfakes or cheating are never suggested.
+- Updates run every evening after the repo of the day (or soon after start if the laptop was off), with no approval; "update yourself" in chat also runs straight away.
 - Outputs: under Notes, every file and folder a chat created, found, moved or renamed, with Open and Show in folder. Documents and media open in their app (notes from the vault open in Obsidian); code and other types are only shown in their folder, so nothing is run by accident.
 - Obsidian: connect your vault in Settings (vaults Obsidian knows are found by themselves; needs your password). Search, read and create notes, list recent ones, open a note in Obsidian. New notes never overwrite and can be undone; answers from notes stay on the laptop.
 - Dark and light mode toggle in the top bar (remembered on this laptop).

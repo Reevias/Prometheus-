@@ -57,6 +57,7 @@ class Settings:
     voice_autostart: bool = False
     voice_name: str = "af_heart"
     auto_update: bool = True
+    repo_of_day: bool = True                    # suggest one trending GitHub repository a day for the skill library
     obsidian_vault: str = ""                    # the connected Obsidian vault folder ("" = not connected)                    # install new versions from GitHub by itself                # the speaking voice (Kokoro voice id)               # start Prometheus (and listening) when Windows starts
     head_model: str = ""                        # the lead AI chosen by hand, e.g. "anthropic:claude-haiku-5-5" ("" = auto)
     extra_folders: list[str] = field(default_factory=list)   # drives or folders outside the user folder it may use

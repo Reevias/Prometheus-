@@ -113,13 +113,22 @@ def test_writes_wait_for_approval_and_post_nothing(make_ctx):
     for inputs in ({"action": "create_issue", "title": "Crash on start", "body": "Steps..."},
                    {"action": "comment", "number": "3", "body": "Fixed in main"},
                    {"action": "propose_change", "path": "docs/notes.md", "content": "new text", "title": "Add notes",
-                    "body": "why"},
-                   {"action": "update_self"}):
+                    "body": "why"}):
         assert ag.run("w", inputs, ctx).status == "waiting_approval"
     assert api.requests == []
     kinds = [(a.kind, a.payload["action"]) for a in ctx.store.approvals()]
     assert kinds == [("github_action", "create_issue"), ("github_action", "comment"),
-                     ("github_action", "propose_change"), ("github_action", "update_self")]
+                     ("github_action", "propose_change")]
+
+
+def test_update_self_runs_without_approval(make_ctx, monkeypatch):
+    import prometheus.agents.github as gh
+
+    ag, _ = agent()
+    ctx = make_ctx()
+    monkeypatch.setattr(gh, "update_self", lambda code_dir: "Updated to the newest version.")
+    res = ag.run("update yourself", {"action": "update_self"}, ctx)
+    assert res.status == "done" and "Updated" in res.summary and ctx.store.approvals() == []
 
 
 def test_approved_issue_and_comment_are_posted():

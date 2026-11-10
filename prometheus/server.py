@@ -36,11 +36,11 @@ def create_app(services: Services, background: bool = False) -> FastAPI:
     async def lifespan(_app):
         if services.voice is not None:          # listening for "Prometheus" lives as long as the app
             services.voice.start_if_enabled()
-        if services.updater is not None:
-            services.updater.start(background=background)
+        if services.daily is not None:          # end of each day: repo of the day, then updating
+            services.daily.start(background=background)
         yield
-        if services.updater is not None:
-            services.updater.stop()
+        if services.daily is not None:
+            services.daily.stop()
         if services.voice is not None:
             services.voice.stop()
 

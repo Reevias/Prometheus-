@@ -2,7 +2,8 @@
 {% for a in approvals %}
   <form class="panel approval" hx-post="/approvals/{{ a.id }}" hx-target="#approvals">
     <p><strong>{{ a.summary }}</strong> <span class="muted">({{ a.kind.replace("_", " ") }})</span></p>
-    {% if a.payload.url %}<p class="muted">{{ a.payload.url }}</p>{% endif %}
+    {% if a.payload.url %}<p class="muted">{{ a.payload.url }}
+      {% if a.payload.url.startswith("https://github.com/") %}<button type="button" hx-post="/approvals/{{ a.id }}/open" hx-swap="none">Open link</button>{% endif %}</p>{% endif %}
     {% if a.payload.path %}<p class="muted">{{ a.payload.path }}</p>{% endif %}
     {% if a.payload.task %}<pre class="diff">{{ a.payload.task }}</pre>{% endif %}
     {% if a.payload.diff %}<pre class="diff">{{ a.payload.diff }}</pre>{% endif %}

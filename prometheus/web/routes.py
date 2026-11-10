@@ -185,6 +185,30 @@ def register_routes(app: FastAPI, services: Services) -> None:
         result = services.approvals.resolve(approval_id, approved=(decision == "approve"), secret=secret)
         return page(request, "approval_list.html", approvals=store.approvals(), result=result)
 
+    @app.post("/approvals/{approval_id}/open")
+    def open_approval_link(request: Request, approval_id: int):
+        """Open a waiting approval's GitHub link in the browser, to look before deciding."""
+        import webbrowser
+
+        from prometheus.agents.opener import SAFE_URL
+
+        try:
+            a = store.approval(approval_id)
+        except KeyError:
+            return Response(status_code=404)
+        url = str((a.payload or {}).get("url", ""))
+        if not (url.startswith("https://github.com/") and SAFE_URL.match(url)):
+            return Response("Only GitHub links open from here.", status_code=400)
+        webbrowser.open(url)
+        return Response(status_code=204)
+
+    @app.post("/settings/repo-of-day", response_class=HTMLResponse)
+    def set_repo_of_day(request: Request, on: str = Form("")):
+        services.settings.repo_of_day = bool(on)
+        save_settings(services.settings)
+        store.audit("user", "repo_of_day", {"on": bool(on)})
+        return settings_page(request, saved=True)
+
     @app.get("/memory", response_class=HTMLResponse)
     def memory(request: Request, q: str = ""):
         q = q.strip()[:200]

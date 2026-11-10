@@ -133,7 +133,10 @@
     <label class="check"><input type="checkbox" name="allow_lan" value="1" {{ "checked" if s.allow_lan }}> Allow other devices on my Wi-Fi (needs restart, keep a strong password)</label>
     <label class="check"><input type="checkbox" name="auto_update" value="1" {{ "checked" if s.auto_update }}
       hx-post="/settings/autoupdate" hx-vals='js:{on: event.target.checked ? "1" : ""}' hx-target="body" hx-trigger="change">
-      Update by itself (checks GitHub every 6 hours; never during a task)</label>
+      Update by itself, every evening at 23:30 (no approval needed; never during a task)</label>
+    <label class="check"><input type="checkbox" name="repo_of_day" value="1" {{ "checked" if s.repo_of_day }}
+      hx-post="/settings/repo-of-day" hx-vals='js:{on: event.target.checked ? "1" : ""}' hx-target="body" hx-trigger="change">
+      Repo of the day: each evening suggest one trending GitHub repository for the skill library (you approve it first)</label>
     <details>
       <summary class="muted">Advanced: choose models yourself (not needed)</summary>
       <div style="display:grid;gap:10px;margin-top:10px">
