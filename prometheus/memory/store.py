@@ -112,6 +112,9 @@ class Store:
             columns = {r["name"] for r in self._db.execute("PRAGMA table_info(messages)")}
             if "model" not in columns:  # databases made before v1.1
                 self._db.execute("ALTER TABLE messages ADD COLUMN model TEXT NOT NULL DEFAULT ''")
+            if "summary" not in {r["name"] for r in self._db.execute("PRAGMA table_info(chats)")}:
+                self._db.execute("ALTER TABLE chats ADD COLUMN summary TEXT NOT NULL DEFAULT ''")
+                self._db.execute("ALTER TABLE chats ADD COLUMN summary_upto INTEGER NOT NULL DEFAULT 0")
             if "private" not in {r["name"] for r in self._db.execute("PRAGMA table_info(messages)")}:
                 self._db.execute("ALTER TABLE messages ADD COLUMN private INTEGER NOT NULL DEFAULT 0")
                 # Answers saved before this existed may hold details from personal files: treat them all as private.
@@ -156,6 +159,13 @@ class Store:
     # -- chats -----------------------------------------------------------
     def create_chat(self, title: str) -> int:
         return self._write("INSERT INTO chats (title, created) VALUES (?, ?)", (title, time.time()))
+
+    def get_summary(self, chat_id: int) -> tuple[str, int]:
+        rows = self._rows("SELECT summary, summary_upto FROM chats WHERE id = ?", (chat_id,))
+        return (rows[0]["summary"], rows[0]["summary_upto"]) if rows else ("", 0)
+
+    def set_summary(self, chat_id: int, text: str, upto: int) -> None:
+        self._write("UPDATE chats SET summary = ?, summary_upto = ? WHERE id = ?", (text, upto, chat_id))
 
     def rename_chat(self, chat_id: int, title: str) -> None:
         self._write("UPDATE chats SET title = ? WHERE id = ?", (title, chat_id))

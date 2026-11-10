@@ -17,6 +17,7 @@ class Guide(Agent):
                    "coding tools, understanding software, explaining code, memory, models, file sorting, video). "
                    "Inputs: skill (a skill name), question.")
     tools = {"call_model"}
+    required_inputs = ("skill",)
     accepts_private = False
 
     def run(self, goal: str, inputs: dict, ctx: AgentContext) -> StepResult:

@@ -12,6 +12,11 @@ Plans:
 - Inputs are key/value pairs of text. To use a result of an earlier step write the value as $stepN.key (for example
   $step1.pdfs). Write a list as JSON text, e.g. ["a.pdf", "b.pdf"]. Folders can be written relative to the user's
   home folder, e.g. Downloads.
+- Opening things: an app on this laptop (Notepad, Spotify, Chrome, VS Code, Settings) means the system agent with
+  action app_open and target = the app name. A website, a link or a video means the opener agent with target = the
+  full link. "open youtube" means the website: opener with target https://www.youtube.com/ (only use app_open for
+  YouTube if the person says the app). Always fill in every input; never leave one empty.
+- To switch or show which AI model is used, use the settings agent.
 - To explain how to do something from a guide, use the guide agent with the skill name and the question.
 - For Wi-Fi, Bluetooth, battery, location, apps, windows, volume, brightness, dark mode, screenshots, typing, clicking, power or installing software use the system agent.
 - For questions about Prometheus's own repository or updates use the github agent.

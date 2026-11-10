@@ -2,6 +2,7 @@
 
 ## 1.3
 - Works on Python 3.12 and newer (tested on 3.12 to 3.14).
+- Fixes from real use: "open youtube" works; the planner must fill required inputs; switch models by chat (after approval); older chat turns are summarised so long chats keep their context.
 - GitHub connection: read the repository; issues, pull requests and self-update after approval.
 - Laptop control: apps, windows, volume, brightness, dark mode, screenshots, typing, clicking, power, installs.
 - A brain that answers plain questions directly, remembers the conversation and uses Claude plus cheap helper models.

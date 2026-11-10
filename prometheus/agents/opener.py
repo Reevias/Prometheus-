@@ -28,10 +28,25 @@ OPENABLE = {".pdf", ".txt", ".md", ".csv", ".log", ".json", ".rtf", ".epub", ".d
             ".odp", ".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".heic", ".tif", ".tiff", ".mp3", ".wav",
             ".flac", ".m4a", ".ogg", ".mp4", ".mov", ".mkv", ".avi", ".webm"}
 SAFE_URL = re.compile(r"^[A-Za-z0-9._~:/?#&=%+-]+$")
-YOUTUBE_PATHS = re.compile(r"^/(watch|results|playlist)$|^/shorts/[\w-]{11}$")
+YOUTUBE_PATHS = re.compile(r"^/$|^/(watch|results|playlist)$|^/shorts/[\w-]{11}$")
 YOUTU_BE_PATH = re.compile(r"^/[\w-]{11}$")
-GITHUB_REPO_PATH = re.compile(r"^/[A-Za-z0-9][A-Za-z0-9_.-]{0,99}/[A-Za-z0-9][A-Za-z0-9_.-]{0,99}/?$")
+GITHUB_REPO_PATH = re.compile(r"^/$|^/[A-Za-z0-9][A-Za-z0-9_.-]{0,99}/[A-Za-z0-9][A-Za-z0-9_.-]{0,99}/?$")
 TRANSCRIPT_CHARS = 12000
+KNOWN_SITES = {"youtube": "https://www.youtube.com/", "github": "https://github.com/", "google": "https://www.google.com/",
+               "gmail": "https://mail.google.com/", "wikipedia": "https://www.wikipedia.org/",
+               "maps": "https://maps.google.com/", "reddit": "https://www.reddit.com/"}
+
+
+def infer_target(goal: str) -> str:
+    """When the plan forgot the target, work it out from what was asked (a link, or a well-known site)."""
+    m = re.search(r"https?://[^\s\"'<>]+", goal or "")
+    if m:
+        return m.group(0).rstrip(".,)")
+    words = set(re.findall(r"[a-z]+", (goal or "").lower()))
+    for site, url in KNOWN_SITES.items():
+        if site in words:
+            return url
+    return ""
 
 
 def video_id(url: str) -> str | None:
@@ -143,6 +158,7 @@ class Opener(Agent):
                    "open ('false' to summarise without opening).")
     tools = {"open_link", "open_other", "open_local", "web_search", "web_fetch", "call_model"}
     accepts_private = False
+    required_inputs = ("target",)
 
     def __init__(self, launcher: Callable[[str], object] | None = None,
                  find_video: Callable[[str], str | None] | None = None,
@@ -215,10 +231,12 @@ class Opener(Agent):
         return StepResult("waiting_approval", f"Approve opening {path.name} on the Approvals page.", {})
 
     def run(self, goal: str, inputs: dict, ctx: AgentContext) -> StepResult:
-        target = str(inputs.get("target") or "").strip()
+        target = str(inputs.get("target") or "").strip() or infer_target(goal)
         if not target:
-            return StepResult("failed", "Nothing to open: no target was given.")
+            return StepResult("failed", "I need to know which website, link or file to open. Tell me which one.")
         kind = str(inputs.get("kind") or "").strip().lower()
+        if target in KNOWN_SITES.values() and not kind:
+            kind = "web"
         is_url = target.startswith(("http://", "https://"))
         if is_url and not SAFE_URL.match(target):
             return StepResult("failed", "I won't open that link: it contains characters a normal link doesn't have.")

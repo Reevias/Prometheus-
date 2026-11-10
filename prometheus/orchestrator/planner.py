@@ -18,6 +18,7 @@ REF = re.compile(r"^\$step(\d+)\.(\w+)$")
 
 HISTORY_TURNS = 12
 HISTORY_CHARS = 1500
+SUMMARY_EVERY = 10
 MAX_REMEMBER = 3
 ASKED_TO_REMEMBER = re.compile(r"\b(remember|don'?t forget|do not forget|keep in mind|note that|save this|from now on)\b", re.I)
 SECRETISH = re.compile(r"(sk-[A-Za-z0-9_-]{6,}|ghp_|github_pat_|xox[bp]-|AKIA[0-9A-Z]{8,}|pass(word|phrase)|passwd|secret|"
@@ -119,9 +120,15 @@ def validate_plan(raw: str, registry: dict) -> Plan:
         deps = s.get("depends_on") or []
         if not all(isinstance(d, int) and d in seen for d in deps):
             raise PlanError(f"Step {sid} may depend only on earlier steps.")
+        inputs = _inputs(s.get("inputs", {}))
+        for key in getattr(registry[s["agent"]], "required_inputs", ()):
+            value = inputs.get(key)
+            if value is None or (isinstance(value, str) and not value.strip()) or value == []:
+                raise PlanError(f"Step {sid} ({s['agent']}) needs the input '{key}'. Give it a real value, "
+                                "for example a link for the opener or an app name for the system agent.")
         clean.append({"id": sid, "agent": s["agent"], "goal": str(s.get("goal", "")),
                       "skill": str(s.get("skill") or "").strip(),
-                      "inputs": _inputs(s.get("inputs", {})), "depends_on": list(deps)})
+                      "inputs": inputs, "depends_on": list(deps)})
         seen.add(sid)
     return Plan(clean, answer=answer, remember=remember)
 
@@ -160,14 +167,40 @@ class Orchestrator:
             path = PACKAGE_PROMPTS / f"{name}.md"
         return path.read_text(encoding="utf-8")
 
+    def _summarise_older(self, chat_id: int, older: list) -> str:
+        """A short running summary of the turns that no longer fit. Written by a cheap model, rewritten only every
+        SUMMARY_EVERY new old turns. Private answers are never shown to it."""
+        text, upto = self.store.get_summary(chat_id)
+        fresh = [m for m in older if m.id > upto and m.role in ("user", "assistant")]
+        if len(fresh) < SUMMARY_EVERY:
+            return text
+        lines = "\n".join(f"{m.role}: {(PRIVATE_PLACEHOLDER if m.private else m.text)[:600]}" for m in fresh)
+        prompt = (f"Earlier summary:\n{text or '(none)'}\n\nNewer turns:\n{untrusted(lines, 'chat')}\n\n"
+                  "Write one updated summary (under 180 words): what the person wants, decisions made, names, "
+                  "numbers, preferences and anything still unfinished. Facts only.")
+        try:
+            reply = self.router.complete("research", [{"role": "user", "content": prompt}],
+                                         "You keep a running summary of a conversation. " + UNTRUSTED_RULE, max_tokens=500)
+        except (ProviderUnavailable, BudgetExceeded, Stopped):
+            return text
+        self.store.set_summary(chat_id, reply.text.strip()[:1500], older[-1].id)
+        return reply.text.strip()[:1500]
+
     def _history(self, chat_id: int) -> list[dict]:
-        """Recent turns of this chat for the model. Answers built from the owner's files are replaced by a placeholder."""
+        """Recent turns of this chat for the model, plus a summary of older ones. Answers built from the owner's files
+        are replaced by a placeholder."""
+        messages = self.store.messages(chat_id)
+        recent, older = messages[-HISTORY_TURNS:], messages[:-HISTORY_TURNS]
         turns = []
-        for m in self.store.messages(chat_id)[-HISTORY_TURNS:]:
+        for m in recent:
             if m.role in ("user", "assistant"):
                 turns.append({"role": m.role, "content": (PRIVATE_PLACEHOLDER if m.private else m.text)[:HISTORY_CHARS]})
         while turns and turns[0]["role"] != "user":
             turns.pop(0)
+        summary = self._summarise_older(chat_id, older) if older else ""
+        if summary:
+            turns = [{"role": "user", "content": f"Summary of the earlier conversation: {summary}"},
+                     {"role": "assistant", "content": "Understood."}] + turns
         return turns
 
     def _remember(self, chat_id: int, facts: list[str], user_text: str = "") -> None:

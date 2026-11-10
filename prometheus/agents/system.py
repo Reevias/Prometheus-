@@ -93,6 +93,7 @@ class SystemAgent(Agent):
                    "id). Pressing Enter, clicking, power changes and installs wait for the owner's approval. "
                    "If a Wi-Fi password is needed the app asks the owner for it; never put a password in the inputs.")
     tools = {"system_read", "system_change"}
+    required_inputs = ("action",)
     private_outputs = True     # network names and location are personal: answers about them stay local
     accepts_private = False
 

@@ -312,6 +312,30 @@ Trade-offs: monthly cost; personal files would leave the laptop, so the file/pho
 - Build it here in the cloud session, test with fake files, push to GitHub; the user pulls and runs on Windows.
 - Phone in a browser at home (password) → later Tailscale for anywhere → later the real Android app.
 
+## 17b. Gaps between today and the final vision (updated 2026-11-10)
+
+| Area | Missing |
+|---|---|
+| **Quality** | No test set of everyday tasks yet (owner to send 2 or 3 bad examples); the Claude key is not added yet, so answers still run on random OpenRouter models; the Haiku request shape and a real Antigravity or GitHub call are unconfirmed |
+| **Planning** | The planner makes one plan and runs it: no loop that looks at a result and adapts (for example open an app, check it opened, then continue); steps run one at a time |
+| **Seeing the screen** | No screenshot understanding or computer-use loop, so clicking works only by exact coordinates |
+| **Laptop: files** | Moving, copying, finding and recycling files anywhere (and on other drives) is not built; the File Sorter works inside one folder |
+| **Laptop: browser** | No browser automation (forms, logins, downloads, reading the page you have open) |
+| **Laptop: testing** | None of the Windows commands has run on a real laptop; Wi-Fi status parsing assumes English Windows; no WPA3-only networks |
+| **Memory** | No meaning-based (embedding) search, no links between memories (graph), no replace-old-fact handling (Mem0/Zep style), no scheduled tidy-up (gbrain "dream cycle"); a running summary of old chat turns exists |
+| **Output** | No PDF, Word, Excel or slide generation (the owner wants PDFs with links for roadmaps); no image or video generation (needs a cloud GPU) |
+| **Photos** | Photo content tagging (SigLIP) and OCR (EasyOCR) from the v1.1 plan are not built |
+| **Interaction** | No voice (wake word "Hey Prometheus", speech-to-text, spoken replies), no hand gestures |
+| **Phone** | No phone access (browser on Wi-Fi, Tailscale, Android app), no notifications |
+| **Autonomy** | No scheduler or proactive tasks (reminders, daily summary, watching something); background jobs do not survive a restart |
+| **Connectors** | Gmail, Calendar, Drive, Notion not connected (owner: later); Hermes agent not set up; Gemini Argon works only as an ordinary free provider |
+| **Self-editing** | AI-written tools can be proposed and approved but are not run (needs a real sandbox) |
+| **Packaging** | No installer, no start with Windows, no tray icon; no cost dashboard per model |
+
+## 17c. Reference projects for holding context (researched 2026-11-10)
+
+Mem0 (Apache-2.0): extracts facts from conversations and merges them, updating or replacing instead of duplicating. Letta/MemGPT (Apache-2.0): a small block of memory always kept in context, older material in an archive the agent searches. Zep/Graphiti (Apache-2.0): facts carry the time they were true and are marked replaced, not deleted; runs locally with a graph database. LangMem (MIT): memory tools plus background consolidation. Hindsight (MIT). Decision: borrow the methods in our own small SQLite code (8 GB RAM, no extra servers). Built: running summary of old chat turns. Still to build: replace-old-fact handling, memory links, scheduled consolidation, meaning-based search with a local embedding model.
+
 ## 18. What is built (kept up to date)
 
 Repository: **Reevias/Prometheus-** (moved out of `Claude-testing-` on 2026-11-10; the website stays in the old repo,
@@ -400,6 +424,11 @@ Status on 2026-11-10:
 - Saved memories: facts are only saved when the owner's own message asks ("remember", "don't forget", "note that", ...), and anything that looks like a secret is never saved.
 - Wi-Fi names and passwords must match in full (no trailing line breaks, control characters, or over-long names); the password file is overwritten before deletion, retried if Windows holds it, and leftovers are swept at startup.
 - Output of Windows tools is read in the Windows console encoding.
+
+**What went wrong in the owner's real test (screenshots, 2026-11-10) and the fixes**
+- "open youtube": the planner picked the opener but left its target empty, so the answer said no link was given; "just the app" repeated it; "open youtube browser" asked for a URL. Fixes: a step missing a required input is sent back to the planner with the reason (one retry); the opener works out the target from the request for well-known sites; the YouTube and GitHub home pages open without asking; the planner prompt now says app = system agent, website = opener, with the YouTube example.
+- "use deepseek's model" ran the repository search. Fix: a `settings` agent shows the models and switches one after approval (applied at once and saved).
+- The screenshots show the older red interface and the old filler sentence about undo, so that laptop was still on an older version.
 
 **Python (owner decision 2026-11-10)**: 3.12 or newer, no upper limit; tested on 3.12 and 3.14 here, and GitHub Actions tests 3.12, 3.13 and 3.14 on Windows and Linux.
 

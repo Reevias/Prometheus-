@@ -23,6 +23,7 @@ class Documents(Agent):
                    "Inputs: paths (list of file paths, or '$stepN.pdfs'), question (what to look for).")
     private_outputs = True
     tools = {"read_files", "call_model"}
+    required_inputs = ("paths",)
 
     def run(self, goal: str, inputs: dict, ctx: AgentContext) -> StepResult:
         ctx.use(self.name, "read_files")

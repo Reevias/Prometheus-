@@ -57,6 +57,7 @@ class Agent(ABC):
     description: ClassVar[str]
     tools: ClassVar[set[str]]
     private_outputs: ClassVar[bool] = False   # results contain personal data (file names, document text)
+    required_inputs: ClassVar[tuple] = ()     # inputs a plan must always give this agent
     accepts_private: ClassVar[bool] = True    # False for agents that send inputs to the web or the cloud
 
     @abstractmethod

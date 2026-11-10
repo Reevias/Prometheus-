@@ -17,7 +17,7 @@ from prometheus.agents.opener import open_link_handler, open_local_handler
 from prometheus.agents.system import laptop_action_handler, wifi_password_handler
 from prometheus.laptop import Laptop, sweep_wifi_profiles
 from prometheus.agents.repo_scout import clone_handler
-from prometheus.config import Settings, data_dir
+from prometheus.config import Settings, data_dir, save_settings
 from prometheus.memory.store import Store
 from prometheus.models.base import Provider
 from prometheus.models.router import ModelRouter, build_router
@@ -113,6 +113,17 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
     approvals.register("clone_repo", lambda payload: clone_handler(payload, data / "quarantine"))
     approvals.register("open_link", open_link_handler)
     approvals.register("open_local", lambda payload: open_local_handler(payload, policy))
+    def set_model(payload: dict) -> str:
+        provider, model = str(payload["provider"]), str(payload["model"])
+        field = {"openrouter": "openrouter_model", "anthropic": "anthropic_model", "ollama": "ollama_model"}[provider]
+        setattr(settings, field, model)
+        save_settings(settings)
+        live = router.providers.get(provider)
+        if live is not None:
+            live.model = model
+        return f"Now using {model} for {provider}."
+
+    approvals.register("set_model", set_model)
     approvals.register("github_action", lambda payload: github_action_handler(payload, GitHubAgent()))
     approvals.register("laptop_action", lambda payload: laptop_action_handler(payload, Laptop()))
     approvals.register("wifi_password", lambda payload, secret: wifi_password_handler(payload, secret, Laptop()),
