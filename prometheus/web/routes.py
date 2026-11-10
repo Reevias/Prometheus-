@@ -218,22 +218,21 @@ def register_routes(app: FastAPI, services: Services) -> None:
         except OSError:
             return settings_page(request, 500, key_error="The key file is busy. Try again in a moment.")
         services.router.clear_rest()
-        owner = next((p.id for p in load_catalog() if p.key_name == name), None)
-        if owner and owner not in services.settings.enabled_providers:   # a saved key switches the provider on
-            services.settings.enabled_providers.append(owner)
-            save_settings(services.settings)
         apply_settings(services)
         store.audit("user", "key_saved", {"name": name})
         return settings_page(request, key_saved=KEY_NAMES[name])
 
     @app.post("/settings/providers", response_class=HTMLResponse)
-    def set_provider(request: Request, id: str = Form(...), enabled: str = Form(""), model: str = Form("")):
+    def set_provider(request: Request, id: str = Form(...), enabled: str = Form(""), model: str = Form(""),
+                     confirm: str = Form("")):
         info = next((p for p in load_catalog() if p.id == id), None)
         if info is None or not info.supported:
             return settings_page(request, 400, key_error="Unknown provider.")
         s = services.settings
-        on = [p for p in s.enabled_providers if p != id] + ([id] if enabled else [])
-        s.enabled_providers[:] = on
+        if enabled and id not in s.enabled_providers and not confirm:
+            return settings_page(request, 400, key_error=f"To use {info.name}, tick the box saying you understand "
+                                                         "it may keep what you send it.")
+        s.enabled_providers = [p for p in s.enabled_providers if p != id] + ([id] if enabled else [])
         model = model.strip()[:150]
         if model:
             s.provider_models[id] = model

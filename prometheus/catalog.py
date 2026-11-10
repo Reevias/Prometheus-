@@ -54,7 +54,7 @@ def load_catalog() -> tuple[ProviderInfo, ...]:
             id=pid, name=name, base_url=(BASE_OVERRIDE.get(name) or p["baseUrl"]).rstrip("/"),
             key_name=pid.upper().replace("-", "_") + "_API_KEY", keyless=name in KEYLESS,
             signup_url=p.get("signupUrl", ""), description=desc, models=tuple(p.get("models", [])),
-            logs_prompts=name in KNOWN_TO_LOG or any(w in desc.lower() for w in LOG_WORDS),
+            logs_prompts=True,   # free tiers: assume prompts may be kept or used for training unless proven otherwise
             supported=name not in UNSUPPORTED, why_unsupported=UNSUPPORTED.get(name, "")))
     return tuple(out)
 

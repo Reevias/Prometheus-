@@ -229,8 +229,10 @@ class Orchestrator:
         written_by = ""
         report = "\n\n".join(
             f"Step {s.id} ({s.agent}, {s.status}):\n" + untrusted(s.result, s.agent) for s in self.store.steps(task_id))
+        # If any step read personal files, the answer is written by a local model only (or not by a model at all).
+        purpose = "private" if private else "combine"
         try:
-            reply = self.router.complete("combine", [{"role": "user", "content": f"Request: {text}\n\n{report}"}],
+            reply = self.router.complete(purpose, [{"role": "user", "content": f"Request: {text}\n\n{report}"}],
                                          f"{self._prompt('combine')}\n\n{UNTRUSTED_RULE}", max_tokens=1500)
             answer = reply.text.strip()
             written_by = f"{reply.provider} · {reply.model}"

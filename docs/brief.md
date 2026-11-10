@@ -331,7 +331,8 @@ Reviews: every version gets a fresh security review before it reaches `main`; fi
 **Models and keys**
 - OpenRouter is the main brain until a Claude API key exists. A Claude *subscription* may only be used inside the
   official Claude Code app; jcode's `--provider claude` signs in with the subscription, so it is not used.
-- Free providers are opt-in ("Use it"). Several may log or train on prompts; they carry a warning label. None can
+- If any step of a task read personal files, the final answer is written by a local model only (or shown as a plain list if no local model is running); it is never sent to a cloud model.
+- Free providers are opt-in ("Use it" plus an "I understand" tick); saving a key alone does not switch one on. Several may log or train on prompts; they carry a warning label. None can
   ever be a route for personal files. Ollama cloud models (`:cloud`) and a remote Ollama do not count as local.
 - Keys live in `<data>/.env`, a key saved in the app wins over `setx`, changing a key needs the password, and
   5 wrong passwords log the user out.
@@ -379,7 +380,6 @@ YouTube-caption calls. The owner's first run on the laptop is the real test.
 - [ ] Add the OpenRouter key in Settings; later a Gemini key (Argon, Antigravity) and a Claude API key (prepaid, auto-reload off).
 - [ ] Backup (File History / OneDrive) switched on before the first real sort.
 - [ ] After Prometheus runs from the new repo: remove only the Prometheus branch from `Claude-testing-` (ask the owner first).
-- [ ] When a Claude key is added: route the final-answer step to the local model whenever documents were read.
 - [ ] v1.x voice ("Hey Prometheus" needs a custom wake-word model), gestures (confirm MediaPipe Hands on Windows), phone in the browser, Tailscale.
 - [ ] Later: OpenJarvis sandbox for running AI-written tools; Hermes on the desktop; image/video generation on a cloud GPU; Android app.
 - [ ] Optional: ask TidyByte's author (Krinal24) to add a licence; friend's `assistant.py` + permission to reuse.

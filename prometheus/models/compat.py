@@ -13,6 +13,7 @@ REASONS = {400: "it rejected the request (check the model name)", 401: "the key 
 
 class OpenAICompatProvider:
     is_local = False
+    is_free = True   # free tiers; if billing is switched on at the provider, that spend is not tracked here
 
     def __init__(self, info: ProviderInfo, model: str = "", enabled: bool = False, http: httpx.Client | None = None):
         self.info = info

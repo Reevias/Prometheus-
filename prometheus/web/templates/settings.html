@@ -30,13 +30,14 @@
       {% else %}<span class="muted">needs a key</span>{% endif %}
       {% if p.kind == "local" %}<span class="tag">local, private</span>{% endif %}
       {% if p.keyless and p.kind == "free" %}<span class="tag">no key needed</span>{% endif %}
-      {% if p.logs %}<span class="tag warn">may log or train on prompts</span>{% endif %}
+      {% if p.logs %}<span class="tag warn">may log or train on prompts</span><span class="tag">free tier only: paid use on your account is not tracked</span>{% endif %}
     </div>
     <p class="muted">{{ p.note }}{% if p.signup %} Get a key at <code>{{ p.signup }}</code>{% endif %}</p>
     {% if p.toggle %}
     <form class="row" hx-post="/settings/providers" hx-target="body">
       <input type="hidden" name="id" value="{{ p.id }}">
       <label class="check"><input type="checkbox" name="enabled" value="1" {{ "checked" if p.on }}> Use it</label>
+      {% if not p.on %}<label class="check"><input type="checkbox" name="confirm" value="1"> I understand it may keep what I send</label>{% endif %}
       <input type="text" name="model" value="{{ p.model }}" list="models-{{ p.id }}" placeholder="Model name">
       <datalist id="models-{{ p.id }}">{% for m in p.models %}<option value="{{ m }}">{% endfor %}</datalist>
       <button type="submit">Save</button>

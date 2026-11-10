@@ -73,7 +73,8 @@ class ModelRouter:
                 errors.append(f"{name}: resting ({self._resting[name][1]})")
                 continue
             used_model = model or getattr(provider, "model", "") or ""
-            free = provider.is_local or (name == "openrouter" and used_model.endswith(":free"))
+            free = (provider.is_local or getattr(provider, "is_free", False)
+                    or (name == "openrouter" and used_model.endswith(":free")))
             if not free and self.budget.state().stopped:
                 over_budget = True   # cap reached: skip paid models, keep looking for a free or local one
                 continue

@@ -12,7 +12,7 @@ Prometheus can use local models and free cloud tiers. This skill covers which fr
 1. Decide where the data may go. Private material stays on a local model.
 2. For non-private work, shortlist providers from free-providers.md. Check the privacy column first.
 3. Prefer keyless endpoints for tests; they have low limits.
-4. Store each API key encrypted, never in plain text or logs.
+4. Store each API key only on this laptop, in Prometheus's key file (never in code, chat or git).
 5. Write each provider as base URL, auth header, model id and known limits.
 6. Track requests per minute and per day, and tokens, for each key.
 7. Choose the model by reliability, speed and intelligence, then reduce its rank as its quota runs low.

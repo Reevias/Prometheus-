@@ -125,14 +125,16 @@ def test_settings_lists_providers_with_search_box(app_client):
 def test_turning_a_provider_on_and_saving_its_key(app_client, monkeypatch):
     monkeypatch.delenv("GROQ_API_KEY", raising=False)
     client, services, h = authed(app_client)
-    resp = client.post("/settings/providers", data={"id": "llm7-io", "enabled": "1", "model": ""}, headers=h)
+    resp = client.post("/settings/providers", data={"id": "llm7-io", "enabled": "1", "confirm": "1", "model": ""},
+                       headers=h)
     assert resp.status_code == 200 and services.settings.enabled_providers == ["llm7-io"]
     client.post("/settings/keys", data={"name": "GROQ_API_KEY", "value": "gsk_test_1234",
                                         "password": "correct horse battery"}, headers=h)
     assert get_secret("GROQ_API_KEY") == "gsk_test_1234"
-    assert "groq" in services.settings.enabled_providers            # saving a key switches the provider on
+    assert "groq" not in services.settings.enabled_providers        # a saved key alone does not switch it on
     client.post("/settings/providers", data={"id": "llm7-io", "enabled": "", "model": ""}, headers=h)
     assert "llm7-io" not in services.settings.enabled_providers
-    bad = client.post("/settings/providers", data={"id": "nope", "enabled": "1", "model": ""}, headers=h)
+    bad = client.post("/settings/providers", data={"id": "nope", "enabled": "1", "confirm": "1", "model": ""},
+                      headers=h)
     assert bad.status_code == 400
     assert "gsk_test_1234" not in client.get("/settings").text

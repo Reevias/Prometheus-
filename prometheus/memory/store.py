@@ -355,9 +355,12 @@ class Store:
         terms = " ".join('"' + t.replace('"', '""') + '"' for t in query.split())
         if not terms:
             return []
-        rows = self._rows(
-            "SELECT kind, ref_id, snippet(search_index, 2, '[', ']', '…', 12) AS snip FROM search_index "
-            "WHERE search_index MATCH ? LIMIT ?",
-            (terms, limit),
-        )
+        try:
+            rows = self._rows(
+                "SELECT kind, ref_id, snippet(search_index, 2, '[', ']', '…', 12) AS snip FROM search_index "
+                "WHERE search_index MATCH ? LIMIT ?",
+                (terms.replace("\x00", ""), limit),
+            )
+        except sqlite3.OperationalError:
+            return []
         return [SearchHit(r["kind"], int(r["ref_id"]), r["snip"]) for r in rows]

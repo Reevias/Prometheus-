@@ -13,6 +13,7 @@
     {% for h in found %}<li>{{ h.text[:600] }}<div class="muted">{{ {"memory": "memory", "chat_note": "chat note", "agent_note": "agent note", "message": "message"}[h.kind] }}{% if h.source %}, {{ h.source }}{% endif %}</div></li>
     {% else %}<li class="muted">Nothing found. Try fewer or different words.</li>{% endfor %}
   </ul>
+  <div id="memory" hidden></div>
   {% else %}
   <div id="memory">{% include "memory_list.html" %}</div>
   <form class="row" hx-post="/memory" hx-target="#memory" hx-on::after-request="this.reset()">
@@ -20,6 +21,6 @@
     <button type="submit">Remember</button>
   </form>
   {% endif %}
-  <p><button class="danger" hx-post="/memory/wipe" hx-target="#memory" hx-confirm="Forget everything?">Forget everything</button></p>
+  <p><button class="danger" hx-post="/memory/wipe" hx-swap="none" hx-on::after-request="location.href='/memory'" hx-confirm="Forget everything?">Forget everything</button></p>
 </main>
 {% endblock %}

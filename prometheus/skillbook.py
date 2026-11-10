@@ -25,14 +25,27 @@ class Skill:
         refs = self.folder / "references"
         if not refs.is_dir():
             return []
-        return sorted(p.name for p in refs.iterdir() if p.is_file() and REF.match(p.name))
+        return sorted(p.name for p in refs.iterdir() if _plain_file(p, self.folder) and REF.match(p.name))
+
+
+def _plain_file(path: Path, folder: Path) -> bool:
+    """A real file inside the skill folder: not a link, and not pointing anywhere else."""
+    try:
+        if path.is_symlink() or not path.is_file():
+            return False
+        return path.resolve().is_relative_to(folder.resolve())
+    except OSError:
+        return False
 
 
 def _parse(folder: Path, source: str) -> Skill | None:
     if not NAME.match(folder.name):
         return None
+    guide = folder / "SKILL.md"
+    if not _plain_file(guide, folder):
+        return None
     try:
-        text = (folder / "SKILL.md").read_text(encoding="utf-8")
+        text = guide.read_text(encoding="utf-8-sig")   # utf-8-sig: Windows tools often add a hidden marker (BOM)
     except OSError:
         return None
     if not text.startswith("---"):
@@ -61,7 +74,8 @@ class SkillBook:
             if root is None or not root.is_dir():
                 continue
             for folder in sorted(root.iterdir()):
-                if folder.is_dir() and not folder.is_symlink():
+                refs = folder / "references"
+                if folder.is_dir() and not folder.is_symlink() and not refs.is_symlink():
                     skill = _parse(folder, source)
                     if skill:
                         found[skill.name] = skill   # user skills come second, so they win
@@ -82,4 +96,4 @@ class SkillBook:
             raise ValueError(f"No such skill: {name}")
         if not REF.match(ref) or ref not in skill.references():
             raise ValueError(f"No such reference: {ref}")
-        return (skill.folder / "references" / ref).read_text(encoding="utf-8", errors="replace")[:MAX_CHARS]
+        return (skill.folder / "references" / ref).read_text(encoding="utf-8-sig", errors="replace")[:MAX_CHARS]
