@@ -11,7 +11,10 @@ from prometheus.actions.files import FileActions
 from prometheus.actions.journal import Journal
 from prometheus.agents import REGISTRY
 from prometheus.agents.base import AgentContext
+from prometheus.agents.antigravity import make_client, run_antigravity_job
 from prometheus.agents.opener import open_link_handler, open_local_handler
+from prometheus.agents.system import wifi_password_handler
+from prometheus.laptop import Laptop
 from prometheus.agents.repo_scout import clone_handler
 from prometheus.config import Settings, data_dir
 from prometheus.memory.store import Store
@@ -108,6 +111,28 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
     approvals.register("clone_repo", lambda payload: clone_handler(payload, data / "quarantine"))
     approvals.register("open_link", open_link_handler)
     approvals.register("open_local", lambda payload: open_local_handler(payload, policy))
+    approvals.register("wifi_password", lambda payload, secret: wifi_password_handler(payload, secret, Laptop()),
+                       needs_secret=True)
+
+    def antigravity_job(payload: dict) -> str:
+        client = make_client()          # fails fast (no key / package missing) before anything starts
+        chat_id = payload.get("chat_id")
+
+        def work():
+            try:
+                out = run_antigravity_job(payload, client)
+                text = (out["text"] or "Antigravity returned no text.") + (f"\n\n{out['note']}" if out["note"] else "")
+                budget.record("antigravity", payload.get("model", ""), 0.0, out["tokens"], 0)
+                store.audit("antigravity", "job_finished", {"status": out["status"], "tokens": out["tokens"]})
+            except Exception as e:
+                text = f"The Antigravity job failed: {type(e).__name__}."
+            if chat_id:
+                store.add_message(chat_id, "assistant", text, "antigravity · " + str(payload.get("model", "")))
+
+        threading.Thread(target=work, daemon=True).start()
+        return "Sent to Antigravity. The result will appear in the chat when it finishes."
+
+    approvals.register("antigravity_job", antigravity_job)
 
     (data / "skills").mkdir(exist_ok=True)
     skills = SkillBook(PACKAGE_DIR / "skills", data / "skills")

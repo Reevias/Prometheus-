@@ -1,8 +1,8 @@
 # Changelog
 
-## 1.3 (in progress)
-- Polished chat and interface.
-- System agent: Wi-Fi, Bluetooth, location and laptop status.
+## 1.3 (not yet released)
+- Polished chat: formatted answers, a line naming what Prometheus is doing, no flicker, chats named from the first message.
+- System agent: Wi-Fi, Bluetooth, location and battery, using a fixed list of actions; passwords are typed into the Approvals page and go straight to Windows.
 - Antigravity agent through the Gemini API.
 - Repository: MIT licence, tests on GitHub for Windows and Linux, contributing and security guides.
 

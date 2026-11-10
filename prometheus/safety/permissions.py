@@ -3,8 +3,9 @@ from __future__ import annotations
 
 from enum import Enum
 
-ALLOW_TOOLS = {"read_files", "move_files", "web_search", "web_fetch", "call_model", "github_search", "open_link"}
-ASK_TOOLS = {"clone_repo", "apply_patch", "generate_media", "open_other", "open_local"}
+ALLOW_TOOLS = {"read_files", "move_files", "web_search", "web_fetch", "call_model", "github_search", "open_link",
+               "system_read", "system_change"}   # laptop actions: owner chose "do it, then tell me"
+ASK_TOOLS = {"clone_repo", "apply_patch", "generate_media", "open_other", "open_local", "cloud_agent"}
 
 
 class Decision(Enum):

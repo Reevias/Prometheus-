@@ -1,11 +1,19 @@
 {% if result %}<p class="panel">{{ result }}</p>{% endif %}
 {% for a in approvals %}
-  <div class="panel" style="margin-bottom:12px">
-    <p><strong>{{ a.summary }}</strong> <span class="muted">({{ a.kind }})</span></p>
+  <form class="panel approval" hx-post="/approvals/{{ a.id }}" hx-target="#approvals">
+    <p><strong>{{ a.summary }}</strong> <span class="muted">({{ a.kind.replace("_", " ") }})</span></p>
     {% if a.payload.url %}<p class="muted">{{ a.payload.url }}</p>{% endif %}
     {% if a.payload.path %}<p class="muted">{{ a.payload.path }}</p>{% endif %}
+    {% if a.payload.task %}<pre class="diff">{{ a.payload.task }}</pre>{% endif %}
     {% if a.payload.diff %}<pre class="diff">{{ a.payload.diff }}</pre>{% endif %}
-    <button class="ok" hx-post="/approvals/{{ a.id }}" hx-vals='{"decision": "approve"}' hx-target="#approvals">Approve</button>
-    <button class="danger" hx-post="/approvals/{{ a.id }}" hx-vals='{"decision": "reject"}' hx-target="#approvals">Reject</button>
-  </div>
+    {% if a.payload._secret_label %}
+    <label>{{ a.payload._secret_label }}
+      <input type="password" name="secret" autocomplete="off" placeholder="Goes straight to Windows. Never saved or sent to an AI.">
+    </label>
+    {% endif %}
+    <div class="row">
+      <button type="submit" class="ok" name="decision" value="approve">{{ "Connect" if a.payload._secret_label else "Approve" }}</button>
+      <button type="submit" class="danger" name="decision" value="reject">Reject</button>
+    </div>
+  </form>
 {% else %}<p class="muted">Nothing is waiting.</p>{% endfor %}

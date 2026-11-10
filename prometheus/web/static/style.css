@@ -146,3 +146,6 @@ body.login button { background: var(--ember); border-color: var(--ember); color:
 form.command textarea { flex: 1; min-width: 0; resize: none; font-size: 16px; padding: 11px 12px; line-height: 1.4; max-height: 160px; }
 ul.plain li.current { border-left: 2px solid var(--ember); padding-left: 8px; }
 ul.plain li.current a { color: var(--text); }
+
+.approval { margin-bottom: 12px; display: grid; gap: 8px; }
+.approval .row { margin-top: 0; }

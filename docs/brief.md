@@ -322,9 +322,15 @@ which must not be wiped as a whole).
 | **v1** | Standalone Python core (not built on OpenJarvis): lead AI (plan → pick → run → combine), shared SQLite memory, File Sorter, Documents, Research and Repo Scout agents, path policy, undo journal + Recycle Bin, permissions, approvals, budget cap, kill switch, approval-gated self-editing, password-protected browser UI, `prometheus init / serve / doctor` |
 | **v1.1** | OpenRouter as the main brain; API keys saved from Settings (password needed, never shown again); automatic model switching (5-minute rest on failure, drop to free/local at the cap, each answer shows its model); Opener agent (YouTube play + caption summary, GitHub, websites, files); desktop window (`prometheus app`); red "ember" theme |
 | **v1.2** | Skill folders (`SKILL.md` + `references/`) written from the reference repos, with a Guide agent and a Skills page; catalog of free providers with a searchable settings list (three need no key); memory recall (word forms, partial words, ranking, sources) and Memory page search |
-| **v1.3 (in progress)** | Polished chat and GUI; System agent (Wi-Fi, Bluetooth, location, laptop status); Antigravity agent through the Gemini API; complete GitHub repo (license, CI, contributing and security docs) |
+| **v1.3 (built, not yet security-reviewed or merged)** | Polished chat (formatted answers, bubbles with times and a Copy button, a "working on…" line that names the current step, no flicker, chats named from the first message, example prompts, Enter to send); **System agent** (Wi-Fi status/list/connect/disconnect, Bluetooth on/off/status, location, battery) with a fixed list of actions; **password prompt on the Approvals page** for things like a Wi-Fi password (goes straight to Windows, never stored, logged or shown to a model); **Antigravity agent** (Google's cloud agent through the Gemini API, every job needs approval); complete GitHub repo (MIT licence, tests on Windows and Linux in GitHub Actions, contributing, security and changelog files) |
 
 Reviews: every version gets a fresh security review before it reaches `main`; findings are fixed test-first.
+
+Status on 2026-11-10:
+- `main` holds v1 to v1.2 plus the repository files. GitHub Actions ran the full suite on **Windows and Linux: both passed** (commit ab30a46).
+- Branch `claude/prometheus-v1-3` holds v1.3 (305+ tests pass on Linux here). The chat polish is committed; the System agent, laptop module, Antigravity agent and password prompt were written afterwards and are **not yet committed or reviewed**.
+- v1.2 security review: 1 critical + 4 important findings, all fixed (see section 19).
+- **Not tested on real hardware**: the Wi-Fi, Bluetooth, location and battery commands (tested only with a stand-in for Windows), a real Antigravity call, the desktop window, real OpenRouter/free-provider/YouTube calls.
 
 ## 19. Decisions since the first build
 
@@ -363,10 +369,33 @@ Reviews: every version gets a fresh security review before it reaches `main`; fi
 - Still blocked whatever else is allowed: Windows system folders, saved passwords and browser data, SSH keys,
   Prometheus's own safety code.
 
+**Final answers and privacy (found by the v1.2 review)**
+- A security review found that the step that writes the final answer sent document summaries to a cloud model. Fixed: if any step read personal files, the answer is written by a local model only, or shown as a plain list when no local model is running.
+- Every free provider is labelled "may log or train on prompts"; turning one on needs an "I understand" tick; saving a key does not switch one on. Free providers stay usable at the spending cap (paid use on the owner's account is not tracked).
+- Skill files that are links are ignored; skill files saved by Windows tools with a hidden marker (BOM) are read.
+
+**Chat polish (v1.3)**
+- Assistant answers are escaped first, then bold, `code`, lists and headings are added; never links, images or raw HTML. Your own messages are shown as typed.
+- The message list only redraws when something changed.
+
+**Laptop control (how it is built)**
+- `prometheus/laptop.py` runs one fixed command per action: `netsh wlan ...` for Wi-Fi and fixed PowerShell scripts for Bluetooth, location and battery. Commands are lists, never a shell string. Wi-Fi names are checked (no quotes, line breaks or special characters).
+- Connecting to a saved or open network happens straight away and is logged. A secured network that is not saved asks for the password on the Approvals page. The password is written to a short-lived profile file that is always deleted, and it is never kept in the database, audit log or any prompt.
+- Network names and location are treated as personal: answers about them are written by a local model.
+- Needs Windows. Location needs Windows location services switched on.
+
 **Antigravity (v1.3, user decision 2026-11-10)**
 - Direction chosen: Prometheus sends jobs to Google's Antigravity agent through the Gemini API (needs a Gemini API
   key; it is a cloud service, so no personal files). The other direction (Antigravity calling Prometheus as an MCP
   tool server) is a later option.
+- What Google's docs say (read 2026-11-10, preview): agent id `antigravity-preview-09-2026`, called through the
+  Interactions API; it works in its own Linux sandbox on Google's computers (runs code, browses the web, builds
+  files) and cannot see this laptop. Default model Gemini 3.8 Flash; Gemini 4 Argon can be chosen. A token limit
+  per job (`max_total_tokens`) stops runaway cost. Typical cost $0.25 to $1.30 per job, up to about $5 for long
+  ones; free tier projects get a free quota. Limits: no structured output, text and image input only.
+- Prometheus: every job waits for approval (it costs money), the job text is shown in full, the token limit is 200,000
+  per job, the result is posted back into the chat. Needs a Gemini key in Settings and `pip install -e ".[antigravity]"`.
+- Antigravity's own login must not be reused in other tools; Prometheus uses a normal Gemini API key only.
 
 **Repository**
 - Licence: MIT. Tests run on GitHub for Windows and Linux on every push.
@@ -376,10 +405,15 @@ YouTube-caption calls. The owner's first run on the laptop is the real test.
 
 ## 17. Open items
 
-- [ ] **First real run on the laptop** from the new repo (`git clone https://github.com/Reevias/Prometheus-.git`), then report what breaks.
+- [ ] **Security review of v1.3** (laptop control, password prompt, Antigravity), fix what it finds, then merge to `main`.
+- [ ] Commit the uncommitted v1.3 work (System agent, laptop module, Antigravity agent, password prompt) to branch `claude/prometheus-v1-3` and push.
+- [ ] **First real run on the laptop** from the new repo (`git clone https://github.com/Reevias/Prometheus-.git`), then report what breaks. Test Wi-Fi, Bluetooth and location commands there first.
 - [ ] Add the OpenRouter key in Settings; later a Gemini key (Argon, Antigravity) and a Claude API key (prepaid, auto-reload off).
 - [ ] Backup (File History / OneDrive) switched on before the first real sort.
 - [ ] After Prometheus runs from the new repo: remove only the Prometheus branch from `Claude-testing-` (ask the owner first).
+- [ ] Polish still open: Settings page layout, the status panel, approvals page.
+- [ ] Antigravity the other way round: Prometheus as a tool server (MCP) that Antigravity can call.
 - [ ] v1.x voice ("Hey Prometheus" needs a custom wake-word model), gestures (confirm MediaPipe Hands on Windows), phone in the browser, Tailscale.
 - [ ] Later: OpenJarvis sandbox for running AI-written tools; Hermes on the desktop; image/video generation on a cloud GPU; Android app.
+- [ ] Smaller review leftovers: one bad model name rests the whole provider for 5 minutes; Remove cannot delete a key set with `setx`; the browser may offer to save an API key as a password; OneDrive-moved Documents folders are not found by name.
 - [ ] Optional: ask TidyByte's author (Krinal24) to add a licence; friend's `assistant.py` + permission to reuse.
