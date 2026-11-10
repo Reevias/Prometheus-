@@ -91,3 +91,32 @@ def test_name_then_pause_then_command(engines):
         if wake is not None:
             loop.handle_wake(wake)
     assert speaker.chimes == 1 and len(asked) == 1 and "music" in asked[0].lower()
+
+
+class DeafTrigger:
+    """Stands in for Vosk missing the word entirely (an accent it doesn't know)."""
+
+    def feed(self, frame):
+        return False
+
+    def reset(self):
+        pass
+
+
+@pytest.mark.parametrize("phrase,word", [("Prometheus, open YouTube.", "youtube"),
+                                         ("Hey Prometheus, what time is it?", "time")])
+def test_wakes_even_when_vosk_misses_the_word(engines, phrase, word):
+    from prometheus.voice.engines import WakeSpotter
+
+    models, say, transcriber, _ = engines
+    asked, _ = run_real((models, say, transcriber, lambda: WakeSpotter(None, transcriber, DeafTrigger())), phrase)
+    assert len(asked) == 1 and word in asked[0].lower()
+
+
+def test_ordinary_talk_still_ignored_when_vosk_misses(engines):
+    from prometheus.voice.engines import WakeSpotter
+
+    models, say, transcriber, _ = engines
+    asked, _ = run_real((models, say, transcriber, lambda: WakeSpotter(None, transcriber, DeafTrigger())),
+                        "Can you pass me the remote?", "It was quite promising.")
+    assert asked == []

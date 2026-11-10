@@ -132,7 +132,7 @@ def register_routes(app: FastAPI, services: Services) -> None:
         task = store.latest_task(chat) if chat else {}
         voice = services.voice.state() if services.voice is not None else "off"
         return page(request, "status.html", mini=bool(mini), core=bool(core), busy=bool(services.running), task=task,
-                    voice=voice,
+                    voice=voice, updated=services.updater.updated if services.updater is not None else "",
                     steps=store.steps(task["id"]) if task else [], budget=services.budget.state(),
                     pending=len(store.approvals()),
                     models=services.router.status_detail() if not (mini or core) else [])
@@ -262,6 +262,7 @@ def register_routes(app: FastAPI, services: Services) -> None:
         return page(request, "settings.html", status_code, s=s, providers=rows, other_keys=other_keys,
                     heads=head_choices(services.router), head=s.head_model,
                     voice=services.voice.describe() if services.voice is not None else None,
+                    voices=__import__("prometheus.voice.engines", fromlist=["VOICES"]).VOICES,
                     home=str(services.home), bad_places=bad_places,
                     budget=services.budget.state(), catalog_date=catalog_updated(), **extra)
 
@@ -418,6 +419,20 @@ def register_routes(app: FastAPI, services: Services) -> None:
             store.audit("user", "voice_setup", {})
         return settings_page(request, saved=True)
 
+    @app.post("/settings/voice/name", response_class=HTMLResponse)
+    def voice_name(request: Request, name: str = Form(...)):
+        from prometheus.voice.engines import VOICES
+
+        if name not in dict(VOICES):
+            return settings_page(request, 400, voice_error="Unknown voice.")
+        services.settings.voice_name = name
+        save_settings(services.settings)
+        if services.voice is not None and services.voice.loop is not None:
+            services.voice.stop()                  # restart listening with the new voice
+            services.voice.start()
+        store.audit("user", "voice_name", {"name": name})
+        return settings_page(request, saved=True)
+
     @app.post("/settings/voice/autostart", response_class=HTMLResponse)
     def voice_autostart(request: Request, on: str = Form("")):
         from prometheus.launcher import set_autostart
@@ -429,6 +444,13 @@ def register_routes(app: FastAPI, services: Services) -> None:
         services.settings.voice_autostart = bool(on)
         save_settings(services.settings)
         store.audit("user", "autostart", {"on": bool(on)})
+        return settings_page(request, saved=True)
+
+    @app.post("/settings/autoupdate", response_class=HTMLResponse)
+    def set_autoupdate(request: Request, on: str = Form("")):
+        services.settings.auto_update = bool(on)
+        save_settings(services.settings)
+        store.audit("user", "auto_update", {"on": bool(on)})
         return settings_page(request, saved=True)
 
     @app.post("/settings/free", response_class=HTMLResponse)

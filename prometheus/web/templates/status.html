@@ -1,6 +1,7 @@
 {% if core %}<span class="core{{ ' stopped' if stopped else (' busy' if busy else '') }}" data-voice="{{ voice }}" title="{{ 'Stopped' if stopped else ('Working' if busy else 'Ready') }}"></span>
 {% elif mini %}
   <span class="muted">Spent ${{ "%.2f"|format(budget.spent) }} of ${{ "%.2f"|format(budget.cap) }}{% if budget.warn %} ⚠{% endif %}
+  {% if updated %} · <span class="status-done" title="{{ updated }}">Updated: restart to use it</span>{% endif %}
   {% if stopped %} · <span class="error">STOPPED</span>{% endif %}{% if pending %} · <a href="/approvals">{{ pending }} waiting</a>{% endif %}</span>
 {% else %}
   {% if task %}

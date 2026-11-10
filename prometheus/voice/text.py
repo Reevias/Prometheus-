@@ -26,6 +26,7 @@ def find_wake(text: str) -> tuple[int, int] | None:
 
 
 def has_wake_word(text: str) -> bool:
+    """True when the name was said ("Hello Prometheus", "Prometheus", or a common mishearing of it)."""
     return find_wake(text) is not None
 
 

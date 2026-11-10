@@ -1,6 +1,8 @@
 # Changelog
 
 ## 1.4
+- Updates itself: checks GitHub every 6 hours (first check 90 s after start), installs new versions by fast-forward only and never during a task; the top bar says when a restart is needed, and the background copy restarts itself when idle. "Update by itself" in Settings.
+- Voice, warmer and quicker: Kokoro voices Heart (default) or Fable replace Piper; "Yes sir." the moment a command is heard, "Yes sir?" when only the name was said; a command said in the same breath is used straight away (no second listen); Whisper is told to expect "Hello Prometheus"; every new command starts with "Hello Prometheus". Missing voice models download by themselves. Measured on varied spoken takes: 0 false wakes in 50.
 - Open apps and sites without asking: "open Spotify" opens the installed app, or open.spotify.com if it isn't installed (same for WhatsApp, Netflix, Discord, Telegram and others). About 40 well-known sites and their search pages (YouTube, Spotify, Google, Gmail, Wikipedia, Amazon…) open straight away; any other site still asks. "Play X on Spotify" opens Spotify's search.
 - Microsoft Store: "open the Microsoft Store" (optionally on a search) opens straight away; "install Spotify" finds the exact package in winget or the Store and asks once before installing.
 - Script runners and admin tools (mshta, wscript, rundll32, diskpart and more) are never opened.

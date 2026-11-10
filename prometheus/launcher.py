@@ -120,11 +120,12 @@ def update(code_dir: Path = CODE_DIR, run=None) -> str:
     if pull.returncode != 0:
         raise RuntimeError("The update did not go through (you may have local changes). " + (pull.stderr or "")[-300:])
     extras = []
-    try:
-        import webview  # noqa: F401
-        extras.append("desktop")
-    except ImportError:
-        pass
+    for module, extra in (("webview", "desktop"), ("vosk", "voice")):   # keep the extras this laptop already uses
+        try:
+            __import__(module)
+            extras.append(extra)
+        except Exception:
+            pass
     target = str(code_dir) + (f"[{','.join(extras)}]" if extras else "")
     pip = run([sys.executable, "-m", "pip", "install", "--quiet", "-e", target], capture_output=True, text=True,
               timeout=900)

@@ -76,6 +76,13 @@
       Listen for “Prometheus”</label></form>
     <form hx-post="/settings/voice/autostart" hx-target="body"><label class="check"><input type="checkbox" name="on" value="1" {{ "checked" if s.voice_autostart }} onchange="this.form.requestSubmit()">
       Start with Windows, without a window, so it is always listening</label></form>
+    <form hx-post="/settings/voice/name" hx-target="body" class="row">
+      <label>Voice <select name="name" onchange="this.form.requestSubmit()">
+        {% for vid, label in voices %}<option value="{{ vid }}" {{ "selected" if vid == s.voice_name }}>{{ label }}</option>{% endfor %}
+      </select></label>
+    </form>
+    <p class="muted" style="margin:0">Start every command with <strong>“Hello Prometheus”</strong>. It answers “Yes sir.” as soon as it has
+    your command, so you know it heard you; “Yes sir?” means it heard its name and is waiting for the command.</p>
     {% if voice.heard %}<p class="muted" style="margin:0">Last heard: “{{ voice.heard }}”</p>{% endif %}
   </div>
   {% endif %}
@@ -101,6 +108,9 @@
     <label>Spending cap for paid AI (USD) <input name="budget_usd" value="{{ s.budget_usd }}" inputmode="decimal"></label>
     <label>GitHub repository Prometheus may read and update <input name="github_repo" value="{{ s.github_repo }}"></label>
     <label class="check"><input type="checkbox" name="allow_lan" value="1" {{ "checked" if s.allow_lan }}> Allow other devices on my Wi-Fi (needs restart, keep a strong password)</label>
+    <label class="check"><input type="checkbox" name="auto_update" value="1" {{ "checked" if s.auto_update }}
+      hx-post="/settings/autoupdate" hx-vals='js:{on: event.target.checked ? "1" : ""}' hx-target="body" hx-trigger="change">
+      Update by itself (checks GitHub every 6 hours; never during a task)</label>
     <details>
       <summary class="muted">Advanced: choose models yourself (not needed)</summary>
       <div style="display:grid;gap:10px;margin-top:10px">

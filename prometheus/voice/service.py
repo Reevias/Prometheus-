@@ -49,16 +49,18 @@ class VoiceService:
                 self.error = 'Voice needs extra packages. Run:  pip install -e ".[voice]"'
                 return False
             if self.models.missing():
-                self.error = "Voice models are not downloaded yet. Press 'Set up voice' in Settings."
+                if not self.downloading:                 # e.g. the new voice after an update: fetch it by itself
+                    self.download()
+                self.error = "Getting the voice ready (downloading)…"
                 return False
             try:
                 from prometheus.voice.audio import Microphone
-                from prometheus.voice.engines import PiperSpeaker, Transcriber, WakeSpotter
+                from prometheus.voice.engines import KokoroSpeaker, Transcriber, WakeSpotter
                 from prometheus.voice.loop import VoiceLoop
 
                 transcriber = Transcriber(self.models)
                 loop = VoiceLoop(Microphone(), WakeSpotter(self.models, transcriber), transcriber,
-                                 PiperSpeaker(self.models), self.command,
+                                 KokoroSpeaker(self.models, self.services.settings.voice_name), self.command,
                                  log=lambda m: self.services.store.audit("voice", "note", {"text": m}))
                 loop.start()
             except Exception as e:      # no microphone, broken driver, damaged model…

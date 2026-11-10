@@ -28,6 +28,8 @@ def test_wake_word_and_command_text():
                  "prometric test", "a promise", "Prom theme party"):
         assert not has_wake_word(talk), talk
     assert strip_wake("Permitheus, open YouTube") == "Open YouTube"
+    assert strip_wake("Hello Prometheus. Open Spotify.") == "Open Spotify."
+    assert has_wake_word("Hello, Prometheus!")
     assert strip_wake("Hey Prometheus, open YouTube.") == "Open YouTube."
     assert strip_wake("Prometheus.") == ""
     assert strip_wake("prometheus what's the weather") == "What's the weather"
@@ -93,6 +95,12 @@ class FakeSpeaker:
     def chime(self):
         self.chimes += 1
 
+    def ask(self):          # "Yes sir?": heard the name, waiting for the command
+        self.chimes += 1
+
+    def ack(self):          # "Yes sir.": heard the command
+        self.acks = getattr(self, "acks", 0) + 1
+
 
 class FakeTranscriber:
     def __init__(self, texts):
@@ -126,7 +134,46 @@ def test_command_in_one_breath_is_run_and_answer_spoken():
 def test_wake_word_alone_chimes_then_listens():
     loop, asked, speaker, _ = run_loop(tone(0.5) + tone(1.2, loud=False) + tone(1.0) + tone(1.2, loud=False),
                                        ["Prometheus.", "open YouTube"])
-    assert speaker.chimes == 1 and asked == ["open YouTube"]
+    assert speaker.chimes == 1 and asked == ["Open YouTube"] and speaker.acks == 1
+
+
+class HeardSpotter(FakeSpotter):
+    """A spotter whose Whisper check already heard the whole phrase."""
+
+    def __init__(self, at, text, done=True):
+        super().__init__(at)
+        self.last_text, self.phrase_done = text, done
+
+
+def run_with(spotter, frames, texts=()):
+    mic, speaker, asked = FakeMic(frames), FakeSpeaker(), []
+    transcriber = FakeTranscriber(list(texts))
+    loop = VoiceLoop(mic, spotter, transcriber, speaker, lambda c: (asked.append(c), "Done.")[1])
+    while (frame := mic.read()) is not None:
+        wake = spotter.feed(frame)
+        if wake is not None:
+            loop.handle_wake(wake)
+    return asked, speaker, transcriber
+
+
+def test_command_in_the_same_breath_is_used_at_once_and_acknowledged():
+    asked, speaker, transcriber = run_with(HeardSpotter(3, "Hello Prometheus, open YouTube."), tone(0.5),
+                                           ["should not be asked"])
+    assert asked == ["Open YouTube."] and speaker.acks == 1 and speaker.chimes == 0
+    assert transcriber.texts == ["should not be asked"]          # no second transcription: faster
+
+
+def test_name_alone_says_yes_sir_then_listens():
+    asked, speaker, _ = run_with(HeardSpotter(3, "Hello Prometheus."), tone(0.3) + tone(1.0) + tone(1.2, loud=False),
+                                 ["what's the weather"])
+    assert speaker.chimes == 1 and asked == ["What's the weather"] and speaker.acks == 1
+
+
+def test_every_new_command_needs_the_wake_phrase():
+    # after one command is answered, more talking without "Hello Prometheus" is ignored
+    spotter = HeardSpotter(3, "Hello Prometheus, what time is it?")
+    asked, _, _ = run_with(spotter, tone(0.5) + tone(2.0) + tone(1.0, loud=False))
+    assert asked == ["What time is it?"]
 
 
 def test_muted_loop_ignores_everything():

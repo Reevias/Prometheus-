@@ -93,19 +93,27 @@ class VoiceLoop:
         return "nothing", lead
 
     def handle_wake(self, wake_audio: bytes) -> None:
-        """After the name: if you keep talking, the whole sentence is written down in one go (so no word at the edge
-        is lost); if you stop, Prometheus checks whether the command was already said, else chimes and listens."""
+        """After "Hello Prometheus": a command said in the same breath is used straight away (no second listen);
+        the name on its own gets "Yes sir?" and then the command. Either way "Yes sir." confirms it was heard."""
         self.state = "listening"
-        verdict, audio = self._record(lead=wake_audio, wait=CARRY_ON)
-        command = strip_wake(self.transcriber.text(audio))
-        if not command:                                # just "Prometheus": ask for the command
-            self._speak_quietly(self.speaker.chime)
+        heard = getattr(self.spotter, "last_text", None)
+        phrase_done = getattr(self.spotter, "phrase_done", False)
+        command = strip_wake(heard) if heard and phrase_done else ""
+        if not command and not (heard is not None and phrase_done):
+            verdict, audio = self._record(lead=wake_audio, wait=CARRY_ON)     # still talking: hear it out
+            command = strip_wake(self.transcriber.text(audio))
+        if not command:                                # just the name: ask for the command
+            self._speak_quietly(getattr(self.speaker, "ask", self.speaker.chime))
             verdict, audio = self._record()
             command = self.transcriber.text(audio).strip() if verdict == "done" else ""
+            command = strip_wake(command) or command   # "Prometheus, ..." said again is fine too
         if not command:
             self.log("woke up but heard no command")
             return
         self.last_heard = command
+        ack = getattr(self.speaker, "ack", None)
+        if ack is not None:
+            self._speak_quietly(ack)                   # "Yes sir." — you know it heard you
         self.state = "thinking"
         answer = self.on_command(command)
         if answer:

@@ -80,10 +80,18 @@ def _background(args) -> int:
     if not settings.password_hash:
         print("No password yet. Run:  prometheus init")
         return 2
+    if getattr(args, "after_update", False):           # restarting into a new version: let the old one exit first
+        import time
+
+        for _ in range(40):
+            if not running_copy(settings.port):
+                break
+            time.sleep(0.5)
     if running_copy(settings.port):
         print("Prometheus is already running.")
         return 0
-    uvicorn.run(create_app(build_services(settings)), host="127.0.0.1", port=settings.port, log_level="warning")
+    uvicorn.run(create_app(build_services(settings), background=True), host="127.0.0.1", port=settings.port,
+                log_level="warning")
     return 0
 
 
@@ -186,7 +194,8 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("app", help="open Prometheus in its own desktop window")
     sub.add_parser("doctor", help="check the setup")
     sub.add_parser("update", help="download and install the newest version")
-    sub.add_parser("background", help="run without a window (listens for its name if voice is on)")
+    p_bg = sub.add_parser("background", help="run without a window (listens for its name if voice is on)")
+    p_bg.add_argument("--after-update", action="store_true", help=argparse.SUPPRESS)
     sub.add_parser("voice-setup", help="download the voice models and turn voice on")
     p_auto = sub.add_parser("autostart", help="start Prometheus when Windows starts")
     p_auto.add_argument("state", choices=["on", "off"])

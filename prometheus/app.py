@@ -55,6 +55,7 @@ class Services:
     running: dict = dataclasses.field(default_factory=dict)
     archive: object = None
     voice: object = None
+    updater: object = None
 
     def start_task(self, chat_id: int, text: str) -> threading.Thread:
         """Run a task in the background so the browser can keep polling."""
@@ -179,6 +180,9 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
     from prometheus.voice.service import VoiceService
 
     services.voice = VoiceService(services, data / "voice")
+    from prometheus.autoupdate import AutoUpdater
+
+    services.updater = AutoUpdater(services)
     return services
 
 

@@ -22,7 +22,7 @@ def rms(frame: bytes) -> float:
 class Endpointer:
     """Collects frames of one command: it ends after a pause once speech has started, or gives up if no one speaks."""
 
-    def __init__(self, noise_floor: float = 300.0, pause: float = 0.9, max_seconds: float = 12.0,
+    def __init__(self, noise_floor: float = 300.0, pause: float = 0.75, max_seconds: float = 12.0,
                  wait_seconds: float = 5.0):
         self.threshold = max(500.0, noise_floor * 3)
         self.pause_frames = int(pause / FRAME_SECONDS)

@@ -30,12 +30,16 @@ def _login_page(message: str = "") -> str:
             "<script src='/static/orb.js'></script></body></html>")
 
 
-def create_app(services: Services) -> FastAPI:
+def create_app(services: Services, background: bool = False) -> FastAPI:
     @asynccontextmanager
     async def lifespan(_app):
         if services.voice is not None:          # listening for "Prometheus" lives as long as the app
             services.voice.start_if_enabled()
+        if services.updater is not None:
+            services.updater.start(background=background)
         yield
+        if services.updater is not None:
+            services.updater.stop()
         if services.voice is not None:
             services.voice.stop()
 

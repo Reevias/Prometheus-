@@ -54,7 +54,9 @@ class Settings:
     ollama_model: str = "qwen3.5:2b"
     ollama_url: str = "http://127.0.0.1:11434"
     voice_enabled: bool = False                 # listen for "Prometheus" and answer out loud
-    voice_autostart: bool = False               # start Prometheus (and listening) when Windows starts
+    voice_autostart: bool = False
+    voice_name: str = "af_heart"
+    auto_update: bool = True                    # install new versions from GitHub by itself                # the speaking voice (Kokoro voice id)               # start Prometheus (and listening) when Windows starts
     head_model: str = ""                        # the lead AI chosen by hand, e.g. "anthropic:claude-haiku-5-5" ("" = auto)
     extra_folders: list[str] = field(default_factory=list)   # drives or folders outside the user folder it may use
     memory_folder: str = ""                     # where every chat is saved as files ("" = <home>/Prometheus memory)
