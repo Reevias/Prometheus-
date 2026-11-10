@@ -85,20 +85,13 @@ def test_every_free_provider_warns_about_prompts():
 
 
 # I2: switching a free provider on needs an explicit "I understand", and a saved key doesn't switch it on
-def test_enabling_needs_confirmation_and_key_save_does_not_enable(app_client, monkeypatch):
-    monkeypatch.delenv("GROQ_API_KEY", raising=False)
-    client, services = app_client()
+def test_switching_an_ai_off_needs_csrf_and_sticks(real_client):
+    client, services = real_client
     h = {"X-CSRF-Token": login(client)}
-    no = client.post("/settings/providers", data={"id": "llm7-io", "enabled": "1", "model": ""}, headers=h)
-    assert no.status_code == 400 and services.settings.enabled_providers == []
-    yes = client.post("/settings/providers", data={"id": "llm7-io", "enabled": "1", "confirm": "1", "model": ""},
-                      headers=h)
-    assert yes.status_code == 200 and services.settings.enabled_providers == ["llm7-io"]
-    client.post("/settings/keys", data={"name": "GROQ_API_KEY", "value": "gsk_test_1234",
-                                        "password": "correct horse battery"}, headers=h)
-    assert "groq" not in services.settings.enabled_providers
-    off = client.post("/settings/providers", data={"id": "llm7-io", "enabled": "", "model": ""}, headers=h)
-    assert off.status_code == 200 and services.settings.enabled_providers == []
+    assert client.post("/settings/providers", data={"id": "llm7-io", "enabled": ""}).status_code == 403
+    off = client.post("/settings/providers", data={"id": "llm7-io", "enabled": ""}, headers=h)
+    assert off.status_code == 200 and services.settings.disabled_providers == ["llm7-io"]
+    assert not services.router.providers["llm7-io"].available()
 
 
 # I3: at the spending cap, free providers still work

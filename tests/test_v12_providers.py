@@ -89,15 +89,18 @@ def router_for(tmp_home, settings):
     return build_router(settings, Budget(Store(tmp_home.data / "m.db"), 5.0), KillSwitch())
 
 
-def test_enabled_providers_join_cloud_routes_but_never_private(tmp_home):
-    settings = Settings(enabled_providers=["groq", "llm7-io"], provider_models={"groq": "openai/gpt-oss-120b"})
-    router = router_for(tmp_home, settings)
-    assert "groq" in router.providers and "kilo-code" in router.providers
+def test_providers_with_a_key_or_no_key_join_cloud_routes_but_never_private(tmp_home, monkeypatch):
+    monkeypatch.setenv("GROQ_API_KEY", "gsk_test_1234")
+    monkeypatch.delenv("MISTRAL_AI_API_KEY", raising=False)
+    router = router_for(tmp_home, Settings())
     for purpose in ("plan", "combine", "research"):
-        assert "groq:openai/gpt-oss-120b" in router.routes[purpose] and "llm7-io" in router.routes[purpose]
-        assert "kilo-code" not in router.routes[purpose]
+        names = [e.split(":")[0] for e in router.routes[purpose]]
+        assert "groq" in names and "llm7-io" in names            # a key, and no key needed
+        assert "mistral-ai" not in names                          # no key yet
+        assert names.index("groq") < names.index("llm7-io") < names.index("ollama")
     assert router.routes["private"] == ["ollama"]
-    assert router.providers["groq"].enabled and not router.providers["kilo-code"].enabled
+    off = router_for(tmp_home, Settings(free_no_key=False, disabled_providers=["groq"]))
+    assert not any(e.split(":")[0] in ("groq", "llm7-io") for e in off.routes["plan"])
 
 
 def test_free_provider_can_never_be_a_private_route(tmp_home):
@@ -115,26 +118,41 @@ def test_settings_lists_providers_with_search_box(app_client):
     client, _, _ = authed(app_client)
     page = client.get("/settings").text
     assert 'id="provider-search"' in page
-    for name in ("Groq", "Mistral AI", "LLM7.io", "Ollama", "OpenRouter", "NVIDIA NIM"):
+    for name in ("Groq", "Mistral AI", "LLM7.io", "Ollama", "OpenRouter", "NVIDIA NIM", "Claude"):
         assert name in page
-    assert "no key needed" in page.lower() and "may log" in page.lower()
+    assert "free, no key" in page.lower() and "may keep prompts" in page.lower()
+    assert 'name="model"' not in page                            # no model to choose
     assert not re.search(r'(src|href)=["\']https?://', page)
-    assert page.index("Ollama") < page.index("Cohere")           # ready/usable ones are listed before unsupported
+    assert page.index("Ollama") < page.index("Cohere")           # unsupported ones are listed last
 
 
-def test_turning_a_provider_on_and_saving_its_key(app_client, monkeypatch):
+def test_adding_a_key_switches_the_ai_on_at_once(real_client, monkeypatch):
     monkeypatch.delenv("GROQ_API_KEY", raising=False)
-    client, services, h = authed(app_client)
-    resp = client.post("/settings/providers", data={"id": "llm7-io", "enabled": "1", "confirm": "1", "model": ""},
-                       headers=h)
-    assert resp.status_code == 200 and services.settings.enabled_providers == ["llm7-io"]
-    client.post("/settings/keys", data={"name": "GROQ_API_KEY", "value": "gsk_test_1234",
-                                        "password": "correct horse battery"}, headers=h)
+    client, services = real_client
+    h = {"X-CSRF-Token": login(client)}
+    assert not any(e.startswith("groq") for e in services.router.routes["plan"])
+    resp = client.post("/settings/keys", data={"name": "GROQ_API_KEY", "value": "gsk_test_1234",
+                                               "password": "correct horse battery"}, headers=h)
+    assert resp.status_code == 200 and "Groq is on" in resp.text
     assert get_secret("GROQ_API_KEY") == "gsk_test_1234"
-    assert "groq" not in services.settings.enabled_providers        # a saved key alone does not switch it on
-    client.post("/settings/providers", data={"id": "llm7-io", "enabled": "", "model": ""}, headers=h)
-    assert "llm7-io" not in services.settings.enabled_providers
-    bad = client.post("/settings/providers", data={"id": "nope", "enabled": "1", "confirm": "1", "model": ""},
-                      headers=h)
-    assert bad.status_code == 400
+    assert any(e.startswith("groq") for e in services.router.routes["plan"])       # no restart, no model to pick
+    assert services.router.providers["groq"].available()
+    client.post("/settings/providers", data={"id": "groq", "enabled": ""}, headers=h)
+    assert "groq" in services.settings.disabled_providers and not services.router.providers["groq"].available()
+    client.post("/settings/providers", data={"id": "groq", "enabled": "1"}, headers=h)
+    assert services.router.providers["groq"].available()
+    assert client.post("/settings/providers", data={"id": "nope", "enabled": "1"}, headers=h).status_code == 400
     assert "gsk_test_1234" not in client.get("/settings").text
+    client.post("/settings/keys/delete", data={"name": "GROQ_API_KEY", "password": "correct horse battery"},
+                headers=h)
+    assert not any(e.startswith("groq") for e in services.router.routes["plan"])
+
+
+def test_free_no_key_switch(real_client):
+    client, services = real_client
+    h = {"X-CSRF-Token": login(client)}
+    assert services.settings.free_no_key
+    client.post("/settings/free", data={}, headers=h)
+    assert not services.settings.free_no_key and not services.router.providers["llm7-io"].available()
+    client.post("/settings/free", data={"on": "1"}, headers=h)
+    assert services.router.providers["llm7-io"].available()

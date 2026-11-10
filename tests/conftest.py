@@ -71,6 +71,23 @@ def app_client(tmp_home, monkeypatch):
     return build
 
 
+@pytest.fixture
+def real_client(tmp_home, monkeypatch):
+    """A TestClient over services with the real provider list (no model is actually called)."""
+    from fastapi.testclient import TestClient
+
+    from prometheus.app import build_services
+    from prometheus.auth import hash_password
+    from prometheus.config import Settings
+    from prometheus.server import create_app
+
+    monkeypatch.setenv("OLLAMA_HOST", "http://127.0.0.1:9")
+    settings = Settings(password_hash=hash_password("correct horse battery"), embed_model="",
+                        ollama_url="http://127.0.0.1:9")
+    services = build_services(settings, home=tmp_home.home)
+    return TestClient(create_app(services), base_url="http://127.0.0.1:8000"), services
+
+
 def login(client, password="correct horse battery"):
     resp = client.post("/login", data={"password": password}, follow_redirects=False)
     assert resp.status_code == 303, resp.text

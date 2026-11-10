@@ -3,60 +3,71 @@
 <main class="single">
   <h2>Settings</h2>
   {% if error %}<p class="error">{{ error }}</p>{% endif %}{% if saved %}<p class="status-done">Saved.</p>{% endif %}
-  <form hx-post="/settings" hx-target="body" class="panel" style="display:grid;gap:10px">
-    <label>Spending cap for cloud AI (USD) <input name="budget_usd" value="{{ s.budget_usd }}" inputmode="decimal"></label>
-    <label>Local model (Ollama) <input name="ollama_model" value="{{ s.ollama_model }}"></label>
-    <label>Claude model <input name="anthropic_model" value="{{ s.anthropic_model }}"></label>
-    <label>OpenRouter model for planning and answers <input name="openrouter_model" value="{{ s.openrouter_model }}"></label>
-    <label>OpenRouter cheaper model for research (optional) <input name="openrouter_fast_model" value="{{ s.openrouter_fast_model }}"></label>
-    <label>GitHub repository Prometheus may read and update <input name="github_repo" value="{{ s.github_repo }}"></label>
-    <label class="check"><input type="checkbox" name="allow_lan" value="1" {{ "checked" if s.allow_lan }}> Allow other devices on my Wi-Fi (needs restart, keep a strong password)</label>
-    <button type="submit" class="primary">Save settings</button>
+  <h3 style="margin-top:0">AI</h3>
+  {% if key_error %}<p class="error">{{ key_error }}</p>{% endif %}{% if key_saved %}<p class="status-done">{{ key_saved }} is on.</p>{% endif %}
+  <p class="muted">Search for an AI, paste its key, and it switches on at once. Prometheus picks the model and moves to
+  another AI by itself if one is busy or out of credit. Keys stay on this laptop and are never shown again; adding or
+  removing one needs your Prometheus password. Your personal files only ever go to the local model.</p>
+  <p><strong>Working now:</strong> {% for p in providers if p.ready %}{{ p.name }}{{ ", " if not loop.last }}{% else %}<span class="muted">nothing yet. Add a key below, or start Ollama.</span>{% endfor %}</p>
+  <form class="row" hx-post="/settings/free" hx-target="body">
+    <label class="check"><input type="checkbox" name="on" value="1" {{ "checked" if s.free_no_key }} onchange="this.form.requestSubmit()">
+      Also use free AIs that need no key (they may keep what you send them; never used for your files)</label>
   </form>
-  <h3>AI providers and keys</h3>
-  {% if key_error %}<p class="error">{{ key_error }}</p>{% endif %}{% if key_saved %}<p class="status-done">{{ key_saved }} key saved.</p>{% endif %}
-  <p class="muted">Keys stay on this laptop and are never shown again. Saving or removing one needs your password.
-  Prometheus switches between ready providers by itself. Your personal files only ever go to local models.</p>
-  <input type="search" id="provider-search" placeholder="Search providers (name, model, 'no key', 'ready')" autocomplete="off"
-         oninput="for (const r of document.querySelectorAll('.provider')) r.hidden = !r.dataset.find.includes(this.value.toLowerCase())">
+  <input type="search" id="provider-search" placeholder="Search AIs: Claude, Gemini, Groq, DeepSeek, free…" autocomplete="off"
+         oninput="const q=this.value.toLowerCase(); for (const r of document.querySelectorAll('.provider')) r.hidden = !r.dataset.find.includes(q)">
   {% for p in providers %}
-  <div class="panel provider" data-find="{{ (p.name ~ ' ' ~ p.id ~ ' ' ~ p.models|join(' ') ~ ' ' ~ ('no key needed' if p.keyless else 'needs key') ~ ' ' ~ ('ready' if p.ready else '') ~ ' ' ~ p.kind)|lower }}">
+  <div class="panel provider" data-find="{{ (p.name ~ ' ' ~ p.id ~ ' ' ~ p.models|join(' ') ~ ' ' ~ ('free no key' if p.keyless else '') ~ ' ' ~ ('free' if p.kind == 'free' else '') ~ ' ' ~ ('ready on working' if p.ready else ''))|lower }}">
     <div class="provider-head">
       <strong>{{ p.name }}</strong>
       {% if not p.supported %}<span class="muted">not supported yet: {{ p.why }}</span>
+      {% elif p.off %}<span class="muted">switched off</span>
       {% elif p.resting %}<span class="status-running">resting: {{ p.reason }}</span>
-      {% elif p.ready %}<span class="status-done">ready</span>
-      {% elif p.toggle and not p.on %}<span class="muted">off</span>
-      {% elif p.keyless %}<span class="muted">not reachable</span>
-      {% else %}<span class="muted">needs a key</span>{% endif %}
-      {% if p.kind == "local" %}<span class="tag">local, private</span>{% endif %}
-      {% if p.keyless and p.kind == "free" %}<span class="tag">no key needed</span>{% endif %}
-      {% if p.logs %}<span class="tag warn">may log or train on prompts</span><span class="tag">free tier only: paid use on your account is not tracked</span>{% endif %}
+      {% elif p.ready %}<span class="status-done">working</span>
+      {% elif p.keyless %}<span class="muted">{{ "off" if p.kind == "free" and not s.free_no_key else "not reachable" }}</span>
+      {% else %}<span class="muted">add a key to switch it on</span>{% endif %}
+      {% if p.kind == "local" %}<span class="tag">on this laptop, private</span>{% endif %}
+      {% if p.kind == "paid" %}<span class="tag">paid per use</span>{% endif %}
+      {% if p.kind == "free" %}<span class="tag">free{{ ", no key" if p.keyless }}</span>{% endif %}
+      {% if p.logs %}<span class="tag warn">may keep prompts</span>{% endif %}
     </div>
-    <p class="muted">{{ p.note }}{% if p.signup %} Get a key at <code>{{ p.signup }}</code>{% endif %}</p>
-    {% if p.toggle %}
-    <form class="row" hx-post="/settings/providers" hx-target="body">
-      <input type="hidden" name="id" value="{{ p.id }}">
-      <label class="check"><input type="checkbox" name="enabled" value="1" {{ "checked" if p.on }}> Use it</label>
-      {% if not p.on %}<label class="check"><input type="checkbox" name="confirm" value="1"> I understand it may keep what I send</label>{% endif %}
-      <input type="text" name="model" value="{{ p.model }}" list="models-{{ p.id }}" placeholder="Model name">
-      <datalist id="models-{{ p.id }}">{% for m in p.models %}<option value="{{ m }}">{% endfor %}</datalist>
-      <button type="submit">Save</button>
-    </form>
-    {% endif %}
+    <p class="muted">{{ p.note }}{% if p.ready and p.model %} Using {{ p.model }}.{% endif %}
+      {% if p.signup and not p.key_set %}Get a key at <code>{{ p.signup.replace("https://", "") }}</code>
+        <button type="button" class="link" onclick="navigator.clipboard.writeText('{{ p.signup }}'); this.textContent='Copied'">Copy address</button>{% endif %}</p>
     {% if p.key_name and p.supported %}
     <form class="row" hx-post="/settings/keys" hx-target="body">
       <input type="hidden" name="name" value="{{ p.key_name }}">
-      <span class="{{ 'status-done' if p.key_set else 'muted' }}">{{ "key set ✓" if p.key_set else ("key optional" if p.keyless else "no key") }}</span>
-      <input type="password" name="value" placeholder="Paste the key" autocomplete="off" required>
+      {% if p.key_set %}<span class="status-done">key added ✓</span>{% endif %}
+      <input type="password" name="value" placeholder="{{ 'Replace the key' if p.key_set else 'Paste the key' }}" autocomplete="off" required>
       <input type="password" name="password" placeholder="Your Prometheus password" autocomplete="current-password" required>
-      <button type="submit">Save key</button>
+      <button type="submit" class="primary">{{ "Replace" if p.key_set else "Add key" }}</button>
       {% if p.key_set %}<button type="submit" class="danger" hx-post="/settings/keys/delete" hx-target="body" formnovalidate>Remove</button>{% endif %}
     </form>
     {% endif %}
+    {% if p.toggle %}
+    <form hx-post="/settings/providers" hx-target="body"><input type="hidden" name="id" value="{{ p.id }}">
+      <input type="hidden" name="enabled" value="{{ '1' if p.off else '' }}">
+      <button type="submit" class="link">{{ "Switch it back on" if p.off else "Switch it off" }}</button></form>
+    {% endif %}
   </div>
   {% endfor %}
-  <p class="muted">Free provider list last updated {{ catalog_date }} (from the awesome-free-llm-apis project). Limits and models change often.</p>
+  <p class="muted">Free AI list from the awesome-free-llm-apis project, updated {{ catalog_date }}. Free limits change often.</p>
+
+  <h3>General</h3>
+  <form hx-post="/settings" hx-target="body" class="panel" style="display:grid;gap:10px">
+    <label>Spending cap for paid AI (USD) <input name="budget_usd" value="{{ s.budget_usd }}" inputmode="decimal"></label>
+    <label>GitHub repository Prometheus may read and update <input name="github_repo" value="{{ s.github_repo }}"></label>
+    <label class="check"><input type="checkbox" name="allow_lan" value="1" {{ "checked" if s.allow_lan }}> Allow other devices on my Wi-Fi (needs restart, keep a strong password)</label>
+    <details>
+      <summary class="muted">Advanced: choose models yourself (not needed)</summary>
+      <div style="display:grid;gap:10px;margin-top:10px">
+        <label>Local model (Ollama) <input name="ollama_model" value="{{ s.ollama_model }}"></label>
+        <label>Claude model <input name="anthropic_model" value="{{ s.anthropic_model }}"></label>
+        <label>OpenRouter model for planning and answers <input name="openrouter_model" value="{{ s.openrouter_model }}"></label>
+        <label>OpenRouter cheaper model for research (optional) <input name="openrouter_fast_model" value="{{ s.openrouter_fast_model }}"></label>
+      </div>
+    </details>
+    <button type="submit" class="primary">Save settings</button>
+  </form>
   <h3>GitHub</h3>
   <p class="muted">So Prometheus can read its own repository ({{ s.github_repo }}), and open issues, pull requests or update itself (each waits for your approval).
   Make a key at <code>github.com/settings/personal-access-tokens/new</code>: repository access <strong>only</strong> {{ s.github_repo }};

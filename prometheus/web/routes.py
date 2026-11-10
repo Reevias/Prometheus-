@@ -226,25 +226,30 @@ def register_routes(app: FastAPI, services: Services) -> None:
                     "ready": bool(st.get("available")) and not st.get("resting"), "resting": st.get("resting", False),
                     "reason": st.get("reason", ""), **kw}
 
+        live = services.router.providers
         rows = [
-            row("ollama", "Ollama", "", kind="local", note="Runs on this laptop. Free and private.", models=[],
-                model=s.ollama_model, keyless=True, supported=True, logs=False, signup="", toggle=False, on=True),
-            row("openrouter", "OpenRouter", "OPENROUTER_API_KEY", kind="cloud", note="One key, many models.",
-                models=[], model=s.openrouter_model, keyless=False, supported=True, logs=False,
-                signup="openrouter.ai/keys", toggle=False, on=True),
-            row("anthropic", "Claude (Anthropic)", "ANTHROPIC_API_KEY", kind="cloud", note="Paid per use.", models=[],
-                model=s.anthropic_model, keyless=False, supported=True, logs=False,
-                signup="console.anthropic.com", toggle=False, on=True),
+            row("anthropic", "Claude (Anthropic)", "ANTHROPIC_API_KEY", kind="paid",
+                note="The main brain: plans tasks and writes answers. Paid per use, within your spending cap.",
+                models=["claude", "anthropic"], model=s.anthropic_model, keyless=False, supported=True, logs=False,
+                signup="https://console.anthropic.com/settings/keys", toggle=False, off=False),
+            row("openrouter", "OpenRouter", "OPENROUTER_API_KEY", kind="paid",
+                note="One key for hundreds of models, including free ones.", models=["deepseek", "llama", "qwen"],
+                model=s.openrouter_model, keyless=False, supported=True, logs=False,
+                signup="https://openrouter.ai/keys", toggle=False, off=False),
+            row("ollama", "Ollama", "", kind="local", note="Runs on this laptop. Free and private; reads your files.",
+                models=["local"], model=s.ollama_model, keyless=True, supported=True, logs=False, signup="",
+                toggle=False, off=False),
         ]
         for p in load_catalog():
-            rows.append(row(p.id, p.name, p.key_name, kind="free", note=p.description, models=list(p.models),
-                            model=s.provider_models.get(p.id) or (p.models[0] if p.models else ""),
-                            keyless=p.keyless, supported=p.supported, logs=p.logs_prompts,
-                            signup=p.signup_url.replace("https://", ""), toggle=p.supported,
-                            on=p.id in s.enabled_providers, why=p.why_unsupported))
-        # ready first, then usable without a key, then needs a key, then not supported
-        rows.sort(key=lambda r: (not r["ready"], not r["supported"], not (r["keyless"] or r["key_set"]),
-                                 r["name"].lower()))
+            provider = live.get(p.id)
+            rows.append(row(p.id, p.name, "" if p.keyless else p.key_name, kind="free", note=p.description,
+                            models=list(p.models), model=getattr(provider, "model", ""), keyless=p.keyless,
+                            supported=p.supported, logs=p.logs_prompts,
+                            signup="" if p.keyless else p.signup_url, toggle=p.supported,
+                            off=p.id in s.disabled_providers, why=p.why_unsupported))
+        # working first, then ones with a key, then free without a key, then the rest; unsupported last
+        rows.sort(key=lambda r: (not r["supported"], not r["ready"], not r["key_set"], r["kind"] != "paid",
+                                 not r["keyless"], r["name"].lower()))
         other_keys = [{"name": "GITHUB_TOKEN", "label": KEY_NAMES["GITHUB_TOKEN"], "set": have["GITHUB_TOKEN"]}]
         return page(request, "settings.html", status_code, s=s, providers=rows, other_keys=other_keys,
                     budget=services.budget.state(), catalog_date=catalog_updated(), **extra)
@@ -254,8 +259,8 @@ def register_routes(app: FastAPI, services: Services) -> None:
         return settings_page(request)
 
     @app.post("/settings", response_class=HTMLResponse)
-    def save(request: Request, budget_usd: str = Form(...), ollama_model: str = Form(...),
-             anthropic_model: str = Form(...), allow_lan: str = Form(""), openrouter_model: str = Form(""),
+    def save(request: Request, budget_usd: str = Form(...), ollama_model: str = Form(""),
+             anthropic_model: str = Form(""), allow_lan: str = Form(""), openrouter_model: str = Form(""),
              openrouter_fast_model: str = Form(""), github_repo: str = Form("")):
         try:
             budget = float(budget_usd)
@@ -266,8 +271,9 @@ def register_routes(app: FastAPI, services: Services) -> None:
         github_repo = github_repo.strip() or services.settings.github_repo
         if not REPO_NAME.fullmatch(github_repo):
             return settings_page(request, 400, error="The GitHub repository must look like owner/name.")
-        new = replace(services.settings, github_repo=github_repo, budget_usd=budget, ollama_model=ollama_model.strip()[:100],
-                      anthropic_model=anthropic_model.strip()[:100], allow_lan=bool(allow_lan),
+        new = replace(services.settings, github_repo=github_repo, budget_usd=budget,
+                      ollama_model=ollama_model.strip()[:100] or services.settings.ollama_model,
+                      anthropic_model=anthropic_model.strip()[:100] or services.settings.anthropic_model, allow_lan=bool(allow_lan),
                       openrouter_model=openrouter_model.strip()[:150] or services.settings.openrouter_model,
                       openrouter_fast_model=openrouter_fast_model.strip()[:150])
         save_settings(new)
@@ -305,28 +311,35 @@ def register_routes(app: FastAPI, services: Services) -> None:
         except OSError:
             return settings_page(request, 500, key_error="The key file is busy. Try again in a moment.")
         services.router.clear_rest()
+        info = next((p for p in load_catalog() if p.key_name == name), None)
+        if info is not None and info.id in services.settings.disabled_providers:   # adding a key switches it on
+            services.settings.disabled_providers.remove(info.id)
+            save_settings(services.settings)
         apply_settings(services)
         store.audit("user", "key_saved", {"name": name})
         return settings_page(request, key_saved=KEY_NAMES[name])
 
     @app.post("/settings/providers", response_class=HTMLResponse)
-    def set_provider(request: Request, id: str = Form(...), enabled: str = Form(""), model: str = Form(""),
-                     confirm: str = Form("")):
+    def set_provider(request: Request, id: str = Form(...), enabled: str = Form("")):
+        """Switch one AI off (or back on). Adding a key is what switches an AI on in the first place."""
         info = next((p for p in load_catalog() if p.id == id), None)
         if info is None or not info.supported:
             return settings_page(request, 400, key_error="Unknown provider.")
         s = services.settings
-        if enabled and id not in s.enabled_providers and not confirm:
-            return settings_page(request, 400, key_error=f"To use {info.name}, tick the box saying you understand "
-                                                         "it may keep what you send it.")
-        s.enabled_providers = [p for p in s.enabled_providers if p != id] + ([id] if enabled else [])
-        model = model.strip()[:150]
-        if model:
-            s.provider_models[id] = model
+        s.disabled_providers = [p for p in s.disabled_providers if p != id] + ([] if enabled else [id])
         save_settings(s)
         apply_settings(services)
         services.router.clear_rest()
-        store.audit("user", "provider", {"id": id, "enabled": bool(enabled), "model": model})
+        store.audit("user", "provider", {"id": id, "enabled": bool(enabled)})
+        return settings_page(request, saved=True)
+
+    @app.post("/settings/free", response_class=HTMLResponse)
+    def set_free(request: Request, on: str = Form("")):
+        s = services.settings
+        s.free_no_key = bool(on)
+        save_settings(s)
+        apply_settings(services)
+        store.audit("user", "free_no_key", {"on": s.free_no_key})
         return settings_page(request, saved=True)
 
     @app.post("/settings/keys/delete", response_class=HTMLResponse)
@@ -341,6 +354,7 @@ def register_routes(app: FastAPI, services: Services) -> None:
         except OSError:
             return settings_page(request, 500, key_error="The key file is busy. Try again in a moment.")
         services.router.clear_rest()
+        apply_settings(services)
         store.audit("user", "key_removed", {"name": name})
         return settings_page(request, key_saved="")
 

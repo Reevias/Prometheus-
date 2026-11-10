@@ -101,21 +101,32 @@ class ModelRouter:
 CLOUD_PURPOSES = ("plan", "combine", "research")
 
 
+def provider_on(info, settings: Settings) -> bool:
+    """A catalog provider is used when it is supported, not switched off, and either has a key (checked when it is
+    called) or needs none and free no-key providers are allowed."""
+    if not info.supported or info.id in settings.disabled_providers:
+        return False
+    return not info.keyless or settings.free_no_key or info.id in settings.enabled_providers
+
+
 def build_routes(settings: Settings) -> dict[str, list[str]]:
-    """The user's routes, plus every free provider they switched on (cloud purposes only, never private)."""
+    """The user's routes, plus every free provider that is on: ones with a key first, no-key ones after them,
+    the local model last. Never added to the private route."""
+    from prometheus.config import get_secret
+
     routes = {purpose: list(entries) for purpose, entries in settings.routes.items()}
     if settings.openrouter_fast_model and "research" in routes:
         routes["research"] = [f"openrouter:{settings.openrouter_fast_model}" if e == "openrouter" else e
                               for e in routes["research"]]
-    known = {p.id for p in load_catalog()}
-    for pid in settings.enabled_providers:
-        if pid not in known:
-            continue
-        model = settings.provider_models.get(pid, "")
-        entry = f"{pid}:{model}" if model else pid
+    on = [p for p in load_catalog() if provider_on(p, settings)]
+    keyed = [p for p in on if not p.keyless and get_secret(p.key_name)]
+    keyless = [p for p in on if p.keyless]
+    for info in keyed + keyless:
+        model = settings.provider_models.get(info.id, "")
+        entry = f"{info.id}:{model}" if model else info.id
         for purpose in CLOUD_PURPOSES:
             names = routes.setdefault(purpose, [])
-            if not any(split_entry(e)[0] == pid for e in names):
+            if not any(split_entry(e)[0] == info.id for e in names):
                 local = [e for e in names if split_entry(e)[0] == "ollama"]
                 names[:] = [e for e in names if e not in local] + [entry] + local   # local stays the last resort
     return routes
@@ -129,5 +140,5 @@ def build_router(settings: Settings, budget: Budget, killswitch: KillSwitch) -> 
     }
     for info in load_catalog():
         providers[info.id] = OpenAICompatProvider(info, model=settings.provider_models.get(info.id, ""),
-                                                  enabled=info.id in settings.enabled_providers)
+                                                  enabled=provider_on(info, settings))
     return ModelRouter(providers, build_routes(settings), budget, killswitch)

@@ -80,9 +80,11 @@ def apply_settings(services: "Services") -> None:
         provider = router.providers.get(name)
         if provider is not None and hasattr(provider, "model") and model:
             provider.model = model
+    from prometheus.models.router import provider_on
+
     for name, provider in router.providers.items():
-        if hasattr(provider, "enabled"):
-            provider.enabled = name in s.enabled_providers
+        if hasattr(provider, "enabled") and hasattr(provider, "info"):
+            provider.enabled = provider_on(provider.info, s)
             if s.provider_models.get(name):
                 provider.model = s.provider_models[name]
     for purpose, entries in build_routes(s).items():

@@ -59,7 +59,9 @@ class Settings:
     openrouter_model: str = "openrouter/auto"   # strong model: planning and final answers
     github_repo: str = "Reevias/Prometheus-"    # the repository Prometheus may read and update
     openrouter_fast_model: str = ""             # cheaper model for research summaries ("" = same as above)
-    enabled_providers: list[str] = field(default_factory=list)       # free providers the user switched on
+    enabled_providers: list[str] = field(default_factory=list)       # free providers the user switched on (older versions)
+    disabled_providers: list[str] = field(default_factory=list)      # providers the user switched off
+    free_no_key: bool = True                    # use free providers that need no key (never for personal files)
     provider_models: dict[str, str] = field(default_factory=dict)    # chosen model per free provider
     password_hash: str = ""
     task_folders_note: str = ""
