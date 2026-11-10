@@ -1,6 +1,7 @@
 """Page and htmx routes."""
 from __future__ import annotations
 
+import re
 import time
 from dataclasses import replace
 from pathlib import Path
@@ -17,6 +18,7 @@ from prometheus.web.render import render_message
 from prometheus.config import KEY_NAMES, delete_secret, save_settings, secrets_set, set_secret
 
 WEB = Path(__file__).resolve().parent
+REPO_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,38}/[A-Za-z0-9._-]{1,100}$")
 
 
 def register_routes(app: FastAPI, services: Services) -> None:
@@ -197,14 +199,17 @@ def register_routes(app: FastAPI, services: Services) -> None:
     @app.post("/settings", response_class=HTMLResponse)
     def save(request: Request, budget_usd: str = Form(...), ollama_model: str = Form(...),
              anthropic_model: str = Form(...), allow_lan: str = Form(""), openrouter_model: str = Form(""),
-             openrouter_fast_model: str = Form("")):
+             openrouter_fast_model: str = Form(""), github_repo: str = Form("")):
         try:
             budget = float(budget_usd)
             if not 0 <= budget <= 1000:
                 raise ValueError
         except ValueError:
             return settings_page(request, 400, error="The spending cap must be a number between 0 and 1000.")
-        new = replace(services.settings, budget_usd=budget, ollama_model=ollama_model.strip()[:100],
+        github_repo = github_repo.strip() or services.settings.github_repo
+        if not REPO_NAME.fullmatch(github_repo):
+            return settings_page(request, 400, error="The GitHub repository must look like owner/name.")
+        new = replace(services.settings, github_repo=github_repo, budget_usd=budget, ollama_model=ollama_model.strip()[:100],
                       anthropic_model=anthropic_model.strip()[:100], allow_lan=bool(allow_lan),
                       openrouter_model=openrouter_model.strip()[:150] or services.settings.openrouter_model,
                       openrouter_fast_model=openrouter_fast_model.strip()[:150])

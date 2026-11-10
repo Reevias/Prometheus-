@@ -9,6 +9,7 @@
     <label>Claude model <input name="anthropic_model" value="{{ s.anthropic_model }}"></label>
     <label>OpenRouter model for planning and answers <input name="openrouter_model" value="{{ s.openrouter_model }}"></label>
     <label>OpenRouter cheaper model for research (optional) <input name="openrouter_fast_model" value="{{ s.openrouter_fast_model }}"></label>
+    <label>GitHub repository Prometheus may read and update <input name="github_repo" value="{{ s.github_repo }}"></label>
     <label class="check"><input type="checkbox" name="allow_lan" value="1" {{ "checked" if s.allow_lan }}> Allow other devices on my Wi-Fi (needs restart, keep a strong password)</label>
     <button type="submit" class="primary">Save settings</button>
   </form>
@@ -56,6 +57,10 @@
   </div>
   {% endfor %}
   <p class="muted">Free provider list last updated {{ catalog_date }} (from the awesome-free-llm-apis project). Limits and models change often.</p>
+  <h3>GitHub</h3>
+  <p class="muted">So Prometheus can read its own repository ({{ s.github_repo }}), and open issues, pull requests or update itself (each waits for your approval).
+  Make a key at <code>github.com/settings/personal-access-tokens/new</code>: repository access <strong>only</strong> {{ s.github_repo }};
+  permissions: Contents, Issues and Pull requests set to read and write, Actions and Metadata set to read. Paste it below.</p>
   <h3>Other keys</h3>
   {% for k in other_keys %}
   <form hx-post="/settings/keys" hx-target="body" class="panel row">

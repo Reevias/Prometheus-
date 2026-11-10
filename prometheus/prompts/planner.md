@@ -13,7 +13,8 @@ Plans:
   $step1.pdfs). Write a list as JSON text, e.g. ["a.pdf", "b.pdf"]. Folders can be written relative to the user's
   home folder, e.g. Downloads.
 - To explain how to do something from a guide, use the guide agent with the skill name and the question.
-- For a Wi-Fi, Bluetooth, battery or location request use the system agent.
+- For Wi-Fi, Bluetooth, battery, location, apps, windows, volume, brightness, dark mode, screenshots, typing, clicking, power or installing software use the system agent.
+- For questions about Prometheus's own repository or updates use the github agent.
 - If something you need is missing and guessing would change what you do, ask one short question in "answer" and
   leave "steps" empty.
 

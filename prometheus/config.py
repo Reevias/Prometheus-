@@ -55,6 +55,7 @@ class Settings:
     ollama_url: str = "http://127.0.0.1:11434"
     anthropic_model: str = "claude-opus-5-5"
     openrouter_model: str = "openrouter/auto"   # strong model: planning and final answers
+    github_repo: str = "Reevias/Prometheus-"    # the repository Prometheus may read and update
     openrouter_fast_model: str = ""             # cheaper model for research summaries ("" = same as above)
     enabled_providers: list[str] = field(default_factory=list)       # free providers the user switched on
     provider_models: dict[str, str] = field(default_factory=dict)    # chosen model per free provider
