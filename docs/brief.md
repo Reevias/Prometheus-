@@ -312,6 +312,14 @@ Trade-offs: monthly cost; personal files would leave the laptop, so the file/pho
 - Build it here in the cloud session, test with fake files, push to GitHub; the user pulls and runs on Windows.
 - Phone in a browser at home (password) → later Tailscale for anywhere → later the real Android app.
 
+## 17a. Gaps against the "6 pillars" guide (owner's PDF, 2026-11-11)
+
+Planning loop: no observe → reflect → retry, no goal check, no long-running background goals, no loop limit.
+Perception: no screen or camera vision; no watchers (folder, battery, CPU, disk), email or webhook triggers.
+Tools: no MCP, no browser automation, no sandboxed code, no Gmail/Calendar/Drive, no phone access.
+Memory: no links between facts, no replacing changed facts, no learning from failed tasks.
+Governance: no code sandbox (needed with code running). Next: the planning loop.
+
 ## 17b. Gaps between today and the final vision (updated 2026-11-10)
 
 | Area | Missing |

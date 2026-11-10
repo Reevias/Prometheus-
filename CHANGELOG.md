@@ -1,6 +1,7 @@
 # Changelog
 
 ## 1.4
+- Approvals, two kinds: small things (an unfamiliar website or file, a click, pressing Enter, switching models) are asked right in the chat with Allow / Always allow this site or folder / Don't allow. A yes is remembered in every chat; the list is in Settings, under Always allowed, with Remove. Big things (installs, power, Wi-Fi, GitHub posts, cloning, self-edits, repo of the day, paid cloud jobs, big Recycle Bin batches) stay on the Approvals page.
 - Alarms, timers and reminders: "alarm for 10 mins", "remind me at 6 to call mom", "every day at 8am tell me the weather". They ring with a Windows notification, are spoken if voice is on, appear in the chat, survive restarts (fired at the next start if missed), and are listed under "Coming up" with Cancel.
 - PDF output: the files agent writes PDFs from Markdown with headings, lists and clickable links (Word too). Roadmaps and long answers can be saved straight away, with research first if needed.
 - Learns how you like answers: 👍 / 👎 on every answer (👎 asks what should be better and rewrites it at once). Each night Prometheus turns the ratings into a short list of rules that every answer follows; the Memory page shows them, with Learn now, Reset and earlier versions to restore.

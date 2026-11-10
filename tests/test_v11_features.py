@@ -91,7 +91,7 @@ def test_other_website_waits_for_approval(make_ctx, public_dns):
     result = opener(opened).run("open", {"target": "https://example.com/page"}, ctx)
     assert result.status == "waiting_approval" and opened == []
     [a] = ctx.store.approvals()
-    assert a.kind == "open_link" and a.payload == {"url": "https://example.com/page"}
+    assert a.kind == "open_link" and a.payload["url"] == "https://example.com/page"
     open_link_handler(a.payload, opened.append)
     assert opened == ["https://example.com/page"]
 

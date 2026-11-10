@@ -41,5 +41,5 @@ class SettingsAgent(Agent):
         if not MODEL.fullmatch(model):
             return StepResult("failed", "That doesn't look like a model name (for example deepseek/deepseek-v4.1-flash).")
         ctx.use(self.name, "settings_write")
-        ctx.approvals.request("set_model", f"Use {model} for {provider}", {"provider": provider, "model": model})
-        return StepResult("waiting_approval", f"Switching {provider} to {model} is waiting for your approval.")
+        return ctx.ask("set_model", f"Use {model} for {provider}", {"provider": provider, "model": model},
+                       exact=f"{provider}:{model}", waiting=f"Switch {provider} to {model}? Answer below in the chat.")

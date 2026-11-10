@@ -93,7 +93,7 @@ def test_switching_a_model_asks_first_and_validates(make_ctx):
                                      "model": "deepseek/deepseek-v4.1-flash"}, ctx)
     assert result.status == "waiting_approval"
     [a] = ctx.store.approvals()
-    assert a.kind == "set_model" and a.payload == {"provider": "openrouter", "model": "deepseek/deepseek-v4.1-flash"}
+    assert a.kind == "set_model" and a.payload.items() >= {"provider": "openrouter", "model": "deepseek/deepseek-v4.1-flash"}.items()
     for bad in ({"provider": "evil", "model": "x"}, {"provider": "openrouter", "model": "a b; c"},
                 {"provider": "openrouter", "model": ""}):
         assert ag.run("g", {"action": "set_model", **bad}, ctx).status == "failed"

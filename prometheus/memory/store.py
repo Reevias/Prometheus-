@@ -47,6 +47,8 @@ CREATE TABLE IF NOT EXISTS reminders (id INTEGER PRIMARY KEY, chat_id INTEGER NO
     due REAL NOT NULL, repeat TEXT NOT NULL DEFAULT '', state TEXT NOT NULL DEFAULT 'waiting', created REAL NOT NULL);
 CREATE TABLE IF NOT EXISTS feedback (message_id INTEGER PRIMARY KEY, rating INTEGER NOT NULL, note TEXT NOT NULL,
     created REAL NOT NULL, learned INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE IF NOT EXISTS allow_rules (id INTEGER PRIMARY KEY, kind TEXT NOT NULL, key TEXT NOT NULL,
+    label TEXT NOT NULL, created REAL NOT NULL, UNIQUE (kind, key));
 CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS chunk_vectors (chunk_id INTEGER PRIMARY KEY, model TEXT NOT NULL, vec BLOB NOT NULL);
 """
@@ -163,6 +165,10 @@ class Store:
             if "summary" not in {r["name"] for r in self._db.execute("PRAGMA table_info(chats)")}:
                 self._db.execute("ALTER TABLE chats ADD COLUMN summary TEXT NOT NULL DEFAULT ''")
                 self._db.execute("ALTER TABLE chats ADD COLUMN summary_upto INTEGER NOT NULL DEFAULT 0")
+            approval_cols = {r["name"] for r in self._db.execute("PRAGMA table_info(approvals)")}
+            if "inline" not in approval_cols:
+                self._db.execute("ALTER TABLE approvals ADD COLUMN chat_id INTEGER NOT NULL DEFAULT 0")
+                self._db.execute("ALTER TABLE approvals ADD COLUMN inline INTEGER NOT NULL DEFAULT 0")
             if "named_by" not in {r["name"] for r in self._db.execute("PRAGMA table_info(chats)")}:
                 self._db.execute("ALTER TABLE chats ADD COLUMN named_by TEXT NOT NULL DEFAULT 'auto'")
             if "private" not in {r["name"] for r in self._db.execute("PRAGMA table_info(messages)")}:
@@ -538,7 +544,46 @@ class Store:
         return [{**dict(r), "detail": json.loads(r["detail"])} for r in rows]
 
     # -- approvals ----------------------------------------------------------
-    def add_approval(self, kind: str, summary: str, payload: dict) -> int:
+    def add_approval(self, kind: str, summary: str, payload: dict, chat_id: int = 0, inline: bool = False) -> int:
+        if chat_id or inline:
+            return self._write("INSERT INTO approvals (kind, summary, payload, status, created, chat_id, inline) "
+                               "VALUES (?, ?, ?, 'pending', ?, ?, ?)",
+                               (kind, summary, json.dumps(payload), time.time(), chat_id, int(inline)))
+        return self._add_approval(kind, summary, payload)
+
+    def asks_for_chat(self, chat_id: int) -> list[Approval]:
+        """Small approvals waiting inside this chat (shown under the messages, not on the Approvals page)."""
+        return [self._approval(r) for r in self._rows(
+            "SELECT * FROM approvals WHERE status = 'pending' AND inline = 1 AND chat_id = ? ORDER BY id", (chat_id,))]
+
+    def big_approvals(self) -> list[Approval]:
+        return [self._approval(r) for r in self._rows(
+            "SELECT * FROM approvals WHERE status = 'pending' AND inline = 0 ORDER BY id")]
+
+    def approval_chat(self, approval_id: int) -> tuple[int, bool]:
+        rows = self._rows("SELECT chat_id, inline FROM approvals WHERE id = ?", (approval_id,))
+        return (int(rows[0]["chat_id"]), bool(rows[0]["inline"])) if rows else (0, False)
+
+    # -- remembered approvals: allowed once, allowed in every chat ------------------------------
+    def add_allow_rule(self, kind: str, key: str, label: str) -> None:
+        if key:
+            self._write("INSERT OR IGNORE INTO allow_rules (kind, key, label, created) VALUES (?, ?, ?, ?)",
+                        (kind, key, label[:200], time.time()))
+
+    def allowed(self, kind: str, keys: list[str]) -> bool:
+        keys = [k for k in keys if k]
+        if not keys:
+            return False
+        marks = ",".join("?" for _ in keys)
+        return bool(self._rows(f"SELECT 1 FROM allow_rules WHERE kind = ? AND key IN ({marks})", (kind, *keys)))
+
+    def allow_rules(self) -> list[dict]:
+        return [dict(r) for r in self._rows("SELECT * FROM allow_rules ORDER BY created DESC")]
+
+    def remove_allow_rule(self, rule_id: int) -> None:
+        self._write("DELETE FROM allow_rules WHERE id = ?", (rule_id,))
+
+    def _add_approval(self, kind: str, summary: str, payload: dict) -> int:
         return self._write(
             "INSERT INTO approvals (kind, summary, payload, status, created) VALUES (?, ?, ?, 'pending', ?)",
             (kind, summary, json.dumps(payload), time.time()),

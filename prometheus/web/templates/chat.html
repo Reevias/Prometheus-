@@ -19,7 +19,7 @@
               hx-on::after-request="if (event.detail.xhr.status === 409) alert(event.detail.xhr.responseText)">Delete</button>
     </div>
     <div id="messages" hx-get="/chats/{{ chat_id }}/messages" hx-trigger="every 2s [document.visibilityState === 'visible']"
-         hx-vals='js:{have: document.querySelectorAll("#messages .msg").length, busy: document.querySelector("#messages .working") ? 1 : 0}'
+         hx-vals='js:{have: document.querySelectorAll("#messages .msg, #messages .ask").length, busy: document.querySelector("#messages .working") ? 1 : 0}'
          hx-on::after-swap="this.scrollTop = this.scrollHeight">
       {% include "messages.html" %}
     </div>

@@ -258,8 +258,11 @@ class Opener(Agent):
             ctx.store.audit(self.name, "open_link", {"url": url})
             return StepResult("done", f"Opened {url}", {"url": url})
         ctx.use(self.name, "open_other")
-        ctx.approvals.request("open_link", f"Open this website: {url}", {"url": url})
-        return StepResult("waiting_approval", f"Approve opening {url} on the Approvals page.", {"url": url})
+        host = (urlsplit(url).hostname or "").lower().removeprefix("www.")
+        res = ctx.ask("open_link", f"Open this website: {url}", {"url": url}, exact=url, broad=host,
+                      broad_label=f"Any page on {host}", waiting=f"Open {url}? Answer below in the chat.")
+        res.data["url"] = url
+        return res
 
     def _file(self, ctx: AgentContext, target: str) -> StepResult:
         ctx.use(self.name, "open_local")
@@ -267,8 +270,9 @@ class Opener(Agent):
             path = _checked_local(str(resolve_folder(target, ctx.home)), ctx.policy)
         except ValueError as e:
             return StepResult("failed", f"I can't open that: {e}")
-        ctx.approvals.request("open_local", f"Open this on your laptop: {path}", {"path": str(path)})
-        return StepResult("waiting_approval", f"Approve opening {path.name} on the Approvals page.", {})
+        return ctx.ask("open_local", f"Open this on your laptop: {path}", {"path": str(path)}, exact=str(path),
+                       broad=str(path.parent), broad_label=f"Files in {path.parent}",
+                       waiting=f"Open {path.name}? Answer below in the chat.")
 
     def run(self, goal: str, inputs: dict, ctx: AgentContext) -> StepResult:
         target = str(inputs.get("target") or "").strip() or infer_target(goal)

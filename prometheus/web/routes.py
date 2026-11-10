@@ -57,6 +57,7 @@ def register_routes(app: FastAPI, services: Services) -> None:
     def messages_partial(request: Request, chat_id: int):
         busy = chat_id in services.running
         return page(request, "messages.html", messages=store.messages(chat_id), busy=busy,
+                    asks=store.asks_for_chat(chat_id),
                     ratings=store.ratings_for(chat_id),
                     doing=current_step(chat_id) if busy else "")
 
@@ -65,6 +66,7 @@ def register_routes(app: FastAPI, services: Services) -> None:
         return page(request, "chat.html", chats=store.chats(), chat_id=chat_id, chat_title=store.chat_title(chat_id),
                     heads=head_choices(services.router), head=services.settings.head_model,
                     messages=store.messages(chat_id), ratings=store.ratings_for(chat_id),
+                    asks=store.asks_for_chat(chat_id),
                     notes=store.chat_notes(chat_id), busy=busy, doing=current_step(chat_id) if busy else "")
 
     @app.get("/", response_class=HTMLResponse)
@@ -91,7 +93,8 @@ def register_routes(app: FastAPI, services: Services) -> None:
     @app.get("/chats/{chat_id}/messages", response_class=HTMLResponse)
     def messages(request: Request, chat_id: int, have: int = -1, busy: int = -1):
         # The page tells us what it already shows; if nothing changed we send nothing, so it doesn't flicker.
-        if have == len(store.messages(chat_id)) and busy == int(chat_id in services.running) and not busy:
+        shown = len(store.messages(chat_id)) + len(store.asks_for_chat(chat_id))
+        if have == shown and busy == int(chat_id in services.running) and not busy:
             return Response(status_code=204)
         return messages_partial(request, chat_id)
 
@@ -228,18 +231,39 @@ def register_routes(app: FastAPI, services: Services) -> None:
         return page(request, "status.html", mini=bool(mini), core=bool(core), busy=bool(services.running), task=task,
                     voice=voice, updated=services.updater.updated if services.updater is not None else "",
                     steps=store.steps(task["id"]) if task else [], budget=services.budget.state(),
-                    pending=len(store.approvals()),
+                    pending=len(store.big_approvals()),
                     models=services.router.status_detail() if not (mini or core) else [])
 
     @app.get("/approvals", response_class=HTMLResponse)
     def approvals(request: Request):
-        return page(request, "approvals.html", approvals=store.approvals(), result="")
+        return page(request, "approvals.html", approvals=store.big_approvals(), result="")
 
     @app.post("/approvals/{approval_id}", response_class=HTMLResponse)
     def decide(request: Request, approval_id: int, decision: str = Form(...), secret: str = Form("")):
         secret = secret[:200]
         result = services.approvals.resolve(approval_id, approved=(decision == "approve"), secret=secret)
-        return page(request, "approval_list.html", approvals=store.approvals(), result=result)
+        return page(request, "approval_list.html", approvals=store.big_approvals(), result=result)
+
+    @app.post("/ask/{approval_id}", response_class=HTMLResponse)
+    def answer_ask(request: Request, approval_id: int, decision: str = Form(...)):
+        """A small yes/no in the chat. allow = this exact thing from now on, in every chat; always = its whole
+        site or folder; deny = no."""
+        chat_id, inline = store.approval_chat(approval_id)
+        if not inline:
+            return Response(status_code=404)
+        approved = decision in ("allow", "always")
+        result = services.approvals.resolve(approval_id, approved=approved,
+                                            remember={"allow": "exact", "always": "broad"}.get(decision, ""))
+        text = ("Not done: you said no." if not approved else
+                (result if not str(result).startswith("Failed") else f"That didn't work: {result}"))
+        store.add_message(chat_id, "assistant", str(text), "approval")
+        return messages_partial(request, chat_id)
+
+    @app.post("/settings/allowed/{rule_id}/remove", response_class=HTMLResponse)
+    def remove_allowed(request: Request, rule_id: int):
+        store.remove_allow_rule(rule_id)
+        store.audit("user", "allow_rule_removed", {"id": rule_id})
+        return settings_page(request, saved=True)
 
     @app.post("/approvals/{approval_id}/open")
     def open_approval_link(request: Request, approval_id: int):
@@ -387,7 +411,9 @@ def register_routes(app: FastAPI, services: Services) -> None:
 
         bad_places = {f: extra_root_problem(f, services.home) for f in s.extra_folders}
         bad_places = {f: why for f, why in bad_places.items() if why}
+        allowed_rules = store.allow_rules()
         return page(request, "settings.html", status_code, s=s, providers=rows, other_keys=other_keys,
+                    allowed_rules=allowed_rules,
                     heads=head_choices(services.router), head=s.head_model,
                     voice=services.voice.describe() if services.voice is not None else None,
                     vaults=[str(v) for v in __import__("prometheus.agents.obsidian", fromlist=["x"]).detect_vaults()],

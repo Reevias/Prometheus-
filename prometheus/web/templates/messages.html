@@ -26,4 +26,16 @@
   {% endfor %}
 </div>
 {% endfor %}
+{% for a in asks or [] %}
+<div class="ask" id="ask-{{ a.id }}">
+  <p><strong>{{ a.summary }}?</strong></p>
+  <div class="row">
+    <button type="button" class="ok" hx-post="/ask/{{ a.id }}" hx-vals='{"decision": "allow"}' hx-target="#messages"
+            title="Yes, and don't ask again for this exact thing, in any chat">Allow</button>
+    {% if a.payload._broad_label %}<button type="button" hx-post="/ask/{{ a.id }}" hx-vals='{"decision": "always"}' hx-target="#messages"
+            title="Yes, and allow the same for: {{ a.payload._broad_label }}">Always allow: {{ a.payload._broad_label }}</button>{% endif %}
+    <button type="button" class="danger" hx-post="/ask/{{ a.id }}" hx-vals='{"decision": "deny"}' hx-target="#messages">Don't allow</button>
+  </div>
+</div>
+{% endfor %}
 {% if busy %}<div class="working"><span class="dots"><i></i><i></i><i></i></span> {{ doing or "Working" }}</div>{% endif %}

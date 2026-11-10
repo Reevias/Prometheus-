@@ -19,6 +19,7 @@ ACTIONS = {"wifi_status", "wifi_list", "wifi_connect", "wifi_disconnect", "bluet
            "install_app", "store_open"}
 READ = {"wifi_status", "wifi_list", "bluetooth_status", "location", "battery", "apps_running"}
 CHANGE = ACTIONS - READ
+SMALL = {"click", "press_keys"}          # asked in the chat; installs, power and Wi-Fi stay on the Approvals page
 
 
 def needs_approval(action: str, params: dict) -> str:
@@ -191,6 +192,13 @@ class SystemAgent(Agent):
             elif action in ACTIONS - {"wifi_status", "wifi_list", "wifi_connect", "wifi_disconnect", "bluetooth_status",
                                       "bluetooth_on", "bluetooth_off", "location", "battery", "apps_running"}:
                 why = needs_approval(action, inputs)
+                if why and action in SMALL:            # a click or Enter: asked right in the chat
+                    shown = {k: str(inputs.get(k, ""))[:200] for k in ("keys", "x", "y") if inputs.get(k) not in (None, "")}
+                    exact = f"{action}:{shown.get('keys') or (shown.get('x', '') + ',' + shown.get('y', ''))}"
+                    return ctx.ask("laptop_action", f"{action.replace('_', ' ')}: {why}", {"action": action, **shown},
+                                   exact=exact.lower(), broad=action if action == "press_keys" else "",
+                                   broad_label="Pressing Enter in any window" if action == "press_keys" else "",
+                                   waiting=f"{why} Allow it below in the chat?")
                 if why:
                     shown = {k: v for k, v in inputs.items() if k not in ("action",) and k in
                              ("target", "mode", "level", "text", "keys", "x", "y")}

@@ -87,6 +87,15 @@
   </div>
   {% endif %}
 
+  <h3>Always allowed</h3>
+  <p class="muted">Small things you said yes to in a chat. They aren't asked again, in any chat. Big things (installs,
+  power, Wi-Fi, GitHub posts, money) always wait on the Approvals page.</p>
+  <ul class="plain">
+    {% for r in allowed_rules %}<li>{{ r.label }} <span class="muted">({{ r.kind.replace("_", " ") }})</span>
+      <form hx-post="/settings/allowed/{{ r.id }}/remove" hx-target="body" style="display:inline"><button type="submit" class="danger">Remove</button></form></li>
+    {% else %}<li class="muted">Nothing yet.</li>{% endfor %}
+  </ul>
+
   <h3>Obsidian</h3>
   {% if obsidian_error %}<p class="error">{{ obsidian_error }}</p>{% endif %}
   <div class="panel" style="display:grid;gap:10px">

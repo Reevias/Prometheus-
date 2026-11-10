@@ -39,6 +39,21 @@ class AgentContext:
         """The chosen skill's instructions, ready to append to a system prompt."""
         return f"\n\nFollow this guide for the task:\n{self.skill[:limit]}" if self.skill else ""
 
+    def chat_id(self) -> int:
+        try:
+            return int(self.store.task(self.task_id)["chat_id"])
+        except Exception:
+            return 0
+
+    def ask(self, kind: str, summary: str, payload: dict, exact: str, broad: str = "", broad_label: str = "",
+            waiting: str = "") -> "StepResult":
+        """A small yes/no asked right in the chat (remembered once allowed, in every chat)."""
+        state, value = self.approvals.ask(kind, summary, payload, (exact, broad), chat_id=self.chat_id(),
+                                          broad_label=broad_label)
+        if state == "done":
+            return StepResult("done", str(value))
+        return StepResult("waiting_approval", waiting or f"{summary}? Answer below in the chat.")
+
     def use(self, agent: str, tool: str) -> None:
         decision = self.permissions.check(agent, tool)
         if decision is Decision.DENY:
