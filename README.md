@@ -13,6 +13,7 @@ Design: [`docs/spec.md`](docs/spec.md) · Roadmap: [`docs/guide.md`](docs/guide.
 | Documents | Reads PDFs, Word and text files **on your laptop** and summarises the ones that match |
 | Research | Searches the web and writes a summary with sources |
 | Repo Scout | Finds GitHub projects for a need; clones only after you approve, and never runs them |
+| Guide | Explains how to do something from one of Prometheus's skills (how-to guides) |
 | Opener | Plays a YouTube video (and can summarise it from its captions), opens a GitHub repo, a website, or a file in its normal app. Never runs programs |
 
 Try: *"sort my Downloads folder and summarise any PDFs about taxes"*.
@@ -62,17 +63,35 @@ prometheus doctor
 Add keys in **Settings → API keys** (paste the key, type your Prometheus password, Save). Keys stay on this
 laptop, are never shown again, and work straight away.
 
-- **OpenRouter (main brain for now):** one key, many models. Pick the model names in Settings
-  (the default `openrouter/auto` lets OpenRouter choose).
+- **OpenRouter (main brain for now):** one key, many models.
+- **Free providers:** Settings lists Groq, Gemini, Mistral, NVIDIA and others, with a search box. Tick "Use it"
+  to switch one on. Three need no key (Kilo Code, LLM7.io, OVHcloud) but have tight limits. Providers marked
+  "may log or train on prompts" can keep what you send them.
 - **Local (free, private):** start Ollama and keep `qwen3.5:2b` pulled. Personal files only ever go to local models.
 - **Claude:** add an Anthropic key later. Use prepaid credit with auto-reload off.
-- **Gemini 4 Argon:** coming later.
 
 Prometheus switches models by itself: if one is down, out of credit or rate-limited it rests for 5 minutes and
 the next one takes over; when the spending cap is reached it drops to free and local models. Each answer shows
 which model wrote it.
 
 Without any model, file sorting by rules still works; planning needs a model.
+
+## Skills
+
+Skills are how-to guides Prometheus follows. Each is a folder with a short `SKILL.md` and a `references/` folder
+it opens only when needed (see the **Skills** page). Built-in skills: research, task-planning, memory, models,
+coding, understand-software, explain-code, file-sorting, video. They were written from the open-source projects
+named inside each reference file.
+
+Add your own: put a folder with a `SKILL.md` (starting with `name:` and `description:` lines between `---` marks)
+in the `skills` folder of Prometheus's data folder. A skill is instructions the AI will follow, so only add ones
+you trust.
+
+## Memory
+
+Everything Prometheus remembers is in one file (`memory.db`) shared by every agent and model. Before planning it
+looks up the memories that match your request. The **Memory** page has a search box; word forms and partial
+words match ("tax" finds "taxes").
 
 ## Safety
 
