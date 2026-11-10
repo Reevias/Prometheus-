@@ -51,6 +51,7 @@ class Message:
     text: str
     created: float
     model: str = ""
+    private: bool = False    # the text holds details from the owner's files: never sent to a cloud model
 
 
 @dataclass
@@ -111,6 +112,8 @@ class Store:
             columns = {r["name"] for r in self._db.execute("PRAGMA table_info(messages)")}
             if "model" not in columns:  # databases made before v1.1
                 self._db.execute("ALTER TABLE messages ADD COLUMN model TEXT NOT NULL DEFAULT ''")
+            if "private" not in {r["name"] for r in self._db.execute("PRAGMA table_info(messages)")}:
+                self._db.execute("ALTER TABLE messages ADD COLUMN private INTEGER NOT NULL DEFAULT 0")
             columns = {r["name"] for r in self._db.execute("PRAGMA table_info(memories)")}
             if "source" not in columns:  # databases made before v1.2
                 self._db.execute("ALTER TABLE memories ADD COLUMN source TEXT NOT NULL DEFAULT ''")
@@ -158,17 +161,18 @@ class Store:
     def chats(self) -> list[tuple[int, str]]:
         return [(r["id"], r["title"]) for r in self._rows("SELECT id, title FROM chats ORDER BY id DESC")]
 
-    def add_message(self, chat_id: int, role: str, text: str, model: str = "") -> int:
+    def add_message(self, chat_id: int, role: str, text: str, model: str = "", private: bool = False) -> int:
         mid = self._write(
-            "INSERT INTO messages (chat_id, role, text, created, model) VALUES (?, ?, ?, ?, ?)",
-            (chat_id, role, text, time.time(), model),
+            "INSERT INTO messages (chat_id, role, text, created, model, private) VALUES (?, ?, ?, ?, ?, ?)",
+            (chat_id, role, text, time.time(), model, int(private)),
         )
         self._index("message", mid, text)
         return mid
 
     def messages(self, chat_id: int) -> list[Message]:
         rows = self._rows("SELECT * FROM messages WHERE chat_id = ? ORDER BY id", (chat_id,))
-        return [Message(r["id"], r["chat_id"], r["role"], r["text"], r["created"], r["model"]) for r in rows]
+        return [Message(r["id"], r["chat_id"], r["role"], r["text"], r["created"], r["model"], bool(r["private"]))
+                for r in rows]
 
     # -- notes and memories ---------------------------------------------
     def add_chat_note(self, chat_id: int, text: str) -> int:

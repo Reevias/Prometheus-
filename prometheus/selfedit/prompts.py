@@ -1,12 +1,20 @@
 """Level 1 self-editing: prompt files in a local git repo, so every change can be rolled back."""
 from __future__ import annotations
 
+import hashlib
 import re
 import shutil
 import subprocess
 from pathlib import Path
 
 PACKAGE_PROMPTS = Path(__file__).resolve().parent.parent / "prompts"
+# sha256 of prompt files shipped by earlier versions. A copy that still matches one of these was never edited by
+# the owner or by self-editing, so it is replaced when a better version ships.
+KNOWN_OLD: dict[str, set[str]] = {
+    "planner": {"0c1af9132202917489d1136e99c9fd7e383961b835324aa1dac5f3af4a10f211",
+                "30d718d09ad22bd4132fece5371a35593a5c4751be8318d7cafd10a86c33c2b5"},
+    "combine": {"24165848dd711163a1f1400ad502d25d6217a5496062d8462a981ab801bf935d"},
+}
 NAME = re.compile(r"^[a-z_][a-z0-9_]{0,40}$")
 
 
@@ -22,6 +30,12 @@ class PromptStore:
             self._git("init", "-q")
             self._git("add", "-A")
             self._git("commit", "-q", "-m", "Initial prompts", "--allow-empty")
+        for shipped in PACKAGE_PROMPTS.glob("*.md"):
+            current = self.folder / shipped.name
+            digest = hashlib.sha256(current.read_bytes()).hexdigest()
+            new_text = shipped.read_text(encoding="utf-8")
+            if digest in KNOWN_OLD.get(shipped.stem, set()) and current.read_text(encoding="utf-8") != new_text:
+                self.set(shipped.stem, new_text, "Update to the improved shipped prompt")
 
     def _git(self, *args: str) -> str:
         proc = subprocess.run(["git", "-c", "user.name=Prometheus", "-c", "user.email=prometheus@localhost",

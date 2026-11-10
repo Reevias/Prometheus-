@@ -27,12 +27,21 @@ def data_dir() -> Path:
 
 
 def _default_routes() -> dict[str, list[str]]:
+    """Claude plans and writes answers; its cheapest model and other cheap models do the sub-tasks."""
     return {
-        "plan": ["openrouter", "anthropic", "ollama"],
-        "combine": ["openrouter", "anthropic", "ollama"],
-        "research": ["openrouter", "anthropic", "ollama"],
+        "plan": ["anthropic", "openrouter", "ollama"],
+        "combine": ["anthropic", "openrouter", "ollama"],
+        "research": ["anthropic:claude-haiku-5-5", "openrouter", "ollama"],
         "private": ["ollama"],
     }
+
+
+def _old_default_routes() -> list[dict[str, list[str]]]:
+    """Routes saved by earlier versions' defaults. They are replaced; routes the owner changed are kept."""
+    v1 = {"plan": ["anthropic", "ollama"], "combine": ["anthropic", "ollama"], "research": ["anthropic", "ollama"],
+          "private": ["ollama"]}
+    v11 = {k: (["openrouter", *v] if k != "private" else v) for k, v in v1.items()}
+    return [v1, v11]
 
 
 @dataclass
@@ -64,11 +73,8 @@ def load_settings(path: Path | None = None) -> Settings:
     raw = json.loads(target.read_text(encoding="utf-8"))
     known = {f.name for f in fields(Settings)}
     settings = Settings(**{k: v for k, v in raw.items() if k in known})
-    # Settings saved before OpenRouter existed: add it in front for everything except private files.
-    if not any("openrouter" in entry for names in settings.routes.values() for entry in names):
-        for purpose, names in settings.routes.items():
-            if purpose != "private":
-                settings.routes[purpose] = ["openrouter", *names]
+    if settings.routes in _old_default_routes():
+        settings.routes = _default_routes()
     return settings
 
 

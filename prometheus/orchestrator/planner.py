@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
@@ -16,9 +16,15 @@ MAX_STEPS = 8
 PACKAGE_PROMPTS = Path(__file__).resolve().parent.parent / "prompts"
 REF = re.compile(r"^\$step(\d+)\.(\w+)$")
 
+HISTORY_TURNS = 12
+HISTORY_CHARS = 1500
+MAX_REMEMBER = 3
+PRIVATE_PLACEHOLDER = "(an answer with details from your files, written on your laptop and not shown here)"
+
 PLAN_SCHEMA = {
     "type": "object",
-    "properties": {"steps": {"type": "array", "items": {
+    "properties": {"answer": {"type": "string"}, "remember": {"type": "array", "items": {"type": "string"}},
+                   "steps": {"type": "array", "items": {
         "type": "object",
         "properties": {
             "id": {"type": "integer"},
@@ -36,7 +42,7 @@ PLAN_SCHEMA = {
         "required": ["id", "agent", "goal", "skill", "inputs", "depends_on"],
         "additionalProperties": False,
     }}},
-    "required": ["steps"],
+    "required": ["answer", "remember", "steps"],
     "additionalProperties": False,
 }
 
@@ -48,6 +54,9 @@ class PlanError(Exception):
 @dataclass
 class Plan:
     steps: list[dict]
+    answer: str = ""                                   # a direct reply (no tools needed)
+    remember: list[str] = field(default_factory=list)  # facts the user asked to remember
+    model: str = ""                                    # which model wrote the plan or answer
 
 
 @dataclass
@@ -85,11 +94,15 @@ def validate_plan(raw: str, registry: dict) -> Plan:
         text = text.strip("`").split("\n", 1)[-1]
     try:
         data = json.loads(text)
-        steps = data["steps"]
-    except (ValueError, KeyError, TypeError) as e:
+        steps = data.get("steps") or []
+        answer = str(data.get("answer") or "").strip()
+        remember = [str(r) for r in (data.get("remember") or []) if isinstance(r, (str, int, float))]
+    except (ValueError, AttributeError, TypeError) as e:
         raise PlanError(f"The plan is not valid JSON with a 'steps' list ({e}).") from e
-    if not isinstance(steps, list) or not 1 <= len(steps) <= MAX_STEPS:
-        raise PlanError(f"The plan must have 1 to {MAX_STEPS} steps.")
+    if not isinstance(steps, list) or len(steps) > MAX_STEPS:
+        raise PlanError(f"The plan must have at most {MAX_STEPS} steps.")
+    if not steps and not answer:
+        raise PlanError("The reply has no answer and no steps.")
     seen: set[int] = set()
     clean = []
     for s in steps:
@@ -107,7 +120,7 @@ def validate_plan(raw: str, registry: dict) -> Plan:
                       "skill": str(s.get("skill") or "").strip(),
                       "inputs": _inputs(s.get("inputs", {})), "depends_on": list(deps)})
         seen.add(sid)
-    return Plan(clean)
+    return Plan(clean, answer=answer, remember=remember)
 
 
 def resolve_inputs(inputs: dict, results: dict[int, StepResult], private_steps: frozenset[int] = frozenset(),
@@ -144,9 +157,30 @@ class Orchestrator:
             path = PACKAGE_PROMPTS / f"{name}.md"
         return path.read_text(encoding="utf-8")
 
-    def _plan(self, text: str) -> Plan:
+    def _history(self, chat_id: int) -> list[dict]:
+        """Recent turns of this chat for the model. Answers built from the owner's files are replaced by a placeholder."""
+        turns = []
+        for m in self.store.messages(chat_id)[-HISTORY_TURNS:]:
+            if m.role in ("user", "assistant"):
+                turns.append({"role": m.role, "content": (PRIVATE_PLACEHOLDER if m.private else m.text)[:HISTORY_CHARS]})
+        while turns and turns[0]["role"] != "user":
+            turns.pop(0)
+        return turns
+
+    def _remember(self, chat_id: int, facts: list[str]) -> None:
+        known = {m.text.lower() for m in self.store.memories()}
+        title = dict(self.store.chats()).get(chat_id, "chat")
+        saved = 0
+        for fact in facts:
+            fact = " ".join(fact.split())[:300]
+            if fact and fact.lower() not in known and saved < MAX_REMEMBER:
+                self.store.add_memory(fact, source=f"chat: {title}")
+                known.add(fact.lower())
+                saved += 1
+
+    def _plan(self, text: str, history: list[dict] | None = None) -> Plan:
         agents = "\n".join(f"- {name}: {cls.description}" for name, cls in self.registry.items())
-        system = f"{self._prompt('planner')}\n\nAgents:\n{agents}"
+        system = f"{self._prompt('planner')}\n\nWriting rules:\n{self._prompt('style')}\n\nAgents:\n{agents}"
         catalog = self.skills.catalog_text() if self.skills else ""
         if catalog:
             system += ("\n\nSkills (how-to guides). For each step set \"skill\" to the name of the one guide that "
@@ -156,33 +190,44 @@ class Orchestrator:
         newest = [m.text for m in self.store.memories()[-3:]]
         remembered = list(dict.fromkeys(relevant + newest))
         memories = "\n".join(f"- {m[:400]}" for m in remembered) or "(none)"
-        messages = [{"role": "user", "content": f"Things to remember about the user:\n{memories}\n\nRequest: {text}"}]
-        reply = self.router.complete("plan", messages, system, json_schema=PLAN_SCHEMA, max_tokens=2000)
+        messages = list(history or []) + [
+            {"role": "user", "content": f"Things to remember about the user:\n{memories}\n\nRequest: {text}"}]
+        reply = self.router.complete("plan", messages, system, json_schema=PLAN_SCHEMA, max_tokens=4000)
+        label = f"{reply.provider} · {reply.model}"
         try:
-            return validate_plan(reply.text, self.registry)
+            plan = validate_plan(reply.text, self.registry)
         except PlanError as e:
             messages += [{"role": "assistant", "content": reply.text or "(empty)"},
-                         {"role": "user", "content": f"That plan is not valid: {e} Reply with a corrected JSON plan only."}]
-            reply = self.router.complete("plan", messages, system, json_schema=PLAN_SCHEMA, max_tokens=2000)
-            return validate_plan(reply.text, self.registry)
+                         {"role": "user", "content": f"That reply is not valid: {e} Reply with corrected JSON only."}]
+            reply = self.router.complete("plan", messages, system, json_schema=PLAN_SCHEMA, max_tokens=4000)
+            label = f"{reply.provider} · {reply.model}"
+            plan = validate_plan(reply.text, self.registry)
+        plan.model = label
+        return plan
 
-    def _finish(self, chat_id: int, task_id: int, status: str, answer: str, model: str = "") -> TaskOutcome:
+    def _finish(self, chat_id: int, task_id: int, status: str, answer: str, model: str = "",
+                private: bool = False) -> TaskOutcome:
         self.store.set_task_status(task_id, status, answer)
-        self.store.add_message(chat_id, "assistant", answer, model)
+        self.store.add_message(chat_id, "assistant", answer, model, private)
         return TaskOutcome(task_id, status, answer)
 
     def run(self, chat_id: int, text: str) -> TaskOutcome:
+        history = self._history(chat_id)          # taken before this message is added
         self.store.add_message(chat_id, "user", text)
         task_id = self.store.create_task(chat_id, text)
         self.store.set_task_status(task_id, "running")
         try:
-            plan = self._plan(text)
+            plan = self._plan(text, history)
         except PlanError as e:
             return self._finish(chat_id, task_id, "failed", f"I couldn't make a working plan for that: {e}")
         except (ProviderUnavailable, BudgetExceeded) as e:
             return self._finish(chat_id, task_id, "paused", str(e))
         except Stopped as e:
             return self._finish(chat_id, task_id, "stopped", str(e))
+
+        self._remember(chat_id, plan.remember)
+        if not plan.steps:                        # no tools needed: the plan call already wrote the answer
+            return self._finish(chat_id, task_id, "done", plan.answer, plan.model)
 
         results: dict[int, StepResult] = {}
         bad: set[int] = set()
@@ -233,7 +278,8 @@ class Orchestrator:
         purpose = "private" if private else "combine"
         try:
             reply = self.router.complete(purpose, [{"role": "user", "content": f"Request: {text}\n\n{report}"}],
-                                         f"{self._prompt('combine')}\n\n{UNTRUSTED_RULE}", max_tokens=1500)
+                                         f"{self._prompt('combine')}\n\nWriting rules:\n{self._prompt('style')}\n\n{UNTRUSTED_RULE}",
+                                         max_tokens=3000)
             answer = reply.text.strip()
             written_by = f"{reply.provider} · {reply.model}"
         except (ProviderUnavailable, BudgetExceeded):
@@ -241,4 +287,4 @@ class Orchestrator:
         except Stopped as e:
             return self._finish(chat_id, task_id, "stopped", str(e))
         status = "failed" if bad and len(bad) == len(plan.steps) else "done"
-        return self._finish(chat_id, task_id, status, answer or "Done.", written_by)
+        return self._finish(chat_id, task_id, status, answer or "Done.", written_by, private=bool(private))

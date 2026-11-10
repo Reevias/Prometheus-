@@ -27,7 +27,7 @@ def listing(root):
 
 
 def brain(messages, system):
-    if "lead AI" in system:
+    if "You are the lead" in system:
         return json.dumps({"steps": [
             {"id": 1, "agent": "file_sorter", "goal": "Sort Downloads",
              "inputs": [{"key": "folder", "value": "Downloads"}], "depends_on": []},

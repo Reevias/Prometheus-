@@ -51,7 +51,7 @@ def test_old_settings_gain_openrouter_route(tmp_home):
                            "research": ["anthropic", "ollama"], "private": ["ollama"]})
     save_settings(old)
     routes = load_settings().routes
-    assert routes["plan"][0] == "openrouter" and routes["private"] == ["ollama"]
+    assert "openrouter" in routes["plan"] and routes["private"] == ["ollama"]
 
 
 # -- OpenRouter ----------------------------------------------------------------
@@ -181,5 +181,5 @@ def test_build_router_uses_fast_model_for_research(tmp_home):
     settings = Settings(openrouter_model="big/model", openrouter_fast_model="small/model")
     router = build_router(settings, Budget(Store(tmp_home.data / "m.db"), 5.0), KillSwitch())
     assert "openrouter" in router.providers
-    assert router.routes["research"][0] == "openrouter:small/model"
-    assert router.routes["plan"][0] == "openrouter"
+    assert "openrouter:small/model" in router.routes["research"]
+    assert "openrouter" in router.routes["plan"]
