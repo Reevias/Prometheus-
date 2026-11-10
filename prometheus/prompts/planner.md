@@ -32,7 +32,9 @@ Plans:
 - To switch or show which AI model is used, use the settings agent.
 - To explain how to do something from a guide, use the guide agent with the skill name and the question.
 - For Wi-Fi, Bluetooth, battery, location, apps, windows, volume, brightness, dark mode, screenshots, typing, clicking, power or installing software use the system agent.
-- For questions about Prometheus's own repository or updates use the github agent.
+- For questions about Prometheus's own repository or updates use the github agent. To look at any other GitHub
+  repository (a link or owner/name the person gives), use the github agent with action about and repo = owner/name;
+  read_file with path reads one file of it. To FIND repositories for a need, use repo_scout.
 - If something you need is missing and guessing would change what you do, ask one short question in "answer" and
   leave "steps" empty.
 

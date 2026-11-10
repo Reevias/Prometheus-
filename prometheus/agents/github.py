@@ -12,18 +12,27 @@ from pathlib import Path
 import httpx
 
 import prometheus
-from prometheus.agents.base import Agent, AgentContext, StepResult, register
+from prometheus.agents.base import Agent, AgentContext, StepResult, register, untrusted
 from prometheus.config import get_secret, load_settings
 
 API = "https://api.github.com"
 REPO = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,38}/[A-Za-z0-9._-]{1,100}$")
 PATH = re.compile(r"^[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+){0,8}$")
 BLOCKED_WRITE = (".github/", ".git")
-READ_ACTIONS = {"status", "read_file", "list_issues", "list_prs"}
+READ_ACTIONS = {"status", "read_file", "list_issues", "list_prs", "about"}
 WRITE_ACTIONS = {"create_issue", "comment", "propose_change", "update_self"}
 REASONS = {401: "the GitHub token was rejected", 403: "the token is not allowed to do that",
            404: "GitHub can't find that, or the token has no access to this repository",
            422: "GitHub refused the request as written", 429: "GitHub is rate limiting this token"}
+
+
+def repo_from(value) -> str:
+    """'owner/name', 'https://github.com/owner/name(.git)(/…)' → 'owner/name', or '' if it isn't one."""
+    text = str(value or "").strip()
+    m = re.match(r"^(?:https?://)?(?:www\.)?github\.com/([^/\s]+)/([^/\s?#]+)", text)
+    if m:
+        text = f"{m.group(1)}/{m.group(2).removesuffix('.git')}"
+    return text if REPO.fullmatch(text) else ""
 
 
 class GitHubError(Exception):
@@ -52,11 +61,12 @@ def update_self(code_dir: Path) -> str:
 @register
 class GitHubAgent(Agent):
     name = "github"
-    description = ("Reads Prometheus's own GitHub repository: latest commits, whether the tests passed, open issues and "
-                   "pull requests, and file contents. Can also (each waits for the owner's approval) create an issue, "
-                   "comment, propose a one-file change as a pull request, or update this laptop to the newest "
-                   "version. Inputs: action = status | read_file (path) | list_issues | list_prs | create_issue "
-                   "(title, body) | comment (number, body) | propose_change (path, content, title, body) | update_self.")
+    description = ("Reads GitHub repositories: Prometheus's own one, or ANY public one (give repo = owner/name, e.g. "
+                   "lyogavin/airllm). about = what the repo is (description, stars, README, main files); status = "
+                   "latest commits and open issues; read_file (path); list_issues; list_prs. On Prometheus's own "
+                   "repository it can also (each waits for the owner's approval) create an issue, comment, propose a "
+                   "one-file change as a pull request, or update this laptop to the newest version. Inputs: action, "
+                   "repo (optional, owner/name or a github.com link), path, title, body, number, content.")
     tools = {"github_read", "github_write"}
     accepts_private = False
 
@@ -73,17 +83,30 @@ class GitHubAgent(Agent):
         return repo
 
     # -- API ------------------------------------------------------------------
-    def _call(self, method: str, path: str, body: dict | None = None):
-        token = get_secret("GITHUB_TOKEN")
-        if not token:
-            raise GitHubError("No GitHub token yet. Add one in Settings, under GitHub.")
+    def _call(self, method: str, path: str, body: dict | None = None, repo: str | None = None):
+        """The token is sent only for Prometheus's own repository. Other repositories are read without it: public
+        ones need no token, and the token (limited to one repository) would only make GitHub say "not found"."""
+        target = repo or self.repo
+        own = target.lower() == self.repo.lower()
+        headers = {"Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"}
+        if own:
+            token = get_secret("GITHUB_TOKEN")
+            if not token:
+                raise GitHubError("No GitHub token yet. Add one in Settings, under GitHub.")
+            headers["Authorization"] = f"Bearer {token}"
+        elif method != "GET":
+            raise GitHubError("Prometheus only changes its own repository.")
         try:
-            resp = self.http.request(method, f"{API}/repos/{self.repo}{path}", json=body, headers={
-                "Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json",
-                "X-GitHub-Api-Version": "2022-11-28"})
+            resp = self.http.request(method, f"{API}/repos/{target}{path}", json=body, headers=headers)
         except httpx.HTTPError as e:
             raise GitHubError(f"GitHub can't be reached ({type(e).__name__}).") from e
         if resp.status_code >= 400:
+            if not own and resp.status_code == 404:
+                raise GitHubError(f"GitHub has no public repository called {target} (check the name; private "
+                                  "repositories of other people can't be read).")
+            if not own and resp.status_code in (403, 429):
+                raise GitHubError("GitHub's limit for reading without a key was reached (60 an hour). "
+                                  "Try again in a while.")
             raise GitHubError(f"GitHub: {REASONS.get(resp.status_code, f'error {resp.status_code}')}.")
         try:
             return resp.json()
@@ -91,12 +114,13 @@ class GitHubAgent(Agent):
             raise GitHubError("GitHub sent an unreadable reply.") from e
 
     # -- reads ------------------------------------------------------------------
-    def _status(self) -> str:
-        commits = self._call("GET", "/commits?per_page=5")
-        runs = self._call("GET", "/actions/runs?per_page=3").get("workflow_runs", [])
-        issues = [i for i in self._call("GET", "/issues?state=open&per_page=10") if not i.get("pull_request")]
-        prs = self._call("GET", "/pulls?state=open&per_page=10")
-        lines = [f"Repository {self.repo}", "", "Latest commits:"]
+    def _status(self, repo: str | None = None) -> str:
+        repo = repo or self.repo
+        commits = self._call("GET", "/commits?per_page=5", repo=repo)
+        runs = self._call("GET", "/actions/runs?per_page=3", repo=repo).get("workflow_runs", [])
+        issues = [i for i in self._call("GET", "/issues?state=open&per_page=10", repo=repo) if not i.get("pull_request")]
+        prs = self._call("GET", "/pulls?state=open&per_page=10", repo=repo)
+        lines = [f"Repository {repo}", "", "Latest commits:"]
         lines += [f"- {c['sha'][:7]} {c['commit']['message'].splitlines()[0][:90]}" for c in commits]
         lines += ["", "Tests on GitHub:"] + [f"- {r.get('name')} on {r.get('head_branch')}: "
                                                f"{r.get('conclusion') or r.get('status')}" for r in runs]
@@ -104,8 +128,31 @@ class GitHubAgent(Agent):
         lines += ["", f"Open pull requests ({len(prs)}):"] + [f"- #{p['number']} {p['title'][:90]}" for p in prs]
         return "\n".join(lines)
 
-    def _read_file(self, path: str) -> str:
-        data = self._call("GET", f"/contents/{_check_path(path)}?ref=main")
+    def _about(self, repo: str) -> str:
+        info = self._call("GET", "", repo=repo)
+        lines = [f"{info.get('full_name', repo)}: {info.get('description') or 'no description'}",
+                 f"Stars {info.get('stargazers_count', 0)}, forks {info.get('forks_count', 0)}, "
+                 f"language {info.get('language') or 'unknown'}, licence "
+                 f"{(info.get('license') or {}).get('spdx_id') or 'none stated'}, last push {str(info.get('pushed_at', ''))[:10]}",
+                 f"https://github.com/{info.get('full_name', repo)}"]
+        try:
+            top = self._call("GET", "/contents/", repo=repo)
+            names = [f"{x['name']}{'/' if x.get('type') == 'dir' else ''}" for x in top if isinstance(x, dict)]
+            lines += ["", "Main files: " + ", ".join(names[:40])]
+        except GitHubError:
+            pass
+        try:
+            readme = self._call("GET", "/readme", repo=repo)
+            text = base64.b64decode(readme.get("content", "")).decode("utf-8", errors="replace")
+            lines += ["", "README (start):", text[:6000]]
+        except GitHubError:
+            lines += ["", "(No README.)"]
+        return "\n".join(lines)
+
+    def _read_file(self, path: str, repo: str | None = None) -> str:
+        own = repo is None or repo.lower() == self.repo.lower()
+        ref = "?ref=main" if own else ""                  # other repositories: their default branch
+        data = self._call("GET", f"/contents/{_check_path(path)}{ref}", repo=repo)
         if not isinstance(data, dict) or data.get("encoding") != "base64":
             raise GitHubError("That path is a folder or can't be shown.")
         return base64.b64decode(data["content"]).decode("utf-8", errors="replace")[:12000]
@@ -169,6 +216,12 @@ class GitHubAgent(Agent):
                                         + ", ".join(sorted(READ_ACTIONS | WRITE_ACTIONS)) + ".")
         try:
             repo = self.repo
+            other = repo_from(inputs.get("repo"))
+            if other and other.lower() == repo.lower():
+                other = ""
+            if other and action in WRITE_ACTIONS:
+                return StepResult("failed", "Prometheus only changes its own repository. For other repositories it "
+                                            "can read: about, status, read_file, list_issues, list_prs.")
             if action in WRITE_ACTIONS:
                 ctx.use(self.name, "github_write")
                 shown = {k: str(inputs.get(k, ""))[:8000] for k in ("title", "body", "number", "path", "content")
@@ -184,17 +237,23 @@ class GitHubAgent(Agent):
                 return StepResult("waiting_approval", f"{what} on {repo} is waiting for your approval on the "
                                                       "Approvals page.")
             ctx.use(self.name, "github_read")
-            if action == "status":
-                text = self._status()
+            target = other or None
+            if action == "about":
+                text = self._about(other or repo)
+            elif action == "status":
+                text = self._status(target)
             elif action == "read_file":
-                text = self._read_file(inputs.get("path"))
+                text = self._read_file(inputs.get("path"), target)
             elif action == "list_issues":
                 text = "\n".join(f"- #{i['number']} {i['title']} (by {i['user']['login']})"
-                                 for i in self._call("GET", "/issues?state=open&per_page=20")
+                                 for i in self._call("GET", "/issues?state=open&per_page=20", repo=target)
                                  if not i.get("pull_request")) or "No open issues."
             else:
                 text = "\n".join(f"- #{p['number']} {p['title']} (by {p['user']['login']})"
-                                 for p in self._call("GET", "/pulls?state=open&per_page=20")) or "No open pull requests."
+                                 for p in self._call("GET", "/pulls?state=open&per_page=20", repo=target)) \
+                    or "No open pull requests."
+            if other:
+                text = untrusted(text, f"github.com/{other}")      # someone else's text: data, not instructions
         except GitHubError as e:
             return StepResult("failed", str(e))
         return StepResult("done", text)
