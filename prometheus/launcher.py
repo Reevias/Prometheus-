@@ -17,7 +17,7 @@ SHORTCUT_NAME = "Prometheus.lnk"
 # Fixed script: the paths travel in environment variables, never inside the command text.
 SHORTCUT_PS = (
     "$s = (New-Object -ComObject WScript.Shell).CreateShortcut($env:PROM_LINK); "
-    "$s.TargetPath = $env:PROM_TARGET; $s.Arguments = '-m prometheus.cli app'; "
+    "$s.TargetPath = $env:PROM_TARGET; $s.Arguments = $env:PROM_ARGS; "
     "$s.WorkingDirectory = $env:PROM_DIR; $s.Description = 'Prometheus, your AI brain'; $s.Save()"
 )
 
@@ -77,12 +77,37 @@ def make_shortcuts(run=None, windows: bool | None = None) -> list[Path]:
     made = []
     for link in shortcut_paths():
         link.parent.mkdir(parents=True, exist_ok=True)
-        env = {**os.environ, "PROM_LINK": str(link), "PROM_TARGET": pythonw(), "PROM_DIR": str(CODE_DIR)}
+        env = {**os.environ, "PROM_LINK": str(link), "PROM_TARGET": pythonw(), "PROM_DIR": str(CODE_DIR),
+               "PROM_ARGS": "-m prometheus.cli app"}
         proc = run(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", SHORTCUT_PS], env=env,
                    capture_output=True, text=True, timeout=30)
         if proc.returncode == 0:
             made.append(link)
     return made
+
+
+def startup_link() -> Path:
+    appdata = Path(os.environ.get("APPDATA") or Path(os.environ.get("USERPROFILE") or Path.home()) / "AppData" / "Roaming")
+    return appdata / "Microsoft" / "Windows" / "Start Menu" / "Programs" / "Startup" / "Prometheus (background).lnk"
+
+
+def set_autostart(on: bool, run=None, windows: bool | None = None) -> str:
+    """Start Prometheus quietly (no window, listening for its name) when you sign in to Windows."""
+    if not (os.name == "nt" if windows is None else windows):
+        raise RuntimeError("Starting with Windows only works on Windows.")
+    link = startup_link()
+    if not on:
+        link.unlink(missing_ok=True)
+        return "Prometheus will no longer start with Windows."
+    run = run or subprocess.run
+    link.parent.mkdir(parents=True, exist_ok=True)
+    env = {**os.environ, "PROM_LINK": str(link), "PROM_TARGET": pythonw(), "PROM_DIR": str(CODE_DIR),
+           "PROM_ARGS": "-m prometheus.cli background"}
+    proc = run(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", SHORTCUT_PS], env=env,
+               capture_output=True, text=True, timeout=30)
+    if proc.returncode != 0:
+        raise RuntimeError("Could not add Prometheus to Windows startup.")
+    return "Prometheus will start with Windows and listen for its name."
 
 
 def update(code_dir: Path = CODE_DIR, run=None) -> str:

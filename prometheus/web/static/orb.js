@@ -11,6 +11,8 @@
     idle:    { spin: 1.0, rays: 1.0, glow: 1.0, hue: 0 },
     busy:    { spin: 2.6, rays: 1.6, glow: 1.35, hue: 0 },
     stopped: { spin: 0.25, rays: 0.25, glow: 0.55, hue: 1 },
+    listen:  { spin: 1.8, rays: 1.9, glow: 1.5, hue: 0 },     // heard "Prometheus": wide awake
+    speak:   { spin: 1.4, rays: 1.3, glow: 1.25, hue: 0, pulse: 1 },
   };
 
   function rand(seed) {            // small fixed random, so every orb looks the same on every load
@@ -150,7 +152,7 @@
       }
 
       // white-hot core
-      const pulse = 1 + 0.08 * Math.sin(t * 2.2);
+      const pulse = 1 + (st.pulse ? 0.16 * Math.abs(Math.sin(t * 6.5)) : 0.08 * Math.sin(t * 2.2));
       g = ctx.createRadialGradient(cx, cy, 0, cx, cy, rad * 0.62 * pulse * st.glow);
       g.addColorStop(0, grey ? "rgba(235,235,240,0.95)" : "rgba(255,250,225,1)");
       g.addColorStop(0.18, colour(0.9, 0.95, grey));

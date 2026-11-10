@@ -54,6 +54,7 @@ class Services:
     skills: SkillBook = None
     running: dict = dataclasses.field(default_factory=dict)
     archive: object = None
+    voice: object = None
 
     def start_task(self, chat_id: int, text: str) -> threading.Thread:
         """Run a task in the background so the browser can keep polling."""
@@ -175,6 +176,9 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
     services = Services(settings, home, store, policy, journal, files, permissions, approvals, budget, killswitch,
                         router, orchestrator, patcher, prompts, skills)
     services.archive = archive
+    from prometheus.voice.service import VoiceService
+
+    services.voice = VoiceService(services, data / "voice")
     return services
 
 

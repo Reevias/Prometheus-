@@ -51,6 +51,10 @@ cd $env:USERPROFILE\Prometheus-
 Other commands (after `.venv\Scripts\activate`): `prometheus serve` (browser tab at http://127.0.0.1:8000),
 `prometheus doctor` (checks the setup and warns if you are running an old copy), `prometheus shortcut`.
 
+**Voice:** say **"Prometheus"** and then what you want, and it answers out loud. The installer sets it up and starts it with
+Windows. Or by hand: `pip install -e ".[voice]"`, then `prometheus voice-setup` (downloads about 250 MB once) and
+`prometheus autostart on`. Everything you say is turned into text on the laptop. Click the mic pill at the top to mute.
+
 **Your chats as files:** every chat is saved in `%USERPROFILE%\Prometheus memory` (one file per chat in
 `chats\`, one file per topic in `topics\` linking every chat about it, and `index.md`). It is in your home
 folder, not Documents, because Documents is often synced to OneDrive. Prometheus fetches only the matching parts of

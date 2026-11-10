@@ -58,6 +58,28 @@
   {% endfor %}
   <p class="muted">Free AI list from the awesome-free-llm-apis project, updated {{ catalog_date }}. Free limits change often.</p>
 
+  <h3>Voice</h3>
+  {% if voice_error %}<p class="error">{{ voice_error }}</p>{% endif %}
+  {% if voice %}
+  <div class="panel" style="display:grid;gap:10px">
+    <p class="muted" style="margin:0">Say <strong>“Prometheus”</strong> and then what you want. It answers out loud (a short version;
+    the full answer is in the Voice chat). Everything you say is turned into text on this laptop. Things that need your
+    approval still wait on the Approvals page, so someone else in the room can't do anything risky by talking.</p>
+    {% if voice.packages %}<p class="error" style="margin:0">Voice needs extra packages: run <code>pip install -e ".[voice]"</code>, then restart Prometheus.</p>
+    {% elif voice.missing %}
+      <form hx-post="/settings/voice/setup" hx-target="body" class="row"><span class="muted">Not downloaded yet: {{ voice.missing|join(", ") }}.</span>
+        <button type="submit" class="primary">Set up voice (about 250 MB)</button></form>
+    {% endif %}
+    {% if voice.progress %}<p class="muted" style="margin:0">{{ voice.progress }}</p>{% endif %}
+    {% if voice.error %}<p class="error" style="margin:0">{{ voice.error }}</p>{% endif %}
+    <form hx-post="/settings/voice" hx-target="body"><label class="check"><input type="checkbox" name="on" value="1" {{ "checked" if s.voice_enabled }} onchange="this.form.requestSubmit()">
+      Listen for “Prometheus”</label></form>
+    <form hx-post="/settings/voice/autostart" hx-target="body"><label class="check"><input type="checkbox" name="on" value="1" {{ "checked" if s.voice_autostart }} onchange="this.form.requestSubmit()">
+      Start with Windows, without a window, so it is always listening</label></form>
+    {% if voice.heard %}<p class="muted" style="margin:0">Last heard: “{{ voice.heard }}”</p>{% endif %}
+  </div>
+  {% endif %}
+
   <h3>Places Prometheus may use</h3>
   {% if place_error %}<p class="error">{{ place_error }}</p>{% endif %}
   <p class="muted">Prometheus can find, copy, move and rename files in these places, and every change can be undone on

@@ -20,6 +20,9 @@ def test_every_route_requires_login(app_client):
         path = getattr(route, "path", "")
         if path in ("/login",) or path.startswith("/static"):
             continue
+        if path == "/healthz":          # open on purpose, so a second window finds the running copy
+            assert client.get(path).json() == {"app": "prometheus"}
+            continue
         url = re.sub(r"{[^}]+}", "1", path)
         for method in getattr(route, "methods", set()) - {"HEAD", "OPTIONS"}:
             resp = client.request(method, url, follow_redirects=False)

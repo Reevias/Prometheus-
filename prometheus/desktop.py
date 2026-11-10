@@ -47,10 +47,35 @@ class LocalServer:
             self._thread.join(timeout=5)
 
 
+def running_copy(port: int) -> bool:
+    """True when Prometheus already runs on this port (for example started with Windows, listening for its name)."""
+    import httpx
+
+    try:
+        resp = httpx.get(f"http://127.0.0.1:{port}/healthz", timeout=1.5)
+        return resp.status_code == 200 and resp.json().get("app") == "prometheus"
+    except (httpx.HTTPError, ValueError):
+        return False
+
+
+class AttachedServer:
+    """Stands in for LocalServer when the background copy is already running: nothing to start or stop."""
+
+    def __init__(self, port: int):
+        self.port = port
+
+    def start(self) -> int:
+        return self.port
+
+    def stop(self) -> None:
+        pass
+
+
 def run_desktop(settings: Settings, webview=None, server=None) -> int:
     if webview is None:
         import webview  # pywebview
-    server = server or LocalServer(settings)
+    if server is None:
+        server = AttachedServer(settings.port) if running_copy(settings.port) else LocalServer(settings)
     try:
         port = server.start()
         webview.create_window(f"Prometheus {version()}", f"http://127.0.0.1:{port}/", width=1220, height=780,

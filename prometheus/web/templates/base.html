@@ -18,6 +18,7 @@
     {% endfor %}
   </nav>
   <span class="spacer"></span>
+  <span id="mic" hx-get="/voice/pill" hx-trigger="load, every 2s [document.visibilityState === 'visible']"></span>
   <span id="status-mini" hx-get="/status?mini=1" hx-trigger="load, every 4s [document.visibilityState === 'visible']"></span>
   {% if stopped %}
     <button class="ok" hx-post="/kill/reset" hx-swap="none" hx-on::after-request="location.reload()">Resume</button>
@@ -31,7 +32,10 @@
   // The orbs follow the header signal: busy while a task runs, grey after STOP ALL.
   function syncOrbs() {
     const core = document.querySelector("#core .core");
-    const state = !core ? "idle" : core.classList.contains("stopped") ? "stopped" : core.classList.contains("busy") ? "busy" : "idle";
+    const voice = core ? core.dataset.voice : "";
+    const state = !core ? "idle" : core.classList.contains("stopped") ? "stopped"
+      : voice === "listening" ? "listen" : voice === "speaking" ? "speak"
+      : (core.classList.contains("busy") || voice === "thinking") ? "busy" : "idle";
     document.querySelectorAll("canvas[data-orb]").forEach((c) => { if (c.dataset.state !== state) c.dataset.state = state; });
   }
   document.body.addEventListener("htmx:afterSwap", () => { syncOrbs(); if (window.PrometheusOrb) PrometheusOrb.start(); });

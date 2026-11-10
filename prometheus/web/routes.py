@@ -130,7 +130,9 @@ def register_routes(app: FastAPI, services: Services) -> None:
     @app.get("/status", response_class=HTMLResponse)
     def status(request: Request, chat: int | None = None, mini: int = 0, core: int = 0):
         task = store.latest_task(chat) if chat else {}
+        voice = services.voice.state() if services.voice is not None else "off"
         return page(request, "status.html", mini=bool(mini), core=bool(core), busy=bool(services.running), task=task,
+                    voice=voice,
                     steps=store.steps(task["id"]) if task else [], budget=services.budget.state(),
                     pending=len(store.approvals()),
                     models=services.router.status_detail() if not (mini or core) else [])
@@ -259,6 +261,7 @@ def register_routes(app: FastAPI, services: Services) -> None:
         bad_places = {f: why for f, why in bad_places.items() if why}
         return page(request, "settings.html", status_code, s=s, providers=rows, other_keys=other_keys,
                     heads=head_choices(services.router), head=s.head_model,
+                    voice=services.voice.describe() if services.voice is not None else None,
                     home=str(services.home), bad_places=bad_places,
                     budget=services.budget.state(), catalog_date=catalog_updated(), **extra)
 
@@ -380,6 +383,53 @@ def register_routes(app: FastAPI, services: Services) -> None:
         apply_settings(services)
         store.audit("user", "head_model", {"head": head or "auto"})
         return Response(status_code=204)
+
+    @app.get("/voice/pill", response_class=HTMLResponse)
+    def voice_pill(request: Request):
+        info = services.voice.describe() if services.voice is not None else {"state": "off"}
+        return page(request, "voice_pill.html", v=info)
+
+    @app.post("/voice/mute", response_class=HTMLResponse)
+    def voice_mute(request: Request):
+        if services.voice is not None:
+            muted = services.voice.toggle_mute()
+            store.audit("user", "voice_mute", {"muted": muted})
+        return voice_pill(request)
+
+    @app.post("/settings/voice", response_class=HTMLResponse)
+    def set_voice(request: Request, on: str = Form("")):
+        s = services.settings
+        s.voice_enabled = bool(on)
+        save_settings(s)
+        if services.voice is not None:
+            if s.voice_enabled:
+                services.voice.start()
+            else:
+                services.voice.stop()
+        store.audit("user", "voice", {"on": s.voice_enabled})
+        return settings_page(request, saved=True)
+
+    @app.post("/settings/voice/setup", response_class=HTMLResponse)
+    def voice_setup(request: Request):
+        if services.voice is not None:
+            services.voice.services.settings.voice_enabled = True
+            save_settings(services.settings)
+            services.voice.download()
+            store.audit("user", "voice_setup", {})
+        return settings_page(request, saved=True)
+
+    @app.post("/settings/voice/autostart", response_class=HTMLResponse)
+    def voice_autostart(request: Request, on: str = Form("")):
+        from prometheus.launcher import set_autostart
+
+        try:
+            set_autostart(bool(on))
+        except RuntimeError as e:
+            return settings_page(request, 400, voice_error=str(e))
+        services.settings.voice_autostart = bool(on)
+        save_settings(services.settings)
+        store.audit("user", "autostart", {"on": bool(on)})
+        return settings_page(request, saved=True)
 
     @app.post("/settings/free", response_class=HTMLResponse)
     def set_free(request: Request, on: str = Form("")):

@@ -68,6 +68,60 @@ def _app(args) -> int:
     return run_desktop(settings)
 
 
+def _background(args) -> int:
+    """No window: the app on its usual port, listening for "Prometheus" if voice is on. Used when Windows starts."""
+    import uvicorn
+
+    from prometheus.app import build_services
+    from prometheus.desktop import running_copy
+    from prometheus.server import create_app
+
+    settings = load_settings()
+    if not settings.password_hash:
+        print("No password yet. Run:  prometheus init")
+        return 2
+    if running_copy(settings.port):
+        print("Prometheus is already running.")
+        return 0
+    uvicorn.run(create_app(build_services(settings)), host="127.0.0.1", port=settings.port, log_level="warning")
+    return 0
+
+
+def _voice_setup(args) -> int:
+    from prometheus.config import data_dir as _data
+    from prometheus.voice.engines import VoiceModels
+
+    models = VoiceModels(_data() / "voice")
+    missing = models.packages_missing()
+    if missing:
+        print('Voice needs extra packages first. Run:  pip install -e ".[voice]"')
+        return 2
+    try:
+        models.download(progress=print)
+    except Exception as e:
+        print(f"Download failed: {e}")
+        return 1
+    settings = load_settings()
+    settings.voice_enabled = True
+    save_settings(settings)
+    print('Voice is on. Say "Prometheus" followed by what you want.')
+    return 0
+
+
+def _autostart(args) -> int:
+    from prometheus.launcher import set_autostart
+
+    try:
+        print(set_autostart(args.state == "on"))
+    except RuntimeError as e:
+        print(e)
+        return 1
+    settings = load_settings()
+    settings.voice_autostart = args.state == "on"
+    save_settings(settings)
+    return 0
+
+
 def _update(args) -> int:
     from prometheus.launcher import update
 
@@ -132,9 +186,14 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("app", help="open Prometheus in its own desktop window")
     sub.add_parser("doctor", help="check the setup")
     sub.add_parser("update", help="download and install the newest version")
+    sub.add_parser("background", help="run without a window (listens for its name if voice is on)")
+    sub.add_parser("voice-setup", help="download the voice models and turn voice on")
+    p_auto = sub.add_parser("autostart", help="start Prometheus when Windows starts")
+    p_auto.add_argument("state", choices=["on", "off"])
     sub.add_parser("shortcut", help="make desktop and Start-menu shortcuts that open this copy")
     args = parser.parse_args(argv)
-    return {"init": _init, "serve": _serve, "app": _app, "doctor": _doctor, "update": _update,
+    return {"init": _init, "serve": _serve, "app": _app, "doctor": _doctor, "update": _update, "background": _background,
+            "voice-setup": _voice_setup, "autostart": _autostart,
             "shortcut": _shortcut}[args.command](args)
 
 

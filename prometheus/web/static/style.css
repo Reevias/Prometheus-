@@ -145,3 +145,14 @@ canvas.orb { display: block; pointer-events: none; }
 .orb-side { width: 100%; max-width: 200px; aspect-ratio: 1; margin: -12px auto 0; }
 .head-pick { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; }
 .head-pick select { max-width: 240px; font-size: 13px; padding: 6px 8px; }
+
+/* microphone state in the top bar */
+#mic:empty { display: none; }
+button.mic { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; padding: 4px 12px; border-radius: 999px; color: var(--text-2); }
+.mic-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-3); }
+.mic-idle .mic-dot { background: var(--signal); }
+.mic-listening .mic-dot, .mic-speaking .mic-dot { background: var(--signal); animation: signal .8s ease-in-out infinite; }
+.mic-listening, .mic-speaking { color: var(--text); border-color: var(--signal); }
+.mic-thinking .mic-dot { background: var(--warn); }
+.mic-error .mic-dot { background: var(--bad); }
+@media (prefers-reduced-motion: reduce) { .mic-dot { animation: none !important; } }

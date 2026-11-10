@@ -32,12 +32,23 @@ if (-not (Test-Path (Join-Path $Venv "Scripts\python.exe"))) { & py "-$Py" -m ve
 $Python = Join-Path $Venv "Scripts\python.exe"
 & $Python -m pip install --quiet --upgrade pip
 & $Python -m pip install --quiet -e "$Dir[desktop]"
+# Voice (say "Prometheus"): optional, so a failed voice install never stops Prometheus itself.
+& $Python -m pip install --quiet -e "$Dir[desktop,voice]"
+$VoiceOk = ($LASTEXITCODE -eq 0)
+if (-not $VoiceOk) { Write-Host "Voice packages could not be installed on Python $Py. Prometheus works without voice; Python 3.12 or 3.13 usually fixes this." }
 
 $Settings = Join-Path $env:LOCALAPPDATA "Prometheus\settings.json"
 $HasPassword = (Test-Path $Settings) -and ((Get-Content $Settings -Raw) -match '"password_hash":\s*"[^"]+"')
 if (-not $HasPassword) { & $Python -m prometheus.cli init }
 
 & $Python -m prometheus.cli shortcut
+if ($VoiceOk) {
+    & $Python -m prometheus.cli voice-setup      # downloads about 250 MB of voice models, once
+    & $Python -m prometheus.cli autostart on     # starts with Windows, listening, without a window
+    $Quiet = Join-Path $Venv "Scripts\pythonw.exe"
+    Start-Process -FilePath $Quiet -ArgumentList "-m", "prometheus.cli", "background" -WindowStyle Hidden
+    Write-Host 'Voice is on: say "Prometheus" and then what you want.'
+}
 & $Python -m prometheus.cli doctor
 Write-Host ""
 Write-Host "Done. Open Prometheus with the Prometheus shortcut on your desktop or in the Start menu."

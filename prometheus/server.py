@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import html
 import hmac
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Form, Request
 from starlette.middleware.trustedhost import TrustedHostMiddleware
@@ -13,7 +14,8 @@ from prometheus.auth import LoginLimiter, Sessions, verify_password
 
 SESSION_COOKIE = "prom_session"
 CSRF_COOKIE = "csrf_token"
-OPEN_PATHS = ("/login",)
+OPEN_PATHS = ("/login", "/healthz")
+APP_ID = "prometheus"
 
 
 def _login_page(message: str = "") -> str:
@@ -29,7 +31,15 @@ def _login_page(message: str = "") -> str:
 
 
 def create_app(services: Services) -> FastAPI:
-    app = FastAPI(title="Prometheus", docs_url=None, redoc_url=None, openapi_url=None)
+    @asynccontextmanager
+    async def lifespan(_app):
+        if services.voice is not None:          # listening for "Prometheus" lives as long as the app
+            services.voice.start_if_enabled()
+        yield
+        if services.voice is not None:
+            services.voice.stop()
+
+    app = FastAPI(title="Prometheus", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
     app.state.services = services
     sessions, limiter = Sessions(), LoginLimiter()
     app.state.sessions = sessions
@@ -78,6 +88,11 @@ def create_app(services: Services) -> FastAPI:
         resp.delete_cookie(SESSION_COOKIE)
         resp.delete_cookie(CSRF_COOKIE)
         return resp
+
+    @app.get("/healthz")
+    def healthz():
+        # Open, so a second window can find this copy. Says nothing private.
+        return JSONResponse({"app": APP_ID})
 
     @app.get("/health")
     def health():

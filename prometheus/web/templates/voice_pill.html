@@ -1,0 +1,4 @@
+{% set labels = {"idle": "Listening for “Prometheus”", "listening": "Listening…", "thinking": "Thinking…", "speaking": "Speaking…", "muted": "Mic muted", "setup": "Setting up voice…", "error": "Voice problem"} %}
+{% if v.state in labels %}<button type="button" class="mic mic-{{ v.state }}" hx-post="/voice/mute" hx-target="#mic" hx-swap="innerHTML"
+  title="{{ 'Click to turn the microphone back on' if v.state == 'muted' else ('See Settings' if v.state in ('error', 'setup') else 'Click to mute the microphone') }}">
+  <span class="mic-dot"></span>{{ labels[v.state] }}</button>{% endif %}
