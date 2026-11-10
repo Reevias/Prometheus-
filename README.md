@@ -29,8 +29,13 @@ Try: *"sort my Downloads folder and summarise any PDFs about taxes"*.
 You need **Python 3.12 or newer** and **Git**. Then run this once in PowerShell:
 
 ```powershell
-irm https://raw.githubusercontent.com/Reevias/Prometheus-/main/scripts/install-windows.ps1 | iex
+git clone https://github.com/Reevias/Prometheus-.git $env:USERPROFILE\Prometheus-
+powershell -ExecutionPolicy Bypass -File $env:USERPROFILE\Prometheus-\scripts\install-windows.ps1
 ```
+
+The repository is private, so the first command asks you to sign in to GitHub in your browser (once). If the
+repository is ever made public, this one line does both steps:
+`irm https://raw.githubusercontent.com/Reevias/Prometheus-/main/scripts/install-windows.ps1 | iex`
 
 It downloads Prometheus to `%USERPROFILE%\Prometheus-`, installs it with the newest Python you have, asks you to
 choose a password (first time only, at least 10 characters) and puts a **Prometheus** shortcut on your desktop

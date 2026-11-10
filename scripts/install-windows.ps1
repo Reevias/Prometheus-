@@ -1,8 +1,9 @@
 # Installs (or updates) the new Prometheus and makes the desktop shortcut.
-# Run in PowerShell:
-#   irm https://raw.githubusercontent.com/Reevias/Prometheus-/main/scripts/install-windows.ps1 | iex
-# or, from a copy of the repository:
-#   powershell -ExecutionPolicy Bypass -File scripts\install-windows.ps1
+# The repository is private, so download it with Git first (it asks you to sign in to GitHub once):
+#   git clone https://github.com/Reevias/Prometheus-.git $env:USERPROFILE\Prometheus-
+#   powershell -ExecutionPolicy Bypass -File $env:USERPROFILE\Prometheus-\scripts\install-windows.ps1
+# (If the repository is made public, this also works:
+#   irm https://raw.githubusercontent.com/Reevias/Prometheus-/main/scripts/install-windows.ps1 | iex)
 $ErrorActionPreference = "Stop"
 $Repo = "https://github.com/Reevias/Prometheus-.git"
 $Dir = Join-Path $env:USERPROFILE "Prometheus-"
@@ -13,7 +14,8 @@ if (-not (Get-Command py -ErrorAction SilentlyContinue)) { throw "Python is not 
 # Newest installed Python that is 3.12 or later.
 $Py = $null
 foreach ($v in "3.14", "3.13", "3.12") {
-    & py "-$v" -c "import sys" 2>$null
+    # A missing version writes to stderr; in Windows PowerShell 5.1 with "Stop" that would end the script, so catch it.
+    try { & py "-$v" -c "import sys" 2>$null } catch { continue }
     if ($LASTEXITCODE -eq 0) { $Py = $v; break }
 }
 if (-not $Py) { throw "Prometheus needs Python 3.12 or newer. Install it from https://www.python.org/downloads/" }
