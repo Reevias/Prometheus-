@@ -14,5 +14,5 @@ class GeminiProvider:
         return False
 
     def complete(self, messages: list[dict], system: str, json_schema: dict | None = None,
-                 max_tokens: int = 4096) -> Reply:
+                 max_tokens: int = 4096, model: str | None = None) -> Reply:
         raise ProviderUnavailable("Gemini (Argon) is not connected yet.")

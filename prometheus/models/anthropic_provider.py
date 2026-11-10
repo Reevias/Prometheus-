@@ -30,7 +30,8 @@ class AnthropicProvider:
         return self._client
 
     def complete(self, messages: list[dict], system: str, json_schema: dict | None = None,
-                 max_tokens: int = 4096) -> Reply:
+                 max_tokens: int = 4096, model: str | None = None) -> Reply:
+        model = model or self.model
         if not self.available():
             raise ProviderUnavailable("No Claude API key set.")
         output_config: dict = {"effort": self.effort}
@@ -38,7 +39,7 @@ class AnthropicProvider:
             output_config["format"] = {"type": "json_schema", "schema": json_schema}
         try:
             resp = self._get_client().beta.messages.create(
-                model=self.model,
+                model=model,
                 max_tokens=max_tokens,
                 system=system,
                 messages=messages,
@@ -55,5 +56,5 @@ class AnthropicProvider:
             raise ProviderUnavailable("Claude refused this request.")
         text = "".join(b.text for b in resp.content if getattr(b, "type", "") == "text")
         tin, tout = resp.usage.input_tokens, resp.usage.output_tokens
-        return Reply(text=text, provider=self.name, model=self.model, tokens_in=tin, tokens_out=tout,
+        return Reply(text=text, provider=self.name, model=model, tokens_in=tin, tokens_out=tout,
                      usd=tin * PRICE_IN + tout * PRICE_OUT)

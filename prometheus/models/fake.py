@@ -19,10 +19,10 @@ class FakeProvider:
         return True
 
     def complete(self, messages: list[dict], system: str, json_schema: dict | None = None,
-                 max_tokens: int = 4096) -> Reply:
-        self.calls.append({"messages": messages, "system": system, "json_schema": json_schema})
+                 max_tokens: int = 4096, model: str | None = None) -> Reply:
+        self.calls.append({"messages": messages, "system": system, "json_schema": json_schema, "model": model})
         if callable(self._replies):
             text = self._replies(messages, system)
         else:
             text = self._replies[min(len(self.calls), len(self._replies)) - 1]
-        return Reply(text=text, provider=self.name, model="fake", usd=self.usd)
+        return Reply(text=text, provider=self.name, model=model or "fake", usd=self.usd)

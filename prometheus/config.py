@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import threading
 from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 
@@ -23,9 +24,9 @@ def data_dir() -> Path:
 
 def _default_routes() -> dict[str, list[str]]:
     return {
-        "plan": ["anthropic", "ollama"],
-        "combine": ["anthropic", "ollama"],
-        "research": ["anthropic", "ollama"],
+        "plan": ["openrouter", "anthropic", "ollama"],
+        "combine": ["openrouter", "anthropic", "ollama"],
+        "research": ["openrouter", "anthropic", "ollama"],
         "private": ["ollama"],
     }
 
@@ -40,6 +41,8 @@ class Settings:
     ollama_model: str = "qwen3.5:2b"
     ollama_url: str = "http://127.0.0.1:11434"
     anthropic_model: str = "claude-opus-5-5"
+    openrouter_model: str = "openrouter/auto"   # strong model: planning and final answers
+    openrouter_fast_model: str = ""             # cheaper model for research summaries ("" = same as above)
     password_hash: str = ""
     task_folders_note: str = ""
 
@@ -54,7 +57,13 @@ def load_settings(path: Path | None = None) -> Settings:
         return Settings()
     raw = json.loads(target.read_text(encoding="utf-8"))
     known = {f.name for f in fields(Settings)}
-    return Settings(**{k: v for k, v in raw.items() if k in known})
+    settings = Settings(**{k: v for k, v in raw.items() if k in known})
+    # Settings saved before OpenRouter existed: add it in front for everything except private files.
+    if not any("openrouter" in entry for names in settings.routes.values() for entry in names):
+        for purpose, names in settings.routes.items():
+            if purpose != "private":
+                settings.routes[purpose] = ["openrouter", *names]
+    return settings
 
 
 def save_settings(settings: Settings, path: Path | None = None) -> None:
@@ -64,19 +73,65 @@ def save_settings(settings: Settings, path: Path | None = None) -> None:
     os.replace(tmp, target)
 
 
-def get_secret(name: str) -> str | None:
-    """Environment variable first, then <data>/.env. Never log the result."""
-    value = os.environ.get(name)
-    if value:
-        return value
+KEY_NAMES = {
+    "OPENROUTER_API_KEY": "OpenRouter",
+    "ANTHROPIC_API_KEY": "Claude (Anthropic)",
+    "GEMINI_API_KEY": "Gemini (Argon)",
+    "GITHUB_TOKEN": "GitHub",
+}
+_SECRETS_LOCK = threading.Lock()
+
+
+def _read_env_file() -> dict[str, str]:
     env_file = data_dir() / ".env"
+    out: dict[str, str] = {}
     if not env_file.exists():
-        return None
+        return out
     for line in env_file.read_text(encoding="utf-8").splitlines():
         line = line.strip()
         if not line or line.startswith("#") or "=" not in line:
             continue
         key, _, val = line.partition("=")
-        if key.strip() == name:
-            return val.strip() or None
-    return None
+        if val.strip():
+            out[key.strip()] = val.strip()
+    return out
+
+
+def _write_env_file(values: dict[str, str]) -> None:
+    env_file = data_dir() / ".env"
+    tmp = env_file.with_suffix(".tmp")
+    tmp.write_text("".join(f"{k}={v}\n" for k, v in values.items()), encoding="utf-8")
+    try:
+        os.chmod(tmp, 0o600)
+    except OSError:
+        pass
+    os.replace(tmp, env_file)
+
+
+def get_secret(name: str) -> str | None:
+    """A key saved in the app (<data>/.env) wins; otherwise the environment variable. Never log the result."""
+    return _read_env_file().get(name) or os.environ.get(name) or None
+
+
+def set_secret(name: str, value: str) -> None:
+    value = value.strip()
+    if name not in KEY_NAMES:
+        raise ValueError(f"Unknown key name: {name}")
+    if not value or len(value) > 500 or any(c in value for c in "\r\n\0") or " " in value:
+        raise ValueError("That doesn't look like a valid key.")
+    with _SECRETS_LOCK:
+        values = _read_env_file()
+        values[name] = value
+        _write_env_file(values)
+
+
+def delete_secret(name: str) -> None:
+    with _SECRETS_LOCK:
+        values = _read_env_file()
+        if values.pop(name, None) is not None:
+            _write_env_file(values)
+
+
+def secrets_set() -> dict[str, bool]:
+    """Which keys exist (names only, never values)."""
+    return {name: bool(get_secret(name)) for name in KEY_NAMES}

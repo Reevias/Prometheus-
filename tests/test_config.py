@@ -16,11 +16,11 @@ def test_settings_roundtrip(tmp_home):
     assert load_settings() == changed
 
 
-def test_get_secret_env_beats_dotenv(tmp_home, monkeypatch):
+def test_get_secret_app_saved_key_beats_environment(tmp_home, monkeypatch):
     (data_dir() / ".env").write_text("X=file\n# comment\nY = spaced \n", encoding="utf-8")
     monkeypatch.setenv("X", "env")
-    assert get_secret("X") == "env"
-    monkeypatch.delenv("X")
-    assert get_secret("X") == "file"
+    monkeypatch.setenv("Z", "only-env")
+    assert get_secret("X") == "file"      # a key saved in the app wins over setx
+    assert get_secret("Z") == "only-env"
     assert get_secret("Y") == "spaced"
     assert get_secret("UNKNOWN_SECRET_NAME") is None

@@ -1,50 +1,90 @@
-"""Picks a provider per purpose. Enforces privacy, budget and the kill switch."""
+"""Picks a model per purpose and switches by itself. Enforces privacy, budget and the kill switch.
+
+A route is an ordered list of entries, each "provider" or "provider:model". The router tries them in order,
+skips any that are unavailable or resting after a failure, and drops to free/local ones when the cap is reached.
+"""
 from __future__ import annotations
+
+import time
+from typing import Callable
 
 from prometheus.config import Settings
 from prometheus.models.anthropic_provider import AnthropicProvider
 from prometheus.models.base import PrivacyViolation, Provider, ProviderUnavailable, Reply
 from prometheus.models.gemini import GeminiProvider
 from prometheus.models.ollama import OllamaProvider
-from prometheus.safety.budget import Budget
+from prometheus.models.openrouter import OpenRouterProvider
+from prometheus.safety.budget import Budget, BudgetExceeded
 from prometheus.safety.killswitch import KillSwitch
+
+REST_SECONDS = 300
+
+
+def split_entry(entry: str) -> tuple[str, str | None]:
+    name, sep, model = entry.partition(":")
+    return name, (model or None) if sep else None
 
 
 class ModelRouter:
     def __init__(self, providers: dict[str, Provider], routes: dict[str, list[str]], budget: Budget,
-                 killswitch: KillSwitch):
+                 killswitch: KillSwitch, clock: Callable[[], float] = time.time):
         self.providers = providers
         self.routes = routes
         self.budget = budget
         self.killswitch = killswitch
-        for name in routes.get("private", []):
-            p = providers.get(name)
+        self.clock = clock
+        self._resting: dict[str, tuple[float, str]] = {}
+        for entry in routes.get("private", []):
+            p = providers.get(split_entry(entry)[0])
             if p is None or not p.is_local:
-                raise PrivacyViolation(f"'{name}' is not a local model; personal files may only use local models.")
+                raise PrivacyViolation(f"'{entry}' is not a local model; personal files may only use local models.")
 
     def status(self) -> dict[str, bool]:
         return {name: p.available() for name, p in self.providers.items()}
 
+    def status_detail(self) -> list[dict]:
+        now = self.clock()
+        out = []
+        for name, p in self.providers.items():
+            until, reason = self._resting.get(name, (0.0, ""))
+            resting = until > now
+            out.append({"name": name, "available": p.available(), "local": p.is_local, "resting": resting,
+                        "reason": reason if resting else "", "minutes_left": int((until - now) // 60) + 1 if resting else 0})
+        return out
+
     def complete(self, purpose: str, messages: list[dict], system: str, json_schema: dict | None = None,
                  max_tokens: int = 4096) -> Reply:
         self.killswitch.check()
-        errors = []
-        for name in self.routes.get(purpose, []):
+        errors: list[str] = []
+        over_budget = False
+        for entry in self.routes.get(purpose, []):
+            name, model = split_entry(entry)
             provider = self.providers.get(name)
             if provider is None or not provider.available():
                 continue
             if purpose == "private" and not provider.is_local:
                 raise PrivacyViolation(f"'{name}' is not local.")
-            if not provider.is_local:
-                self.budget.ensure_can_spend()
+            if self._resting.get(name, (0.0, ""))[0] > self.clock():
+                errors.append(f"{name}: resting ({self._resting[name][1]})")
+                continue
+            free = provider.is_local or (model or "").endswith(":free")
+            if not free and self.budget.state().stopped:
+                over_budget = True   # cap reached: skip paid models, keep looking for a free or local one
+                continue
             try:
-                reply = provider.complete(messages, system, json_schema=json_schema, max_tokens=max_tokens)
+                reply = provider.complete(messages, system, json_schema=json_schema, max_tokens=max_tokens,
+                                          model=model)
             except ProviderUnavailable as e:
+                self._resting[name] = (self.clock() + REST_SECONDS, str(e))
                 errors.append(f"{name}: {e}")
                 continue
+            self._resting.pop(name, None)
             if not provider.is_local:
                 self.budget.record(reply.provider, reply.model, reply.usd, reply.tokens_in, reply.tokens_out)
             return reply
+        if over_budget:
+            self.budget.ensure_can_spend()
+            raise BudgetExceeded("Spending cap reached and no free model is available.")
         message = f"No AI model is available for '{purpose}'. Start Ollama or add an API key in Settings."
         if errors:
             message += " (" + "; ".join(errors) + ")"
@@ -53,8 +93,13 @@ class ModelRouter:
 
 def build_router(settings: Settings, budget: Budget, killswitch: KillSwitch) -> ModelRouter:
     providers: dict[str, Provider] = {
+        "openrouter": OpenRouterProvider(model=settings.openrouter_model),
         "anthropic": AnthropicProvider(model=settings.anthropic_model),
         "ollama": OllamaProvider(settings.ollama_model, settings.ollama_url),
         "gemini": GeminiProvider(),
     }
-    return ModelRouter(providers, settings.routes, budget, killswitch)
+    routes = {purpose: list(entries) for purpose, entries in settings.routes.items()}
+    if settings.openrouter_fast_model and "research" in routes:
+        routes["research"] = [f"openrouter:{settings.openrouter_fast_model}" if e == "openrouter" else e
+                              for e in routes["research"]]
+    return ModelRouter(providers, routes, budget, killswitch)

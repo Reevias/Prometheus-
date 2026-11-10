@@ -22,9 +22,10 @@ class OllamaProvider:
             return False
 
     def complete(self, messages: list[dict], system: str, json_schema: dict | None = None,
-                 max_tokens: int = 4096) -> Reply:
+                 max_tokens: int = 4096, model: str | None = None) -> Reply:
+        model = model or self.model
         body = {
-            "model": self.model,
+            "model": model,
             "messages": [{"role": "system", "content": system}, *messages],
             "stream": False,
             "options": {"num_predict": max_tokens},
@@ -37,5 +38,5 @@ class OllamaProvider:
             data = resp.json()
         except (httpx.HTTPError, ValueError) as e:
             raise ProviderUnavailable(f"Ollama error: {e}") from e
-        return Reply(text=data.get("message", {}).get("content", ""), provider=self.name, model=self.model,
+        return Reply(text=data.get("message", {}).get("content", ""), provider=self.name, model=model,
                      tokens_in=int(data.get("prompt_eval_count", 0)), tokens_out=int(data.get("eval_count", 0)))
