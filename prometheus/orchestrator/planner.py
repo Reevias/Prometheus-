@@ -152,7 +152,10 @@ class Orchestrator:
             system += ("\n\nSkills (how-to guides). For each step set \"skill\" to the name of the one guide that "
                        f"fits, or \"\" if none does:\n{catalog}")
         system += f"\n\n{UNTRUSTED_RULE}"
-        memories = "\n".join(f"- {m.text}" for m in self.store.memories()[-10:]) or "(none)"
+        relevant = [h.text for h in self.store.recall(text, limit=8, kinds=("memory", "chat_note"))]
+        newest = [m.text for m in self.store.memories()[-3:]]
+        remembered = list(dict.fromkeys(relevant + newest))
+        memories = "\n".join(f"- {m[:400]}" for m in remembered) or "(none)"
         messages = [{"role": "user", "content": f"Things to remember about the user:\n{memories}\n\nRequest: {text}"}]
         reply = self.router.complete("plan", messages, system, json_schema=PLAN_SCHEMA, max_tokens=2000)
         try:

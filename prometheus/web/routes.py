@@ -81,13 +81,15 @@ def register_routes(app: FastAPI, services: Services) -> None:
         return page(request, "approval_list.html", approvals=store.approvals(), result=result)
 
     @app.get("/memory", response_class=HTMLResponse)
-    def memory(request: Request):
-        return page(request, "memory.html", memories=store.memories())
+    def memory(request: Request, q: str = ""):
+        q = q.strip()[:200]
+        found = store.recall(q, limit=30, kinds=("memory", "chat_note", "agent_note", "message")) if q else []
+        return page(request, "memory.html", memories=store.memories(), q=q, found=found)
 
     @app.post("/memory", response_class=HTMLResponse)
     def add_memory(request: Request, text: str = Form(...)):
         if text.strip():
-            store.add_memory(text.strip()[:1000])
+            store.add_memory(text.strip()[:1000], source="added by you")
         return page(request, "memory_list.html", memories=store.memories())
 
     @app.post("/memory/{memory_id}/delete", response_class=HTMLResponse)

@@ -2,11 +2,24 @@
 {% block body %}
 <main class="single">
   <h2>What Prometheus remembers about you</h2>
+  <form class="row" method="get" action="/memory">
+    <input type="text" name="q" value="{{ q }}" placeholder="Search everything Prometheus remembers" autocomplete="off">
+    <button type="submit">Search</button>
+    {% if q %}<a href="/memory">Clear</a>{% endif %}
+  </form>
+  {% if q %}
+  <h3>Results for "{{ q }}"</h3>
+  <ul class="plain">
+    {% for h in found %}<li>{{ h.text[:600] }}<div class="muted">{{ {"memory": "memory", "chat_note": "chat note", "agent_note": "agent note", "message": "message"}[h.kind] }}{% if h.source %}, {{ h.source }}{% endif %}</div></li>
+    {% else %}<li class="muted">Nothing found. Try fewer or different words.</li>{% endfor %}
+  </ul>
+  {% else %}
   <div id="memory">{% include "memory_list.html" %}</div>
   <form class="row" hx-post="/memory" hx-target="#memory" hx-on::after-request="this.reset()">
     <input type="text" name="text" placeholder="Something to remember" required>
     <button type="submit">Remember</button>
   </form>
+  {% endif %}
   <p><button class="danger" hx-post="/memory/wipe" hx-target="#memory" hx-confirm="Forget everything?">Forget everything</button></p>
 </main>
 {% endblock %}

@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import json
+import math
+import re
 import sqlite3
 import threading
 import time
@@ -28,8 +30,17 @@ CREATE TABLE IF NOT EXISTS approvals (id INTEGER PRIMARY KEY, kind TEXT NOT NULL
     payload TEXT NOT NULL, status TEXT NOT NULL, created REAL NOT NULL);
 CREATE TABLE IF NOT EXISTS costs (id INTEGER PRIMARY KEY, provider TEXT NOT NULL, model TEXT NOT NULL,
     usd REAL NOT NULL, tokens_in INTEGER NOT NULL, tokens_out INTEGER NOT NULL, created REAL NOT NULL);
-CREATE VIRTUAL TABLE IF NOT EXISTS search_index USING fts5(kind UNINDEXED, ref_id UNINDEXED, body);
 """
+
+# The search index matches word forms ("taxes" finds "tax") through the porter stemmer.
+INDEX_SQL = ("CREATE VIRTUAL TABLE search_index USING fts5(kind UNINDEXED, ref_id UNINDEXED, body, "
+             "tokenize='porter unicode61')")
+INDEX_VERSION = 2
+STOPWORDS = frozenset("a an and are as at be by for from has have i in is it me my of on or that the this to was "
+                      "what when where which who will with you your do does did can could should would please "
+                      "about into than then them they their there here just some any".split())
+KIND_WEIGHT = {"memory": 1.5, "chat_note": 1.2, "agent_note": 1.0, "message": 0.8}
+RECENCY_DAYS = 30.0
 
 
 @dataclass
@@ -47,6 +58,17 @@ class Note:
     id: int
     text: str
     created: float
+    source: str = ""
+
+
+@dataclass
+class Recalled:
+    kind: str        # memory | chat_note | agent_note | message
+    ref_id: int
+    text: str
+    source: str
+    created: float
+    score: float
 
 
 @dataclass
@@ -89,7 +111,22 @@ class Store:
             columns = {r["name"] for r in self._db.execute("PRAGMA table_info(messages)")}
             if "model" not in columns:  # databases made before v1.1
                 self._db.execute("ALTER TABLE messages ADD COLUMN model TEXT NOT NULL DEFAULT ''")
+            columns = {r["name"] for r in self._db.execute("PRAGMA table_info(memories)")}
+            if "source" not in columns:  # databases made before v1.2
+                self._db.execute("ALTER TABLE memories ADD COLUMN source TEXT NOT NULL DEFAULT ''")
+            if self._db.execute("PRAGMA user_version").fetchone()[0] < INDEX_VERSION:
+                self._rebuild_index()
             self._db.commit()
+
+    def _rebuild_index(self) -> None:
+        """Recreate the search index (new word-form matching) and refill it from the real tables."""
+        self._db.execute("DROP TABLE IF EXISTS search_index")
+        self._db.execute(INDEX_SQL)
+        for kind, table in (("memory", "memories"), ("chat_note", "chat_notes"), ("agent_note", "agent_notes"),
+                            ("message", "messages")):
+            self._db.execute(f"INSERT INTO search_index (kind, ref_id, body) SELECT ?, id, text FROM {table}",
+                             (kind,))
+        self._db.execute(f"PRAGMA user_version = {INDEX_VERSION}")
 
     # -- helpers ---------------------------------------------------------
     def _write(self, sql: str, args: tuple = ()) -> int:
@@ -146,13 +183,15 @@ class Store:
         self._write("DELETE FROM chat_notes WHERE id = ?", (note_id,))
         self._unindex("chat_note", note_id)
 
-    def add_memory(self, text: str) -> int:
-        mid = self._write("INSERT INTO memories (text, created) VALUES (?, ?)", (text, time.time()))
+    def add_memory(self, text: str, source: str = "") -> int:
+        mid = self._write("INSERT INTO memories (text, created, source) VALUES (?, ?, ?)",
+                          (text, time.time(), source))
         self._index("memory", mid, text)
         return mid
 
     def memories(self) -> list[Note]:
-        return [Note(r["id"], r["text"], r["created"]) for r in self._rows("SELECT * FROM memories ORDER BY id")]
+        return [Note(r["id"], r["text"], r["created"], r["source"])
+                for r in self._rows("SELECT * FROM memories ORDER BY id")]
 
     def delete_memory(self, memory_id: int) -> None:
         self._write("DELETE FROM memories WHERE id = ?", (memory_id,))
@@ -261,6 +300,55 @@ class Store:
 
     def total_cost(self) -> float:
         return float(self._rows("SELECT COALESCE(SUM(usd), 0) AS s FROM costs")[0]["s"])
+
+    # -- recall: find the right memory -----------------------------------------
+    @staticmethod
+    def _terms(query: str) -> list[str]:
+        words = [w for w in re.findall(r"\w+", query.lower()) if len(w) > 1 and w not in STOPWORDS]
+        return list(dict.fromkeys(words))[:12]
+
+    def _lookup(self, kind: str, ref_id: int) -> tuple[str, str, float] | None:
+        if kind == "memory":
+            rows = self._rows("SELECT text, source, created FROM memories WHERE id = ?", (ref_id,))
+        elif kind == "chat_note":
+            rows = self._rows("SELECT n.text, 'chat: ' || c.title AS source, n.created FROM chat_notes n "
+                              "LEFT JOIN chats c ON c.id = n.chat_id WHERE n.id = ?", (ref_id,))
+        elif kind == "agent_note":
+            rows = self._rows("SELECT text, 'agent: ' || agent AS source, created FROM agent_notes WHERE id = ?",
+                              (ref_id,))
+        elif kind == "message":
+            rows = self._rows("SELECT m.text, 'chat: ' || c.title AS source, m.created FROM messages m "
+                              "LEFT JOIN chats c ON c.id = m.chat_id WHERE m.id = ?", (ref_id,))
+        else:
+            return None
+        return (rows[0]["text"], rows[0]["source"] or "", rows[0]["created"]) if rows else None
+
+    def recall(self, query: str, limit: int = 8,
+               kinds: tuple[str, ...] = ("memory", "chat_note", "agent_note")) -> list[Recalled]:
+        """Best matches for a request: word forms and partial words match, better and newer matches rank first."""
+        terms = self._terms(query)
+        if not terms:
+            return []
+        match = " OR ".join(f'"{t}"*' for t in terms)
+        marks = ",".join("?" for _ in kinds)
+        try:
+            rows = self._rows(
+                f"SELECT kind, ref_id, bm25(search_index) AS rank FROM search_index "
+                f"WHERE search_index MATCH ? AND kind IN ({marks}) ORDER BY rank LIMIT 60", (match, *kinds))
+        except sqlite3.OperationalError:
+            return []
+        now = time.time()
+        out = []
+        for r in rows:
+            found = self._lookup(r["kind"], int(r["ref_id"]))
+            if found is None:
+                continue
+            text, source, created = found
+            age_days = max(0.0, (now - created) / 86400)
+            score = -float(r["rank"]) * KIND_WEIGHT.get(r["kind"], 1.0) * (1 + 0.25 * math.exp(-age_days / RECENCY_DAYS))
+            out.append(Recalled(r["kind"], int(r["ref_id"]), text, source, created, score))
+        out.sort(key=lambda h: h.score, reverse=True)
+        return out[:limit]
 
     # -- search -------------------------------------------------------------
     def search(self, query: str, limit: int = 20) -> list[SearchHit]:
