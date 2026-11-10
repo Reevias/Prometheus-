@@ -4,8 +4,8 @@ Approvals page, with a link to open) whether to add it to the skill library. App
 What the skill is: a how-to guide (SKILL.md + references/readme.md) the planner can use later. Nothing is cloned,
 installed or run. The repository's own words (description, README) are kept as data, never as instructions.
 
-Repositories for spying on or tracking people, stealing accounts or passwords, malware, phishing, attacking
-systems, deepfakes or cheating are never suggested.
+Nothing is hidden: the owner decides. Repositories about tracking people, accounts or passwords, malware,
+phishing, attacking systems, deepfakes or cheating are labelled "sensitive" on the approval card so it is clear.
 """
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ API = "https://api.github.com"
 USER_AGENT = "Prometheus/1.4 (personal assistant)"
 README_CHARS = 20_000
 REPO = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,38}/[A-Za-z0-9._-]{1,100}$")
-# Never suggested: words in the name or description that point at harming or watching people.
+# Words that get a "sensitive" label on the approval card (the owner still decides).
 HARMFUL = re.compile(
     r"\b(osint|doxx?(ing)?|stalk\w*|spy\w*|spyware|surveillance|track(ing)? (people|persons?|accounts?|users?)|"
     r"(social media|social network)s? accounts?|by username|find (people|accounts|usernames)|people search|"
@@ -59,8 +59,8 @@ def harmful(repo: dict) -> bool:
 
 
 def pick(repos: list[dict], seen: set[str]) -> dict | None:
-    """The trending repository gaining the most stars today that is new to us and not harmful."""
-    ok = [r for r in repos if r["full_name"].lower() not in seen and not harmful(r) and r.get("description")]
+    """The trending repository gaining the most stars today that hasn't been suggested before."""
+    ok = [r for r in repos if r["full_name"].lower() not in seen and r.get("description")]
     return max(ok, key=lambda r: (r["stars_today"], r["stars"]), default=None)
 
 
@@ -138,9 +138,10 @@ class RepoOfTheDay:
             return "Nothing new on GitHub trending today."
         self._remember(repo["full_name"])
         url = f"https://github.com/{repo['full_name']}"
+        label = " [sensitive: about tracking, accounts or security]" if harmful(repo) else ""
         self.services.approvals.request(
             "add_skill",
-            f"Repo of the day: {repo['full_name']} ({repo['stars_today']} stars today). Add it to the skill "
+            f"Repo of the day: {repo['full_name']} ({repo['stars_today']} stars today){label}. Add it to the skill "
             f"library? {repo['description'][:200]}",
             {"repo": repo["full_name"], "url": url, "description": repo["description"],
              "language": repo["language"], "stars": repo["stars"], "stars_today": repo["stars_today"]})
@@ -163,8 +164,6 @@ class RepoOfTheDay:
         full = str(payload.get("repo", ""))
         if not REPO.fullmatch(full):
             raise RuntimeError("That isn't a GitHub repository name.")
-        if harmful(payload | {"full_name": full}):
-            raise RuntimeError("Prometheus doesn't add repositories of that kind.")
         folder = Path(self.services.skills.user)
         target = write_skill(folder, {"full_name": full, **payload}, self.readme(full))
         return f"Added {full} to the skill library as '{target.name}'. Prometheus will use it when it fits."

@@ -36,8 +36,8 @@ def test_picks_the_best_safe_new_repo():
     repos = parse_trending(PAGE)
     assert [r["full_name"] for r in repos][:2] == ["sherlock-project/sherlock", "evil/stealer"]
     assert harmful(repos[0]) and harmful(repos[1]) and not harmful(repos[2])
-    assert pick(repos, set())["full_name"] == "good/llm-notes"          # trackers and stealers are skipped
-    assert pick(repos, {"good/llm-notes"})["full_name"] == "other/ui-kit"
+    assert pick(repos, set())["full_name"] == "sherlock-project/sherlock"     # nothing hidden: the owner decides
+    assert pick(repos, {"sherlock-project/sherlock", "evil/stealer"})["full_name"] == "good/llm-notes"
 
 
 def test_written_skill_is_valid_and_keeps_readme_as_data(tmp_path):
@@ -66,6 +66,7 @@ def test_suggest_then_approve_adds_the_skill(app_client):
         return httpx.Response(200, json={"content": "IyBMTE0gbm90ZXMKVXNlIGl0IGxvY2FsbHku"})   # "# LLM notes..."
 
     rod = RepoOfTheDay(services, http=httpx.Client(transport=httpx.MockTransport(handler)))
+    services.store.kv_set("repo_of_day_seen", ["sherlock-project/sherlock", "evil/stealer"])   # suggested before
     assert "good/llm-notes" in rod.suggest()
     pending = services.store.approvals()[0]
     assert pending.kind == "add_skill" and pending.payload["url"] == "https://github.com/good/llm-notes"
@@ -86,11 +87,16 @@ def test_suggest_then_approve_adds_the_skill(app_client):
     assert rod.suggest() == "Nothing new on GitHub trending today."   # never the same one twice
 
 
-def test_approve_refuses_harmful_even_if_queued(app_client):
+def test_sensitive_repos_are_labelled_not_hidden(app_client):
     client, services = app_client()
-    with pytest.raises(RuntimeError):
-        RepoOfTheDay(services).add({"repo": "sherlock-project/sherlock",
-                                    "description": "Hunt down social media accounts by username"})
+    page = "".join([PAGE])
+    rod = RepoOfTheDay(services, http=httpx.Client(transport=httpx.MockTransport(
+        lambda r: httpx.Response(200, text=page) if r.url.host == "github.com" else httpx.Response(404))))
+    assert "sherlock" in rod.suggest()
+    card = services.store.approvals()[0]
+    assert "sensitive" in card.summary and card.payload["url"] == "https://github.com/sherlock-project/sherlock"
+    out = rod.add(card.payload)
+    assert "Added sherlock-project/sherlock" in out and services.skills.get("repo-sherlock-project-sherlock")
 
 
 def test_open_link_only_for_github(app_client, monkeypatch):
