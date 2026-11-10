@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Literal
 
 LOCKED = ("safety/", "selfedit/", "orchestrator/", "server.py", "auth.py", "models/", "agents/", "actions/",
-          "memory/", "web/", "app.py", "config.py", "cli.py", "__init__.py")
+          "memory/", "web/", "skills/", "skillbook.py", "app.py", "config.py", "cli.py", "__init__.py")
 EDITABLE = ("plugins/",)  # v1: Prometheus may only add or edit its own plugin files
 TOOL_NAME = re.compile(r"^[a-z_][a-z0-9_]{0,40}$")
 COMPILE_TIMEOUT = 10

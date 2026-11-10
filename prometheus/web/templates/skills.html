@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block body %}
+<main class="single">
+  <h2>Skills</h2>
+  <p class="muted">How-to guides Prometheus follows. Each has a short guide and reference files it opens only when needed.
+  Add your own by putting a folder with a SKILL.md in <code>{{ user_folder }}</code>.</p>
+  {% if shown %}
+  <div class="panel" style="margin-bottom:14px"><strong>{{ shown }}</strong><pre class="diff">{{ text }}</pre></div>
+  {% endif %}
+  {% for s in skills %}
+  <div class="panel" style="margin-bottom:12px">
+    <p><strong><a href="/skills/{{ s.name }}/SKILL.md">{{ s.name }}</a></strong>
+      <span class="muted">{{ "yours" if s.source == "user" else "built in" }}</span></p>
+    <p>{{ s.description }}</p>
+    <p class="muted">{% for r in s.references() %}<a href="/skills/{{ s.name }}/{{ r }}">{{ r }}</a>{{ ", " if not loop.last }}{% else %}No reference files.{% endfor %}</p>
+  </div>
+  {% else %}<p class="muted">No skills installed yet.</p>{% endfor %}
+</main>
+{% endblock %}

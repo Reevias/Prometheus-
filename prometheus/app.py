@@ -25,6 +25,7 @@ from prometheus.safety.paths import PathPolicy
 from prometheus.safety.permissions import Permissions
 from prometheus.selfedit.patcher import Patcher
 from prometheus.selfedit.prompts import PromptStore
+from prometheus.skillbook import SkillBook
 
 PACKAGE_DIR = Path(prometheus.__file__).resolve().parent
 CODE_DIR = PACKAGE_DIR.parent
@@ -46,6 +47,7 @@ class Services:
     orchestrator: Orchestrator
     patcher: Patcher
     prompts: PromptStore
+    skills: SkillBook = None
     running: dict = dataclasses.field(default_factory=dict)
 
     def start_task(self, chat_id: int, text: str) -> threading.Thread:
@@ -102,13 +104,17 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
     approvals.register("open_link", open_link_handler)
     approvals.register("open_local", lambda payload: open_local_handler(payload, policy))
 
+    (data / "skills").mkdir(exist_ok=True)
+    skills = SkillBook(PACKAGE_DIR / "skills", data / "skills")
+
     def make_context(task_id: int, step_id: int) -> AgentContext:
         return AgentContext(task_id=task_id, step_id=step_id, store=store, router=router, policy=policy, files=files,
-                            permissions=permissions, approvals=approvals, killswitch=killswitch, home=home)
+                            permissions=permissions, approvals=approvals, killswitch=killswitch, home=home,
+                            skills=skills)
 
-    orchestrator = Orchestrator(store, router, REGISTRY, make_context, killswitch, prompts.folder)
+    orchestrator = Orchestrator(store, router, REGISTRY, make_context, killswitch, prompts.folder, skills=skills)
     return Services(settings, home, store, policy, journal, files, permissions, approvals, budget, killswitch,
-                    router, orchestrator, patcher, prompts)
+                    router, orchestrator, patcher, prompts, skills)
 
 
 __all__ = ["Services", "build_services", "TaskOutcome"]

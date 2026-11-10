@@ -34,7 +34,7 @@ prometheus = "prometheus.cli:main"
 include = ["prometheus*"]
 
 [tool.setuptools.package-data]
-prometheus = ["prompts/*.md", "web/templates/*.html", "web/static/*"]
+prometheus = ["prompts/*.md", "web/templates/*.html", "web/static/*", "skills/*/SKILL.md", "skills/*/references/*.md", "data/*.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

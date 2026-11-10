@@ -32,6 +32,12 @@ class AgentContext:
     approvals: Any
     killswitch: Any
     home: Path
+    skill: str = ""       # the SKILL.md text chosen for this step, if any
+    skills: Any = None    # the SkillBook
+
+    def guidance(self, limit: int = 4000) -> str:
+        """The chosen skill's instructions, ready to append to a system prompt."""
+        return f"\n\nFollow this guide for the task:\n{self.skill[:limit]}" if self.skill else ""
 
     def use(self, agent: str, tool: str) -> None:
         decision = self.permissions.check(agent, tool)

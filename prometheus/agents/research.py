@@ -56,7 +56,8 @@ class Research(Agent):
         prompt = (f"Question: {query}\n\nSources:\n{blocks}\n\n"
                   "Answer the question using only these sources. Cite them as [1], [2].")
         reply = ctx.router.complete("research", [{"role": "user", "content": prompt}],
-                                    "You are a careful researcher. " + UNTRUSTED_RULE, max_tokens=1500)
+                                    "You are a careful researcher. " + UNTRUSTED_RULE + ctx.guidance(),
+                                    max_tokens=1500)
         sources = [url for url, _ in pages]
         summary = reply.text.strip() + "\n\nSources:\n" + "\n".join(f"[{i}] {u}" for i, u in enumerate(sources, 1))
         ctx.store.add_agent_note(ctx.task_id, self.name, summary[:2000])

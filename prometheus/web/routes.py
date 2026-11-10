@@ -23,7 +23,8 @@ def register_routes(app: FastAPI, services: Services) -> None:
 
     def page(request: Request, name: str, status_code: int = 200, **ctx):
         base = {"csrf": getattr(request.state, "csrf", ""), "stopped": services.killswitch.is_set,
-                "nav": "/" if request.url.path.startswith("/chats") else request.url.path}
+                "nav": "/" if request.url.path.startswith("/chats") else
+                       ("/skills" if request.url.path.startswith("/skills") else request.url.path)}
         return templates.TemplateResponse(request, name, {**base, **ctx}, status_code=status_code)
 
     def chat_page(request: Request, chat_id: int):
@@ -98,6 +99,23 @@ def register_routes(app: FastAPI, services: Services) -> None:
         store.wipe_memories()
         store.audit("user", "wipe_memories", {})
         return page(request, "memory_list.html", memories=[])
+
+    @app.get("/skills", response_class=HTMLResponse)
+    def skills_page(request: Request):
+        return page(request, "skills.html", skills=services.skills.catalog(), shown=None, text="",
+                    user_folder=str(services.skills.user))
+
+    @app.get("/skills/{name}/{ref}", response_class=HTMLResponse)
+    def skill_reference(request: Request, name: str, ref: str):
+        skill = services.skills.get(name)
+        if skill is None:
+            return HTMLResponse("Not found", status_code=404)
+        try:
+            text = skill.body if ref == "SKILL.md" else services.skills.reference(name, ref)
+        except ValueError:
+            return HTMLResponse("Not found", status_code=404)
+        return page(request, "skills.html", skills=services.skills.catalog(), shown=f"{name} / {ref}", text=text,
+                    user_folder=str(services.skills.user))
 
     @app.get("/history", response_class=HTMLResponse)
     def history(request: Request):

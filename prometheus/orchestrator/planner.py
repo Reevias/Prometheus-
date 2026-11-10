@@ -24,6 +24,7 @@ PLAN_SCHEMA = {
             "id": {"type": "integer"},
             "agent": {"type": "string"},
             "goal": {"type": "string"},
+            "skill": {"type": "string"},
             "inputs": {"type": "array", "items": {
                 "type": "object",
                 "properties": {"key": {"type": "string"}, "value": {"type": "string"}},
@@ -32,7 +33,7 @@ PLAN_SCHEMA = {
             }},
             "depends_on": {"type": "array", "items": {"type": "integer"}},
         },
-        "required": ["id", "agent", "goal", "inputs", "depends_on"],
+        "required": ["id", "agent", "goal", "skill", "inputs", "depends_on"],
         "additionalProperties": False,
     }}},
     "required": ["steps"],
@@ -103,6 +104,7 @@ def validate_plan(raw: str, registry: dict) -> Plan:
         if not all(isinstance(d, int) and d in seen for d in deps):
             raise PlanError(f"Step {sid} may depend only on earlier steps.")
         clean.append({"id": sid, "agent": s["agent"], "goal": str(s.get("goal", "")),
+                      "skill": str(s.get("skill") or "").strip(),
                       "inputs": _inputs(s.get("inputs", {})), "depends_on": list(deps)})
         seen.add(sid)
     return Plan(clean)
@@ -127,13 +129,14 @@ def resolve_inputs(inputs: dict, results: dict[int, StepResult], private_steps: 
 
 class Orchestrator:
     def __init__(self, store, router, registry: dict, make_context: Callable[[int, int], AgentContext],
-                 killswitch, prompts_dir: Path | None = None):
+                 killswitch, prompts_dir: Path | None = None, skills=None):
         self.store = store
         self.router = router
         self.registry = registry
         self.make_context = make_context
         self.killswitch = killswitch
         self.prompts_dir = Path(prompts_dir) if prompts_dir else PACKAGE_PROMPTS
+        self.skills = skills
 
     def _prompt(self, name: str) -> str:
         path = self.prompts_dir / f"{name}.md"
@@ -143,7 +146,12 @@ class Orchestrator:
 
     def _plan(self, text: str) -> Plan:
         agents = "\n".join(f"- {name}: {cls.description}" for name, cls in self.registry.items())
-        system = f"{self._prompt('planner')}\n\nAgents:\n{agents}\n\n{UNTRUSTED_RULE}"
+        system = f"{self._prompt('planner')}\n\nAgents:\n{agents}"
+        catalog = self.skills.catalog_text() if self.skills else ""
+        if catalog:
+            system += ("\n\nSkills (how-to guides). For each step set \"skill\" to the name of the one guide that "
+                       f"fits, or \"\" if none does:\n{catalog}")
+        system += f"\n\n{UNTRUSTED_RULE}"
         memories = "\n".join(f"- {m.text}" for m in self.store.memories()[-10:]) or "(none)"
         messages = [{"role": "user", "content": f"Things to remember about the user:\n{memories}\n\nRequest: {text}"}]
         reply = self.router.complete("plan", messages, system, json_schema=PLAN_SCHEMA, max_tokens=2000)
@@ -192,7 +200,12 @@ class Orchestrator:
                     inputs = resolve_inputs(st["inputs"], results, frozenset(private),
                                             getattr(agent_cls, "accepts_private", True))
                     agent = agent_cls()
-                    res = agent.run(st["goal"], inputs, self.make_context(task_id, sid))
+                    ctx = self.make_context(task_id, sid)
+                    skill = self.skills.get(st.get("skill", "")) if self.skills and st.get("skill") else None
+                    ctx.skill = skill.body if skill else ""
+                    if ctx.skills is None:
+                        ctx.skills = self.skills
+                    res = agent.run(st["goal"], inputs, ctx)
                 except (ProviderUnavailable, BudgetExceeded) as e:
                     self.store.finish_step(sid, "paused", str(e))
                     raise

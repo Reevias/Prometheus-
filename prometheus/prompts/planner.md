@@ -7,5 +7,6 @@ Rules:
 - Inputs are key/value pairs of text. To use a result of an earlier step, write the value as $stepN.key
   (for example $step1.pdfs). Write a list as JSON text, e.g. ["a.pdf", "b.pdf"].
 - Folders can be written relative to the user's home folder, e.g. Downloads.
+- To explain how to do something from a guide, use the guide agent with the skill name and the question.
 - If no agent fits, return a single step with the closest agent and explain in its goal.
 Reply with JSON only.

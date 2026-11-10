@@ -12,7 +12,7 @@
 <header>
   <span class="brand"><span id="core" hx-get="/status?core=1" hx-trigger="load, every 2s [document.visibilityState === 'visible']" hx-swap="innerHTML"><span class="core"></span></span>Prometheus</span>
   <nav>
-    {% for href, label in [("/", "Chat"), ("/approvals", "Approvals"), ("/memory", "Memory"), ("/history", "History"), ("/settings", "Settings")] %}
+    {% for href, label in [("/", "Chat"), ("/approvals", "Approvals"), ("/memory", "Memory"), ("/skills", "Skills"), ("/history", "History"), ("/settings", "Settings")] %}
     <a href="{{ href }}" {% if nav == href %}aria-current="page"{% endif %}>{{ label }}</a>
     {% endfor %}
   </nav>
