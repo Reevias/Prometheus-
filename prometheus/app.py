@@ -13,7 +13,7 @@ from prometheus.agents import REGISTRY
 from prometheus.agents.base import AgentContext
 from prometheus.agents.antigravity import make_client, run_antigravity_job
 from prometheus.agents.opener import open_link_handler, open_local_handler
-from prometheus.agents.system import wifi_password_handler
+from prometheus.agents.system import laptop_action_handler, wifi_password_handler
 from prometheus.laptop import Laptop
 from prometheus.agents.repo_scout import clone_handler
 from prometheus.config import Settings, data_dir
@@ -111,6 +111,7 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
     approvals.register("clone_repo", lambda payload: clone_handler(payload, data / "quarantine"))
     approvals.register("open_link", open_link_handler)
     approvals.register("open_local", lambda payload: open_local_handler(payload, policy))
+    approvals.register("laptop_action", lambda payload: laptop_action_handler(payload, Laptop()))
     approvals.register("wifi_password", lambda payload, secret: wifi_password_handler(payload, secret, Laptop()),
                        needs_secret=True)
 

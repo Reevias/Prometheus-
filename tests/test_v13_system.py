@@ -49,11 +49,13 @@ User profiles
 class FakeRun:
     def __init__(self, extra=None):
         self.calls = []
+        self.envs = []
         self.files = {}
         self.extra = extra or {}
 
-    def __call__(self, argv, timeout=20):
+    def __call__(self, argv, timeout=20, env=None):
         self.calls.append(list(argv))
+        self.envs.append(env or {})
         joined = " ".join(argv)
         for needle, reply in self.extra.items():
             if needle in joined:
