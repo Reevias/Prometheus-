@@ -19,6 +19,9 @@ REF = re.compile(r"^\$step(\d+)\.(\w+)$")
 HISTORY_TURNS = 12
 PASSAGES = 3
 PASSAGE_CHARS = 1000
+CHAT_PASSAGES = 3          # parts of earlier chats fetched per request (never whole chats)
+CHAT_PASSAGE_CHARS = 1200
+KNOWN_TOPICS = 40
 HISTORY_CHARS = 1500
 SUMMARY_EVERY = 10
 MAX_REMEMBER = 3
@@ -29,7 +32,8 @@ PRIVATE_PLACEHOLDER = "(an answer with details from your files, written on your 
 
 PLAN_SCHEMA = {
     "type": "object",
-    "properties": {"answer": {"type": "string"}, "remember": {"type": "array", "items": {"type": "string"}},
+    "properties": {"answer": {"type": "string"}, "topic": {"type": "string"},
+                   "remember": {"type": "array", "items": {"type": "string"}},
                    "steps": {"type": "array", "items": {
         "type": "object",
         "properties": {
@@ -48,7 +52,7 @@ PLAN_SCHEMA = {
         "required": ["id", "agent", "goal", "skill", "inputs", "depends_on"],
         "additionalProperties": False,
     }}},
-    "required": ["answer", "remember", "steps"],
+    "required": ["answer", "topic", "remember", "steps"],
     "additionalProperties": False,
 }
 
@@ -63,6 +67,7 @@ class Plan:
     answer: str = ""                                   # a direct reply (no tools needed)
     remember: list[str] = field(default_factory=list)  # facts the user asked to remember
     model: str = ""                                    # which model wrote the plan or answer
+    topic: str = ""                                    # what the request is about, e.g. "weather"
 
 
 @dataclass
@@ -103,6 +108,7 @@ def validate_plan(raw: str, registry: dict) -> Plan:
         steps = data.get("steps") or []
         answer = str(data.get("answer") or "").strip()
         remember = [str(r) for r in (data.get("remember") or []) if isinstance(r, (str, int, float))]
+        topic = str(data.get("topic") or "")
     except (ValueError, AttributeError, TypeError) as e:
         raise PlanError(f"The plan is not valid JSON with a 'steps' list ({e}).") from e
     if not isinstance(steps, list) or len(steps) > MAX_STEPS:
@@ -132,7 +138,7 @@ def validate_plan(raw: str, registry: dict) -> Plan:
                       "skill": str(s.get("skill") or "").strip(),
                       "inputs": inputs, "depends_on": list(deps)})
         seen.add(sid)
-    return Plan(clean, answer=answer, remember=remember)
+    return Plan(clean, answer=answer, remember=remember, topic=topic)
 
 
 def resolve_inputs(inputs: dict, results: dict[int, StepResult], private_steps: frozenset[int] = frozenset(),
@@ -220,13 +226,32 @@ class Orchestrator:
                 known.add(fact.lower())
                 saved += 1
 
-    def _plan(self, text: str, history: list[dict] | None = None) -> Plan:
+    def _earlier_chats(self, text: str, chat_id: int | None) -> str:
+        """The few parts of earlier chats that match this request. Parts already in the recent history are skipped;
+        parts holding private file details are never sent (this goes to the planning model)."""
+        skip = []
+        if chat_id is not None:
+            recent = self.store.messages(chat_id)[-HISTORY_TURNS:]
+            first_recent = recent[0].id if recent else 0
+            skip = [s["doc_id"] for s in self.store.segments(chat_id=chat_id) if s["last_msg"] >= first_recent]
+        hits = self.store.search_chunks(text, limit=CHAT_PASSAGES, include_private=False, chats=True,
+                                        exclude_doc_ids=skip)
+        if not hits:
+            return ""
+        return "From earlier chats (only the matching parts):\n" + "\n".join(
+            untrusted(h.context[:CHAT_PASSAGE_CHARS], h.title) for h in hits) + "\n\n"
+
+    def _plan(self, text: str, history: list[dict] | None = None, chat_id: int | None = None) -> Plan:
         agents = "\n".join(f"- {name}: {cls.description}" for name, cls in self.registry.items())
         system = f"{self._prompt('planner')}\n\nWriting rules:\n{self._prompt('style')}\n\nAgents:\n{agents}"
         catalog = self.skills.catalog_text() if self.skills else ""
         if catalog:
             system += ("\n\nSkills (how-to guides). For each step set \"skill\" to the name of the one guide that "
                        f"fits, or \"\" if none does:\n{catalog}")
+        known = [t["topic"] for t in self.store.topics(KNOWN_TOPICS)]
+        system += ("\n\nTopic: set \"topic\" to 1 to 3 lowercase words naming what this request is about (for example "
+                   "weather, taxes, python learning). Reuse one of these earlier topics when it fits: "
+                   + (", ".join(known) if known else "(none yet)"))
         system += f"\n\n{UNTRUSTED_RULE}"
         relevant = [h.text for h in self.store.recall(text, limit=8, kinds=("memory", "chat_note"))]
         newest = [m.text for m in self.store.memories()[-3:]]
@@ -234,7 +259,8 @@ class Orchestrator:
         memories = "\n".join(f"- {m[:400]}" for m in remembered) or "(none)"
         content = f"Things to remember about the user:\n{memories}\n\n"
         # Passages from web pages read before (never private files: this goes to the planning model).
-        passages = self.store.search_chunks(text, limit=PASSAGES, include_private=False)
+        content += self._earlier_chats(text, chat_id)
+        passages = self.store.search_chunks(text, limit=PASSAGES, include_private=False, chats=False)
         if passages:
             content += "Saved passages that may help:\n" + "\n".join(
                 untrusted(h.match[:PASSAGE_CHARS], h.source or h.title) for h in passages) + "\n\n"
@@ -253,18 +279,18 @@ class Orchestrator:
         return plan
 
     def _finish(self, chat_id: int, task_id: int, status: str, answer: str, model: str = "",
-                private: bool = False) -> TaskOutcome:
+                private: bool = False, topic: str = "") -> TaskOutcome:
         self.store.set_task_status(task_id, status, answer)
-        self.store.add_message(chat_id, "assistant", answer, model, private)
+        self.store.add_message(chat_id, "assistant", answer, model, private, topic=topic)
         return TaskOutcome(task_id, status, answer)
 
     def run(self, chat_id: int, text: str) -> TaskOutcome:
         history = self._history(chat_id)          # taken before this message is added
-        self.store.add_message(chat_id, "user", text)
+        user_msg = self.store.add_message(chat_id, "user", text)
         task_id = self.store.create_task(chat_id, text)
         self.store.set_task_status(task_id, "running")
         try:
-            plan = self._plan(text, history)
+            plan = self._plan(text, history, chat_id)
         except PlanError as e:
             return self._finish(chat_id, task_id, "failed", f"I couldn't make a working plan for that: {e}")
         except (ProviderUnavailable, BudgetExceeded) as e:
@@ -273,8 +299,13 @@ class Orchestrator:
             return self._finish(chat_id, task_id, "stopped", str(e))
 
         self._remember(chat_id, plan.remember, text)
+        from prometheus.memory.archive import normalize_topic
+
+        topic = normalize_topic(plan.topic, [t["topic"] for t in self.store.topics(KNOWN_TOPICS)])
+        if topic:
+            self.store.set_message_topic(user_msg, topic)
         if not plan.steps:                        # no tools needed: the plan call already wrote the answer
-            return self._finish(chat_id, task_id, "done", plan.answer, plan.model)
+            return self._finish(chat_id, task_id, "done", plan.answer, plan.model, topic=topic)
 
         results: dict[int, StepResult] = {}
         bad: set[int] = set()
@@ -334,4 +365,5 @@ class Orchestrator:
         except Stopped as e:
             return self._finish(chat_id, task_id, "stopped", str(e))
         status = "failed" if bad and len(bad) == len(plan.steps) else "done"
-        return self._finish(chat_id, task_id, status, answer or "Done.", written_by, private=bool(private))
+        return self._finish(chat_id, task_id, status, answer or "Done.", written_by, private=bool(private),
+                            topic=topic)

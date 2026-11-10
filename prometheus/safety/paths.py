@@ -32,8 +32,9 @@ def _inside(child: Path, parent: Path) -> bool:
 
 
 class PathPolicy:
-    def __init__(self, home: Path, data_dir: Path, code_dir: Path):
+    def __init__(self, home: Path, data_dir: Path, code_dir: Path, protected: tuple[Path, ...] | list = ()):
         self.home = Path(home).resolve()
+        self.protected = [Path(p).resolve() for p in protected]   # readable, but agents never change them
         self.data_dir = Path(data_dir).resolve()
         self.code_dir = Path(code_dir).resolve()
         self._blocked = [self.home / rel for rel in BLOCKED_UNDER_HOME] + [self.code_dir]
@@ -66,8 +67,10 @@ class PathPolicy:
         if self.is_blocked(root):
             raise PathBlocked(f"Not allowed to change files in: {task_root}")
         path = self.check_read(p)
-        if _inside(path, self.data_dir):
+        if _inside(path, self.data_dir) or any(_inside(path, p) for p in self.protected):
             raise PathBlocked("Prometheus's own data (memory, undo history) can't be changed by agents.")
+        if any(_inside(p, path) for p in self.protected):
+            raise PathBlocked(f"This folder holds Prometheus's memory, so it is not changed as a whole: {p}")
         if not _inside(path, root):
             raise PathBlocked(f"Outside the folder for this task: {p}")
         return path

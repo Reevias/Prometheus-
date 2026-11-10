@@ -48,6 +48,11 @@ cd $env:USERPROFILE\Prometheus-
 Other commands (after `.venv\Scripts\activate`): `prometheus serve` (browser tab at http://127.0.0.1:8000),
 `prometheus doctor` (checks the setup and warns if you are running an old copy), `prometheus shortcut`.
 
+**Your chats as files:** every chat is saved in `%USERPROFILE%\Prometheus memory` (one file per chat in
+`chats\`, one file per topic in `topics\` linking every chat about it, and `index.md`). It is in your home
+folder, not Documents, because Documents is often synced to OneDrive. Prometheus fetches only the matching parts of
+earlier chats for a new question, never whole chats.
+
 **Meaning-based memory search (optional):** `ollama pull nomic-embed-text`. Without it, memory search uses words.
 
 ## AI models

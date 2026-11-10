@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block body %}
+<main class="single">
+  <p><a href="/memory">Memory</a></p>
+  <h2>{{ topic }}</h2>
+  <ul class="plain">
+    {% for p in parts %}<li><a href="/chats/{{ p.chat_id }}">{{ p.chat_title }}</a> <span class="muted">{{ p.started | day }}</span>
+      <div class="muted">{{ p.asked }}</div></li>
+    {% else %}<li class="muted">No chats about this topic.</li>{% endfor %}
+  </ul>
+</main>
+{% endblock %}

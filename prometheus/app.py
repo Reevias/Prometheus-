@@ -53,6 +53,7 @@ class Services:
     prompts: PromptStore
     skills: SkillBook = None
     running: dict = dataclasses.field(default_factory=dict)
+    archive: object = None
 
     def start_task(self, chat_id: int, text: str) -> threading.Thread:
         """Run a task in the background so the browser can keep polling."""
@@ -103,7 +104,13 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
         except ValueError:   # Ollama is not on this laptop: never send file text elsewhere to embed it
             store.embedder = None
     sweep_wifi_profiles()
-    policy = PathPolicy(home=home, data_dir=data, code_dir=CODE_DIR)
+    from prometheus.memory.archive import ChatArchive, default_folder
+
+    memory_folder = Path(settings.memory_folder).expanduser() if settings.memory_folder else default_folder(home)
+    archive = ChatArchive(store, memory_folder)
+    store.listeners.append(archive.sync)
+    threading.Thread(target=archive.sync_all, daemon=True).start()   # file away chats from older versions
+    policy = PathPolicy(home=home, data_dir=data, code_dir=CODE_DIR, protected=(memory_folder,))
     journal = Journal(data / "journals")
     files = FileActions(policy, journal)
     permissions = Permissions({name: cls.tools for name, cls in REGISTRY.items()})
@@ -149,8 +156,10 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
                             skills=skills)
 
     orchestrator = Orchestrator(store, router, REGISTRY, make_context, killswitch, prompts.folder, skills=skills)
-    return Services(settings, home, store, policy, journal, files, permissions, approvals, budget, killswitch,
-                    router, orchestrator, patcher, prompts, skills)
+    services = Services(settings, home, store, policy, journal, files, permissions, approvals, budget, killswitch,
+                        router, orchestrator, patcher, prompts, skills)
+    services.archive = archive
+    return services
 
 
 __all__ = ["Services", "build_services", "TaskOutcome"]

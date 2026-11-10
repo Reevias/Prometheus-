@@ -1,6 +1,9 @@
 # Changelog
 
 ## 1.4
+- Chat memory by topic: the planner names the topic of every request; each chat is split into topic parts, saved as chunks, and parts on the same topic are linked across chats. A new request fetches only the few matching parts of earlier chats, never whole chats; private answers are never fetched for cloud models.
+- Every chat is also saved as files in the "Prometheus memory" folder in your home folder (chats/, topics/, index.md). Agents can read it but never move or change it.
+- Memory page lists topics; each topic page links every chat about it.
 - Wikipedia agent (free, no key) for encyclopedic facts; web research falls back to Wikipedia when search fails. Articles are saved as chunks so later questions reuse them.
 - Memory chunking: long pages and files are saved as small overlapping chunks inside bigger parent chunks; search finds the small chunk and the model reads the parent. Word search plus optional meaning search with a local embedding model.
 - Research and Documents agents send only the passages that answer the question; the planner sees saved web passages.

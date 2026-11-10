@@ -37,6 +37,9 @@ CREATE TABLE IF NOT EXISTS documents (id INTEGER PRIMARY KEY, key TEXT NOT NULL 
 CREATE TABLE IF NOT EXISTS chunks (id INTEGER PRIMARY KEY, doc_id INTEGER NOT NULL, parent_id INTEGER,
     seq INTEGER NOT NULL, text TEXT NOT NULL, start INTEGER NOT NULL, end INTEGER NOT NULL);
 CREATE INDEX IF NOT EXISTS chunks_doc ON chunks (doc_id);
+CREATE TABLE IF NOT EXISTS chat_segments (id INTEGER PRIMARY KEY, chat_id INTEGER NOT NULL, topic TEXT NOT NULL,
+    first_msg INTEGER NOT NULL, last_msg INTEGER NOT NULL, doc_id INTEGER NOT NULL, started REAL NOT NULL);
+CREATE INDEX IF NOT EXISTS chat_segments_topic ON chat_segments (topic);
 CREATE TABLE IF NOT EXISTS chunk_vectors (chunk_id INTEGER PRIMARY KEY, model TEXT NOT NULL, vec BLOB NOT NULL);
 """
 
@@ -62,6 +65,7 @@ class Message:
     created: float
     model: str = ""
     private: bool = False    # the text holds details from the owner's files: never sent to a cloud model
+    topic: str = ""          # what this part of the chat is about ("" = same as the message before)
 
 
 @dataclass
@@ -138,6 +142,7 @@ class Store:
         path.parent.mkdir(parents=True, exist_ok=True)
         self._lock = threading.RLock()
         self._db = sqlite3.connect(str(path), check_same_thread=False)
+        self.listeners = []    # called with (chat_id) after an answer is saved, e.g. the chat archive
         self.embedder = None   # optional: turns text into vectors for meaning-based search (local Ollama only)
         self._db.row_factory = sqlite3.Row
         with self._lock:
@@ -153,6 +158,8 @@ class Store:
                 self._db.execute("ALTER TABLE messages ADD COLUMN private INTEGER NOT NULL DEFAULT 0")
                 # Answers saved before this existed may hold details from personal files: treat them all as private.
                 self._db.execute("UPDATE messages SET private = 1 WHERE role = 'assistant'")
+            if "topic" not in {r["name"] for r in self._db.execute("PRAGMA table_info(messages)")}:
+                self._db.execute("ALTER TABLE messages ADD COLUMN topic TEXT NOT NULL DEFAULT ''")
             columns = {r["name"] for r in self._db.execute("PRAGMA table_info(memories)")}
             if "source" not in columns:  # databases made before v1.2
                 self._db.execute("ALTER TABLE memories ADD COLUMN source TEXT NOT NULL DEFAULT ''")
@@ -209,18 +216,64 @@ class Store:
     def chats(self) -> list[tuple[int, str]]:
         return [(r["id"], r["title"]) for r in self._rows("SELECT id, title FROM chats ORDER BY id DESC")]
 
-    def add_message(self, chat_id: int, role: str, text: str, model: str = "", private: bool = False) -> int:
+    def add_message(self, chat_id: int, role: str, text: str, model: str = "", private: bool = False,
+                    topic: str = "") -> int:
         mid = self._write(
-            "INSERT INTO messages (chat_id, role, text, created, model, private) VALUES (?, ?, ?, ?, ?, ?)",
-            (chat_id, role, text, time.time(), model, int(private)),
+            "INSERT INTO messages (chat_id, role, text, created, model, private, topic) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (chat_id, role, text, time.time(), model, int(private), topic),
         )
         self._index("message", mid, text)
+        if role == "assistant":
+            for listener in list(self.listeners):
+                try:
+                    listener(chat_id)
+                except Exception:   # the archive must never break a chat
+                    pass
         return mid
+
+    def set_message_topic(self, message_id: int, topic: str) -> None:
+        self._write("UPDATE messages SET topic = ? WHERE id = ?", (topic, message_id))
 
     def messages(self, chat_id: int) -> list[Message]:
         rows = self._rows("SELECT * FROM messages WHERE chat_id = ? ORDER BY id", (chat_id,))
-        return [Message(r["id"], r["chat_id"], r["role"], r["text"], r["created"], r["model"], bool(r["private"]))
-                for r in rows]
+        return [Message(r["id"], r["chat_id"], r["role"], r["text"], r["created"], r["model"], bool(r["private"]),
+                        r["topic"]) for r in rows]
+
+    def chat_title(self, chat_id: int) -> str:
+        rows = self._rows("SELECT title FROM chats WHERE id = ?", (chat_id,))
+        return rows[0]["title"] if rows else "chat"
+
+    def chat_created(self, chat_id: int) -> float:
+        rows = self._rows("SELECT created FROM chats WHERE id = ?", (chat_id,))
+        return float(rows[0]["created"]) if rows else time.time()
+
+    # -- chat segments: each chat split by topic, linked across chats ----------------
+    def set_segments(self, chat_id: int, segments: list[tuple[str, int, int, int, float]]) -> None:
+        """Replace this chat's segments: (topic, first_msg, last_msg, doc_id, started)."""
+        with self._lock:
+            self._db.execute("DELETE FROM chat_segments WHERE chat_id = ?", (chat_id,))
+            self._db.executemany("INSERT INTO chat_segments (chat_id, topic, first_msg, last_msg, doc_id, started) "
+                                 "VALUES (?, ?, ?, ?, ?, ?)", [(chat_id, *seg) for seg in segments])
+            self._db.commit()
+
+    def segments(self, chat_id: int | None = None, topic: str | None = None) -> list[dict]:
+        where, args = [], []
+        if chat_id is not None:
+            where.append("s.chat_id = ?")
+            args.append(chat_id)
+        if topic is not None:
+            where.append("s.topic = ?")
+            args.append(topic)
+        sql = ("SELECT s.*, c.title AS chat_title, d.private FROM chat_segments s JOIN chats c ON c.id = s.chat_id "
+               "JOIN documents d ON d.id = s.doc_id" + (" WHERE " + " AND ".join(where) if where else "")
+               + " ORDER BY s.started DESC")
+        return [dict(r) for r in self._rows(sql, tuple(args))]
+
+    def topics(self, limit: int = 200) -> list[dict]:
+        """Every topic with how many chats talked about it and when it last came up, newest first."""
+        rows = self._rows("SELECT topic, COUNT(DISTINCT chat_id) AS chats, COUNT(*) AS parts, MAX(started) AS last "
+                          "FROM chat_segments GROUP BY topic ORDER BY last DESC LIMIT ?", (limit,))
+        return [dict(r) for r in rows]
 
     # -- notes and memories ---------------------------------------------
     def add_chat_note(self, chat_id: int, text: str) -> int:
@@ -504,12 +557,18 @@ class Store:
             self._db.execute("DELETE FROM documents WHERE id = ?", (doc_id,))
             self._db.commit()
 
-    def documents(self, limit: int = 200) -> list[Document]:
+    def documents(self, limit: int = 200, chats: bool = False) -> list[Document]:
+        """Saved pages and files (or, with chats=True, the saved chat segments)."""
         rows = self._rows("SELECT d.*, (SELECT COUNT(*) FROM chunks c WHERE c.doc_id = d.id "
-                          "AND c.parent_id IS NOT NULL) AS n FROM documents d ORDER BY d.updated DESC LIMIT ?",
-                          (limit,))
+                          "AND c.parent_id IS NOT NULL) AS n FROM documents d WHERE (d.key LIKE 'chat:%') = ? "
+                          "ORDER BY d.updated DESC LIMIT ?", (int(chats), limit))
         return [Document(r["id"], r["key"], r["title"], r["source"], bool(r["private"]), r["chars"], r["n"],
                          r["updated"]) for r in rows]
+
+    def document_keys(self, prefix: str) -> dict[str, int]:
+        esc = prefix.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        rows = self._rows("SELECT id, key FROM documents WHERE key LIKE ? ESCAPE '\\'", (esc + "%",))
+        return {r["key"]: int(r["id"]) for r in rows}
 
     def document_id(self, key: str) -> int | None:
         rows = self._rows("SELECT id FROM documents WHERE key = ?", (key,))
@@ -553,12 +612,18 @@ class Store:
         return [cid for sim, cid in scored[:80] if sim > 0.3]
 
     def search_chunks(self, query: str, limit: int = 4, include_private: bool = False,
-                      doc_ids: list[int] | None = None) -> list[ChunkHit]:
+                      doc_ids: list[int] | None = None, chats: bool | None = None,
+                      exclude_doc_ids: list[int] | tuple = ()) -> list[ChunkHit]:
         """Best passages for a question. Word search and (when available) meaning search are merged by rank;
-        each hit carries the small chunk that matched and the bigger parent chunk around it."""
+        each hit carries the small chunk that matched and the bigger parent chunk around it.
+        chats=True searches only saved chats, False only pages and files, None both."""
         where, args = "", ()
         if not include_private:
             where += " AND d.private = 0"
+        if chats is not None:
+            where += " AND d.key LIKE 'chat:%'" if chats else " AND d.key NOT LIKE 'chat:%'"
+        if exclude_doc_ids:
+            where += f" AND d.id NOT IN ({','.join(str(int(i)) for i in exclude_doc_ids)})"
         if doc_ids is not None:
             if not doc_ids:
                 return []

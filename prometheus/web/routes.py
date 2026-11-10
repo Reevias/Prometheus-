@@ -25,6 +25,7 @@ def register_routes(app: FastAPI, services: Services) -> None:
     templates = Jinja2Templates(directory=str(WEB / "templates"))
     templates.env.filters["md"] = render_message
     templates.env.filters["clock"] = lambda ts: time.strftime("%H:%M", time.localtime(ts)) if ts else ""
+    templates.env.filters["day"] = lambda ts: time.strftime("%Y-%m-%d", time.localtime(ts)) if ts else ""
     app.mount("/static", StaticFiles(directory=str(WEB / "static")), name="static")
     store = services.store
 
@@ -113,8 +114,20 @@ def register_routes(app: FastAPI, services: Services) -> None:
         q = q.strip()[:200]
         found = store.recall(q, limit=30, kinds=("memory", "chat_note", "agent_note", "message")) if q else []
         passages = store.search_chunks(q, limit=10, include_private=True) if q else []
+        archive = services.archive
         return page(request, "memory.html", memories=store.memories(), q=q, found=found, passages=passages,
-                    documents=store.documents())
+                    documents=store.documents(), topics=store.topics(),
+                    folder=str(archive.folder) if archive else "")
+
+    @app.get("/memory/topic", response_class=HTMLResponse)
+    def memory_topic(request: Request, t: str = ""):
+        t = t.strip()[:60]
+        parts = store.segments(topic=t) if t else []
+        for p in parts:
+            first = next((m for m in store.messages(p["chat_id"]) if m.id >= p["first_msg"] and m.role == "user"),
+                         None)
+            p["asked"] = first.text[:200] if first else ""
+        return page(request, "memory_topic.html", topic=t, parts=parts)
 
     @app.post("/documents/{doc_id}/delete", response_class=HTMLResponse)
     def delete_document(request: Request, doc_id: int):
