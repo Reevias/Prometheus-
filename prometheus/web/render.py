@@ -42,7 +42,7 @@ def render_message(text: str) -> Markup:
             items.clear()
         list_tag = ""
 
-    lines = (text or "").replace("\r\n", "\n").split("\n")
+    lines = (text or "")[:40_000].replace("\r\n", "\n").split("\n")
     i = 0
     while i < len(lines):
         line = lines[i]

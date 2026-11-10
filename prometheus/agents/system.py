@@ -5,6 +5,7 @@ from pathlib import Path
 
 from prometheus.agents.base import Agent, AgentContext, StepResult, register
 from prometheus.laptop import Laptop, LaptopError
+from prometheus.safety.approvals import TryAgain
 
 SUBMIT_KEYS = {"enter", "ctrl+enter"}
 ASK_POWER = {"sleep", "shutdown", "restart", "logoff"}
@@ -58,6 +59,8 @@ def perform(action: str, params: dict, lp: Laptop) -> str:
         return lp.power(str(params.get("mode", "")))
     if action == "install_app":
         return lp.install_app(t)
+    if action == "wifi_connect_open":
+        return lp.wifi_connect_new(str(t or ""), None)
     raise LaptopError(f"'{action}' is not something I can do on the laptop.")
 
 
@@ -73,6 +76,8 @@ def wifi_password_handler(payload: dict, secret: str, laptop: Laptop, workdir: P
     try:
         return laptop.wifi_connect_new(str(payload.get("ssid", "")), secret, workdir=workdir)
     except LaptopError as e:
+        if "password" in str(e).lower():
+            raise TryAgain(str(e)) from e      # a typo: keep the approval so it can be tried again
         raise RuntimeError(str(e)) from e
 
 
@@ -103,7 +108,10 @@ class SystemAgent(Agent):
             seen = ", ".join(n["ssid"] for n in lp.wifi_networks()[:8]) or "none"
             return StepResult("failed", f"I can't see a Wi-Fi network called '{ssid}'. In range: {seen}.")
         if net["open"]:
-            return StepResult("done", lp.wifi_connect_new(ssid, None))
+            ctx.approvals.request("laptop_action", f"Join the open Wi-Fi network '{ssid}' (anyone nearby can pose as an "
+                                                   "open network, and it is not encrypted)",
+                                  {"action": "wifi_connect_open", "target": ssid})
+            return StepResult("waiting_approval", f"'{ssid}' is an open network. Approve joining it on the Approvals page.")
         ctx.approvals.request("wifi_password", f"Wi-Fi password needed for '{ssid}'", {"ssid": ssid},
                               secret_label="Wi-Fi password")
         return StepResult("waiting_approval",

@@ -6,6 +6,10 @@ from typing import Callable
 from prometheus.memory.store import Store
 
 
+class TryAgain(Exception):
+    """A handler raises this when the owner's input was wrong, so the approval stays pending for another go."""
+
+
 class Approvals:
     def __init__(self, store: Store):
         self.store = store
@@ -31,6 +35,10 @@ class Approvals:
         item = self.store.approval(approval_id)
         if item.status != "pending":
             return f"Already {item.status}."
+        if approved and item.kind in self._needs_secret and not secret:
+            return "Type the password first."
+        if not self.store.claim_approval(approval_id):        # a second click at the same moment loses here
+            return "Already being handled."
         if not approved:
             self.store.set_approval_status(approval_id, "rejected")
             result, status = "rejected", "rejected"
@@ -40,12 +48,13 @@ class Approvals:
                 if handler is None:
                     raise RuntimeError(f"No handler for {item.kind}")
                 if item.kind in self._needs_secret:
-                    if not secret:
-                        return "Type the password first."
                     result = handler(item.payload, secret)      # the secret is passed on and then forgotten
                 else:
                     result = handler(item.payload)
                 status = "approved"
+            except TryAgain as e:                                # wrong input: leave it waiting
+                self.store.set_approval_status(approval_id, "pending")
+                return str(e)
             except Exception as e:  # handler failures are recorded, never crash the app
                 result, status = f"Failed: {e}", "failed"
             self.store.set_approval_status(approval_id, status)

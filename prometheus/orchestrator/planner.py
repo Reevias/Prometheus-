@@ -19,6 +19,9 @@ REF = re.compile(r"^\$step(\d+)\.(\w+)$")
 HISTORY_TURNS = 12
 HISTORY_CHARS = 1500
 MAX_REMEMBER = 3
+ASKED_TO_REMEMBER = re.compile(r"\b(remember|don'?t forget|do not forget|keep in mind|note that|save this|from now on)\b", re.I)
+SECRETISH = re.compile(r"(sk-[A-Za-z0-9_-]{6,}|ghp_|github_pat_|xox[bp]-|AKIA[0-9A-Z]{8,}|pass(word|phrase)|passwd|secret|"
+                       r"api[ _-]?key|token\b|\bpin\b|\b[A-Za-z0-9+/_-]{32,}\b)", re.I)
 PRIVATE_PLACEHOLDER = "(an answer with details from your files, written on your laptop and not shown here)"
 
 PLAN_SCHEMA = {
@@ -167,7 +170,11 @@ class Orchestrator:
             turns.pop(0)
         return turns
 
-    def _remember(self, chat_id: int, facts: list[str]) -> None:
+    def _remember(self, chat_id: int, facts: list[str], user_text: str = "") -> None:
+        """Save facts only when the owner's own message asks for it, and never anything that looks like a secret."""
+        if not ASKED_TO_REMEMBER.search(user_text or ""):
+            return
+        facts = [f for f in facts if not SECRETISH.search(f)]
         known = {m.text.lower() for m in self.store.memories()}
         title = dict(self.store.chats()).get(chat_id, "chat")
         saved = 0
@@ -225,7 +232,7 @@ class Orchestrator:
         except Stopped as e:
             return self._finish(chat_id, task_id, "stopped", str(e))
 
-        self._remember(chat_id, plan.remember)
+        self._remember(chat_id, plan.remember, text)
         if not plan.steps:                        # no tools needed: the plan call already wrote the answer
             return self._finish(chat_id, task_id, "done", plan.answer, plan.model)
 

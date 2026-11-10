@@ -12,6 +12,7 @@ PACKAGE_PROMPTS = Path(__file__).resolve().parent.parent / "prompts"
 # the owner or by self-editing, so it is replaced when a better version ships.
 KNOWN_OLD: dict[str, set[str]] = {
     "planner": {"0c1af9132202917489d1136e99c9fd7e383961b835324aa1dac5f3af4a10f211",
+                "139ffcfc2f2e4ee0702e1930b9406bd7e36106abad08bff9653d8f9708a5e449",
                 "30d718d09ad22bd4132fece5371a35593a5c4751be8318d7cafd10a86c33c2b5"},
     "combine": {"24165848dd711163a1f1400ad502d25d6217a5496062d8462a981ab801bf935d"},
 }
@@ -35,7 +36,10 @@ class PromptStore:
             digest = hashlib.sha256(current.read_bytes()).hexdigest()
             new_text = shipped.read_text(encoding="utf-8")
             if digest in KNOWN_OLD.get(shipped.stem, set()) and current.read_text(encoding="utf-8") != new_text:
-                self.set(shipped.stem, new_text, "Update to the improved shipped prompt")
+                try:
+                    self.set(shipped.stem, new_text, "Update to the improved shipped prompt")
+                except RuntimeError:      # git trouble must never stop Prometheus from starting
+                    current.write_text(new_text, encoding="utf-8")
 
     def _git(self, *args: str) -> str:
         proc = subprocess.run(["git", "-c", "user.name=Prometheus", "-c", "user.email=prometheus@localhost",

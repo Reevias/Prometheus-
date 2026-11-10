@@ -167,7 +167,7 @@ def test_open_wifi_connects_without_password(make_ctx):
     run = FakeRun()
     ctx = make_ctx()
     result = agent(run).run("s", {"action": "wifi_connect", "ssid": "Cafe Free WiFi"}, ctx)
-    assert result.status == "done" and ctx.store.approvals() == []
+    assert result.status == "waiting_approval" and ctx.store.approvals()[0].payload["action"] == "wifi_connect_open"
 
 
 def test_unknown_action_and_missing_network(make_ctx):

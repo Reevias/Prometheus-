@@ -328,9 +328,9 @@ Reviews: every version gets a fresh security review before it reaches `main`; fi
 
 Status on 2026-11-10:
 - `main` holds v1 to v1.2 plus the repository files. GitHub Actions ran the full suite on **Windows and Linux: both passed** (commit ab30a46).
-- Branch `claude/prometheus-v1-3` holds v1.3 (319 tests pass on Linux here): chat polish, System and Antigravity agents, password prompt, the smarter brain, the new graphite interface and the `website/` folder. **Not yet security-reviewed or merged to `main`.**
+- `main` holds v1.3 (422 tests pass here on Python 3.12 and 3.14): chat polish, the smarter brain, the graphite interface, laptop control, GitHub connection, Antigravity, and the `website/` folder. The v1.3 security review is done and its findings are fixed.
 - v1.2 security review: 1 critical + 4 important findings, all fixed (see section 19).
-- **Not tested on real hardware**: the Wi-Fi, Bluetooth, location and battery commands (tested only with a stand-in for Windows), a real Antigravity call, the desktop window, real OpenRouter/free-provider/YouTube calls.
+- **Not tested on real hardware**: every laptop command (Wi-Fi, Bluetooth, location, battery, apps, windows, volume, brightness, typing, clicking, power; tested only with a stand-in for Windows), a real Antigravity call, a real GitHub call, the desktop window, real OpenRouter/free-provider/YouTube calls, and the Claude Haiku request shape (thinking and effort settings are unconfirmed against the live API; if Haiku rejects them the router falls back to the next model).
 
 ## 19. Decisions since the first build
 
@@ -380,6 +380,29 @@ Status on 2026-11-10:
 **Old repository (owner decision 2026-11-10)**
 - The sign-up/login website was copied into `website/` here (all files byte-identical). The old repo `Reevias/Claude-testing-` is **left alone**: besides the website and the old Prometheus branch it holds five unrelated projects (a love-heart animation, a portable toolkit installer, flashcard/quiz screens, a watch tool, a trading strategy). The owner deletes that repo on GitHub when ready.
 
+**Laptop control (built 2026-11-10, owner rule: act right away; ask first for sending/posting, spending, installing/power/security)**
+- Fixed actions in `prometheus/laptop.py`, run by the System agent: open/close apps, list open windows, minimize/maximize/focus, volume, mute, brightness, dark mode, screenshot (saved to Pictures\Prometheus), type text, press keys from a fixed list, click, lock/sleep/shutdown/restart/logoff, install with winget, plus Wi-Fi, Bluetooth, location, battery.
+- Everything the owner asks for (app name, text, numbers) travels in an environment variable read by a fixed script, never inside command text. Programs are called by their full System32 path on Windows.
+- Never opened or typed into: terminals and admin tools (PowerShell, cmd, Windows Terminal, WSL, regedit, mmc, Task Manager). Typing, key presses and clicks **fail closed**: if Windows can't say which window is in front, nothing is sent.
+- Asks first (approval): pressing Enter or Ctrl+Enter, any click (Prometheus can't tell what is under the pointer), sleep/shutdown/restart/logoff, installing software, joining an open Wi-Fi network (open profiles are never auto-joined). Does right away: everything else in the list, including lock.
+- Gentle close only (the app can ask to save); Prometheus never closes itself.
+- Not built yet: moving or copying files anywhere on the laptop (File Sorter still works inside one folder), browser automation, PDF output.
+- Known limits: Wi-Fi status parsing uses English `netsh` labels, so it may fail on other Windows languages; WPA3-only networks are not supported; brightness works on the built-in screen only.
+
+**GitHub connection (built 2026-11-10)**
+- Settings has a GitHub repository field (default Reevias/Prometheus-) and the GitHub key. Make a fine-grained token limited to that one repository: Contents, Issues and Pull requests read/write; Actions and Metadata read. The token is only sent to api.github.com.
+- The github agent reads freely (latest commits, whether tests passed, open issues and pull requests, file contents). Everything that posts or changes waits for approval: create an issue, comment, propose a one-file change (new branch + pull request, never main, never `.github/`), update itself (`git pull --ff-only` in its own checkout, then restart).
+
+**v1.3 security review (2026-11-10): 0 critical, 11 important, all fixed test-first**
+- Old private answers would have reached the cloud planner after the upgrade: the migration now marks every existing assistant message private.
+- Antigravity ignored the spending cap: it now checks the cap before starting, counts an estimated cost ($3 per million tokens), stops and cancels on the kill switch or an error.
+- Approvals could run twice on a double click: now claimed atomically. A mistyped Wi-Fi password no longer uses up the approval.
+- Saved memories: facts are only saved when the owner's own message asks ("remember", "don't forget", "note that", ...), and anything that looks like a secret is never saved.
+- Wi-Fi names and passwords must match in full (no trailing line breaks, control characters, or over-long names); the password file is overwritten before deletion, retried if Windows holds it, and leftovers are swept at startup.
+- Output of Windows tools is read in the Windows console encoding.
+
+**Python (owner decision 2026-11-10)**: 3.12 or newer, no upper limit; tested on 3.12 and 3.14 here, and GitHub Actions tests 3.12, 3.13 and 3.14 on Windows and Linux.
+
 **Final answers and privacy (found by the v1.2 review)**
 - A security review found that the step that writes the final answer sent document summaries to a cloud model. Fixed: if any step read personal files, the answer is written by a local model only, or shown as a plain list when no local model is running.
 - Every free provider is labelled "may log or train on prompts"; turning one on needs an "I understand" tick; saving a key does not switch one on. Free providers stay usable at the spending cap (paid use on the owner's account is not tracked).
@@ -416,11 +439,11 @@ YouTube-caption calls. The owner's first run on the laptop is the real test.
 
 ## 17. Open items
 
-- [ ] **Laptop control, the main goal**: apps and windows (open, close, switch, volume, brightness, dark mode, screenshots, typing and clicking), files and folders anywhere on the laptop, settings and hardware, browser and web tasks. Build in that order, test each. Rule: act right away except sending/posting, spending, install/power/security.
+- [ ] **Laptop control, still to build**: files and folders anywhere on the laptop (find, open, copy, move, rename, recycle; extra allowed folders and drives in Settings), browser and web tasks. Done: apps, windows, settings and hardware, typing and clicking.
+- [ ] Make a GitHub token (fine-grained, one repository) and paste it in Settings so the github agent works.
 - [ ] PDF output for big answers (roadmaps, study plans) with links.
 - [ ] Settings: choose the planner model and the helper models separately; show which model did what.
 - [ ] Ask the owner for 2 or 3 exact things that went wrong, to build a small test set of "basic tasks".
-- [ ] **Security review of v1.3** (laptop control, password prompt, Antigravity, chat history), fix what it finds, then merge to `main`.
 - [ ] **First real run on the laptop** from the new repo (`git clone https://github.com/Reevias/Prometheus-.git`), then report what breaks. Test Wi-Fi, Bluetooth and location commands there first.
 - [ ] Buy Anthropic API credit (prepaid, auto-reload off) and add the key in Settings: this is what makes answers good. Later a Gemini key (Argon, Antigravity).
 - [ ] Backup (File History / OneDrive) switched on before the first real sort.

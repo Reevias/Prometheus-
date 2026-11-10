@@ -11,11 +11,11 @@ from prometheus.actions.files import FileActions
 from prometheus.actions.journal import Journal
 from prometheus.agents import REGISTRY
 from prometheus.agents.base import AgentContext
-from prometheus.agents.antigravity import make_client, run_antigravity_job
+from prometheus.agents.antigravity import AntigravityRunner
 from prometheus.agents.github import GitHubAgent, github_action_handler
 from prometheus.agents.opener import open_link_handler, open_local_handler
 from prometheus.agents.system import laptop_action_handler, wifi_password_handler
-from prometheus.laptop import Laptop
+from prometheus.laptop import Laptop, sweep_wifi_profiles
 from prometheus.agents.repo_scout import clone_handler
 from prometheus.config import Settings, data_dir
 from prometheus.memory.store import Store
@@ -95,6 +95,7 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
     home = Path(home or Path.home())
     store = Store(data / "memory.db")
     store.mark_interrupted()
+    sweep_wifi_profiles()
     policy = PathPolicy(home=home, data_dir=data, code_dir=CODE_DIR)
     journal = Journal(data / "journals")
     files = FileActions(policy, journal)
@@ -117,25 +118,9 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
     approvals.register("wifi_password", lambda payload, secret: wifi_password_handler(payload, secret, Laptop()),
                        needs_secret=True)
 
-    def antigravity_job(payload: dict) -> str:
-        client = make_client()          # fails fast (no key / package missing) before anything starts
-        chat_id = payload.get("chat_id")
+    antigravity = AntigravityRunner(store, budget, killswitch)
 
-        def work():
-            try:
-                out = run_antigravity_job(payload, client)
-                text = (out["text"] or "Antigravity returned no text.") + (f"\n\n{out['note']}" if out["note"] else "")
-                budget.record("antigravity", payload.get("model", ""), 0.0, out["tokens"], 0)
-                store.audit("antigravity", "job_finished", {"status": out["status"], "tokens": out["tokens"]})
-            except Exception as e:
-                text = f"The Antigravity job failed: {type(e).__name__}."
-            if chat_id:
-                store.add_message(chat_id, "assistant", text, "antigravity · " + str(payload.get("model", "")))
-
-        threading.Thread(target=work, daemon=True).start()
-        return "Sent to Antigravity. The result will appear in the chat when it finishes."
-
-    approvals.register("antigravity_job", antigravity_job)
+    approvals.register("antigravity_job", antigravity.submit)
 
     (data / "skills").mkdir(exist_ok=True)
     skills = SkillBook(PACKAGE_DIR / "skills", data / "skills")

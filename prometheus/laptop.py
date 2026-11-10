@@ -11,12 +11,15 @@ import re
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 from typing import Callable
 from xml.sax.saxutils import escape
 
-SSID = re.compile(r'^[^\x00-\x1f"<>|^%]{1,32}$')
-PASSWORD = re.compile(r"^[\x20-\x7e]{8,63}$")
+SSID = re.compile(r'[^\x00-\x1f\x7f-\x9f\u2028\u2029"<>|^%]{1,32}')
+PASSWORD = re.compile(r"[\x20-\x7e]{8,63}")
+SYSTEM32 = {"netsh": "netsh.exe", "shutdown": "shutdown.exe", "rundll32.exe": "rundll32.exe",
+            "powershell": r"WindowsPowerShell\v1.0\powershell.exe"}
 
 PS = ["powershell", "-NoProfile", "-NonInteractive", "-Command"]
 BLUETOOTH_SCRIPT = r"""
@@ -50,7 +53,7 @@ PROFILE_XML = """<?xml version="1.0"?>
   <name>{name}</name>
   <SSIDConfig><SSID><name>{name}</name></SSID></SSIDConfig>
   <connectionType>ESS</connectionType>
-  <connectionMode>auto</connectionMode>
+  <connectionMode>{mode}</connectionMode>
   <MSM><security>{security}</security></MSM>
 </WLANProfile>
 """
@@ -65,12 +68,44 @@ class LaptopError(Exception):
     pass
 
 
+def _wipe(path: Path) -> None:
+    """Overwrite then delete a file that held a password. If Windows won't let go of it, at least it is blank."""
+    for attempt in range(5):
+        try:
+            if path.exists():
+                path.write_bytes(b"\0" * max(path.stat().st_size, 1))
+            path.unlink(missing_ok=True)
+            return
+        except OSError:
+            time.sleep(0.2)
+
+
+def sweep_wifi_profiles(folder: Path | None = None) -> None:
+    """Remove password files left behind by a crash."""
+    folder = Path(folder) if folder else Path(tempfile.gettempdir())
+    try:
+        for f in folder.glob("prometheus-wifi-*.xml"):
+            _wipe(f)
+    except OSError:
+        pass
+
+
+def _exe(name: str) -> str:
+    """On Windows use the real program in System32, never whatever happens to be in the current folder."""
+    if sys.platform == "win32" and name in SYSTEM32:
+        full = os.path.join(os.environ.get("SystemRoot", r"C:\Windows"), "System32", SYSTEM32[name])
+        if os.path.isfile(full):
+            return full
+    return name
+
+
 def _run(argv: list[str], timeout: int = 20, env: dict | None = None) -> tuple[int, str]:
     flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
     full_env = {**os.environ, **env} if env else None
+    argv = [_exe(argv[0]), *argv[1:]]
     try:
-        proc = subprocess.run(argv, capture_output=True, text=True, timeout=timeout, creationflags=flags,
-                              env=full_env)
+        proc = subprocess.run(argv, capture_output=True, timeout=timeout, creationflags=flags, env=full_env,
+                              encoding="oem" if sys.platform == "win32" else "utf-8", errors="replace")
     except (OSError, subprocess.TimeoutExpired) as e:
         raise LaptopError(f"Windows did not answer: {type(e).__name__}") from e
     return proc.returncode, (proc.stdout or "") + (proc.stderr or "")
@@ -95,7 +130,11 @@ class Laptop:
             raise LaptopError("Laptop controls only work on Windows.")
 
     def _check_ssid(self, ssid: str) -> str:
-        if not isinstance(ssid, str) or not SSID.match(ssid):
+        try:
+            ok = isinstance(ssid, str) and SSID.fullmatch(ssid) and len(ssid.encode("utf-8")) <= 32
+        except UnicodeEncodeError:
+            ok = False
+        if not ok:
             raise LaptopError("That Wi-Fi name is not valid.")
         return ssid
 
@@ -135,10 +174,12 @@ class Laptop:
         """Save a new network (with its password, or open if None) and connect. The profile file is always removed."""
         self._need_windows()
         ssid = self._check_ssid(ssid)
-        if password is not None and not PASSWORD.match(password):
+        if password is not None and not (isinstance(password, str) and PASSWORD.fullmatch(password)):
             raise LaptopError("A Wi-Fi password has 8 to 63 normal characters.")
         security = OPEN if password is None else SECURED.format(key=escape(password))
-        xml = PROFILE_XML.format(name=escape(ssid), security=security)
+        # An open network is joined only this once, never automatically later (guards against look-alike networks).
+        xml = PROFILE_XML.format(name=escape(ssid), security=security,
+                                 mode="manual" if password is None else "auto")
         folder = Path(workdir) if workdir else Path(tempfile.gettempdir())
         folder.mkdir(parents=True, exist_ok=True)
         fd, name = tempfile.mkstemp(prefix="prometheus-wifi-", suffix=".xml", dir=folder)
@@ -150,7 +191,7 @@ class Laptop:
             if code != 0:
                 raise LaptopError(f"Windows refused the network settings: {out.strip()[:200]}")
         finally:
-            path.unlink(missing_ok=True)
+            _wipe(path)
         return self.wifi_connect_known(ssid)
 
     def wifi_disconnect(self) -> str:
@@ -306,7 +347,7 @@ def _level(value) -> int:
 
 
 def _app_name(name) -> str:
-    if not isinstance(name, str) or not APP.match(name.strip()):
+    if not isinstance(name, str) or not APP.fullmatch(name.strip()):
         raise LaptopError("That app name is not valid.")
     return name.strip()
 
@@ -450,7 +491,7 @@ def power(self, mode: str) -> str:
 
 def install_app(self, package: str) -> str:
     self._need_windows()
-    if not isinstance(package, str) or not PACKAGE.match(package):
+    if not isinstance(package, str) or not PACKAGE.fullmatch(package):
         raise LaptopError("A winget package id looks like Publisher.Name.")
     code, out = self.run(["winget", "install", "--id", package, "-e", "--silent", "--accept-package-agreements",
                           "--accept-source-agreements"], timeout=900)

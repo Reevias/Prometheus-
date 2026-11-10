@@ -114,6 +114,8 @@ class Store:
                 self._db.execute("ALTER TABLE messages ADD COLUMN model TEXT NOT NULL DEFAULT ''")
             if "private" not in {r["name"] for r in self._db.execute("PRAGMA table_info(messages)")}:
                 self._db.execute("ALTER TABLE messages ADD COLUMN private INTEGER NOT NULL DEFAULT 0")
+                # Answers saved before this existed may hold details from personal files: treat them all as private.
+                self._db.execute("UPDATE messages SET private = 1 WHERE role = 'assistant'")
             columns = {r["name"] for r in self._db.execute("PRAGMA table_info(memories)")}
             if "source" not in columns:  # databases made before v1.2
                 self._db.execute("ALTER TABLE memories ADD COLUMN source TEXT NOT NULL DEFAULT ''")
@@ -294,6 +296,14 @@ class Store:
         if not rows:
             raise KeyError(approval_id)
         return self._approval(rows[0])
+
+    def claim_approval(self, approval_id: int) -> bool:
+        """Atomically move a pending approval to 'running'. Only one caller can win."""
+        with self._lock:
+            cur = self._db.execute("UPDATE approvals SET status = 'running' WHERE id = ? AND status = 'pending'",
+                                   (approval_id,))
+            self._db.commit()
+            return cur.rowcount == 1
 
     def set_approval_status(self, approval_id: int, status: str) -> None:
         self._write("UPDATE approvals SET status = ? WHERE id = ?", (status, approval_id))

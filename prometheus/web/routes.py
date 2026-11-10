@@ -104,6 +104,7 @@ def register_routes(app: FastAPI, services: Services) -> None:
 
     @app.post("/approvals/{approval_id}", response_class=HTMLResponse)
     def decide(request: Request, approval_id: int, decision: str = Form(...), secret: str = Form("")):
+        secret = secret[:200]
         result = services.approvals.resolve(approval_id, approved=(decision == "approve"), secret=secret)
         return page(request, "approval_list.html", approvals=store.approvals(), result=result)
 
