@@ -1,17 +1,19 @@
 """Page and htmx routes."""
 from __future__ import annotations
 
+import time
 from dataclasses import replace
 from pathlib import Path
 
 from fastapi import FastAPI, Form, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from prometheus.app import Services, apply_settings
 from prometheus.auth import verify_password
 from prometheus.catalog import catalog_updated, load_catalog
+from prometheus.web.render import render_message
 from prometheus.config import KEY_NAMES, delete_secret, save_settings, secrets_set, set_secret
 
 WEB = Path(__file__).resolve().parent
@@ -19,6 +21,8 @@ WEB = Path(__file__).resolve().parent
 
 def register_routes(app: FastAPI, services: Services) -> None:
     templates = Jinja2Templates(directory=str(WEB / "templates"))
+    templates.env.filters["md"] = render_message
+    templates.env.filters["clock"] = lambda ts: time.strftime("%H:%M", time.localtime(ts)) if ts else ""
     app.mount("/static", StaticFiles(directory=str(WEB / "static")), name="static")
     store = services.store
 
@@ -28,9 +32,23 @@ def register_routes(app: FastAPI, services: Services) -> None:
                        ("/skills" if request.url.path.startswith("/skills") else request.url.path)}
         return templates.TemplateResponse(request, name, {**base, **ctx}, status_code=status_code)
 
+    def current_step(chat_id: int) -> str:
+        """What Prometheus is doing right now in this chat, in a few words."""
+        task = store.latest_task(chat_id)
+        if not task:
+            return "Thinking"
+        running = [s for s in store.steps(task["id"]) if s.status == "running"]
+        return f"{running[-1].agent.replace('_', ' ')}: {running[-1].goal}" if running else "Planning"
+
+    def messages_partial(request: Request, chat_id: int):
+        busy = chat_id in services.running
+        return page(request, "messages.html", messages=store.messages(chat_id), busy=busy,
+                    doing=current_step(chat_id) if busy else "")
+
     def chat_page(request: Request, chat_id: int):
+        busy = chat_id in services.running
         return page(request, "chat.html", chats=store.chats(), chat_id=chat_id, messages=store.messages(chat_id),
-                    notes=store.chat_notes(chat_id), busy=chat_id in services.running)
+                    notes=store.chat_notes(chat_id), busy=busy, doing=current_step(chat_id) if busy else "")
 
     @app.get("/", response_class=HTMLResponse)
     def home(request: Request):
@@ -47,15 +65,22 @@ def register_routes(app: FastAPI, services: Services) -> None:
         return chat_page(request, chat_id)
 
     @app.get("/chats/{chat_id}/messages", response_class=HTMLResponse)
-    def messages(request: Request, chat_id: int):
-        return page(request, "messages.html", messages=store.messages(chat_id), busy=chat_id in services.running)
+    def messages(request: Request, chat_id: int, have: int = -1, busy: int = -1):
+        # The page tells us what it already shows; if nothing changed we send nothing, so it doesn't flicker.
+        if have == len(store.messages(chat_id)) and busy == int(chat_id in services.running) and not busy:
+            return Response(status_code=204)
+        return messages_partial(request, chat_id)
 
     @app.post("/chats/{chat_id}/send", response_class=HTMLResponse)
     def send(request: Request, chat_id: int, text: str = Form(...)):
         text = text.strip()[:4000]
         if text and chat_id not in services.running:
+            title = dict(store.chats()).get(chat_id, "")
+            if title in ("New chat", "First chat") and not store.messages(chat_id):
+                short = " ".join(text.split())
+                store.rename_chat(chat_id, short[:45] + ("…" if len(short) > 45 else ""))
             services.start_task(chat_id, text)
-        return page(request, "messages.html", messages=store.messages(chat_id), busy=chat_id in services.running)
+        return messages_partial(request, chat_id)
 
     @app.post("/chats/{chat_id}/notes", response_class=HTMLResponse)
     def add_note(request: Request, chat_id: int, text: str = Form(...)):

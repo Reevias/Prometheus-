@@ -10,5 +10,7 @@
         <div class="muted">{{ s.goal }}</div></li>{% endfor %}
     </ul>
   {% else %}<p class="muted">Nothing running.</p>{% endif %}
-  <p class="muted">Models: {% for m in models %}{{ m.name }} {{ "resting" if m.resting else ("✓" if m.available else "✗") }} {% endfor %}</p>
+  {% set ready = models|selectattr("available")|rejectattr("resting")|list %}
+  <p class="muted">{% if ready %}Ready models: {{ ready|map(attribute="name")|join(", ") }}{% else %}No AI model is ready. Start Ollama or add a key in Settings.{% endif %}
+  {% for m in models if m.resting %}<br>{{ m.name }} is resting ({{ m.minutes_left }} min){% endfor %}</p>
 {% endif %}

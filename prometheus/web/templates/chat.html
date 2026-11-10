@@ -7,18 +7,24 @@
     </form>
     <ul class="plain">
       {% for id, title in chats %}
-        <li><a href="/chats/{{ id }}">{{ "▶ " if id == chat_id else "" }}{{ title }}</a></li>
+        <li class="{{ 'current' if id == chat_id }}"><a href="/chats/{{ id }}">{{ title }}</a></li>
       {% endfor %}
     </ul>
   </section>
   <section class="panel chat">
-    <div id="messages" hx-get="/chats/{{ chat_id }}/messages" hx-trigger="every 2s [document.visibilityState === 'visible']">
+    <div id="messages" hx-get="/chats/{{ chat_id }}/messages" hx-trigger="every 2s [document.visibilityState === 'visible']"
+         hx-vals='js:{have: document.querySelectorAll("#messages .msg").length, busy: document.querySelector("#messages .working") ? 1 : 0}'
+         hx-on::after-swap="this.scrollTop = this.scrollHeight">
       {% include "messages.html" %}
     </div>
-    <form class="row command" hx-post="/chats/{{ chat_id }}/send" hx-target="#messages" hx-on::after-request="this.reset()">
-      <input type="text" name="text" placeholder="Tell Prometheus what to do" required autocomplete="off" autofocus>
+    <form id="command" class="row command" hx-post="/chats/{{ chat_id }}/send" hx-target="#messages"
+          hx-on::after-request="this.reset(); this.querySelector('textarea').style.height=''">
+      <textarea name="text" rows="1" placeholder="Tell Prometheus what to do" title="Enter sends. Shift+Enter starts a new line." required autofocus
+                oninput="this.style.height=''; this.style.height=Math.min(this.scrollHeight, 160)+'px'"
+                onkeydown="if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); if (this.value.trim()) this.form.requestSubmit(); }"></textarea>
       <button type="submit" class="primary">Send</button>
     </form>
+    <script>document.getElementById('messages').scrollTop = 1e9;</script>
   </section>
   <aside class="panel">
     <h3>Status</h3>

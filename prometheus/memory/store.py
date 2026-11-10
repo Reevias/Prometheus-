@@ -152,6 +152,9 @@ class Store:
     def create_chat(self, title: str) -> int:
         return self._write("INSERT INTO chats (title, created) VALUES (?, ?)", (title, time.time()))
 
+    def rename_chat(self, chat_id: int, title: str) -> None:
+        self._write("UPDATE chats SET title = ? WHERE id = ?", (title, chat_id))
+
     def chats(self) -> list[tuple[int, str]]:
         return [(r["id"], r["title"]) for r in self._rows("SELECT id, title FROM chats ORDER BY id DESC")]
 
