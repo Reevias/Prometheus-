@@ -8,6 +8,12 @@ from prometheus.agents.files import Files, recycle_handler, resolve_place
 from prometheus.safety.paths import PathBlocked, PathPolicy, extra_root_problem
 from tests.conftest import login
 
+if os.name == "nt":
+    SYSTEM_PLACES = [os.environ.get("SystemDrive", "C:") + "\\", os.environ.get("SystemRoot", r"C:\Windows"),
+                     os.environ.get("ProgramFiles", r"C:\Program Files")]
+else:
+    SYSTEM_PLACES = ["/", "/etc", "/usr/lib"]
+
 
 @pytest.fixture
 def setup(make_ctx, tmp_home, tmp_path):
@@ -136,7 +142,8 @@ def test_extra_place_rules(tmp_path):
     assert extra_root_problem(str(tmp_path / "D"), home) == ""
     assert "doesn't exist" in extra_root_problem(str(tmp_path / "nope"), home)
     assert "already inside" in extra_root_problem(str(home / "x"), home)
-    assert extra_root_problem("/", home) and extra_root_problem("/etc", home) and extra_root_problem("/usr/lib", home)
+    for system_place in SYSTEM_PLACES:                       # the whole system drive and system folders
+        assert extra_root_problem(system_place, home), system_place
     policy = PathPolicy(home=home, data_dir=tmp_path / "data", code_dir=tmp_path / "code",
                         extra_roots=[tmp_path / "D"])
     (tmp_path / "D" / "KeePass").mkdir()
@@ -156,7 +163,7 @@ def test_settings_add_and_remove_a_place(app_client, tmp_path):
     ok = client.post("/settings/places", data={"folder": str(drive), "password": "correct horse battery"}, headers=h)
     assert ok.status_code == 200 and services.settings.extra_folders == [str(drive.resolve())]
     assert drive.resolve() in services.policy.extra_roots                      # works at once
-    sys_try = client.post("/settings/places", data={"folder": "/etc", "password": "correct horse battery"},
+    sys_try = client.post("/settings/places", data={"folder": SYSTEM_PLACES[1], "password": "correct horse battery"},
                           headers=h)
     assert sys_try.status_code == 400 and "system" in sys_try.text
     client.post("/settings/places/remove", data={"folder": str(drive.resolve())}, headers=h)
