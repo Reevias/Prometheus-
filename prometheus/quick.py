@@ -168,6 +168,11 @@ def understand(text: str, store=None, now: float | None = None) -> Quick | None:
     if re.search(r"\b(check|how is|how's)\b.*\b(laptop|computer|pc)(?:'s)? health\b|\bhealth check\b|"
                  r"\bis my (?:laptop|pc|computer) (?:ok|okay|fine|healthy)\b", low):
         return Quick(steps=[_step("health", "Laptop health check")])
+    m = re.search(r"\bcheck (?:my |this )?(?:homework|answer|working|solution|maths|math|sum)s?\b(.*)", low)
+    if m:
+        rest = m.group(1)
+        path = re.search(r"([A-Za-z]:\\[^\s]+|[\w./\\-]+\.(?:jpg|jpeg|png|webp|heic))", t)
+        return Quick(steps=[_step("homework", "Check my homework", path=path.group(1) if path else "latest")])
     from prometheus import money
 
     if money.TELL.match(t):
