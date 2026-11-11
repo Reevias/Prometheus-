@@ -120,7 +120,7 @@ def update(code_dir: Path = CODE_DIR, run=None) -> str:
     if pull.returncode != 0:
         raise RuntimeError("The update did not go through (you may have local changes). " + (pull.stderr or "")[-300:])
     extras = []
-    for module, extra in (("webview", "desktop"), ("vosk", "voice")):   # keep the extras this laptop already uses
+    for module, extra in (("webview", "desktop"), ("vosk", "voice"), ("playwright", "browser")):   # keep the extras this laptop already uses
         try:
             __import__(module)
             extras.append(extra)

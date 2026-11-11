@@ -34,8 +34,10 @@ if (-not (Test-Path (Join-Path $Venv "Scripts\python.exe"))) { & py "-$Py" -m ve
 $Python = Join-Path $Venv "Scripts\python.exe"
 & $Python -m pip install --quiet --upgrade pip
 & $Python -m pip install --quiet -e "$Dir[desktop]"
+# Browser control (uses Microsoft Edge, already on Windows): optional too.
+& $Python -m pip install --quiet -e "$Dir[desktop,browser]"
 # Voice (say "Prometheus"): optional, so a failed voice install never stops Prometheus itself.
-& $Python -m pip install --quiet -e "$Dir[desktop,voice]"
+& $Python -m pip install --quiet -e "$Dir[desktop,browser,voice]"
 $VoiceOk = ($LASTEXITCODE -eq 0)
 if (-not $VoiceOk) { Write-Host "Voice packages could not be installed on Python $Py. Prometheus works without voice; Python 3.12 or 3.13 usually fixes this." }
 

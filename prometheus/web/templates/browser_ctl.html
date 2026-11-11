@@ -1,0 +1,4 @@
+{% if started %}<div class="row" style="gap:8px;margin:8px 0">
+  <span class="muted">Browser: {{ "you're driving" if paused else "Prometheus is using it" }}</span>
+  <button type="button" hx-post="/browser/control" hx-target="#browser-ctl">{{ "Hand back" if paused else "Take over" }}</button>
+</div>{% endif %}

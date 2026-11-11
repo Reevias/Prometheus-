@@ -75,6 +75,8 @@ def create_app(services: Services, background: bool = False) -> FastAPI:
             services.daily.stop()
         if services.voice is not None:
             services.voice.stop()
+        if services.browser is not None:
+            services.browser.close()
 
     app = FastAPI(title="Prometheus", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
     app.state.services = services

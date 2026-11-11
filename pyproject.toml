@@ -34,6 +34,7 @@ dependencies = [
 dev = ["pytest>=8"]
 desktop = ["pywebview>=5.0"]
 antigravity = ["google-genai>=1.0"]
+browser = ["playwright>=1.45"]
 voice = ["vosk>=0.3.45", "faster-whisper>=1.1", "kokoro-onnx>=0.4", "sounddevice>=0.5", "numpy>=1.26"]
 
 [project.urls]

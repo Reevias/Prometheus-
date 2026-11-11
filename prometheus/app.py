@@ -61,6 +61,7 @@ class Services:
     watchers: object = None
     briefing: object = None
     laptop: object = None
+    browser: object = None
 
     def start_rewrite(self, chat_id: int, message_id: int, note: str = "") -> threading.Thread:
         """Rewrite an answer the owner marked 'could be better', in the background."""
@@ -192,6 +193,12 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
     from prometheus.agents.google_agent import event_handler
 
     approvals.register("google_event", event_handler)
+    from prometheus.agents import browser_agent
+    from prometheus.connectors.browser import BrowserSession
+
+    browser_agent.SESSION = BrowserSession(data / "browser")
+    approvals.register("browser_click", browser_agent.click_handler)
+    approvals.register("browser_password", browser_agent.password_handler, needs_secret=True)
     from prometheus.agents import apps_agent
     from prometheus.connectors.manager import ConnectionManager
 
@@ -253,6 +260,7 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
         _lp = None
     services.watchers = Watchers(services, laptop=_lp, notify=_notify)
     services.laptop = _lp
+    services.browser = browser_agent.SESSION
     from prometheus.briefing import BriefingClock
 
     services.briefing = BriefingClock(services, notify=_notify)

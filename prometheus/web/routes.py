@@ -173,6 +173,19 @@ def register_routes(app: FastAPI, services: Services) -> None:
         services.prompts.set("learned", HEADER + "(Reset by the owner.)\n", "Reset by the owner")
         return memory_page(request, lesson="Cleared what Prometheus learned. Older versions can still be restored.")
 
+    @app.get("/browser/control", response_class=HTMLResponse)
+    def browser_control(request: Request):
+        b = services.browser
+        started = b is not None and b._thread is not None and b._thread.is_alive()
+        return page(request, "browser_ctl.html", started=started, paused=bool(b and b.paused))
+
+    @app.post("/browser/control", response_class=HTMLResponse)
+    def browser_toggle(request: Request):
+        if services.browser is not None:
+            services.browser.paused = not services.browser.paused
+            store.audit("user", "browser_takeover", {"paused": services.browser.paused})
+        return browser_control(request)
+
     @app.get("/reminders/list", response_class=HTMLResponse)
     def reminder_list(request: Request):
         from prometheus.reminders import describe

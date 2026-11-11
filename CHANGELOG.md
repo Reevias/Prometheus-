@@ -1,6 +1,7 @@
 # Changelog
 
 ## 1.4
+- Browser control: Prometheus uses websites in its own visible Microsoft Edge window with a separate profile (it never sees your normal saved passwords): open a page, read it (its text, buttons and fields), type and click step by step. Pay, buy or order waits on the Approvals page; sign in, submit, send, post or delete is asked in the chat; passwords are only typed by you on the Approvals page and go straight into the page. "Take over" under the chat pauses Prometheus so you can drive; "Hand back" lets it continue. Needs `pip install -e ".[browser]"` (the installer does it).
 - Google Calendar and Drive: sign in with your own Google "Desktop app" client (steps in Settings; PKCE, only a refresh token is kept). See events, add or move them (asked in the chat first), search Drive and read Docs, Sheets, Slides, text and PDFs.
 - Excel and slides: budgets, marks and timetables become .xlsx files (each Markdown table a sheet with a bold frozen header, real numbers, a Total row with formulas, and a bar chart); revision notes and presentations become .pptx decks (title slide, one slide per heading, nested bullets, speaker notes, long slides continued). They show in Outputs.
 - New-email alerts: every 5 minutes Prometheus checks for new mail from the senders you chose and tells you at once (spoken, notification, alerts chat), each email once.

@@ -47,6 +47,9 @@ Plans:
   Adding or moving a calendar event, and Google Drive files, use the google agent (add_event with title and when,
   move_event, events, drive_search, drive_read). If Google isn't connected, the calendar agent can still read events.
 - "My briefing", "what's my day like", "evening wrap-up" use the briefing agent (kind = morning or evening).
+- Doing something ON a website (fill a form, search a shop, sign in, click through pages) uses the browser agent,
+  one action per step: open, then read, then type or click what the page shows, then read again. To just open or
+  look at a page, use the opener.
 - To switch or show which AI model is used, use the settings agent.
 - To explain how to do something from a guide, use the guide agent with the skill name and the question.
 - For Wi-Fi, Bluetooth, battery, location, apps, windows, volume, brightness, dark mode, screenshots, typing, clicking, power or installing software use the system agent.
