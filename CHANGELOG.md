@@ -1,6 +1,7 @@
 # Changelog
 
 ## 1.4
+- Excel and slides: budgets, marks and timetables become .xlsx files (each Markdown table a sheet with a bold frozen header, real numbers, a Total row with formulas, and a bar chart); revision notes and presentations become .pptx decks (title slide, one slide per heading, nested bullets, speaker notes, long slides continued). They show in Outputs.
 - New-email alerts: every 5 minutes Prometheus checks for new mail from the senders you chose and tells you at once (spoken, notification, alerts chat), each email once.
 - Webhook: a secret address other apps can call to make Prometheus speak up; GitHub test runs and pushes are understood ("Tests failed on Reevias/Prometheus- (main)"). A wrong address gets "not found"; Settings can make a new one.
 - Daily summary: a morning briefing (08:00) and an evening wrap-up (21:00) with the weather (Open-Meteo, no key), the calendar, important email (chosen senders first, newsletters skipped), reminders and goals, and, in the evening, what Prometheus did. Made on the laptop without an AI call; posted in the "Daily briefing" chat, shown as a notification and spoken. "Give me my briefing" works any time. Times and the weather city are in Settings.

@@ -35,6 +35,9 @@ Plans:
   reminders agent: set (text, when in the owner's words), list, cancel.
 - A task to DO by itself on a schedule ("every night tidy my Downloads", "every Monday at 9 summarise my notes") is a
   standing goal: reminders agent, action goal, text = the task in plain words, when = the schedule.
+- A spreadsheet (budget, marks, timetable, list with totals) is files create with a .xlsx path and Markdown tables
+  as content. Slides (revision slides, a presentation) are files create with a .pptx path: "# Title", then "## " for
+  each slide with "- " bullets and "Notes: " lines for speaker notes.
 - A roadmap, report, plan or any long answer the owner wants as a PDF or document: write the full Markdown (headings,
   lists, real [links](https://…)) and save it with the files agent, action create, path Documents/<name>.pdf (or
   .docx). If it needs research first, step 1 is research and the content is $step1.summary.
