@@ -77,3 +77,18 @@ def test_orchestrator_answers_instantly_without_ai(app_client):
     out = orch.run(chat, "Hello Prometheus, what time is it?")
     assert out.status == "done" and out.answer.startswith("It's") and not calls
     assert services.store.messages(chat)[-1].model == "instant"
+
+
+def test_speech_model_setting(app_client, monkeypatch):
+    from tests.conftest import login
+
+    client, services = app_client()
+    h = {"X-CSRF-Token": login(client)}
+    if services.voice is not None:
+        monkeypatch.setattr(services.voice, "download", lambda: None)
+    assert "Hinglish" in client.get("/settings").text
+    client.post("/settings/voice/speech", data={"speech": "hindi"}, headers=h)
+    assert services.settings.voice_speech == "hindi"
+    assert client.post("/settings/voice/speech", data={"speech": "klingon"}, headers=h).status_code == 400
+    if services.voice is not None:
+        assert services.voice.models.command_whisper.name == "small"

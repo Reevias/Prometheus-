@@ -83,7 +83,12 @@
     </form>
     <p class="muted" style="margin:0">Start every command with <strong>“Hello Prometheus”</strong>. It answers “Yes sir.” as soon as it has
     your command, so you know it heard you; “Yes sir?” means it heard its name and is waiting for the command.</p>
-    {% if voice.heard %}<p class="muted" style="margin:0">Last heard: “{{ voice.heard }}”</p>{% endif %}
+    {% if voice.heard %}<p class="muted" style="margin:0">Last heard: “{{ voice.heard }}”{% if voice.timing %}
+      (understood in {{ voice.timing.hearing }} s, answered in {{ voice.timing.thinking }} s, spoken in {{ voice.timing.speaking }} s){% endif %}</p>{% endif %}
+    <form hx-post="/settings/voice/speech" hx-target="body" style="display:grid;gap:4px">
+      <span>How it understands your words</span>
+      {% for sid, label in speech_models %}<label class="check"><input type="radio" name="speech" value="{{ sid }}" {{ "checked" if sid == s.voice_speech }} onchange="this.form.requestSubmit()"> {{ label }}</label>{% endfor %}
+    </form>
     <div id="voice-train" hx-get="/voice/train" hx-trigger="load"></div>
   </div>
   {% endif %}

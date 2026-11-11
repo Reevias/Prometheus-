@@ -13,7 +13,7 @@ ANSWER_WAIT = 300          # seconds to wait for a spoken command's answer
 class VoiceService:
     def __init__(self, services, folder: Path):
         self.services = services
-        self.models = VoiceModels(folder)
+        self.models = VoiceModels(folder, getattr(services.settings, "voice_speech", "fast"))
         self.loop = None
         self.progress = ""
         self.downloading = False
@@ -56,7 +56,9 @@ class VoiceService:
     def describe(self) -> dict:
         return {"state": self.state(), "progress": self.progress, "error": self.error,
                 "missing": self.models.missing(), "packages": self.models.packages_missing(),
-                "heard": getattr(self.loop, "last_heard", "") if self.loop else ""}
+                "heard": getattr(self.loop, "last_heard", "") if self.loop else "",
+                "timing": getattr(self.loop, "last_timing", {}) if self.loop else {},
+                "speech": self.models.speech}
 
     # -- starting and stopping ------------------------------------------------------------
     def start_if_enabled(self) -> None:
@@ -67,6 +69,7 @@ class VoiceService:
         with self._lock:
             if self.loop is not None:
                 return True
+            self.models.speech = getattr(self.services.settings, "voice_speech", self.models.speech)
             packages = self.models.packages_missing()
             if packages:
                 self.error = 'Voice needs extra packages. Run:  pip install -e ".[voice]"'
@@ -82,7 +85,9 @@ class VoiceService:
                 from prometheus.voice.loop import VoiceLoop
 
                 transcriber = Transcriber(self.models)
-                loop = VoiceLoop(Microphone(), WakeSpotter(self.models, transcriber), transcriber,
+                command_tr = (Transcriber(self.models, command=True)
+                              if self.models.command_whisper != self.models.whisper else transcriber)
+                loop = VoiceLoop(Microphone(), WakeSpotter(self.models, transcriber), command_tr,
                                  KokoroSpeaker(self.models, self.services.settings.voice_name), self.command,
                                  log=lambda m: self.services.store.audit("voice", "note", {"text": m}))
                 loop.start()

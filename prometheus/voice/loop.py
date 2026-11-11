@@ -30,6 +30,7 @@ class VoiceLoop:
         self.state = "idle"
         self.muted = False
         self.last_heard = ""
+        self.last_timing: dict = {}      # seconds per stage of the last command, shown in Settings
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self.noise = NoiseFloor()
@@ -99,9 +100,14 @@ class VoiceLoop:
         """After "Hello Prometheus": a command said in the same breath is used straight away (no second listen);
         the name on its own gets "Yes sir?" and then the command. Either way "Yes sir." confirms it was heard."""
         self.state = "listening"
+        t0 = time.monotonic()
         heard = getattr(self.spotter, "last_text", None)
         phrase_done = getattr(self.spotter, "phrase_done", False)
         command = strip_wake(heard) if heard and phrase_done else ""
+        if command and getattr(self.transcriber, "command", False):
+            # The wake check used the fast model; the chosen (more accurate) model hears the command again.
+            again = strip_wake(self.transcriber.text(wake_audio))
+            command = again or command
         if not command and not (heard is not None and phrase_done):
             verdict, audio = self._record(lead=wake_audio, wait=CARRY_ON)     # still talking: hear it out
             command = strip_wake(self.transcriber.text(audio))
@@ -114,14 +120,25 @@ class VoiceLoop:
             self.log("woke up but heard no command")
             return
         self.last_heard = command
+        t_heard = time.monotonic()
+        from prometheus.quick import is_question
+
         ack = getattr(self.speaker, "ack", None)
-        if ack is not None:
+        if not is_question(command):
+            # an action: say what was heard, so a mishearing is caught before anything happens
+            self._speak_quietly(lambda: self.speaker.say(f"Yes sir. {command.rstrip('.!?')}."))
+        elif ack is not None:
             self._speak_quietly(ack)                   # "Yes sir." — you know it heard you
         self.state = "thinking"
+        t_think = time.monotonic()
         answer = self.on_command(command)
+        t_answer = time.monotonic()
         if answer:
             self.state = "speaking"
             self._speak_quietly(lambda: self.speaker.say(speakable(answer)))
+        self.last_timing = {"hearing": round(t_heard - t0, 1), "thinking": round(t_answer - t_think, 1),
+                            "speaking": round(time.monotonic() - t_answer, 1)}
+        self.log(f"voice timing: {self.last_timing}")
 
     def _speak_quietly(self, action) -> None:
         """Speak with the microphone ignored, so Prometheus never hears (and answers) itself."""

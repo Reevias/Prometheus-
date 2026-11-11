@@ -509,6 +509,8 @@ def register_routes(app: FastAPI, services: Services) -> None:
                     voice=services.voice.describe() if services.voice is not None else None,
                     vaults=[str(v) for v in __import__("prometheus.agents.obsidian", fromlist=["x"]).detect_vaults()],
                     voices=__import__("prometheus.voice.engines", fromlist=["VOICES"]).VOICES,
+                    speech_models=[(k, v[2]) for k, v in __import__("prometheus.voice.engines",
+                                                                    fromlist=["SPEECH"]).SPEECH.items()],
                     home=str(services.home), bad_places=bad_places,
                     budget=services.budget.state(), catalog_date=catalog_updated(),
                     safety=_safety_results(),
@@ -713,6 +715,26 @@ def register_routes(app: FastAPI, services: Services) -> None:
             save_settings(services.settings)
             services.voice.download()
             store.audit("user", "voice_setup", {})
+        return settings_page(request, saved=True)
+
+    @app.post("/settings/voice/speech", response_class=HTMLResponse)
+    def voice_speech(request: Request, speech: str = Form(...)):
+        from prometheus.voice.engines import SPEECH
+
+        if speech not in SPEECH:
+            return settings_page(request, 400, voice_error="Unknown speech model.")
+        services.settings.voice_speech = speech
+        save_settings(services.settings)
+        v = services.voice
+        if v is not None:
+            v.models.speech = speech
+            if v.loop is not None:
+                v.stop()
+            if v.models.missing():
+                v.download()                       # fetches the new model, then starts listening again
+            elif services.settings.voice_enabled:
+                v.start()
+        store.audit("user", "voice_speech", {"speech": speech})
         return settings_page(request, saved=True)
 
     @app.post("/settings/voice/name", response_class=HTMLResponse)

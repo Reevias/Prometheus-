@@ -56,6 +56,7 @@ class Settings:
     voice_enabled: bool = False                 # listen for "Prometheus" and answer out loud
     voice_autostart: bool = False
     voice_name: str = "af_heart"
+    voice_speech: str = "fast"                  # fast | accent | hindi: how commands are turned into words
     auto_update: bool = True
     code_windows_sandbox: bool = True
     notify_tasks: bool = True              # a task that took over 30 seconds finished

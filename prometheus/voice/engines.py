@@ -28,6 +28,16 @@ KOKORO_MODEL, KOKORO_VOICES = "kokoro-v1.0.int8.onnx", "voices-v1.0.bin"
 VOICES = (("af_heart", "Heart: warm, calm (default)"), ("bm_fable", "Fable: British male, light"))
 DEFAULT_VOICE = "af_heart"
 WHISPER_SIZE = "base.en"                     # tiny.en missed real wake words in testing; base.en got them all
+# How commands are turned into words (Settings → Voice). The wake phrase always uses base.en (fast).
+SPEECH = {
+    "fast": ("base.en", "en", "Fast English (already downloaded)"),
+    "accent": ("small.en", "en", "Accurate English, better with Indian accents (460 MB, about a second slower)"),
+    "hindi": ("small", None, "English and Hindi, Hinglish (460 MB, about a second slower)"),
+}
+DEFAULT_SPEECH = "fast"
+# Biases Whisper towards how the owner talks: the name, everyday commands, and Hinglish in Latin letters.
+COMMAND_PROMPT = ("Hello Prometheus. Open YouTube. What time is it? Set a timer for ten minutes. "
+                  "Kal ka weather batao. Spotify kholo.")
 DOWNLOAD_HOSTS = ("alphacephei.com", "huggingface.co", "github.com")
 CONFIRM_AFTER = 0.8                          # seconds of audio after Vosk fires before Whisper checks
 CONFIRM_BEFORE = 2.0
@@ -44,8 +54,9 @@ class VoiceNotReady(Exception):
 class VoiceModels:
     """Where the models live (<data>/voice) and how to get them."""
 
-    def __init__(self, folder: Path):
+    def __init__(self, folder: Path, speech: str = DEFAULT_SPEECH):
         self.folder = Path(folder)
+        self.speech = speech if speech in SPEECH else DEFAULT_SPEECH
 
     @property
     def vosk(self) -> Path:
@@ -67,6 +78,10 @@ class VoiceModels:
     def whisper(self) -> Path:
         return self.folder / "whisper" / WHISPER_SIZE
 
+    @property
+    def command_whisper(self) -> Path:
+        return self.folder / "whisper" / SPEECH[self.speech][0]
+
     def missing(self) -> list[str]:
         out = []
         if not (self.vosk / "am").exists():
@@ -75,6 +90,8 @@ class VoiceModels:
             out.append("speech to text (Whisper, 145 MB)")
         if not (self.kokoro.exists() and self.kokoro_voices.exists()):
             out.append("voice (Kokoro, 120 MB)")
+        if self.command_whisper != self.whisper and not (self.command_whisper / "model.bin").exists():
+            out.append(f"better speech to text ({SPEECH[self.speech][0]}, 460 MB)")
         return out
 
     def packages_missing(self) -> list[str]:
@@ -107,6 +124,12 @@ class VoiceModels:
 
             self.whisper.mkdir(parents=True, exist_ok=True)
             download_model(WHISPER_SIZE, output_dir=str(self.whisper))
+        if self.command_whisper != self.whisper and not (self.command_whisper / "model.bin").exists():
+            progress("Downloading better speech to text (460 MB)…")
+            from faster_whisper.utils import download_model
+
+            self.command_whisper.mkdir(parents=True, exist_ok=True)
+            download_model(SPEECH[self.speech][0], output_dir=str(self.command_whisper))
         progress("Voice is ready.")
 
 
@@ -133,13 +156,17 @@ def _safe_unzip(data: bytes, folder: Path) -> None:
 class Transcriber:
     """Whisper base.en on the CPU (int8): about half a second for a short command."""
 
-    def __init__(self, models: VoiceModels):
+    def __init__(self, models: VoiceModels, command: bool = False):
+        """command=False: the fast wake-phrase model. command=True: the model chosen for commands in Settings."""
         from faster_whisper import WhisperModel
 
         import os
 
         threads = max(2, min(4, (os.cpu_count() or 4) // 2))       # faster, but leaves room for everything else
-        self._model = WhisperModel(str(models.whisper), device="cpu", compute_type="int8", cpu_threads=threads)
+        path = models.command_whisper if command else models.whisper
+        self.language = SPEECH[models.speech][1] if command else "en"
+        self.command = command
+        self._model = WhisperModel(str(path), device="cpu", compute_type="int8", cpu_threads=threads)
         self._lock = threading.Lock()
 
     def text(self, audio: bytes) -> str:
@@ -148,8 +175,12 @@ class Transcriber:
         samples = np.frombuffer(audio, dtype=np.int16).astype(np.float32) / 32768.0
         with self._lock:
             # The hint makes Whisper expect the name, so it stops writing "Promy Fierce" for "Prometheus".
-            segments, _ = self._model.transcribe(samples, language="en", beam_size=1, without_timestamps=True,
-                                                 condition_on_previous_text=False, hotwords="Hello Prometheus")
+            # Commands get a wider search (beam 3) and a prompt with everyday commands: more accurate words.
+            segments, _ = self._model.transcribe(samples, language=self.language, beam_size=3 if self.command else 1,
+                                                 without_timestamps=True, condition_on_previous_text=False,
+                                                 hotwords="Hello Prometheus",
+                                                 initial_prompt=COMMAND_PROMPT if self.command else None,
+                                                 vad_filter=self.command)
             return " ".join(s.text for s in segments).strip()
 
 

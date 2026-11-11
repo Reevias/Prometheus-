@@ -134,7 +134,8 @@ def test_command_in_one_breath_is_run_and_answer_spoken():
 def test_wake_word_alone_chimes_then_listens():
     loop, asked, speaker, _ = run_loop(tone(0.5) + tone(1.2, loud=False) + tone(1.0) + tone(1.2, loud=False),
                                        ["Prometheus.", "open YouTube"])
-    assert speaker.chimes == 1 and asked == ["Open YouTube"] and speaker.acks == 1
+    assert speaker.chimes == 1 and asked == ["Open YouTube"]
+    assert speaker.said[0] == "Yes sir. Open YouTube."        # an action is said back before it's done
 
 
 class HeardSpotter(FakeSpotter):
@@ -159,7 +160,7 @@ def run_with(spotter, frames, texts=()):
 def test_command_in_the_same_breath_is_used_at_once_and_acknowledged():
     asked, speaker, transcriber = run_with(HeardSpotter(3, "Hello Prometheus, open YouTube."), tone(0.5),
                                            ["should not be asked"])
-    assert asked == ["Open YouTube."] and speaker.acks == 1 and speaker.chimes == 0
+    assert asked == ["Open YouTube."] and speaker.said[0] == "Yes sir. Open YouTube." and speaker.chimes == 0
     assert transcriber.texts == ["should not be asked"]          # no second transcription: faster
 
 
@@ -267,3 +268,19 @@ def test_window_joins_a_running_background_copy():
 def test_healthz_is_open_and_tiny(app_client):
     client, _ = app_client()
     assert client.get("/healthz").json() == {"app": "prometheus"}
+
+
+def test_questions_get_a_plain_yes_sir_and_timing_is_recorded():
+    asked, speaker, _ = run_with(HeardSpotter(3, "Hello Prometheus, what time is it?"), tone(0.5), [])
+    assert asked == ["What time is it?"] and speaker.acks == 1 and not any(s.startswith("Yes sir.") for s in speaker.said)
+
+
+def test_the_chosen_speech_model_hears_the_command_again():
+    class Better(FakeTranscriber):
+        command = True
+
+    loop = VoiceLoop(FakeMic(tone(0.5)), HeardSpotter(3, "Hello Prometheus, open you tube."), Better(
+        ["Hello Prometheus, open YouTube."]), FakeSpeaker(), lambda c: asked.append(c) or "")
+    asked = []
+    loop.handle_wake(b"\x00" * 960)
+    assert asked == ["Open YouTube."] and set(loop.last_timing) == {"hearing", "thinking", "speaking"}
