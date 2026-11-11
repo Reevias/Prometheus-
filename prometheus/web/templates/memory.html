@@ -39,6 +39,12 @@
     {% for commit, why in lessons_history[1:] %}<li>{{ why }} <button type="button" hx-post="/memory/lessons/{{ commit }}" hx-target="body">Restore</button></li>{% endfor %}
   </ul></details>{% endif %}
 
+  <h3>Lessons from tasks</h3>
+  <p class="muted">When a step failed and another way worked, Prometheus wrote it down and uses it for similar requests.</p>
+  <ul class="plain">{% for l in task_lessons %}<li>{{ "✓" if l.worked else "✗" }} {{ l.text }}
+    <button type="button" class="danger" hx-post="/memory/task-lessons/{{ l.id }}/delete" hx-target="body">Delete</button></li>
+  {% else %}<li class="muted">None yet.</li>{% endfor %}</ul>
+
   <h3>Saved pages and files</h3>
   <p class="muted">Long texts the agents read, split into small searchable parts. File text stays on this laptop.</p>
   <div id="documents">{% include "document_list.html" %}</div>

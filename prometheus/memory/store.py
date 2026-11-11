@@ -49,6 +49,8 @@ CREATE TABLE IF NOT EXISTS feedback (message_id INTEGER PRIMARY KEY, rating INTE
     created REAL NOT NULL, learned INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE IF NOT EXISTS allow_rules (id INTEGER PRIMARY KEY, kind TEXT NOT NULL, key TEXT NOT NULL,
     label TEXT NOT NULL, created REAL NOT NULL, UNIQUE (kind, key));
+CREATE TABLE IF NOT EXISTS lessons (id INTEGER PRIMARY KEY, text TEXT NOT NULL, worked INTEGER NOT NULL,
+    created REAL NOT NULL, learned INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS chunk_vectors (chunk_id INTEGER PRIMARY KEY, model TEXT NOT NULL, vec BLOB NOT NULL);
 """
@@ -295,6 +297,42 @@ class Store:
         r = rows[0]
         return Message(r["id"], r["chat_id"], r["role"], r["text"], r["created"], r["model"], bool(r["private"]),
                        r["topic"])
+
+    # -- lessons from tasks: what failed and what worked --------------------------------------
+    def add_lesson(self, text: str, worked: bool) -> int:
+        text = " ".join(text.split())[:400]
+        rows = self._rows("SELECT id FROM lessons WHERE text = ?", (text,))
+        if rows:
+            return int(rows[0]["id"])
+        return self._write("INSERT INTO lessons (text, worked, created) VALUES (?, ?, ?)",
+                           (text, int(worked), time.time()))
+
+    def lessons(self, limit: int = 100) -> list[dict]:
+        return [dict(r) for r in self._rows("SELECT * FROM lessons ORDER BY created DESC LIMIT ?", (limit,))]
+
+    def relevant_lessons(self, request: str, limit: int = 4) -> list[str]:
+        words = {w for w in self._terms(request) if len(w) > 2}
+        if not words:
+            return []
+        scored = []
+        for r in self.lessons(300):
+            low = r["text"].lower()
+            hits = sum(1 for w in words if w in low)
+            if hits:
+                scored.append((hits, r["created"], r["text"]))
+        scored.sort(reverse=True)
+        return [t for _, _, t in scored[:limit]]
+
+    def lessons_to_learn(self) -> list[dict]:
+        return [dict(r) for r in self._rows("SELECT * FROM lessons WHERE learned = 0 ORDER BY created LIMIT 40")]
+
+    def mark_lessons_learned(self, ids: list[int]) -> None:
+        with self._lock:
+            self._db.executemany("UPDATE lessons SET learned = 1 WHERE id = ?", [(i,) for i in ids])
+            self._db.commit()
+
+    def delete_lesson(self, lesson_id: int) -> None:
+        self._write("DELETE FROM lessons WHERE id = ?", (lesson_id,))
 
     # -- small saved values (last daily run, repositories already suggested…) ----------------------
     def kv_get(self, key: str, default=None):

@@ -305,6 +305,9 @@ class Orchestrator:
         content = f"Things to remember about the user:\n{memories}\n\n"
         # Passages from web pages read before (never private files: this goes to the planning model).
         content += self._earlier_chats(text, chat_id)
+        lessons = self.store.relevant_lessons(text)
+        if lessons:
+            content += "Lessons from earlier tasks (follow them):\n" + "\n".join(f"- {l}" for l in lessons) + "\n\n"
         passages = self.store.search_chunks(text, limit=PASSAGES, include_private=False, chats=False)
         if passages:
             content += "Saved passages that may help:\n" + "\n".join(
@@ -386,6 +389,25 @@ class Orchestrator:
             return verify(agent_cls(), st["goal"], st["inputs"], res, ctx) or ""
         except Exception:
             return ""                              # a check that can't run never fails the task
+
+    def _learn_from(self, st: dict, tries: list, last: dict, res: StepResult) -> None:
+        """Write down what failed and what worked, so the next similar request goes right first time. Steps that
+        read personal files only record which agent and inputs were used, never what was found."""
+        def short(a: dict, r: StepResult | None = None) -> str:
+            ins = ", ".join(f"{k}={str(v)[:40]}" for k, v in a["inputs"].items() if not str(v).startswith("$step"))
+            hidden = getattr(self.registry.get(a["agent"]), "private_outputs", False)
+            why = "" if r is None or hidden else f" ({' '.join(r.summary.split())[:90]})"
+            return f"{a['agent']}[{ins}]{why}"
+
+        failed = "; ".join(short(a, r) for a, r in tries)
+        if res.status == "done":
+            text = f"For '{st['goal'][:80]}': {failed} failed, then {short(last)} worked. Next time start with that."
+        else:
+            text = f"For '{st['goal'][:80]}': tried {failed} and {short(last, res)}; none worked."
+        try:
+            self.store.add_lesson(text, res.status == "done")
+        except Exception:
+            pass
 
     def _repair(self, text: str, st: dict, tries: list, agent_cls) -> dict | None:
         """Ask the lead AI for ONE different way to reach the same goal, or None to stop."""
@@ -483,6 +505,7 @@ class Orchestrator:
                     attempt = {**nxt, "id": st["id"], "depends_on": st["depends_on"]}
                 results[st["id"]] = res
                 if tries:
+                    self._learn_from(st, tries, attempt, res)
                     note = "; ".join(f"{a['agent']} ({a['goal'][:60]}): failed" for a, _ in tries)
                     self.store.add_agent_note(task_id, "planner", f"Retried step {st['id']}: {note}. "
                                                                   f"Final: {res.status}.")

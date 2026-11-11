@@ -146,3 +146,45 @@ def test_limits_editable_in_settings(app_client):
     assert ok.status_code == 200 and services.orchestrator.step_tries == 4 and services.orchestrator.task_budget == 0.5
     bad = client.post("/settings", data={"budget_usd": "5", "step_tries": "40", "task_budget_usd": "0.5"}, headers=h)
     assert bad.status_code == 400
+
+
+def test_a_fix_that_worked_becomes_a_lesson_used_next_time(make_ctx):
+    AppOpener.calls = []
+    prompts = []
+    orch, ctx0, prompts = build(make_ctx, [plan("app"), repair("site", "https://open.spotify.com/"), "ok",
+                                           plan("site", "https://open.spotify.com/"), "ok"], prompts)
+    orch.run(ctx0.store.create_chat("c"), "open spotify")
+    lessons = ctx0.store.lessons()
+    assert len(lessons) == 1 and lessons[0]["worked"] == 1
+    assert "app[target=Spotify]" in lessons[0]["text"] and "site[target=https://open.spotify.com/] worked" in lessons[0]["text"]
+    orch.run(ctx0.store.create_chat("c2"), "open spotify please")
+    next_plan_prompt = [p for p in prompts if "Request: open spotify please" in p][0]
+    assert "Lessons from earlier tasks" in next_plan_prompt and "open.spotify.com" in next_plan_prompt
+
+
+def test_private_step_lessons_keep_file_details_out(make_ctx):
+    orch, ctx0, _ = build(make_ctx, [plan("secret"), repair("secret", "other"), repair("", "", "give_up"), "x"])
+    orch.run(ctx0.store.create_chat("c"), "read my salary slip")
+    text = ctx0.store.lessons()[0]["text"]
+    assert "52000" not in text and "none worked" in text
+
+
+def test_nightly_learning_reads_task_lessons(app_client):
+    import json as _json
+
+    from prometheus.learning import current_rules, learn
+
+    def model(messages, system):
+        assert "What happened in tasks" in messages[-1]["content"]
+        return _json.dumps({"rules": ["When an app isn't installed, open its website."], "summary": "apps"})
+
+    client, services = app_client(providers=[FakeProvider(model, name="fake")])
+    services.store.add_lesson("For 'open spotify': app failed, then site worked.", True)
+    assert learn(services) == "apps"
+    assert current_rules(services.prompts.get("learned")) == ["When an app isn't installed, open its website."]
+    assert services.store.lessons_to_learn() == []
+    from tests.conftest import login
+    h = {"X-CSRF-Token": login(client)}
+    assert "open spotify" in client.get("/memory").text
+    client.post(f"/memory/task-lessons/{services.store.lessons()[0]['id']}/delete", headers=h)
+    assert services.store.lessons() == []

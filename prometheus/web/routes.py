@@ -161,6 +161,11 @@ def register_routes(app: FastAPI, services: Services) -> None:
         store.audit("user", "lessons_restored", {"commit": commit[:12]})
         return memory_page(request, lesson="Restored that version.")
 
+    @app.post("/memory/task-lessons/{lesson_id}/delete", response_class=HTMLResponse)
+    def delete_task_lesson(request: Request, lesson_id: int):
+        store.delete_lesson(lesson_id)
+        return memory_page(request)
+
     @app.post("/memory/lessons-reset", response_class=HTMLResponse)
     def reset_lessons(request: Request):
         from prometheus.learning import HEADER
@@ -306,6 +311,7 @@ def register_routes(app: FastAPI, services: Services) -> None:
             lessons_text, lessons_history = "", []
         return page(request, "memory.html", memories=store.memories(), q=q, found=found, passages=passages,
                     lessons=current_rules(lessons_text), lessons_history=lessons_history, lesson=lesson,
+                    task_lessons=store.lessons(30),
                     documents=store.documents(), topics=store.topics(),
                     folder=str(archive.folder) if archive else "")
 

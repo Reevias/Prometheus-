@@ -28,7 +28,8 @@ def learn(services) -> str:
     """Turn new ratings into rules. Returns what changed ('' when there was nothing to learn)."""
     store, prompts = services.store, services.prompts
     items = store.feedback_to_learn()
-    if not items:
+    task_lessons = store.lessons_to_learn()
+    if not items and not task_lessons:
         return ""
     rules = current_rules(prompts.get("learned"))
     lines = []
@@ -37,10 +38,13 @@ def learn(services) -> str:
         lines.append(f"[{verdict}] Question: {(f['question'] or '')[:300]}\nAnswer: {(f['answer'] or '')[:600]}"
                      + (f"\nOwner's note: {f['note'][:300]}" if f["note"] else ""))
     prompt = ("Current rules for answering this owner:\n" + ("\n".join(f"- {r}" for r in rules) or "(none)")
-              + "\n\nNew ratings of your answers:\n" + untrusted("\n\n".join(lines), "ratings")
+              + "\n\nNew ratings of your answers:\n" + (untrusted("\n\n".join(lines), "ratings") if lines else "(none)")
+              + ("\n\nWhat happened in tasks (what failed and what worked):\n"
+                 + untrusted("\n".join(f"- {t['text']}" for t in task_lessons), "task lessons") if task_lessons else "")
               + f"\n\nRewrite the rules (at most {MAX_RULES}, each one short and concrete, about HOW to answer: length, "
               "tone, format, what to include or leave out). Keep rules that still hold, merge duplicates, drop ones "
-              "the new ratings contradict. Never include personal facts, passwords or keys. Reply in JSON.")
+              "the new ratings contradict. A task lesson that holds generally (e.g. 'when an app isn't installed, use "
+              "its website') can become a rule. Never include personal facts, passwords or keys. Reply in JSON.")
     reply = services.router.complete("plan", [{"role": "user", "content": prompt}],
                                      "You improve how an assistant answers its owner. " + UNTRUSTED_RULE,
                                      json_schema=RULES_SCHEMA, max_tokens=900)
@@ -55,6 +59,7 @@ def learn(services) -> str:
             new.append(r)
     new = new[:MAX_RULES]
     store.mark_learned([f["message_id"] for f in items])
+    store.mark_lessons_learned([t["id"] for t in task_lessons])
     if not new or new == rules:
         return ""
     summary = " ".join(str(data.get("summary") or "").split())[:120] or f"{len(items)} ratings"
