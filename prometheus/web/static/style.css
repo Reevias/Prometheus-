@@ -194,3 +194,6 @@ canvas.orb { background: var(--orb-backdrop); border-radius: 50%; }
 .ask { border: 1px solid var(--signal); border-radius: 12px; padding: 12px 16px; margin: 12px 0; background: var(--raised); }
 .ask p { margin: 0 0 8px; }
 .ask .row { flex-wrap: wrap; gap: 8px; }
+
+/* keys and app passwords: hidden like a password, but not a password box (no "save password?") */
+input.secret { -webkit-text-security: disc; text-security: disc; font-family: inherit; }

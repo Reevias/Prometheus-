@@ -24,7 +24,7 @@ def test_set_secret_saved_and_wins_over_environment(tmp_home, monkeypatch):
     assert get_secret("OPENROUTER_API_KEY") == "sk-or-test-2"
     assert (data_dir() / ".env").read_text().count("OPENROUTER_API_KEY") == 1
     delete_secret("OPENROUTER_API_KEY")
-    assert get_secret("OPENROUTER_API_KEY") == "from-env"
+    assert get_secret("OPENROUTER_API_KEY") is None          # Remove removes it everywhere (setx too)
 
 
 def test_set_secret_rejects_unknown_names_and_bad_values(tmp_home):

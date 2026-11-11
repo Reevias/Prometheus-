@@ -5,6 +5,7 @@ skips any that are unavailable or resting after a failure, and drops to free/loc
 """
 from __future__ import annotations
 
+import re
 import time
 from typing import Callable
 
@@ -19,6 +20,8 @@ from prometheus.safety.budget import Budget, BudgetExceeded
 from prometheus.safety.killswitch import KillSwitch
 
 REST_SECONDS = 300
+BAD_MODEL = re.compile(r"model name|model .*(doesn'?t exist|not found|unknown|invalid)|no such model|"
+                       r"(unknown|invalid) model", re.I)
 HEAD_PURPOSES = ("plan", "combine")       # the lead AI: plans tasks, answers simple questions, writes final answers
 
 
@@ -87,10 +90,12 @@ class ModelRouter:
                 continue
             if purpose == "private" and not provider.is_local:
                 raise PrivacyViolation(f"'{name}' is not local.")
-            if self._resting.get(name, (0.0, ""))[0] > self.clock():
-                errors.append(f"{name}: resting ({self._resting[name][1]})")
-                continue
             used_model = model or getattr(provider, "model", "") or ""
+            rest_key = next((k for k in (name, f"{name}/{used_model}")
+                             if self._resting.get(k, (0.0, ""))[0] > self.clock()), None)
+            if rest_key:
+                errors.append(f"{rest_key}: resting ({self._resting[rest_key][1]})")
+                continue
             free = (provider.is_local or getattr(provider, "is_free", False)
                     or (name == "openrouter" and used_model.endswith(":free")))
             if not free and self.budget.state().stopped:
@@ -100,7 +105,9 @@ class ModelRouter:
                 reply = provider.complete(messages, system, json_schema=json_schema, max_tokens=max_tokens,
                                           model=model)
             except ProviderUnavailable as e:
-                self._resting[name] = (self.clock() + REST_SECONDS, str(e))
+                # a wrong model name rests only that model; the provider's other models keep working
+                key = f"{name}/{used_model}" if BAD_MODEL.search(str(e)) else name
+                self._resting[key] = (self.clock() + REST_SECONDS, str(e))
                 errors.append(f"{name}: {e}")
                 continue
             self._resting.pop(name, None)

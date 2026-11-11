@@ -43,7 +43,7 @@
     <form class="row" hx-post="/settings/keys" hx-target="body">
       <input type="hidden" name="name" value="{{ p.key_name }}">
       {% if p.key_set %}<span class="status-done">key added ✓</span>{% endif %}
-      <input type="password" name="value" placeholder="{{ 'Replace the key' if p.key_set else 'Paste the key' }}" autocomplete="off" required>
+      <input type="text" class="secret" spellcheck="false" data-lpignore="true" data-1p-ignore name="value" placeholder="{{ 'Replace the key' if p.key_set else 'Paste the key' }}" autocomplete="off" required>
       <input type="password" name="password" placeholder="Your Prometheus password" autocomplete="current-password" required>
       <button type="submit" class="primary">{{ "Replace" if p.key_set else "Add key" }}</button>
       {% if p.key_set %}<button type="submit" class="danger" hx-post="/settings/keys/delete" hx-target="body" formnovalidate>Remove</button>{% endif %}
@@ -96,7 +96,7 @@
     Prometheus reads without marking mail as read, and every email it sends waits for you on the Approvals page.</p>
     <form class="row" hx-post="/settings/email" hx-target="body">
       <input type="email" name="address" value="{{ s.email_address }}" placeholder="you@gmail.com" required>
-      <input type="password" name="app_password" placeholder="{{ 'App password saved ✓ (type to replace)' if email_key_set else 'App password' }}" autocomplete="off">
+      <input type="text" class="secret" spellcheck="false" data-lpignore="true" data-1p-ignore name="app_password" placeholder="{{ 'App password saved ✓ (type to replace)' if email_key_set else 'App password' }}" autocomplete="off">
       <input type="password" name="password" placeholder="Your Prometheus password" autocomplete="current-password" required>
       <button type="submit" class="primary">Save</button>
     </form>
@@ -107,7 +107,7 @@
     <p class="muted" style="margin:0">Paste your calendar's secret iCal link. Google: Calendar settings → your calendar → “Secret address in iCal
     format”. Outlook: Settings → Calendar → Shared calendars → Publish → ICS. Several links: one per line. Read only.</p>
     <form class="row" hx-post="/settings/calendar" hx-target="body">
-      <input type="password" name="links" placeholder="{{ 'Calendar connected ✓ (paste to replace)' if calendar_set else 'https://calendar.google.com/calendar/ical/…/basic.ics' }}" autocomplete="off" required>
+      <input type="text" class="secret" spellcheck="false" data-lpignore="true" data-1p-ignore name="links" placeholder="{{ 'Calendar connected ✓ (paste to replace)' if calendar_set else 'https://calendar.google.com/calendar/ical/…/basic.ics' }}" autocomplete="off" required>
       <input type="password" name="password" placeholder="Your Prometheus password" autocomplete="current-password" required>
       <button type="submit">Save</button>
     </form>
@@ -125,7 +125,7 @@
     </details>
     <form class="row" hx-post="/settings/google" hx-target="body" style="flex-wrap:wrap">
       <input type="text" name="client_id" placeholder="{{ 'Client saved ✓ (paste to replace)' if google_client else 'Client ID (…apps.googleusercontent.com)' }}" required>
-      <input type="password" name="client_secret" placeholder="Client secret" autocomplete="off" required style="max-width:220px">
+      <input type="text" class="secret" spellcheck="false" data-lpignore="true" data-1p-ignore name="client_secret" placeholder="Client secret" autocomplete="off" required style="max-width:220px">
       <input type="password" name="password" placeholder="Your Prometheus password" autocomplete="current-password" required style="max-width:220px">
       <button type="submit">Save</button>
     </form>
@@ -147,7 +147,7 @@
     <form class="row" hx-post="/settings/apps" hx-target="body" style="flex-wrap:wrap">
       <input type="text" name="name" placeholder="Name, e.g. Notion" required style="max-width:160px">
       <input type="text" name="target" placeholder="Command or https address" required>
-      <input type="password" name="secret" placeholder="Key (optional)" autocomplete="off" style="max-width:200px">
+      <input type="text" class="secret" spellcheck="false" data-lpignore="true" data-1p-ignore name="secret" placeholder="Key (optional)" autocomplete="off" style="max-width:200px">
       <input type="password" name="password" placeholder="Your Prometheus password" autocomplete="current-password" required style="max-width:220px">
       <button type="submit">Connect</button>
     </form>
@@ -283,7 +283,7 @@
   <form hx-post="/settings/keys" hx-target="body" class="panel row">
     <strong>{{ k.label }}</strong> <span class="{{ 'status-done' if k.set else 'muted' }}">{{ "set ✓" if k.set else "not set" }}</span>
     <input type="hidden" name="name" value="{{ k.name }}">
-    <input type="password" name="value" placeholder="Paste the key" autocomplete="off" required>
+    <input type="text" class="secret" spellcheck="false" data-lpignore="true" data-1p-ignore name="value" placeholder="Paste the key" autocomplete="off" required>
     <input type="password" name="password" placeholder="Your Prometheus password" autocomplete="current-password" required>
     <button type="submit">Save key</button>
   </form>

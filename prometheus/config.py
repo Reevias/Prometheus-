@@ -197,10 +197,21 @@ def set_secret(name: str, value: str) -> None:
 
 
 def delete_secret(name: str) -> None:
+    """Remove a key: from the app's own file, from this run, and (on Windows) from the user's environment
+    variables, where `setx NAME value` puts it. A key set for the whole computer by an admin stays."""
     with _SECRETS_LOCK:
         values = _read_env_file()
         if values.pop(name, None) is not None:
             _write_env_file(values)
+    os.environ.pop(name, None)
+    if sys.platform == "win32":
+        try:
+            import winreg
+
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment", 0, winreg.KEY_SET_VALUE) as key:
+                winreg.DeleteValue(key, name)
+        except OSError:
+            pass                                  # it wasn't there
 
 
 def secrets_set() -> dict[str, bool]:

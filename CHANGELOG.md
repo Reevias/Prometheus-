@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.6
+- Fixes: a wrong model name now pauses only that model, not the whole provider; Remove in Settings also deletes a key set with `setx`; key and app-password boxes no longer make the browser offer to save them as passwords.
+
 ## 1.5
 - Photos: at night Prometheus looks at new photos in Pictures, OneDrive Pictures, Desktop and Downloads on the laptop (a small image model and text reading; about 600 MB downloaded once into its data folder) and notes what each shows (beach, people, food, pets, documents, receipts, notes, screenshots…) and any text in it. "Show my beach photos" or "find the photo of my Aadhaar card" work, and photo text is found by search inside files too. "Sort my photos" moves them into folders like Pictures/Beach and Pictures/Documents after a yes in the chat; undo on the History page. The evening wrap-up says how many new photos were looked at. Needs `pip install -e ".[photos]"` (the installer does it).
 - People and facts: when you mention lasting facts ("Ravi is my brother, he lives in Pune"), Prometheus saves them by itself as linked facts and says so under the answer ("Remembered: Ravi is your brother; Ravi: lives in = Pune"). Asking about "my brother" brings up everything known about Ravi. When something changes (a new phone number), the old value is kept with the date it changed. Passwords, PINs, OTPs, card numbers and keys are never saved. The Memory page lists each person with their facts, past values, and Forget.
