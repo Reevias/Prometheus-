@@ -513,7 +513,7 @@ def register_routes(app: FastAPI, services: Services) -> None:
                                                                     fromlist=["SPEECH"]).SPEECH.items()],
                     home=str(services.home), bad_places=bad_places,
                     budget=services.budget.state(), catalog_date=catalog_updated(),
-                    safety=_safety_results(), mcp_config=_mcp_config(),
+                    safety=_safety_results(), mcp_config=_mcp_config(), money_categories=_money_categories(),
                     file_index_status=(getattr(services.file_index, "status", "") or store.kv_get("file_index_status")
                                        or "Not read yet."), **extra)
 
@@ -922,6 +922,28 @@ def register_routes(app: FastAPI, services: Services) -> None:
         except OSError:
             pass
         store.audit("user", "app_removed", {"name": name})
+        return settings_page(request, saved=True)
+
+    def _money_categories() -> list[str]:
+        from prometheus.money import CATEGORIES
+
+        return [c for c, _ in CATEGORIES] + ["Transfers", "Other"]
+
+    @app.post("/settings/money", response_class=HTMLResponse)
+    async def save_money(request: Request):
+        form = await request.form()
+        budgets = {}
+        for i, cat in enumerate(_money_categories()):
+            raw = str(form.get(f"budget_{i}", "")).replace(",", "").replace("₹", "").strip()
+            if raw:
+                try:
+                    budgets[cat] = max(0.0, float(raw))
+                except ValueError:
+                    return settings_page(request, 400, error=f"The {cat} budget should be a number.")
+        services.settings.money_on = bool(form.get("on"))
+        services.settings.money_budgets = budgets
+        save_settings(services.settings)
+        store.audit("user", "money_settings", {"budgets": len(budgets)})
         return settings_page(request, saved=True)
 
     @app.post("/settings/study", response_class=HTMLResponse)

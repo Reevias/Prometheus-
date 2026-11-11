@@ -173,6 +173,17 @@
     <button type="submit">Save</button>
   </form>
 
+  <h3>Money tracker</h3>
+  <form class="panel" hx-post="/settings/money" hx-target="body" style="display:grid;gap:8px">
+    <label class="check"><input type="checkbox" name="on" value="1" {{ "checked" if s.money_on }}> Read bank and UPI
+      alerts from my email every half hour (on this laptop; no AI). The sheet is in Documents/Prometheus Money.</label>
+    <span>Monthly budgets in ₹ (empty for none). A warning comes at 80% and when you go over.</span>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:6px">
+    {% for cat in money_categories %}<label>{{ cat }} <input name="budget_{{ loop.index0 }}" value="{{ s.money_budgets.get(cat, '') }}" inputmode="numeric" style="width:90px"></label>{% endfor %}
+    </div>
+    <button type="submit">Save</button>
+  </form>
+
   <h3>Study coach</h3>
   <form class="panel" hx-post="/settings/study" hx-target="body" style="display:grid;gap:8px">
     <label class="check"><input type="checkbox" name="cloud" value="1" {{ "checked" if s.study_cloud }}> Let Claude make

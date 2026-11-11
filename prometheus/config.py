@@ -64,6 +64,8 @@ class Settings:
     notify_briefing: bool = True
     notify_repo: bool = True
     notify_updates: bool = True
+    money_on: bool = True                  # read bank and UPI alerts from the connected email
+    money_budgets: dict = field(default_factory=dict)   # category -> monthly budget in rupees
     study_cloud: bool = False              # let Claude make cards and mark answers (better; notes are sent)
     study_reminder: str = "18:00"          # daily "cards are due" reminder; "" for none
     tray: bool = True                      # icon by the clock; closing the window keeps Prometheus running      # run scripts in Windows Sandbox when this laptop has it

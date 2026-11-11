@@ -137,6 +137,16 @@ def understand(text: str, store=None, now: float | None = None) -> Quick | None:
             said = ""
         if said:
             return Quick(answer=("Tomorrow: " if tomorrow else "Today: ") + said + ".")
+    from prometheus import money
+
+    if money.TELL.match(t):
+        m = money.TELL.match(t)
+        what = (m.group(2) or "").strip() or "something"
+        return Quick(steps=[_step("money", f"Spent {m.group(1)} on {what}", action="add", amount=m.group(1),
+                                  what=what)], action=True)
+    if re.search(r"\bhow much (?:did i|have i) (?:spend|spent)\b|\bmy spending\b|\bkitna kharch", low):
+        today = bool(re.search(r"\btoday\b|\baaj\b", low))
+        return Quick(steps=[_step("money", "Spending", action="today" if today else "report")])
     m = re.fullmatch(r"(?:quiz|test) me(?: on| about)?\s*(.*?)(?: please)?|(?:start|begin) (?:a |the )?quiz(?: on)?\s*"
                      r"(.*)|revise(?: my)? flashcards(?: on)?\s*(.*)", low)
     if m:

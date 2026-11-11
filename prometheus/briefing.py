@@ -127,6 +127,14 @@ def _done_today(services) -> list[str]:
         studied = ""
     if studied:
         lines.append(f"study: {studied}")
+    try:
+        from prometheus.agents import money_agent
+
+        spent = money_agent.MONEY.today_line() if money_agent.MONEY else ""
+    except Exception:
+        spent = ""
+    if spent:
+        lines.append(f"money: {spent}")
     if any(a.kind == "add_skill" for a in store.big_approvals()):
         lines.append("a repo of the day is waiting on the Approvals page")
     return lines
@@ -223,7 +231,40 @@ class BriefingClock:
                 self.deliver(kind)
                 sent.append(kind)
         sent += self.study_nudge(now, today)
+        sent += self.money_check(now)
         return sent
+
+    def money_check(self, now: float) -> list[str]:
+        """Every half hour: new bank and UPI alerts from the email, the spending sheet, and budget warnings."""
+        s, store = self.services.settings, self.services.store
+        from prometheus import money as money_mod
+        from prometheus.agents import money_agent
+
+        m = money_agent.MONEY
+        if m is None or not getattr(s, "money_on", True) or not s.email_address:
+            return []
+        if now - float(store.kv_get("money_scanned", 0) or 0) < money_mod.SCAN_EVERY:
+            return []
+        from prometheus.agents.email_agent import mailbox
+
+        try:
+            added = m.scan_email(mailbox())
+        except Exception:
+            store.kv_set("money_scanned", now)
+            return []
+        if added:
+            try:
+                m.write_excel(self.services.home / "Documents" / "Prometheus Money")
+            except Exception:
+                pass
+        for warning in m.budget_alerts():
+            store.add_message(self.chat(), "assistant", f"💸 {warning}", "money", private=True)
+            if self.notify is not None:
+                try:
+                    self.notify(warning)
+                except Exception:
+                    pass
+        return ["money"] if added else []
 
     def study_nudge(self, now: float, today: str) -> list[str]:
         """Once a day at the study time: tell the owner how many flashcards are due."""

@@ -360,6 +360,10 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
 
     _sa.STUDY = _study.Study(store, router, settings)
     orchestrator.interceptors.append(_sa.STUDY.answer)
+    from prometheus import money as _money
+    from prometheus.agents import money_agent as _ma
+
+    _ma.MONEY = _money.Money(store, settings)
     return services
 
 
