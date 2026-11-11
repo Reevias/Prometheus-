@@ -58,6 +58,7 @@ class Settings:
     voice_name: str = "af_heart"
     voice_speech: str = "fast"                  # fast | accent | hindi: how commands are turned into words
     auto_update: bool = True
+    backup_on: bool = False                # nightly encrypted backup to Google Drive
     research_brain: str = "auto"           # auto, or a model from the list in models/router.py
     code_windows_sandbox: bool = True
     notify_tasks: bool = True              # a task that took over 30 seconds finished
@@ -153,6 +154,7 @@ KEY_NAMES = {
     "CALENDAR_LINKS": "Calendar links",
     "GOOGLE_CLIENT": "Google client (ID|secret)",
     "GOOGLE_TOKEN": "Google sign-in",
+    "BACKUP_KEY": "Backup key (made from your recovery code)",
 }
 MCP_SECRET = re.compile(r"^MCP_[A-Z0-9_]{1,40}$")   # one secret per connected app (a token, or NAME=value;…)
 SPACES_ALLOWED = {"EMAIL_PASSWORD"}             # app passwords are often shown in groups: "abcd efgh ijkl mnop"

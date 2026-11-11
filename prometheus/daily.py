@@ -53,6 +53,14 @@ class DailyJobs:
                 done.append(RepoOfTheDay(self.services).suggest())
             except Exception as e:           # offline or GitHub changed its page: try again tomorrow
                 done.append(f"Repo of the day failed: {type(e).__name__}")
+        if getattr(s, "backup_on", False):
+            try:
+                from prometheus import backup
+
+                done.append(backup.run(self.services))
+            except Exception as e:           # offline, or Google needs signing in again: try tomorrow
+                done.append(f"Backup skipped: {type(e).__name__}: {str(e)[:120]}")
+                store.kv_set("backup_error", f"{type(e).__name__}: {str(e)[:200]}")
         updater = self.services.updater
         if updater is not None:
             msg = updater.check_once()

@@ -69,6 +69,25 @@ def _app(args) -> int:
     return run_desktop(settings)
 
 
+def _restore(args) -> int:
+    import getpass
+    from pathlib import Path as _P
+
+    from prometheus.backup import BackupError, restore
+    from prometheus.desktop import running_copy
+
+    if running_copy(load_settings().port):
+        print("Close Prometheus first (right-click its icon by the clock → Quit), then run this again.")
+        return 2
+    code = getpass.getpass("Recovery code (the one shown when you turned backups on): ")
+    try:
+        print(restore(_P(args.file), code, data_dir(), _P.home(), overwrite=args.overwrite))
+    except BackupError as e:
+        print(e)
+        return 1
+    return 0
+
+
 def _mcp(args) -> int:
     from prometheus.mcp_server import stdio_bridge
 
@@ -224,10 +243,13 @@ def main(argv: list[str] | None = None) -> int:
     p_auto.add_argument("state", choices=["on", "off"])
     sub.add_parser("shortcut", help="make desktop and Start-menu shortcuts that open this copy")
     sub.add_parser("mcp", help="let another AI app (Antigravity, Claude Desktop) use Prometheus as a tool (stdio)")
+    p_restore = sub.add_parser("restore", help="put a backup (.pbak from Google Drive) back on this computer")
+    p_restore.add_argument("file")
+    p_restore.add_argument("--overwrite", action="store_true", help="replace the memory already here")
     args = parser.parse_args(argv)
     return {"init": _init, "serve": _serve, "app": _app, "doctor": _doctor, "update": _update, "background": _background,
             "voice-setup": _voice_setup, "autostart": _autostart,
-            "shortcut": _shortcut, "mcp": _mcp}[args.command](args)
+            "shortcut": _shortcut, "mcp": _mcp, "restore": _restore}[args.command](args)
 
 
 if __name__ == "__main__":

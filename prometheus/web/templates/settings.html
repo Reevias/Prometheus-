@@ -386,6 +386,30 @@
 
   </section>
   <section class="set" id="safety-check" data-group="Safety and privacy">
+  <h3>Backup to Google Drive</h3>
+  <div class="panel" style="display:grid;gap:8px">
+    <p class="muted" style="margin:0">Every night Prometheus backs up everything it knows (memory, chats, flashcards,
+      spending, deadlines, settings, keys, skills, and the Prometheus folders in Documents) to the Drive folder
+      “Prometheus Backups”, encrypted on this laptop first. Google can't read it. The newest 14 are kept.</p>
+    {% if backup_code %}<div class="panel" style="border-color:var(--warn)"><strong>Your recovery code: <code style="font-size:1.1em">{{ backup_code }}</code></strong>
+      <p class="muted" style="margin:0">Write it down or save it on your phone now: it is shown only this once. You need it to
+      restore a backup on a new laptop. Without it, nobody (not even you) can open the backups.</p></div>{% endif %}
+    {% if not backup_ready %}
+      {% if google_on %}<div class="row"><button type="button" class="primary" hx-post="/settings/backup/setup" hx-target="body">Turn on backups</button></div>
+      {% else %}<p class="muted" style="margin:0">First connect Google (Settings → Connections → Sign in with Google).</p>{% endif %}
+    {% else %}
+      <form hx-post="/settings/backup" hx-target="body"><label class="check"><input type="checkbox" name="on" value="1" {{ "checked" if s.backup_on }} onchange="this.form.requestSubmit()"> Back up every night</label></form>
+      <p class="muted" style="margin:0">{% if backup_last %}Last backup: {{ backup_last.when_text }}, {{ backup_last.mb }} MB.{% else %}No backup yet.{% endif %}
+        {% if backup_error %}<span class="error">Last try failed: {{ backup_error }}</span>{% endif %}</p>
+      <div class="row"><button type="button" hx-post="/settings/backup/now" hx-target="body">Back up now</button></div>
+      <details><summary class="muted">How to restore</summary><ol class="muted">
+        <li>On the new laptop, install Prometheus (the installer), but don't sign in yet.</li>
+        <li>Download the newest <code>.pbak</code> file from the “Prometheus Backups” folder in Google Drive.</li>
+        <li>Run <code>prometheus restore "path to the file"</code> and type your recovery code.</li>
+      </ol></details>
+    {% endif %}
+  </div>
+
   <h3>Safety check</h3>
   <div class="panel">
     <p class="muted">Hides 10 known attacks (fake "system notes" in emails, web pages, files and error messages) in

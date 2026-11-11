@@ -696,6 +696,7 @@ def register_routes(app: FastAPI, services: Services) -> None:
                     home=str(services.home), bad_places=bad_places,
                     budget=services.budget.state(), catalog_date=catalog_updated(),
                     safety=_safety_results(), mcp_config=_mcp_config(), money_categories=_money_categories(),
+                    **_backup_view(),
                     research_brains=list(__import__("prometheus.models.router", fromlist=["x"]).RESEARCH_LABELS.items()),
                     file_index_status=(getattr(services.file_index, "status", "") or store.kv_get("file_index_status")
                                        or "Not read yet."), **extra)
@@ -1213,6 +1214,57 @@ def register_routes(app: FastAPI, services: Services) -> None:
         save_settings(services.settings)
         store.audit("user", "money_settings", {"budgets": len(budgets)})
         return settings_page(request, saved=True)
+
+    def _backup_view() -> dict:
+        import json as _json
+        import time as _t
+
+        from prometheus.config import get_secret
+
+        try:
+            last = _json.loads(store.kv_get("backup_last") or "null")
+        except ValueError:
+            last = None
+        if last:
+            last = {**last, "when_text": _t.strftime("%d %b %Y %H:%M", _t.localtime(last["when"])),
+                    "mb": f"{last['bytes'] / 1024 ** 2:.1f}"}
+        return {"backup_ready": bool(get_secret("BACKUP_KEY")), "backup_last": last,
+                "backup_error": store.kv_get("backup_error") or ""}
+
+    @app.post("/settings/backup/setup", response_class=HTMLResponse)
+    def backup_setup(request: Request):
+        from prometheus import backup
+        from prometheus.config import get_secret
+
+        if get_secret("BACKUP_KEY"):
+            return settings_page(request, 400, error="Backups are already set up.")
+        code = backup.set_up()
+        services.settings.backup_on = True
+        save_settings(services.settings)
+        store.audit("user", "backup_setup", {})
+        return settings_page(request, backup_code=code)
+
+    @app.post("/settings/backup", response_class=HTMLResponse)
+    def backup_toggle(request: Request, on: str = Form("")):
+        services.settings.backup_on = bool(on)
+        save_settings(services.settings)
+        return settings_page(request, saved=True)
+
+    @app.post("/settings/backup/now", response_class=HTMLResponse)
+    def backup_now(request: Request):
+        import threading as _th
+
+        from prometheus import backup
+
+        def work():
+            try:
+                store.kv_set("backup_error", "")
+                backup.run(services)
+            except Exception as e:
+                store.kv_set("backup_error", f"{type(e).__name__}: {str(e)[:200]}")
+
+        _th.Thread(target=work, name="prometheus-backup", daemon=True).start()
+        return settings_page(request, notice="Backing up in the background. Refresh in a minute to see it.")
 
     @app.post("/settings/research-brain", response_class=HTMLResponse)
     def research_brain(request: Request, brain: str = Form(...)):
