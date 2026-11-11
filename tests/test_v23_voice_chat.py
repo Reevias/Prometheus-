@@ -77,7 +77,7 @@ def test_scribe_hears_the_command_and_says_how_sure_it_was():
 
     ear = ElevenHearing("k-123", http=httpx.Client(transport=httpx.MockTransport(handler)))
     assert ear.text(b"\x00\x01" * 1600) == "What's the weather tomorrow?"
-    assert seen["key"] == "k-123" and b"scribe_v2" in seen["body"] and b"Prometheus" in seen["body"]
+    assert seen["key"] == "k-123" and b"scribe_v3" in seen["body"] and b"Prometheus" in seen["body"]
     assert b"RIFF" in seen["body"]                                       # sent as a proper WAV file
     assert -0.3 < ear.last_confidence < 0 and ear.last_no_speech == 0.0 and ear.command
 
@@ -126,7 +126,7 @@ def test_voice_streams_whole_samples_and_falls_back_when_down():
     mouth = ElevenSpeaker("k", "JBFqnCBsd6RMkjVDRZzb", http=httpx.Client(transport=httpx.MockTransport(handler)),
                           output=FakeOut)
     assert mouth.say("Hello sir.", speed=1.5) is True
-    assert sent["model_id"] == "eleven_flash_v2_5" and sent["voice_settings"]["speed"] == 1.2   # kept in range
+    assert sent["model_id"] == "eleven_v4_turbo" and sent["voice_settings"]["speed"] == 1.2   # kept in range
     assert FakeOut.played[-1].closed and sum(len(c) for c in FakeOut.played[-1].chunks) == 302
 
     class Local:
@@ -265,3 +265,28 @@ def test_brief_greets_by_time_of_day_and_never_waits_on_a_slow_part(monkeypatch)
     text = brief.build(SimpleNamespace(settings=SimpleNamespace()), datetime(2026, 11, 11, 19, 40), wait=0.5)
     assert time.monotonic() - t < 1.5 and "never" not in text
     assert "Delhi" in text and "flashcards" in text and text.endswith("What would you like to do?")
+
+
+def test_newest_models_first_older_ones_when_refused():
+    tried = []
+
+    def stt(request):
+        model = b"scribe_v3" if b"scribe_v3" in request.content else b"scribe_v2"
+        tried.append(model)
+        return httpx.Response(422) if model == b"scribe_v3" else httpx.Response(200, json={"text": "hello"})
+
+    ear = ElevenHearing("k", http=httpx.Client(transport=httpx.MockTransport(stt)))
+    assert ear.text(b"\x00" * 3200) == "hello" and ear.model == "scribe_v2" and tried == [b"scribe_v3", b"scribe_v2"]
+    ear.text(b"\x00" * 3200)
+    assert tried[-1] == b"scribe_v2"                     # remembered: no second try of the refused one
+
+    FakeOut.played = []
+
+    def tts(request):
+        model = json.loads(request.content)["model_id"]
+        if model == "eleven_v4_turbo":
+            return httpx.Response(404)
+        return httpx.Response(200, stream=httpx.ByteStream(b"\x00\x01" * 50))
+
+    mouth = ElevenSpeaker("k", output=FakeOut, http=httpx.Client(transport=httpx.MockTransport(tts)))
+    assert mouth.say("Hello.") is True and mouth.model == "eleven_flash_v2_5"

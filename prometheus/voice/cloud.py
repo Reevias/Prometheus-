@@ -19,8 +19,11 @@ import httpx
 from prometheus.voice.audio import RATE
 
 API = "https://api.elevenlabs.io"
-TTS_MODEL = "eleven_flash_v2_5"              # the fastest natural voice (about 75 ms to the first sound)
-STT_MODEL = "scribe_v2"
+# Newest first; if ElevenLabs refuses one (retired, or not on this plan) the next is used and remembered.
+TTS_MODELS = ("eleven_v4_turbo", "eleven_flash_v2_5")   # made for AI assistants: about 0.1 s to the first sound
+STT_MODELS = ("scribe_v3", "scribe_v2")
+TTS_MODEL, STT_MODEL = TTS_MODELS[0], STT_MODELS[0]
+MODEL_REFUSED = (400, 403, 404, 422)
 OUT_RATE = 22050                             # pcm_22050: clear speech, small to stream
 # (voice id, label) offered in Settings. Any other voice id from the ElevenLabs voice library works too.
 VOICES = (
@@ -66,18 +69,25 @@ class ElevenHearing:
         self.last_confidence, self.last_no_speech = 0.0, 0.0
         self.last_engine = "elevenlabs"
         self.failures = 0
+        self.model = STT_MODELS[0]
 
     def text(self, audio: bytes) -> str:
         if not audio:
             self.last_confidence, self.last_no_speech = -9.0, 1.0
             return ""
         try:
-            data = {"model_id": STT_MODEL, "tag_audio_events": "false", "keyterms": list(KEYTERMS)}
-            if self.language:
-                data["language_code"] = self.language
-            r = self.http.post(f"{API}/v1/speech-to-text", headers={"xi-api-key": self.key}, data=data,
-                               files={"file": ("speech.wav", _wav(audio), "audio/wav")})
-            r.raise_for_status()
+            wav = _wav(audio)
+            for model in STT_MODELS[STT_MODELS.index(self.model):]:
+                data = {"model_id": model, "tag_audio_events": "false", "keyterms": list(KEYTERMS)}
+                if self.language:
+                    data["language_code"] = self.language
+                r = self.http.post(f"{API}/v1/speech-to-text", headers={"xi-api-key": self.key}, data=data,
+                                   files={"file": ("speech.wav", wav, "audio/wav")})
+                if r.status_code in MODEL_REFUSED and model != STT_MODELS[-1]:
+                    continue                      # that model isn't available: the next one
+                r.raise_for_status()
+                self.model = model
+                break
             body = r.json()
         except Exception:
             self.failures += 1
@@ -143,14 +153,16 @@ class ElevenSpeaker:
         self._playing = None
         self._stopped = threading.Event()
         self.last_engine = "elevenlabs"
+        self.model = TTS_MODELS[0]
 
-    def _request(self, text: str, speed: float):
+    def _request(self, text: str, speed: float, model: str | None = None):
         speed = max(0.7, min(1.2, speed))
+        model = model or self.model
         return self.http.stream(
             "POST", f"{API}/v1/text-to-speech/{self.voice}/stream",
             params={"output_format": f"pcm_{OUT_RATE}", "optimize_streaming_latency": "3"},
             headers={"xi-api-key": self.key, "accept": "audio/pcm"},
-            json={"text": text, "model_id": TTS_MODEL,
+            json={"text": text, "model_id": model,
                   "voice_settings": {"stability": 0.5, "similarity_boost": 0.75, "speed": speed}})
 
     def say(self, text: str, speed: float = 1.0, stop: threading.Event | None = None) -> bool:
@@ -161,6 +173,7 @@ class ElevenSpeaker:
         self._stopped.clear()
         played = False
         try:
+            self._pick_model()
             with self._request(text, speed) as resp:
                 resp.raise_for_status()
                 out = self._output()
@@ -187,6 +200,20 @@ class ElevenSpeaker:
                 return played
             self.last_engine = "local"
             return self.fallback.say(text, speed=speed, stop=stop) is not False
+
+    def _pick_model(self) -> None:
+        """Once: check the newest voice model works on this account; if refused, use the next one."""
+        if getattr(self, "_model_checked", False):
+            return
+        for model in TTS_MODELS[TTS_MODELS.index(self.model):]:
+            with self._request(".", 1.0, model) as resp:
+                if resp.status_code in MODEL_REFUSED and model != TTS_MODELS[-1]:
+                    continue
+                resp.raise_for_status()
+                resp.read()
+                self.model = model
+                break
+        self._model_checked = True
 
     def _clip(self, text: str) -> None:
         """Short fixed phrases ("Yes sir.") are made once and replayed instantly."""
