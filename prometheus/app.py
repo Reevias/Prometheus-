@@ -59,6 +59,8 @@ class Services:
     daily: object = None
     reminders: object = None
     watchers: object = None
+    briefing: object = None
+    laptop: object = None
 
     def start_rewrite(self, chat_id: int, message_id: int, note: str = "") -> threading.Thread:
         """Rewrite an answer the owner marked 'could be better', in the background."""
@@ -247,6 +249,13 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
     else:
         _lp = None
     services.watchers = Watchers(services, laptop=_lp, notify=_notify)
+    services.laptop = _lp
+    from prometheus.briefing import BriefingClock
+
+    services.briefing = BriefingClock(services, notify=_notify)
+    from prometheus.agents import briefing_agent
+
+    briefing_agent.SERVICES = services
     approvals.register("add_skill", lambda payload: RepoOfTheDay(services).add(payload))
     return services
 

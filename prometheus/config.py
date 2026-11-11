@@ -66,6 +66,12 @@ class Settings:
     email_smtp_host: str = ""
     email_cloud_ok: bool = False
     mcp_servers: list[dict] = field(default_factory=list)
+    briefing_morning_on: bool = True            # daily summary: morning briefing
+    briefing_morning: str = "08:00"
+    briefing_evening_on: bool = True            # and evening wrap-up
+    briefing_evening: str = "21:00"
+    weather_place: str = ""                     # city for the weather ("" = the laptop's location)
+    email_alert_senders: list[str] = field(default_factory=list)   # tell me at once when these email me
     watch_battery: bool = True                  # say so when the battery drops below 20%
     watch_disk: bool = True                     # say so when the main drive is over 90% full
     watch_cpu: bool = False                     # say so when the CPU is over 90% for 5 minutes

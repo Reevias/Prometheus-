@@ -765,6 +765,22 @@ def register_routes(app: FastAPI, services: Services) -> None:
         store.audit("user", "app_removed", {"name": name})
         return settings_page(request, saved=True)
 
+    @app.post("/settings/briefing", response_class=HTMLResponse)
+    def save_briefing(request: Request, morning: str = Form("08:00"), evening: str = Form("21:00"),
+                      morning_on: str = Form(""), evening_on: str = Form(""), place: str = Form(""),
+                      senders: str = Form("")):
+        times = [t.strip() for t in (morning, evening)]
+        if not all(re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", t) for t in times):
+            return settings_page(request, 400, error="Times look like 08:00 or 21:30.")
+        s = services.settings
+        s.briefing_morning, s.briefing_evening = times
+        s.briefing_morning_on, s.briefing_evening_on = bool(morning_on), bool(evening_on)
+        s.weather_place = " ".join(place.split())[:80]
+        s.email_alert_senders = [x.strip()[:80] for x in senders.split(",") if x.strip()][:30]
+        save_settings(s)
+        store.audit("user", "briefing", {"morning": s.briefing_morning, "evening": s.briefing_evening})
+        return settings_page(request, saved=True)
+
     @app.post("/settings/watch", response_class=HTMLResponse)
     def set_watch(request: Request, key: str = Form(...), on: str = Form("")):
         if key not in ("watch_battery", "watch_disk", "watch_cpu"):

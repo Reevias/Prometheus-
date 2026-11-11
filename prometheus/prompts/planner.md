@@ -41,6 +41,7 @@ Plans:
 - Email ("any new mail?", "did the bank email me?", "email Ravi that…") uses the email agent: unread, search,
   read, send. The calendar ("what's on tomorrow?", "am I free Friday?") uses the calendar agent: agenda, search.
   Anything in another connected app (listed under Connected apps) uses the apps agent.
+- "My briefing", "what's my day like", "evening wrap-up" use the briefing agent (kind = morning or evening).
 - To switch or show which AI model is used, use the settings agent.
 - To explain how to do something from a guide, use the guide agent with the skill name and the question.
 - For Wi-Fi, Bluetooth, battery, location, apps, windows, volume, brightness, dark mode, screenshots, typing, clicking, power or installing software use the system agent.

@@ -133,6 +133,18 @@
     </form>
   </div>
 
+  <h3>Daily summary</h3>
+  <form class="panel" hx-post="/settings/briefing" hx-target="body" style="display:grid;gap:8px">
+    <label class="check"><input type="checkbox" name="morning_on" value="1" {{ "checked" if s.briefing_morning_on }}> Morning briefing at
+      <input name="morning" value="{{ s.briefing_morning }}" style="width:80px" pattern="[0-2][0-9]:[0-5][0-9]"></label>
+    <label class="check"><input type="checkbox" name="evening_on" value="1" {{ "checked" if s.briefing_evening_on }}> Evening wrap-up at
+      <input name="evening" value="{{ s.briefing_evening }}" style="width:80px" pattern="[0-2][0-9]:[0-5][0-9]"></label>
+    <label>City for the weather (empty = where the laptop is) <input name="place" value="{{ s.weather_place }}" placeholder="e.g. Delhi"></label>
+    <label>Tell me at once when these email me (addresses or names, comma separated)
+      <input name="senders" value="{{ s.email_alert_senders|join(', ') }}" placeholder="e.g. bank.com, college.edu, Mom"></label>
+    <button type="submit">Save</button>
+  </form>
+
   <h3>Watchers</h3>
   <p class="muted">Prometheus speaks up by itself: in the “Prometheus alerts” chat, as a Windows notification, and out loud if voice is on.</p>
   <div class="panel" style="display:grid;gap:8px">
