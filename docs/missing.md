@@ -1,6 +1,6 @@
 # Prometheus: what is still missing
 
-Updated 11 November 2026. Version 1.4. Built and tested here: 738 tests pass.
+Updated 11 November 2026. Version 1.7. Built and tested here: 738 tests pass.
 Not yet run end to end on the owner's real laptop.
 
 ## Just finished
