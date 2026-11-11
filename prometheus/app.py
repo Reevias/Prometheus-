@@ -199,6 +199,10 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
     browser_agent.SESSION = BrowserSession(data / "browser")
     approvals.register("browser_click", browser_agent.click_handler)
     approvals.register("browser_password", browser_agent.password_handler, needs_secret=True)
+    from prometheus.agents import code_agent
+
+    approvals.register("code_run", code_agent.run_handler)
+    approvals.register("code_network", code_agent.run_handler)
     from prometheus.agents import apps_agent
     from prometheus.connectors.manager import ConnectionManager
 
@@ -261,6 +265,7 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
     services.watchers = Watchers(services, laptop=_lp, notify=_notify)
     services.laptop = _lp
     services.browser = browser_agent.SESSION
+    code_agent.SERVICES = services
     from prometheus.briefing import BriefingClock
 
     services.briefing = BriefingClock(services, notify=_notify)

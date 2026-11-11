@@ -57,6 +57,7 @@ class Settings:
     voice_autostart: bool = False
     voice_name: str = "af_heart"
     auto_update: bool = True
+    code_windows_sandbox: bool = True      # run scripts in Windows Sandbox when this laptop has it
     repo_of_day: bool = True
     step_tries: int = 3                         # tries per task step, counting the first (planning loop)
     task_budget_usd: float = 0.20               # paid AI one task may use                    # suggest one trending GitHub repository a day for the skill library

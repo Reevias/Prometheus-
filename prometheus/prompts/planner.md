@@ -47,6 +47,9 @@ Plans:
   Adding or moving a calendar event, and Google Drive files, use the google agent (add_event with title and when,
   move_event, events, drive_search, drive_read). If Google isn't connected, the calendar agent can still read events.
 - "My briefing", "what's my day like", "evening wrap-up" use the briefing agent (kind = morning or evening).
+- Exact sums, statistics, working with numbers in a CSV or Excel file, or drawing a chart: use the code agent with a
+  complete Python script in "code" (print the answer; save charts as .png in the current folder) and the owner's
+  files in "files". Scripts have no internet; never put keys or passwords in them.
 - Doing something ON a website (fill a form, search a shop, sign in, click through pages) uses the browser agent,
   one action per step: open, then read, then type or click what the page shows, then read again. To just open or
   look at a page, use the opener.
