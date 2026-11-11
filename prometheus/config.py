@@ -58,6 +58,7 @@ class Settings:
     voice_name: str = "af_heart"
     voice_speech: str = "fast"                  # fast | accent | hindi: how commands are turned into words
     auto_update: bool = True
+    auto_restart: bool = True              # after an update, restart by itself once nothing is running
     role: str = "laptop"                   # "laptop", or "cloud" for the always-on copy
     cloud_url: str = ""                    # on the laptop: the cloud copy's private address (Tailscale)
     backup_on: bool = False                # nightly encrypted backup to Google Drive

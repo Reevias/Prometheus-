@@ -25,7 +25,7 @@ def test_installs_when_github_has_a_newer_version(tmp_path):
     run, calls = git(3)
     updates = []
     up = AutoUpdater(fake_services(), tmp_path, run=run, updater=updates.append)
-    assert "Restart" in up.check_once() and updates == [tmp_path]
+    assert "restarts by itself" in up.check_once() and updates == [tmp_path]
     assert any("fetch" in c for c in calls) and up.updated
 
 

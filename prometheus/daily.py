@@ -67,8 +67,8 @@ class DailyJobs:
             done.append(msg or "No update needed.")
             if msg and hasattr(self.services, "notify"):
                 self.services.notify("update", f"Prometheus updated: {msg[:120]}")
-            if msg and background:
-                updater.restart_when_idle()
+            if msg:
+                updater.restart_when_idle()         # same way it was started, once nothing is running
         self.log = done
         store.audit("system", "daily", {"done": done})
         return done

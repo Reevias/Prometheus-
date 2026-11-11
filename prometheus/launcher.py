@@ -23,11 +23,55 @@ SHORTCUT_PS = (
 )
 
 
-def version() -> str:
+def version(code_dir: Path | None = None) -> str:
+    """This copy's version, read from its pyproject.toml (so it's right straight after an update)."""
+    import re as _re
+
+    try:
+        text = (Path(code_dir or CODE_DIR) / "pyproject.toml").read_text(encoding="utf-8")
+        m = _re.search(r'^version\s*=\s*"([^"]+)"', text, _re.M)
+        if m:
+            return m.group(1)
+    except OSError:
+        pass
     try:
         return metadata.version("prometheus")
     except metadata.PackageNotFoundError:
         return "dev"
+
+
+def update_report(code_dir: Path | None = None, run=None, fetch: bool = True) -> dict:
+    """This version and the newest on GitHub: {'current', 'commit', 'date', 'latest', 'behind', 'news', 'error'}."""
+    import re as _re
+
+    code_dir = Path(code_dir or CODE_DIR)
+    run = run or subprocess.run
+    out = {"current": version(code_dir), "commit": "", "date": "", "latest": "", "behind": 0, "news": [], "error": ""}
+
+    def git(*args: str) -> str:
+        proc = run(["git", "-C", str(code_dir), *args], capture_output=True, text=True, timeout=60)
+        if proc.returncode != 0:
+            raise RuntimeError((proc.stderr or "").strip()[-200:] or "git failed")
+        return (proc.stdout or "").strip()
+
+    if not (code_dir / ".git").exists():
+        out["error"] = "This copy isn't a Git checkout, so it can't check for updates."
+        return out
+    try:
+        out["commit"], out["date"] = git("log", "-1", "--format=%h|%cd", "--date=format:%d %b %Y").split("|")
+        if fetch:
+            git("fetch", "--quiet", "origin", "main")
+        out["behind"] = int(git("rev-list", "--count", "HEAD..origin/main") or 0)
+        remote = git("show", "origin/main:pyproject.toml")
+        m = _re.search(r'^version\s*=\s*"([^"]+)"', remote, _re.M)
+        out["latest"] = m.group(1) if m else out["current"]
+        if out["behind"]:
+            mine = set(git("show", "HEAD:CHANGELOG.md").splitlines())
+            theirs = git("show", "origin/main:CHANGELOG.md").splitlines()
+            out["news"] = [l[2:] for l in theirs if l.startswith("- ") and l not in mine][:8]
+    except Exception as e:                      # offline, or GitHub sign-in needed
+        out["error"] = f"Couldn't check GitHub ({str(e)[:120]})."
+    return out
 
 
 def remote_url(code_dir: Path = CODE_DIR) -> str:

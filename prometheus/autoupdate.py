@@ -51,7 +51,13 @@ class AutoUpdater:
         except Exception as e:                # offline, signed out of GitHub, local changes…
             self.last_error = str(e)[:200]
             return ""
-        self.updated = "A new version was installed. Restart Prometheus to use it."
+        from prometheus.launcher import version
+
+        try:
+            self.services.store.kv_set("update_to", version(self.code_dir))
+        except AttributeError:
+            pass
+        self.updated = "A new version was installed. Prometheus restarts by itself when nothing is running."
         self.services.store.audit("system", "auto_update", {})
         return self.updated
 
@@ -59,25 +65,51 @@ class AutoUpdater:
         if self._stop.wait(FIRST_CHECK):
             return
         while True:
-            if self.check_once() and background:
+            if self.check_once():
                 self.restart_when_idle()
             if self._stop.wait(CHECK_EVERY):
                 return
 
-    def restart_when_idle(self) -> None:
-        """Background mode only: start the new version and let this one end."""
-        voice = self.services.voice
-        while self.services.running or (voice is not None and voice.state() in ("listening", "thinking", "speaking")):
+    def busy(self) -> str:
+        """What would be interrupted by a restart right now ('' = nothing)."""
+        s = self.services
+        if s.running:
+            return "a task"
+        voice = getattr(s, "voice", None)
+        if voice is not None and voice.state() in ("listening", "thinking", "speaking"):
+            return "a voice command"
+        from prometheus.voice import reader
+
+        if reader.CURRENT is not None and reader.CURRENT.state in ("reading", "explaining"):
+            return "reading aloud"
+        try:
+            quiz = s.store._rows("SELECT 1 FROM quiz WHERE started > ? LIMIT 1", (time.time() - 1800,))
+        except Exception:
+            quiz = []
+        if quiz:
+            return "a quiz"
+        return ""
+
+    def restart_when_idle(self, mode: str | None = None, spawn=None, leave=None) -> None:
+        """Start the new version the same way this one was started (window, background or server) as soon as
+        nothing is running, and let this one end. The new one says what's new."""
+        while self.busy():
             if self._stop.wait(5):
                 return
+        mode = mode or os.environ.get("PROMETHEUS_MODE", "background")
+        if getattr(self.services.settings, "auto_restart", True) is False:
+            return
+        voice = getattr(self.services, "voice", None)
         if voice is not None:
             voice.stop()
+        self.services.store.kv_set("just_updated", self.services.store.kv_get("update_to", "") or "1")
         exe = Path(sys.executable)
         quiet = exe.with_name("pythonw.exe")
-        subprocess.Popen([str(quiet if quiet.exists() else exe), "-m", "prometheus.cli", "background", "--after-update"],
-                         cwd=str(self.code_dir), close_fds=True,
-                         creationflags=getattr(subprocess, "DETACHED_PROCESS", 0))
-        os._exit(0)
+        args = {"app": ["app"], "serve": ["serve"]}.get(mode, ["background", "--after-update"])
+        (spawn or subprocess.Popen)([str(quiet if quiet.exists() else exe), "-m", "prometheus.cli", *args],
+                                    cwd=str(self.code_dir), close_fds=True,
+                                    creationflags=getattr(subprocess, "DETACHED_PROCESS", 0))
+        (leave or os._exit)(0)
 
     def start(self, background: bool = False) -> None:
         threading.Thread(target=self.loop, args=(background,), name="prometheus-update", daemon=True).start()

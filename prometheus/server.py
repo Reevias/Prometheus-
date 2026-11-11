@@ -58,11 +58,41 @@ def describe_hook(github_event: str, data: dict) -> tuple[str, str]:
     return "Webhook", json.dumps(data)[:300]
 
 
+def _say_whats_new(services) -> None:
+    """Just restarted after an update: say which version this is and what's new, once."""
+    store = services.store
+    if not store.kv_get("just_updated"):
+        return
+    store.kv_set("just_updated", "")
+    from prometheus.launcher import CODE_DIR, version
+
+    news = []
+    try:
+        lines = (CODE_DIR / "CHANGELOG.md").read_text(encoding="utf-8").splitlines()
+        start = next(i for i, l in enumerate(lines) if l.startswith("## "))
+        for l in lines[start + 1:]:
+            if l.startswith("## "):
+                break
+            if l.startswith("- "):
+                news.append(l[2:].split(":")[0][:90])
+    except (OSError, StopIteration):
+        pass
+    text = f"Prometheus updated itself to version {version()}." + (
+        " What's new: " + "; ".join(news[:6]) + "." if news else "")
+    try:
+        chat = services.watchers.alerts_chat() if services.watchers is not None else store.create_chat("Prometheus alerts")
+        store.add_message(chat, "assistant", text, "update")
+        services.notify("update", text[:200])
+    except Exception:
+        pass
+
+
 def create_app(services: Services, background: bool = False) -> FastAPI:
     @asynccontextmanager
     async def lifespan(_app):
         if services.voice is not None:          # listening for "Prometheus" lives as long as the app
             services.voice.start_if_enabled()
+        _say_whats_new(services)
         if services.daily is not None:          # end of each day: repo of the day, then updating
             services.daily.start(background=background)
         if services.reminders is not None:

@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.2
+- `prometheus doctor` now says which version you have (with its date) and the newest on GitHub: "you're up to date", or how many updates are waiting and what's new in them.
+- Restarts by itself after an update: as soon as nothing is running (no task, voice command, quiz or reading aloud), Prometheus reopens the same way it was started (the window, in the background or as a server) and tells you what's new. Settings: auto_restart.
+
 ## 2.1
 - Prometheus on your phone (guide: docs/phone-setup.md): install it from Chrome ("Add to home screen") for its own icon and full-screen app. Real phone notifications (reminders, alerts, deadlines, summaries, "waiting for your yes"), even when it's closed; reminders that ring on the laptop reach the phone too. Hold 🎤 to talk and hear the answer. 📎 sends a photo or file: receipts go to your spending, homework is checked, PDFs summarised, recordings become lecture notes; phone photos are tagged and sortable. Bank SMS go into the money tracker through MacroDroid. The phone talks to the cloud copy; anything that needs the laptop (screen, files, apps) is passed to the laptop and done when it's on. The phone layout puts chats and pages in the ☰ menu.
 

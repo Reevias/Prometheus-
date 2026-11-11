@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import getpass
+import os
 import sys
 from dataclasses import replace
 
@@ -54,6 +55,7 @@ def _serve(args) -> int:
 
 
 def _app(args) -> int:
+    os.environ["PROMETHEUS_MODE"] = "app"       # after an update, restart into the window again
     settings = load_settings()
     if not settings.password_hash:
         print("No password yet. Run:  prometheus init")
@@ -124,6 +126,7 @@ def running_port() -> int:
 
 def _background(args) -> int:
     """No window: the app on its usual port, listening for "Prometheus" if voice is on. Used when Windows starts."""
+    os.environ["PROMETHEUS_MODE"] = "background"
     import uvicorn
 
     from prometheus.app import build_services
@@ -221,8 +224,21 @@ def _doctor(args) -> int:
 
     from prometheus.launcher import CODE_DIR, old_copy_warning, version
 
+    from prometheus.launcher import update_report
+
     settings = load_settings()
-    print(f"Prometheus:  {version()}  ({CODE_DIR})")
+    rep = update_report()
+    when = f", {rep['commit']} from {rep['date']}" if rep["commit"] else ""
+    print(f"Prometheus:  version {rep['current']}{when}  ({CODE_DIR})")
+    if rep["error"]:
+        print(f"Latest:      {rep['error']}")
+    elif rep["behind"]:
+        print(f"Latest:      version {rep['latest']} on GitHub: {rep['behind']} update(s) waiting. "
+              "They install by themselves tonight, or run:  prometheus update")
+        for line in rep["news"]:
+            print(f"   new: {line[:150]}{'…' if len(line) > 150 else ''}")
+    else:
+        print(f"Latest:      version {rep['latest']}: you're up to date.")
     warning = old_copy_warning()
     if warning:
         print(f"WARNING:     {warning}")
