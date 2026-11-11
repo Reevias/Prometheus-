@@ -51,7 +51,8 @@ class Watchers:
             except Exception:
                 pass
         loop = getattr(getattr(self.services, "voice", None), "loop", None)
-        if loop is not None and not loop.muted:
+        focusing = getattr(getattr(self.services, "focus", None), "active", lambda: False)()
+        if loop is not None and not loop.muted and not focusing:
             try:
                 loop.speaker.say(f"Sir, {text[0].lower() + text[1:]}")
             except Exception:

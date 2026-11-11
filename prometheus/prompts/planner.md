@@ -59,6 +59,7 @@ Plans:
 - Money: what the owner spent, budgets, or "I spent 300 on books" use the money agent (report, today, add, excel).
 - Something the owner copied or screenshotted recently ("that link I copied", "the text in my last screenshot")
   uses the clipboard agent.
+- Focus mode ("focus for 2 hours", "stop focus") uses the focus agent.
 - Exact sums, statistics, working with numbers in a CSV or Excel file, or drawing a chart: use the code agent with a
   complete Python script in "code" (print the answer; save charts as .png in the current folder) and the owner's
   files in "files". Scripts have no internet; never put keys or passwords in them.

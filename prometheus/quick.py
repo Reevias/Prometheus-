@@ -144,6 +144,15 @@ def understand(text: str, store=None, now: float | None = None) -> Quick | None:
         kind = "link" if m.group(1) in ("link", "url") else ""
         rest = next((g for g in m.groups()[1:] if g), "")
         return Quick(steps=[_step("clipboard", "What was copied", kind=kind, when=rest.strip())])
+    if re.search(r"^(?:stop|end|turn off|exit|cancel|quit) (?:the )?focus(?: mode)?$|^focus (?:mode )?off$", low):
+        return Quick(steps=[_step("focus", "Stop focus", action="stop")], action=True)
+    m = re.match(r"^(?:start |turn on )?focus(?: mode)?(?: on)?(?:\s+(?:for|until|till)?\s*(.*))?$|"
+                 r"^(?:i want to|let me|help me) focus(?:\s+(?:for|until|till)\s*(.*))?$", low)
+    if m:
+        rest = (m.group(1) or m.group(2) or "").strip()
+        until = re.search(r"\b(?:until|till)\b", low)
+        return Quick(steps=[_step("focus", "Start focus", action="start",
+                                  length=("until " + rest) if until and rest else rest)], action=True)
     from prometheus import money
 
     if money.TELL.match(t):

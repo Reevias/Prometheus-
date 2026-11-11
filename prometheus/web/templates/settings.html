@@ -173,6 +173,18 @@
     <button type="submit">Save</button>
   </form>
 
+  <h3>Focus mode</h3>
+  <form class="panel" hx-post="/settings/focus" hx-target="body" style="display:grid;gap:8px">
+    <p class="muted">Say "focus for 2 hours", "focus until 6" or "focus mode on" (until you say "stop focus"). Prometheus
+      holds its alerts (your reminders still ring) and tells you what came in at the end.</p>
+    <label class="check"><input type="checkbox" name="dnd" value="1" {{ "checked" if s.focus_dnd }}> Turn on Windows Do Not Disturb</label>
+    <label>Close these apps when focus starts <input name="apps" value="{{ s.focus_apps|join(', ') }}" style="width:100%"></label>
+    <label class="check"><input type="checkbox" name="pomodoro" value="1" {{ "checked" if s.focus_pomodoro }}> Pomodoro breaks:
+      <input name="work" value="{{ s.focus_work }}" style="width:50px" inputmode="numeric"> minutes work,
+      <input name="rest" value="{{ s.focus_break }}" style="width:50px" inputmode="numeric"> minutes break</label>
+    <button type="submit">Save</button>
+  </form>
+
   <h3>Clipboard and screenshot memory</h3>
   <form class="panel" hx-post="/settings/clips" hx-target="body" style="display:grid;gap:8px">
     <label class="check"><input type="checkbox" name="on" value="1" {{ "checked" if s.clip_on }}> Remember text and links

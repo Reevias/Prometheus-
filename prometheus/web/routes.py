@@ -929,6 +929,20 @@ def register_routes(app: FastAPI, services: Services) -> None:
 
         return [c for c, _ in CATEGORIES] + ["Transfers", "Other"]
 
+    @app.post("/settings/focus", response_class=HTMLResponse)
+    def save_focus(request: Request, dnd: str = Form(""), apps: str = Form(""), pomodoro: str = Form(""),
+                   work: str = Form("25"), rest: str = Form("5")):
+        s = services.settings
+        try:
+            s.focus_work, s.focus_break = max(5, min(180, int(work))), max(1, min(60, int(rest)))
+        except ValueError:
+            return settings_page(request, 400, error="Work and break are minutes, like 25 and 5.")
+        s.focus_dnd, s.focus_pomodoro = bool(dnd), bool(pomodoro)
+        s.focus_apps = [a.strip()[:40] for a in apps.split(",") if a.strip()][:20]
+        save_settings(s)
+        store.audit("user", "focus_settings", {"apps": len(s.focus_apps)})
+        return settings_page(request, saved=True)
+
     @app.post("/settings/clips", response_class=HTMLResponse)
     def save_clips(request: Request, on: str = Form("")):
         services.settings.clip_on = bool(on)

@@ -63,6 +63,7 @@ class Services:
     briefing: object = None
     file_index: object = None
     clips: object = None
+    focus: object = None
     photos: object = None
     laptop: object = None
     browser: object = None
@@ -70,6 +71,8 @@ class Services:
 
     def notify(self, kind: str, text: str) -> bool:
         """A Windows notification, if the owner wants this kind (Settings → Notifications)."""
+        if self.focus is not None and kind != "reminder" and self.focus.hold(text):
+            return False                       # focus mode: kept for the summary at the end
         wanted = {"task": "notify_tasks", "waiting": "notify_waiting", "briefing": "notify_briefing",
                   "repo": "notify_repo", "update": "notify_updates"}.get(kind)
         if wanted and not getattr(self.settings, wanted, True):
@@ -315,7 +318,7 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
         _lp = _Laptop()
     else:
         _lp = None
-    services.watchers = Watchers(services, laptop=_lp, notify=_notify)
+    services.watchers = Watchers(services, laptop=_lp, notify=lambda text: services.notify("alert", text))
     services.laptop = _lp
     services.browser = browser_agent.SESSION
     code_agent.SERVICES = services
@@ -383,6 +386,10 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
                                       reader=_clip.windows_clipboard_text if _sys2.platform == "win32" else None,
                                       ocr=_ocr if _ocr.looker is not None else None)
     _clip.CURRENT = services.clips
+    from prometheus import focus as _focus
+    from prometheus.agents import focus_agent as _fa
+
+    services.focus = _fa.FOCUS = _focus.Focus(services, laptop=_lp)
     return services
 
 

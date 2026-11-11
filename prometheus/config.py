@@ -64,6 +64,11 @@ class Settings:
     notify_briefing: bool = True
     notify_repo: bool = True
     notify_updates: bool = True
+    focus_dnd: bool = True                 # Windows Do Not Disturb during focus
+    focus_apps: list = field(default_factory=lambda: ["WhatsApp", "Discord", "Telegram", "Instagram", "Steam"])
+    focus_pomodoro: bool = True
+    focus_work: int = 25                   # minutes
+    focus_break: int = 5
     clip_on: bool = True                   # remember copied text and screenshot text (7 days, never secrets)
     clip_days: int = 7
     money_on: bool = True                  # read bank and UPI alerts from the connected email

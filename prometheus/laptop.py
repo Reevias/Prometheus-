@@ -620,6 +620,24 @@ def install_app(self, package: str, source: str = "") -> str:
     return f"Installed {package}."
 
 
+DND_SCRIPT = r"""
+$v = [int]$env:PROM_ON
+$k = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Notifications\Settings'
+if (-not (Test-Path $k)) { New-Item -Path $k -Force > $null }
+Set-ItemProperty -Path $k -Name 'NOC_GLOBAL_SETTING_TOASTS_ENABLED' -Value $v -Type DWord
+$p = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\PushNotifications'
+if (-not (Test-Path $p)) { New-Item -Path $p -Force > $null }
+Set-ItemProperty -Path $p -Name 'ToastEnabled' -Value $v -Type DWord
+"""
+
+
+def do_not_disturb(self, on: bool) -> str:
+    """Windows notification banners off (on=True) or back on. Prometheus's own notifications are held separately."""
+    self._need_windows()
+    _ps(self, DND_SCRIPT, {"PROM_ON": "0" if on else "1"})
+    return "Do not disturb is on." if on else "Notifications are back on."
+
+
 for _f in (app_open, app_close, window, apps_running, volume, mute, brightness, dark_mode, screenshot, type_text,
-           press_keys, click, power, install_app, store_open, find_package, notify, cpu_load):
+           press_keys, click, power, install_app, store_open, find_package, notify, cpu_load, do_not_disturb):
     setattr(Laptop, _f.__name__, _f)
