@@ -140,10 +140,22 @@ class VoiceService:
             pass
         return text
 
-    def restart(self) -> None:
-        if self.loop is not None:
-            self.stop()
-            self.start()
+    def restart(self, wait: bool = False) -> None:
+        """Start listening again with new settings. In the background by default: loading the speech models takes
+        a while, and the Settings page shouldn't hang meanwhile."""
+        if self.loop is None:
+            return
+
+        def again():
+            try:
+                self.stop()
+                self.start()
+            except Exception as e:
+                self.error = f"Voice could not restart: {type(e).__name__}: {e}"
+        if wait:
+            again()
+        else:
+            threading.Thread(target=again, name="prometheus-voice-restart", daemon=True).start()
 
     def stop(self) -> None:
         with self._lock:

@@ -1,6 +1,9 @@
 # Changelog
 
 ## 2.3
+- Fixed: buttons saying {"detail":"Not Found"}, a squeezed Settings page and keys that looked unsaved. After an update from outside (running the installer again), the open Prometheus kept running the old code with the new pages. Now it notices new code within a minute and restarts by itself when nothing is running, and the installer closes a running Prometheus first.
+- Fixed: buttons that reload the whole page could stop working (a script ran twice and crashed). Errors now show a short message at the bottom instead of replacing the window; a whole page is never squeezed into a small box. Every button on every page was clicked through in a test.
+- Saving the ElevenLabs key says right next to the box whether it worked (and why not), and the voice restarts in the background instead of holding the page.
 - Install with one line in PowerShell (`irm https://raw.githubusercontent.com/Reevias/Prometheus-/main/scripts/install-windows.ps1 | iex`), or download **Prometheus-Setup.exe** from the Releases page. Both get Git and Python by themselves when they're missing. GitHub builds the installer and the Android app on every release.
 - **Prometheus.apk**: the Android app, one download. It opens your cloud copy full screen inside Chrome, so notifications, the microphone and sending photos all work. The "Get it on your phone" page has the download and an "Open in the app" button that fills in the address.
 - Prometheus's own icon in Windows search and the Start menu (the shortcut now carries the same app id as the window, and the icon lives in a fixed place).

@@ -175,3 +175,24 @@ def test_shortcut_gets_the_app_id_and_a_stable_icon(monkeypatch, tmp_path):
     assert all(e["PROM_ICON"] == str(tmp_path / "Local" / "Prometheus" / "prometheus.ico") for e in seen)
     assert (tmp_path / "Local" / "Prometheus" / "prometheus.ico").exists()
     assert "System.AppUserModel" in launcher.SHORTCUT_PS or "9F4C2855" in launcher.SHORTCUT_PS
+
+
+def test_page_scripts_survive_being_run_twice_and_errors_never_replace_the_page(app_client):
+    import re
+
+    client, _ = app_client()
+    login(client)
+    page = client.get("/settings").text
+    scripts = re.findall(r"<script>(.*?)</script>", page, re.S)
+    # buttons that reload the whole page run these scripts again: a top-level const/let would crash the second time
+    assert not any(re.search(r"^  (?:const|let) ", s, re.M) for s in scripts)
+    assert "promErrorsReady" in page and "htmx:beforeSwap" in page and "shouldSwap = false" in page
+
+
+def test_saving_the_elevenlabs_key_answers_next_to_the_box(app_client):
+    client, services = app_client()
+    csrf = login(client)
+    bad = client.post("/settings/keys", data={"name": "ELEVENLABS_API_KEY", "value": "sk_abcdef123456",
+                                              "password": "nope"}, headers={"X-CSRF-Token": csrf})
+    voice = bad.text.split('id="voice"', 1)[-1].split('id="connections"', 1)[0]
+    assert "Wrong password" in voice or "password" in voice.lower()

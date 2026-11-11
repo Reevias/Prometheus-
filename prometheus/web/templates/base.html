@@ -88,6 +88,38 @@
     document.querySelectorAll("canvas[data-orb]").forEach((c) => { if (c.dataset.state !== state) c.dataset.state = state; });
   }
   document.body.addEventListener("htmx:afterSwap", () => { syncOrbs(); if (window.PrometheusOrb) PrometheusOrb.start(); });
+
+  if (!window.promErrorsReady) {   // pages swapped into the window run this script again: set it up once
+  window.promErrorsReady = true;
+  // Every button gives an answer. A reply that is a real page (a form with its error message) is shown; anything else
+  // (a bare "Not Found", a crash, no connection) never replaces the page: a short message says what happened.
+  function promToast(text) {
+    let t = document.getElementById("prom-toast");
+    if (!t) { t = document.createElement("div"); t.id = "prom-toast"; t.setAttribute("role", "status"); document.body.appendChild(t); }
+    t.textContent = text; t.hidden = false;
+    clearTimeout(t._timer); t._timer = setTimeout(() => { t.hidden = true; }, 7000);
+  }
+  var promWhy = (code) => code === 404 || code === 405
+    ? "That button isn't in the running Prometheus yet: it was just updated. It restarts by itself in a minute; then try again."
+    : code === 403 ? "Not allowed: your sign-in ran out or the password was wrong. Sign in again and retry."
+    : code === 413 ? "That's too big to send."
+    : code >= 500 ? "Something went wrong on Prometheus's side. It's in the log; try again, or restart Prometheus."
+    : "That didn't work (" + code + ").";
+  document.body.addEventListener("htmx:beforeSwap", (e) => {
+    const xhr = e.detail.xhr;
+    // a whole page meant for the window never goes inside one small box (that squeezed Settings into a column)
+    if (e.detail.target !== document.body && /<main\b/i.test(xhr.responseText || "")) {
+      e.detail.shouldSwap = false;
+      htmx.swap(document.body, xhr.responseText, { swapStyle: "innerHTML" });
+      return;
+    }
+    if (xhr.status < 400) return;
+    const html = (xhr.getResponseHeader("content-type") || "").includes("text/html") && /<(main|form|p|div|section)\b/i.test(xhr.responseText || "");
+    if (!html) { e.detail.shouldSwap = false; promToast(promWhy(xhr.status)); }
+  });
+  document.body.addEventListener("htmx:sendError", () => promToast("Prometheus isn't answering. Is it still running? If it just updated, wait a moment."));
+  document.body.addEventListener("htmx:timeout", () => promToast("That's taking too long. Try again in a moment."));
+  }
 </script>
 </body>
 </html>

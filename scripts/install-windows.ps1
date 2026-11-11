@@ -24,6 +24,15 @@ function Get-Tool($Name, $WingetId) {
 Get-Tool git "Git.Git"
 Get-Tool py "Python.Python.3.12"
 
+# A Prometheus that is open keeps running the old code (its buttons would say "Not Found"): close it first.
+$Running = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+    Where-Object { $_.Name -like "python*" -and $_.CommandLine -match "prometheus\.cli" }
+if ($Running) {
+    Write-Host "Closing the running Prometheus so it can be updated..."
+    $Running | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+    Start-Sleep -Seconds 2
+}
+
 # Newest installed Python that is 3.12 or later.
 $Py = $null
 foreach ($v in "3.14", "3.13", "3.12") {

@@ -148,7 +148,9 @@
       without internet, it uses the voice on this laptop instead. Make a key at <code>elevenlabs.io/app/settings/api-keys</code>.</p>
       <p style="margin:0">Using now: <strong>{{ "ElevenLabs" if voice.engine == "elevenlabs" else "the laptop's own voice" }}</strong>
         {% if voice.heard_by == "local" %}<span class="muted">(last command fell back to the laptop: check the key, credits or internet)</span>{% endif %}</p>
-      <form hx-post="/settings/keys" hx-target="body" class="row">
+      {% if key_error %}<p class="error" style="margin:0">{{ key_error }}</p>{% endif %}
+      {% if key_saved and "ElevenLabs" in key_saved %}<p class="status-done" style="margin:0">ElevenLabs key saved. The voice restarts with it in a few seconds.</p>{% endif %}
+      <form hx-post="/settings/keys#voice" hx-target="body" class="row">
         <span class="{{ 'status-done' if eleven_key else 'muted' }}">{{ "Key set ✓" if eleven_key else "No key yet" }}</span>
         <input type="hidden" name="name" value="ELEVENLABS_API_KEY">
         <input type="text" class="secret" spellcheck="false" data-lpignore="true" data-1p-ignore name="value" placeholder="Paste the ElevenLabs key" autocomplete="off" required>

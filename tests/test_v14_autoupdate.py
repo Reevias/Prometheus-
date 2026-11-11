@@ -63,3 +63,16 @@ def test_voice_offers_heart_and_fable(app_client):
     assert client.post("/settings/voice/name", data={"name": "am_michael"}, headers=h).status_code == 400
     assert client.post("/settings/autoupdate", data={}, headers=h).status_code == 200
     assert services.settings.auto_update is False
+
+
+def test_restarts_when_the_code_was_updated_from_outside(tmp_path):
+    (tmp_path / ".git").mkdir()
+    heads = iter(["aaa", "aaa", "bbb"])
+
+    def run(argv, **kw):
+        return subprocess.CompletedProcess(argv, 0, next(heads) if "rev-parse" in argv else "0", "")
+
+    up = AutoUpdater(fake_services(), tmp_path, run=run, updater=lambda d: None)
+    up.started_at = up.head()
+    assert not up.code_changed()           # same code: nothing to do
+    assert up.code_changed()               # the installer pulled new code while this one runs

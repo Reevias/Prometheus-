@@ -16,6 +16,7 @@ from prometheus.launcher import CODE_DIR, update
 
 CHECK_EVERY = 6 * 3600       # seconds between checks
 FIRST_CHECK = 90             # seconds after start, so starting up stays fast
+CODE_CHECK = 60              # seconds between looks at whether the code was updated from outside
 
 
 class AutoUpdater:
@@ -27,6 +28,22 @@ class AutoUpdater:
         self.updated = ""        # shown in the app once a new version is installed
         self.last_error = ""
         self._stop = threading.Event()
+        self.started_at = ""                 # the code this process is running (read when the loop starts)
+
+    def head(self) -> str:
+        """The commit the code folder is on now ('' when it isn't a Git checkout)."""
+        if not (self.code_dir / ".git").exists():
+            return ""
+        try:
+            return self._git("rev-parse", "HEAD")
+        except Exception:
+            return ""
+
+    def code_changed(self) -> bool:
+        """True when the code on disk is newer than what's running (updated by the installer, by hand…).
+        Running on: new pages would call buttons this old process doesn't know ("Not Found")."""
+        now = self.head()
+        return bool(self.started_at and now and now != self.started_at)
 
     def _git(self, *args: str) -> str:
         proc = self.run(["git", "-C", str(self.code_dir), *args], capture_output=True, text=True, encoding="utf-8",
@@ -63,13 +80,18 @@ class AutoUpdater:
         return self.updated
 
     def loop(self, background: bool = False) -> None:
-        if self._stop.wait(FIRST_CHECK):
-            return
-        while True:
-            if self.check_once():
+        self.started_at = self.head()
+        last_check = time.monotonic() - CHECK_EVERY + FIRST_CHECK
+        while not self._stop.wait(CODE_CHECK):
+            if self.code_changed():
+                self.updated = "Prometheus was updated. It restarts by itself when nothing is running."
                 self.restart_when_idle()
-            if self._stop.wait(CHECK_EVERY):
                 return
+            if time.monotonic() - last_check >= CHECK_EVERY:
+                last_check = time.monotonic()
+                if self.check_once():
+                    self.restart_when_idle()
+                    return
 
     def busy(self) -> str:
         """What would be interrupted by a restart right now ('' = nothing)."""
