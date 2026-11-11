@@ -1,9 +1,15 @@
 # Prometheus: what is still missing
 
-Updated 11 November 2026. Version 1.4. Built, tested here and on GitHub: 647 tests pass on Python 3.12 and 3.14.
+Updated 11 November 2026. Version 1.4. Built and tested here: 675 tests pass.
 Not yet run end to end on the owner's real laptop.
 
 ## Just finished
+- **Daily summary**: morning briefing (08:00) and evening wrap-up (21:00) with weather, calendar, important email, reminders and what Prometheus did.
+- **Email alerts and webhooks**: new mail from chosen senders every 5 minutes; a secret webhook address other apps (like GitHub) can call.
+- **Browser automation**: its own visible Edge window and profile; pay/order on the Approvals page, sign in/submit/post asked in the chat, passwords typed only by you, Take over button.
+- **Code sandbox**: scripts shown and asked first; Windows Sandbox when the laptop has it, otherwise a locked-down Python with no internet (asked per run), no access to your folders or keys, time and memory limits.
+- **Google Calendar and Drive**: add and move events (asked first), search and read Drive files.
+- **Excel and slides**: tables become .xlsx with totals and charts; notes become .pptx decks with speaker notes.
 - **Connections**: email from any provider (app password; reads without marking read; sending waits for approval), calendars through their secret iCal link, and any app with an MCP server (Notion, Slack, Spotify…).
 - **Learning from failed tasks**: what failed and what worked is written down and used next time; general lessons become nightly rules.
 - **Standing goals and watchers**: scheduled tasks ("every night tidy Downloads"); battery, disk, CPU and folder alerts.
@@ -13,21 +19,21 @@ Not yet run end to end on the owner's real laptop.
 ## 1. Planning and autonomy
 1. **Long goals in the background**: done (standing goals).
 2. **Learning from its own failed tasks**: done.
-3. **Daily summary**: what happened today, what is coming tomorrow, spoken and written. (Chosen at the start, not built.)
+3. **Daily summary**: done.
 
 ## 2. Senses and triggers
 4. **Seeing the screen**: understand a screenshot so it can click "the Download button" instead of exact positions.
 5. **Camera**: one photo when asked ("what am I holding?"), never always on.
 6. **Watchers**: done (battery, disk, CPU, folders).
-7. **Email and webhook triggers**: email reading is done; still missing: alerts when a new email arrives, and webhooks.
+7. **Email and webhook triggers**: done.
 
 ## 3. Tools
 8. **MCP support**: done (command or web address; changes asked in the chat).
-9. **Browser automation**: forms, logins, clicking through sites, in its own browser profile; asks before logging in, submitting, paying or posting.
-10. **Running code safely**: a sandbox (Windows Sandbox on Pro, otherwise a locked Python) with one scratch folder, no network, time and memory limits.
-11. **Gmail, Google Calendar and Drive**: email and calendar reading are done (any provider); still missing: adding calendar events and Google Drive.
+9. **Browser automation**: done.
+10. **Running code safely**: done. (The Windows Sandbox path is untested until the real laptop.)
+11. **Gmail, Google Calendar and Drive**: done (needs your Google sign-in in Settings).
 12. **Phone access**: on home Wi-Fi first (QR code), then anywhere with Tailscale.
-13. **Excel and slides** as outputs. (PDF and Word are done.)
+13. **Excel and slides**: done.
 14. **Search inside files**: find the file that mentions "invoice 4521", not only by name.
 
 ## 4. Memory
@@ -47,15 +53,15 @@ Not yet run end to end on the owner's real laptop.
 
 ## 7. Other agents
 24. **Hermes agent** on the desktop PC.
-25. **Self-edit level 2**: running tools Prometheus wrote itself (needs the code sandbox, item 10).
+25. **Self-edit level 2**: running tools Prometheus wrote itself (now possible with the code sandbox).
 26. **Antigravity calling Prometheus** the other way round (Prometheus as a tool server).
 
 ## 8. Safety still to add
-27. **Code sandbox** (with item 10).
+27. **Code sandbox**: done.
 28. **Automatic prompt-injection tests** (garak).
 
 ## 9. Testing still owed
-29. **First full run on the real laptop**: Wi-Fi on non-English Windows, WPA3 networks, voice on the real microphone, real GitHub and Antigravity calls, the reminder pop-up.
+29. **First full run on the real laptop**: Wi-Fi on non-English Windows, WPA3 networks, voice on the real microphone, real GitHub and Antigravity calls, the reminder pop-up, the Edge browser window, Windows Sandbox, Google sign-in.
 30. **Voice tuning** from real use: the wake phrase "Hello Prometheus, what time is it?" woke 6 times in 10 in testing; the others 9 or 10 in 10.
 31. **Small leftovers**: one bad model name pauses its whole provider for 5 minutes; Remove can't delete a key set with `setx`; the browser may offer to save an API key as a password.
 
@@ -66,12 +72,18 @@ Not yet run end to end on the owner's real laptop.
 35. **2 or 3 exact tasks that went wrong**, to keep as permanent tests.
 36. **Ollama running** for private answers (file and note questions use the local model only).
 
+## 11. Suggested new features
+37. **Study coach**: makes quizzes and flashcards from your notes and PDFs, then reminds you to review them on a spaced schedule (harder cards come back sooner). Scores show in the evening wrap-up.
+38. **Money tracker**: reads bank and UPI emails ("Rs 450 debited at Swiggy"), adds each payment to one Excel sheet by category, and shows the day's and month's spending in the evening wrap-up. Stays on the laptop.
+39. **Clipboard and screenshot memory**: remembers what you copied and the text in your screenshots, so "what was that link I copied this morning?" works. Passwords and card numbers are never kept.
+40. **Focus mode**: "focus for 50 minutes": mutes alerts, closes or blocks distracting sites in its browser, holds non-urgent notifications, then gives a short summary of what came in.
+41. **Weekly laptop health check**: every Sunday, disk space, big old files, startup apps slowing the laptop, Windows updates waiting, battery health, with one-click fixes asked first.
+
 ## Suggested order
 1. Memory links and fact updates (15, 16)
-2. New-email alerts, calendar events, Drive (7, 11)
-3. Phone on Wi-Fi (12)
-4. Seeing the screen (4)
-5. Browser automation (9)
-6. Code sandbox (10, 27)
-7. Daily summary, Excel and slides, search inside files, tray icon, cost dashboard (3, 13, 14, 22, 23)
-8. Photos, camera, gestures, images and video (18 to 21, 5)
+2. Phone on Wi-Fi (12)
+3. Seeing the screen (4)
+4. Search inside files, tray icon, cost dashboard (14, 22, 23)
+5. Study coach and money tracker (37, 38)
+6. Focus mode, laptop health check, clipboard memory (39 to 41)
+7. Photos, camera, gestures, images and video (18 to 21, 5)
