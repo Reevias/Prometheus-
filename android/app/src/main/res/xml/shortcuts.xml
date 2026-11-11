@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut android:shortcutId="change" android:enabled="true" android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/change_address">
+        <intent android:action="com.reevias.prometheus.SETUP"
+            android:targetPackage="com.reevias.prometheus"
+            android:targetClass="com.reevias.prometheus.MainActivity" />
+    </shortcut>
+</shortcuts>

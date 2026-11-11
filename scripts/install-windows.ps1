@@ -3,6 +3,8 @@
 #   irm https://raw.githubusercontent.com/Reevias/Prometheus-/main/scripts/install-windows.ps1 | iex
 # It also gets Git and Python by itself (through winget) when they're missing. Prometheus-Setup.exe runs this too.
 $ErrorActionPreference = "Stop"
+# If something goes wrong, say what and keep the window open so it can be read.
+trap { Write-Host ""; Write-Host "Prometheus could not be installed: $_" -ForegroundColor Red; Read-Host "Press Enter to close"; break }
 $Repo = "https://github.com/Reevias/Prometheus-.git"
 $Dir = Join-Path $env:USERPROFILE "Prometheus-"
 

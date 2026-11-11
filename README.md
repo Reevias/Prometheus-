@@ -35,31 +35,31 @@ or a private model on the laptop. Your files only ever go to the local model unl
 **Safety:** small actions asked in the chat, big ones on the Approvals page, paying always approved, every file
 change undoable, a built-in prompt-injection safety check, a spending limit.
 
-## Install (Windows, PowerShell)
+## Install on Windows
 
-You need **Python 3.12 or newer** and **Git**. Then run this once in PowerShell:
+**One line**, in PowerShell:
 
 ```powershell
-git clone https://github.com/Reevias/Prometheus-.git $env:USERPROFILE\Prometheus-
-powershell -ExecutionPolicy Bypass -File $env:USERPROFILE\Prometheus-\scripts\install-windows.ps1
+irm https://raw.githubusercontent.com/Reevias/Prometheus-/main/scripts/install-windows.ps1 | iex
 ```
 
-The repository is private, so the first command asks you to sign in to GitHub in your browser (once). If the
-repository is ever made public, this one line does both steps:
-`irm https://raw.githubusercontent.com/Reevias/Prometheus-/main/scripts/install-windows.ps1 | iex`
+**Or download the installer:** [Prometheus-Setup.exe](https://github.com/Reevias/Prometheus-/releases/latest/download/Prometheus-Setup.exe)
+(from the [Releases](https://github.com/Reevias/Prometheus-/releases) page). Windows may say "Windows protected your
+PC" because the file isn't signed: click **More info**, then **Run anyway**.
 
-It downloads Prometheus to `%USERPROFILE%\Prometheus-`, installs it with the newest Python you have, asks you to
-choose a password (first time only, at least 10 characters) and puts a **Prometheus** shortcut on your desktop
-and in the Start menu.
+Either way it gets Git and Python if they're missing, downloads Prometheus to `%USERPROFILE%\Prometheus-`, asks you
+to choose a password (first time only, at least 10 characters) and puts **Prometheus**, with its own icon, on your
+desktop and in the Start menu. Run it again any time to update.
 
 ## On your phone
 
-Prometheus installs on your phone as an app from the browser (no Play Store), with notifications, hold-to-talk
-and sending photos:
+**Android:** download [Prometheus.apk](https://github.com/Reevias/Prometheus-/releases/latest/download/Prometheus.apk)
+in Chrome on the phone and open it (Android asks once to allow installing from Chrome). **iPhone:** add it to the
+home screen from Safari. Either way you get notifications, hold-to-talk and sending photos:
 
 1. Set up the always-on **cloud copy** once (free Oracle Cloud machine): [`docs/cloud-setup.md`](docs/cloud-setup.md).
 2. Install **Tailscale** on the phone and sign in.
-3. On the laptop open ☰ → **Get it on your phone** and scan the QR code, then **Add to home screen**.
+3. On the laptop open ☰ → **Get it on your phone**, scan the QR code and follow the steps there.
 
 Everything else (notifications, bank SMS, letting Prometheus control the phone): [`docs/phone-setup.md`](docs/phone-setup.md).
 

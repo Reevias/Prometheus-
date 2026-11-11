@@ -665,7 +665,8 @@ def register_routes(app: FastAPI, services: Services) -> None:
             buf = _io.BytesIO()
             img.save(buf, format="PNG")
             qr = _b64.b64encode(buf.getvalue()).decode()
-        return page(request, "phone.html", address=address, qr=qr)
+        return page(request, "phone.html", address=address, qr=qr,
+                    apk_url="https://github.com/Reevias/Prometheus-/releases/latest/download/Prometheus.apk")
 
     @app.get("/costs", response_class=HTMLResponse)
     def costs(request: Request):

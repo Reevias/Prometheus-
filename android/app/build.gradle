@@ -1,0 +1,41 @@
+// Prometheus for Android: opens your Prometheus cloud copy as a full-screen app inside Chrome (a Trusted Web
+// Activity), so phone notifications, the microphone and file uploads work exactly as in Chrome.
+plugins { id "com.android.application" }
+
+def keystore = System.getenv("PROM_KEYSTORE")      // set by the release workflow when the signing key secret exists
+
+android {
+    namespace "com.reevias.prometheus"
+    compileSdk 34
+    defaultConfig {
+        applicationId "com.reevias.prometheus"
+        minSdk 23
+        targetSdk 34
+        versionCode((System.getenv("PROM_VERSION_CODE") ?: "1") as int)
+        versionName(System.getenv("PROM_VERSION") ?: "dev")
+    }
+    signingConfigs {
+        if (keystore) {
+            release {
+                storeFile file(keystore)
+                storePassword System.getenv("PROM_KEYSTORE_PASSWORD")
+                keyAlias System.getenv("PROM_KEY_ALIAS") ?: "prometheus"
+                keyPassword System.getenv("PROM_KEYSTORE_PASSWORD")
+            }
+        }
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig keystore ? signingConfigs.release : signingConfigs.debug
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+dependencies {
+    implementation "com.google.androidbrowserhelper:androidbrowserhelper:2.5.0"
+}

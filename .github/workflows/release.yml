@@ -1,0 +1,111 @@
+name: Release
+
+# Builds Prometheus-Setup.exe (Windows) and Prometheus.apk (Android) and puts them on a GitHub Release.
+# Runs when a version tag like v2.3.0 is pushed, or by hand from the Actions tab ("Run workflow").
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - id: v
+        name: Read the version
+        shell: bash
+        run: echo "version=$(python -c "import re;print(re.search(r'^version\s*=\s*\"([^\"]+)\"',open('pyproject.toml').read(),re.M).group(1))")" >> "$GITHUB_OUTPUT"
+      - name: Check the shortcut gets the Prometheus icon and app id
+        shell: pwsh
+        run: |
+          pip install -e .
+          $home2 = Join-Path $env:RUNNER_TEMP "home"
+          New-Item -ItemType Directory -Force -Path (Join-Path $home2 "Desktop") | Out-Null
+          $env:USERPROFILE = $home2; $env:APPDATA = Join-Path $home2 "AppData\Roaming"; $env:LOCALAPPDATA = Join-Path $home2 "AppData\Local"
+          python -c "from prometheus.launcher import make_shortcuts; print(make_shortcuts())"
+          $lnk = Join-Path $home2 "Desktop\Prometheus.lnk"
+          if (-not (Test-Path $lnk)) { throw "no shortcut made" }
+          $item = (New-Object -ComObject Shell.Application).NameSpace((Split-Path $lnk)).ParseName("Prometheus.lnk")
+          $id = $item.ExtendedProperty("System.AppUserModel.ID")
+          $icon = (New-Object -ComObject WScript.Shell).CreateShortcut($lnk).IconLocation
+          Write-Host "App id: $id  Icon: $icon"
+          if ($id -ne "Reevias.Prometheus") { throw "the shortcut has no Prometheus app id" }
+          if ($icon -notlike "*prometheus.ico*") { throw "the shortcut has no Prometheus icon" }
+      - name: Build Prometheus-Setup.exe
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\iscc.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress; }
+          & $iscc "/DAppVersion=${{ steps.v.outputs.version }}" installer\prometheus.iss
+          if ($LASTEXITCODE -ne 0) { throw "installer build failed" }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: dist/Prometheus-Setup.exe
+
+  android:
+    runs-on: ubuntu-latest
+    needs: windows
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+      - name: Signing key (if the ANDROID_KEYSTORE secret is set; otherwise a test key)
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/prometheus.jks"
+            echo "PROM_KEYSTORE=$RUNNER_TEMP/prometheus.jks" >> "$GITHUB_ENV"
+          else
+            echo "::warning::No ANDROID_KEYSTORE secret: the APK is signed with a test key, so each new version must be installed fresh (uninstall the old one first)."
+          fi
+      - name: Build Prometheus.apk
+        env:
+          PROM_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          PROM_VERSION: ${{ needs.windows.outputs.version }}
+          PROM_VERSION_CODE: ${{ github.run_number }}
+        run: |
+          gradle -p android assembleRelease --no-daemon
+          mkdir -p dist && cp android/app/build/outputs/apk/release/app-release.apk dist/Prometheus.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android
+          path: dist/Prometheus.apk
+
+  release:
+    runs-on: ubuntu-latest
+    needs: [windows, android]
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || format('v{0}', needs.windows.outputs.version) }}
+          name: Prometheus ${{ needs.windows.outputs.version }}
+          target_commitish: ${{ github.sha }}
+          files: |
+            dist/Prometheus-Setup.exe
+            dist/Prometheus.apk
+          body: |
+            **Windows:** download Prometheus-Setup.exe and open it. Windows may say "Windows protected your PC" because the file isn't signed: click More info, then Run anyway.
+            Or install with one line in PowerShell:
+            `irm https://raw.githubusercontent.com/Reevias/Prometheus-/main/scripts/install-windows.ps1 | iex`
+
+            **Android:** download Prometheus.apk in Chrome on the phone and open it (allow "install unknown apps" for Chrome once). Then type your cloud copy's address, or tap "Open in the app" on the laptop's Get it on your phone page.

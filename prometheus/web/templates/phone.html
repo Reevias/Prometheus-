@@ -12,16 +12,30 @@
   <p class="empty muted">Set up the cloud copy first (Settings → Cloud copy, guide in <code>docs/cloud-setup.md</code>): the phone
     always talks to it, so it works when this laptop is off. Its address then appears here as a QR code.</p>
   {% endif %}
+  <section class="panel" style="display:grid;gap:10px">
+    <h3 style="margin:0">Android: the Prometheus app (one download)</h3>
+    <ol style="margin:0">
+      <li>Install <strong>Tailscale</strong> on the phone (Play Store) and sign in with the same account as the cloud copy.</li>
+      <li>On the phone, open this page (scan the code above) and press <strong>Download the app</strong>. Open the file;
+        Android asks once to allow installing from Chrome.</li>
+      <li>Open Prometheus from its new icon. Press <strong>Open in the app</strong> below (or type the address), then sign in.</li>
+      <li>☰ → <strong>Turn on phone notifications</strong>.</li>
+    </ol>
+    <div class="row">
+      <a class="button primary" href="{{ apk_url }}">Download the app (Prometheus.apk)</a>
+      {% if address %}<a class="button" href="prometheus://open?url={{ address|urlencode }}">Open in the app</a>{% endif %}
+    </div>
+  </section>
   <section class="panel">
-    <h3 style="margin-top:0">Steps</h3>
+    <h3 style="margin-top:0">iPhone, or without the app</h3>
     <ol>
-      <li>Install <strong>Tailscale</strong> on the phone (Play Store / App Store) and sign in with the same account as the cloud copy.</li>
-      <li>Scan the code above (or type the address in Chrome) and sign in with your Prometheus password.</li>
+      <li>Install <strong>Tailscale</strong> and sign in with the same account as the cloud copy.</li>
+      <li>Scan the code above (or type the address in the browser) and sign in with your Prometheus password.</li>
       <li>Chrome menu ⋮ → <strong>Add to home screen</strong> → Install. (iPhone: Safari → Share → Add to Home Screen.)</li>
       <li>Open it from the new icon → ☰ → <strong>Turn on phone notifications</strong>.</li>
-      <li>Optional: bank SMS into the money tracker (MacroDroid) and letting Prometheus control the phone (wireless
-        debugging): Settings → Phone control, and <code>docs/phone-setup.md</code>.</li>
     </ol>
+    <p class="muted" style="margin:0">Optional: bank SMS into the money tracker (MacroDroid) and letting Prometheus control the
+      phone (wireless debugging): Settings → Phone control, and <code>docs/phone-setup.md</code>.</p>
   </section>
 </main>
 {% endblock %}
