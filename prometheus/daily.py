@@ -57,6 +57,8 @@ class DailyJobs:
         if updater is not None:
             msg = updater.check_once()
             done.append(msg or "No update needed.")
+            if msg and hasattr(self.services, "notify"):
+                self.services.notify("update", f"Prometheus updated: {msg[:120]}")
             if msg and background:
                 updater.restart_when_idle()
         self.log = done

@@ -813,6 +813,17 @@ def register_routes(app: FastAPI, services: Services) -> None:
         store.audit("user", "app_removed", {"name": name})
         return settings_page(request, saved=True)
 
+    @app.post("/settings/notifications", response_class=HTMLResponse)
+    async def save_notifications(request: Request):
+        form = await request.form()
+        on = set(form.getlist("on"))
+        s = services.settings
+        for name in ("notify_tasks", "notify_waiting", "notify_briefing", "notify_repo", "notify_updates", "tray"):
+            setattr(s, name, name in on)
+        save_settings(s)
+        store.audit("user", "notifications", {"on": sorted(on)})
+        return settings_page(request, saved=True)
+
     @app.post("/settings/read-files", response_class=HTMLResponse)
     def read_files_now(request: Request):
         if services.file_index is not None:

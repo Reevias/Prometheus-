@@ -71,6 +71,36 @@ class AttachedServer:
         pass
 
 
+def attach_tray(window, settings, pystray=None):
+    """Icon by the clock. With it on, closing the window only hides it (voice and reminders keep working)."""
+    if not getattr(settings, "tray", True):
+        return None
+    from prometheus.tray import Tray
+
+    state = {"quitting": False}
+
+    def quit_app():
+        state["quitting"] = True
+        window.destroy()
+
+    tray = Tray(show=window.show, hide=window.hide, quit_app=quit_app, pystray=pystray)
+    if not tray.start():
+        return None
+
+    def on_closing():
+        if state["quitting"]:
+            return True
+        tray.close_window()
+        tray.notify("Prometheus is still running here. Right-click the icon to quit.")
+        return False                            # cancel the close: just hide
+
+    try:
+        window.events.closing += on_closing
+    except Exception:
+        pass
+    return tray
+
+
 def run_desktop(settings: Settings, webview=None, server=None) -> int:
     if webview is None:
         import webview  # pywebview
@@ -78,10 +108,16 @@ def run_desktop(settings: Settings, webview=None, server=None) -> int:
         server = AttachedServer(settings.port) if running_copy(settings.port) else LocalServer(settings)
     try:
         port = server.start()
-        webview.create_window(f"Prometheus {version()}", f"http://127.0.0.1:{port}/", width=1220, height=780,
-                              min_size=(860, 560), background_color=BACKGROUND,
-                              text_select=True)          # pywebview blocks selecting and copying text unless asked
+        window = webview.create_window(f"Prometheus {version()}", f"http://127.0.0.1:{port}/", width=1220,
+                                       height=780, min_size=(860, 560), background_color=BACKGROUND,
+                                       text_select=True)  # pywebview blocks selecting and copying text unless asked
+        try:
+            tray = attach_tray(window, settings) if window is not None else None
+        except Exception:                       # the tray is a nicety: never let it stop the window
+            tray = None
         webview.start()
+        if tray is not None and tray.icon is not None:
+            tray.icon.stop()
         return 0
     except Exception as e:
         print(f"The desktop window couldn't open ({e}). Use 'prometheus serve' and your browser instead.")

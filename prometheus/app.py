@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import dataclasses
 import threading
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -64,6 +65,21 @@ class Services:
     photos: object = None
     laptop: object = None
     browser: object = None
+    notifier: object = None          # shows a Windows notification (None when not on Windows)
+
+    def notify(self, kind: str, text: str) -> bool:
+        """A Windows notification, if the owner wants this kind (Settings → Notifications)."""
+        wanted = {"task": "notify_tasks", "waiting": "notify_waiting", "briefing": "notify_briefing",
+                  "repo": "notify_repo", "update": "notify_updates"}.get(kind)
+        if wanted and not getattr(self.settings, wanted, True):
+            return False
+        if self.notifier is None:
+            return False
+        try:
+            self.notifier(text)
+            return True
+        except Exception:
+            return False
 
     def start_rewrite(self, chat_id: int, message_id: int, note: str = "") -> threading.Thread:
         """Rewrite an answer the owner marked 'could be better', in the background."""
@@ -85,15 +101,36 @@ class Services:
     def start_task(self, chat_id: int, text: str) -> threading.Thread:
         """Run a task in the background so the browser can keep polling."""
         def work():
+            started, outcome = time.monotonic(), None
             try:
                 self.running[chat_id] = True
-                self.orchestrator.run(chat_id, text)
+                outcome = self.orchestrator.run(chat_id, text)
             finally:
                 self.running.pop(chat_id, None)
+            if outcome is not None:
+                self.after_task(outcome, text, time.monotonic() - started)
 
         thread = threading.Thread(target=work, daemon=True)
         thread.start()
         return thread
+
+
+LONG_TASK = 30          # seconds: a task that took longer gets a "done" notification
+
+
+def _after_task(self, outcome, text: str, took: float) -> None:
+    short = " ".join(text.split())[:70]
+    try:
+        waiting = any(s.status == "waiting_approval" for s in self.store.steps(outcome.task_id))
+    except Exception:
+        waiting = False
+    if waiting:
+        self.notify("waiting", f"Waiting for your yes: {short}")
+    elif took >= LONG_TASK and outcome.status in ("done", "failed"):
+        self.notify("task", ("Done: " if outcome.status == "done" else "Couldn't finish: ") + short)
+
+
+Services.after_task = _after_task
 
 
 def apply_settings(services: "Services") -> None:
@@ -253,6 +290,7 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
 
             Laptop().notify(text)
 
+    services.notifier = _notify if __import__("sys").platform == "win32" else None
     services.reminders = ReminderClock(services, notify=_notify)
     import sys as _sys
 
@@ -270,7 +308,7 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
     code_agent.SERVICES = services
     from prometheus.briefing import BriefingClock
 
-    services.briefing = BriefingClock(services, notify=_notify)
+    services.briefing = BriefingClock(services, notify=lambda text: services.notify("briefing", text))
     from prometheus.agents import briefing_agent
 
     briefing_agent.SERVICES = services

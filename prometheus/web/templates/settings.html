@@ -153,6 +153,20 @@
     </form>
   </div>
 
+  <h3>Notifications</h3>
+  <form class="panel" hx-post="/settings/notifications" hx-target="body" style="display:grid;gap:6px">
+    <p class="muted">Reminders and alerts always pop up. Choose what else does:</p>
+    {% for name, label in [("notify_tasks", "A task that took over 30 seconds is finished"),
+                           ("notify_waiting", "A task is waiting for my yes"),
+                           ("notify_briefing", "Morning briefing and evening wrap-up"),
+                           ("notify_repo", "Repo of the day arrived"),
+                           ("notify_updates", "Prometheus updated itself"),
+                           ("tray", "Icon by the clock; closing the window keeps Prometheus running")] %}
+    <label class="check"><input type="checkbox" name="on" value="{{ name }}" {{ "checked" if s[name] }}> {{ label }}</label>
+    {% endfor %}
+    <button type="submit">Save</button>
+  </form>
+
   <h3>Search inside files</h3>
   <div class="panel">
     <p class="muted">Prometheus reads the text of PDFs, Word, Excel, PowerPoint and text files in Documents, Desktop,

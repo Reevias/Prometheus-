@@ -57,7 +57,13 @@ class Settings:
     voice_autostart: bool = False
     voice_name: str = "af_heart"
     auto_update: bool = True
-    code_windows_sandbox: bool = True      # run scripts in Windows Sandbox when this laptop has it
+    code_windows_sandbox: bool = True
+    notify_tasks: bool = True              # a task that took over 30 seconds finished
+    notify_waiting: bool = True            # a task waits for a yes
+    notify_briefing: bool = True
+    notify_repo: bool = True
+    notify_updates: bool = True
+    tray: bool = True                      # icon by the clock; closing the window keeps Prometheus running      # run scripts in Windows Sandbox when this laptop has it
     repo_of_day: bool = True
     step_tries: int = 3                         # tries per task step, counting the first (planning loop)
     task_budget_usd: float = 0.20               # paid AI one task may use                    # suggest one trending GitHub repository a day for the skill library

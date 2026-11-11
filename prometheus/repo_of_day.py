@@ -146,6 +146,8 @@ class RepoOfTheDay:
             {"repo": repo["full_name"], "url": url, "description": repo["description"],
              "language": repo["language"], "stars": repo["stars"], "stars_today": repo["stars_today"]})
         self.services.store.audit("system", "repo_of_day", {"repo": repo["full_name"]})
+        if hasattr(self.services, "notify"):
+            self.services.notify("repo", f"Repo of the day: {repo['full_name']}. Open Approvals to look at it.")
         return f"Suggested {repo['full_name']}."
 
     def readme(self, full_name: str) -> str:

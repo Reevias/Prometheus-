@@ -1,6 +1,7 @@
 # Changelog
 
 ## 1.6
+- Tray icon and notifications: an ember icon by the Windows clock (Open, Hide window, Quit). Closing the window now only hides it, so voice, reminders and night jobs keep working; Quit in the icon's menu really closes. Windows notifications for: a task that took over 30 seconds finishing, a task waiting for your yes, the morning and evening summaries, the repo of the day, and overnight updates. Each can be switched off in Settings → Notifications (the tray too).
 - Fixes: a wrong model name now pauses only that model, not the whole provider; Remove in Settings also deletes a key set with `setx`; key and app-password boxes no longer make the browser offer to save them as passwords.
 
 ## 1.5
