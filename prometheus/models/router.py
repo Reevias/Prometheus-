@@ -102,7 +102,7 @@ class ModelRouter:
                [e for e in entries if not (self.is_free(e) or e == self.head)]
 
     def complete(self, purpose: str, messages: list[dict], system: str, json_schema: dict | None = None,
-                 max_tokens: int = 4096) -> Reply:
+                 max_tokens: int = 4096, skip: frozenset[str] = frozenset()) -> Reply:
         self.killswitch.check()
         errors: list[str] = []
         empty: list[str] = []
@@ -111,7 +111,7 @@ class ModelRouter:
         for entry in self._order(purpose):
             name, model = split_entry(entry)
             provider = self.providers.get(name)
-            if provider is None or not provider.available():
+            if provider is None or not provider.available() or name in skip:
                 continue
             if purpose == "private" and not provider.is_local:
                 raise PrivacyViolation(f"'{name}' is not local.")

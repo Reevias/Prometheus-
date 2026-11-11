@@ -149,10 +149,34 @@ CODE_REQUEST = re.compile(r"\b(code|coding|script|python|javascript|typescript|j
                           r"traceback|pull request|commit|repo(?:sitory)?)\b", re.I)
 
 
+def json_part(raw: str) -> str:
+    """The JSON object in an AI's reply, without its "thinking", a sentence before or after, or a code fence."""
+    text = re.sub(r"<think(?:ing)?>.*?</think(?:ing)?>", "", raw or "", flags=re.S | re.I).strip()
+    fence = re.search(r"```(?:json)?\s*(\{.*\})\s*```", text, re.S)
+    if fence:
+        return fence.group(1)
+    start = text.find("{")
+    if start < 0:
+        return text
+    depth, in_str, esc = 0, False, False
+    for i in range(start, len(text)):
+        c = text[i]
+        if in_str:
+            esc, in_str = (not esc and c == "\\"), (in_str if (esc or c != '"') else False)
+            continue
+        if c == '"':
+            in_str = True
+        elif c == "{":
+            depth += 1
+        elif c == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start:i + 1]
+    return text[start:]
+
+
 def validate_plan(raw: str, registry: dict) -> Plan:
-    text = raw.strip()
-    if text.startswith("```"):
-        text = text.strip("`").split("\n", 1)[-1]
+    text = json_part(raw)
     try:
         data = json.loads(text)
         steps = data.get("steps") or []
@@ -387,24 +411,44 @@ class Orchestrator:
         messages = list(history or []) + [{"role": "user", "content": content + f"Request: {text}"}]
         # coding requests go to the coding brain (Ripple) when one is set up; everything else to the normal one
         purpose = "code" if CODE_REQUEST.search(text or "") and self.router.routes.get("code") else "plan"
-        reply = self.router.complete(purpose, messages, system, json_schema=PLAN_SCHEMA, max_tokens=4000)
-        label = f"{reply.provider} · {reply.model}"
-        try:
-            plan = validate_plan(reply.text, self.registry)
-        except PlanError as e:
-            messages += [{"role": "assistant", "content": reply.text or "(empty)"},
-                         {"role": "user", "content": f"That reply is not valid: {e} Reply with corrected JSON only."}]
-            reply = self.router.complete(purpose, messages, system, json_schema=PLAN_SCHEMA, max_tokens=4000)
+        # Each AI gets one chance to correct an unusable answer; then the next AI in line tries (up to three).
+        tried: list[str] = []
+        skip: frozenset[str] = frozenset()
+        plan = None
+        for _ in range(3):
+            try:
+                reply = self.router.complete(purpose, messages, system, json_schema=PLAN_SCHEMA, max_tokens=4000,
+                                             skip=skip)
+            except ProviderUnavailable as e:
+                from prometheus.models.base import PaidNeedsYes
+
+                if tried and not isinstance(e, PaidNeedsYes):
+                    break                    # no other AI left to try: say what went wrong with the ones that answered
+                raise                        # (only paid ones left: ask the owner)
             label = f"{reply.provider} · {reply.model}"
             try:
                 plan = validate_plan(reply.text, self.registry)
-            except PlanError as again:
+                break
+            except PlanError as e:
+                retry = messages + [{"role": "assistant", "content": reply.text or "(empty)"},
+                                    {"role": "user", "content": f"That reply is not valid: {e} Reply with corrected "
+                                                                "JSON only."}]
+                again = self.router.complete(purpose, retry, system, json_schema=PLAN_SCHEMA, max_tokens=4000,
+                                             skip=skip)
+                label = f"{again.provider} · {again.model}"
                 try:
-                    self.store.audit("planner", "unreadable_plan", {"model": label, "error": str(again)[:300]})
-                except Exception:
-                    pass
-                raise PlanError(f"the AI that plans ({label}) answered twice in a way I couldn't use. Try again, "
-                                "or pick another Brain in Settings → AI.") from again
+                    plan = validate_plan(again.text, self.registry)
+                    break
+                except PlanError as e2:
+                    tried.append(label)
+                    try:
+                        self.store.audit("planner", "unreadable_plan", {"model": label, "error": str(e2)[:300]})
+                    except Exception:
+                        pass
+                    skip = skip | {reply.provider, again.provider}
+        if plan is None:
+            raise PlanError(f"the AI{'s' if len(tried) > 1 else ''} that plan ({', '.join(tried)}) answered in a way I "
+                            "couldn't use. Try again, or pick another Brain in Settings → AI.")
         plan.model = label
         return plan
 

@@ -1,6 +1,7 @@
 # Changelog
 
 ## 2.3
+- Fixed: "the AI that plans answered twice in a way I couldn't use". Plans are now read even when the AI wraps them in its thinking or a sentence, and when one AI still can't plan, the next one in line tries (up to three) before Prometheus gives up.
 - Paid AI asks first: free AIs are always tried first, and when only a paid one could answer, Prometheus says which and waits; reply "yes, use paid" to use it for that request only. A paid Brain you pick yourself counts as a yes. Switch in Settings → AI.
 - Expensive models are no longer offered on OpenRouter (nothing over $1 in or $4 out per million tokens): 25 strong cheap or free ones remain. Kimi K3.1 Pro is still there for free through Ollama cloud.
 - 15 more strong models on OpenRouter, the big Ollama ones a laptop can't run: Beam 1.0 (501B), Muse Spark Open (816B), MiMo V2.6 Pro and Flash, GLM 5.3 Flash, Kimi K2.7 Code, gpt-oss 120B, Qwen 3.8 27B, MiniMax M3, Nemotron 3.5 Super, Muse Glimmer 30B, DeepSeek V4 Flash, and free ones (Nemotron 3.5 Super, Flint, Gemma 4 26B). 37 to choose from in total, as the Brain or the Research brain.

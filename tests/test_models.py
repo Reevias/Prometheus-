@@ -269,3 +269,23 @@ def test_the_ask_first_switch(app_client):
     assert services.settings.paid_needs_yes and "Ask me before using a paid AI" in client.get("/settings").text
     client.post("/settings/paid-yes", data={"on": ""}, headers=h)
     assert services.settings.paid_needs_yes is False and services.router.paid_needs_yes is False
+
+
+def test_plans_are_read_through_thinking_and_chatter():
+    from prometheus.orchestrator.planner import json_part
+
+    plan = '{"steps": [], "answer": "Hi {there}", "note": "a \\\\"quote\\\\" }"}'
+    assert json_part("<think>let me plan {maybe}</think>\n" + plan) == plan
+    assert json_part("Sure! Here is the plan:\n```json\n" + plan + "\n```\nHope that helps.") == plan
+    assert json_part("Here you go: " + plan + " Anything else?") == plan
+
+
+def test_an_ai_that_cant_plan_hands_over_to_the_next(app_client):
+    from prometheus.models.fake import FakeProvider as FP
+
+    bad = FP(["I would search your notes and then answer."], name="talker")
+    good = FP(['{"steps": [], "answer": "Here you are."}'], name="planner2")
+    client, services = app_client(providers=[bad, good], routes={"plan": ["talker", "planner2"], "combine": ["planner2"],
+                                                                 "research": ["planner2"], "private": []})
+    out = services.orchestrator.run(services.store.create_chat("t"), "translate this Chinese into English: 你好")
+    assert out.status == "done" and "Here you are." in out.answer and len(bad.calls) == 2
