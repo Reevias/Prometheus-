@@ -64,6 +64,23 @@
   another AI by itself if one is busy or out of credit. Keys stay on this laptop and are never shown again; adding or
   removing one needs your Prometheus password. Your personal files only ever go to the local model.</p>
   <p><strong>Working now:</strong> {% for p in providers if p.ready %}{{ p.name }}{{ ", " if not loop.last }}{% else %}<span class="muted">nothing yet. Add a key below, or start Ollama.</span>{% endfor %}</p>
+  <div class="panel" id="ollama" style="display:grid;gap:8px">
+    <strong>Ollama</strong>
+    <p style="margin:0">On this laptop: <strong>{{ ollama.model }}</strong>
+      {% if ollama.running %}<span class="status-done">running ✓</span>{% else %}<span class="muted">(Ollama isn't running: open the Ollama app, or run the installer again to get it)</span>{% endif %}
+      <span class="muted">· the private AI, the only one that reads your files</span></p>
+    <p class="muted" style="margin:0">Ollama cloud: big models on Ollama's computers (Kimi K3.1 Pro, GLM 5.3, DeepSeek V4.1, Mistral Large 4, gpt-oss 120B…),
+      free plan with limits, never used for your private files. Make a key at <code>ollama.com/settings/keys</code>, paste it here,
+      then pick one as the Brain below.</p>
+    <form hx-post="/settings/keys#ollama" hx-target="body" class="row">
+      <span class="{{ 'status-done' if ollama.cloud_key else 'muted' }}">{{ "Key set ✓" if ollama.cloud_key else "No key yet" }}</span>
+      <input type="hidden" name="name" value="OLLAMA_CLOUD_API_KEY">
+      <input type="text" class="secret" spellcheck="false" data-lpignore="true" data-1p-ignore name="value" placeholder="Paste the Ollama API key" autocomplete="off" required>
+      <input type="password" name="password" placeholder="Your Prometheus password" autocomplete="current-password" required>
+      <button type="submit">Save key</button>
+    </form>
+    {% if key_saved == "Ollama cloud" %}<p class="status-done" style="margin:0">Ollama cloud key saved: its models are now in the Brain list.</p>{% endif %}
+  </div>
   <div class="panel" style="display:grid;gap:8px">
     {% include "head_select.html" %}
     <p class="muted">The brain plans every task and answers simple questions by itself. Pick Claude Haiku or a free AI to

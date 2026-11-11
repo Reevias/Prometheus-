@@ -759,6 +759,10 @@ def register_routes(app: FastAPI, services: Services) -> None:
                     voices=__import__("prometheus.voice.engines", fromlist=["VOICES"]).VOICES,
                     eleven_voices=__import__("prometheus.voice.cloud", fromlist=["VOICES"]).VOICES,
                     eleven_key=bool(have.get("ELEVENLABS_API_KEY")),
+                    ollama={"model": services.settings.ollama_model,
+                            "running": bool(services.router.providers.get("ollama") is not None
+                                            and services.router.providers["ollama"].available()),
+                            "cloud_key": bool(have.get("OLLAMA_CLOUD_API_KEY"))},
                     features=__import__("prometheus.features", fromlist=["view"]).view(s),
                     practice_count=len(__import__("prometheus.practice", fromlist=["tests"]).tests(store)),
                     practice_last=__import__("prometheus.practice", fromlist=["last_result"]).last_result(store),
