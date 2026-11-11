@@ -63,6 +63,7 @@ class Services:
     briefing: object = None
     file_index: object = None
     clips: object = None
+    sync: object = None
     focus: object = None
     photos: object = None
     laptop: object = None
@@ -416,6 +417,9 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
     from prometheus.agents import reminders_agent as _ra
 
     _ra.STORE = store
+    from prometheus.sync import SyncClock
+
+    services.sync = SyncClock(services)
     approvals.register("standing_goal", _ra.goal_handler)
     from prometheus.agents import screen_agent as _scr
 

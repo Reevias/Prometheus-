@@ -66,12 +66,15 @@ def create_app(services: Services, background: bool = False) -> FastAPI:
             services.watchers.start()
         if services.briefing is not None:
             services.briefing.start()
-        if services.file_index is not None:
+        cloud = getattr(services.settings, "role", "laptop") == "cloud"
+        if services.file_index is not None and not cloud:      # the cloud copy has no files, photos or clipboard
             services.file_index.start()
-        if services.photos is not None:
+        if services.photos is not None and not cloud:
             services.photos.start()
-        if services.clips is not None:
+        if services.clips is not None and not cloud:
             services.clips.start()
+        if services.sync is not None and not cloud:
+            services.sync.start()
         if services.focus is not None:
             services.focus.start_clock()
         yield
@@ -103,7 +106,7 @@ def create_app(services: Services, background: bool = False) -> FastAPI:
     @app.middleware("http")
     async def guard(request: Request, call_next):
         path = request.url.path
-        if path in OPEN_PATHS or path.startswith(("/static/", "/hooks/")) or path == "/api/mcp":
+        if path in OPEN_PATHS or path.startswith(("/static/", "/hooks/")) or path in ("/api/mcp", "/api/sync"):
             # hooks and the tool server check their own secret
             return await call_next(request)
         csrf = sessions.get(request.cookies.get(SESSION_COOKIE))
@@ -144,6 +147,29 @@ def create_app(services: Services, background: bool = False) -> FastAPI:
         resp.delete_cookie(SESSION_COOKIE)
         resp.delete_cookie(CSRF_COOKIE)
         return resp
+
+    @app.post("/api/sync")
+    async def sync_endpoint(request: Request):
+        """The laptop and the cloud copy swapping changes. Only with the sync key, only through the private link."""
+        import asyncio
+        import time as _t
+
+        from prometheus.sync import export, merge, token
+
+        sent = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+        expected = token(create=False)
+        local = (request.client.host if request.client else "") in ("127.0.0.1", "::1", "testclient")
+        if not expected or not local or not hmac.compare_digest(sent.encode(), expected.encode()):
+            return Response(status_code=401)
+        try:
+            body = json.loads((await request.body())[:50_000_000] or b"{}")
+        except ValueError:
+            return Response(status_code=400)
+        since = float(body.get("since") or 0)
+        got = await asyncio.to_thread(merge, services.store, body.get("data") or {})
+        services.store.kv_set("laptop_seen", _t.time())
+        back = await asyncio.to_thread(export, services.store, since)
+        return Response(json.dumps({"data": back, "got": got}), media_type="application/json")
 
     @app.post("/api/mcp")
     async def mcp_endpoint(request: Request):

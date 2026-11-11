@@ -186,6 +186,10 @@ class ReminderClock:
         store.reminder_fired(r["id"], nxt)
 
     def tick(self) -> int:
+        from prometheus.sync import quiet
+
+        if quiet(self.services):          # the cloud copy, while the laptop is on: the laptop does this
+            return 0
         due = self.services.store.reminders_due(self.clock())
         for r in due:
             self.fire(r)

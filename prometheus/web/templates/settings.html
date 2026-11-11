@@ -386,6 +386,28 @@
 
   </section>
   <section class="set" id="safety-check" data-group="Safety and privacy">
+  <h3>Cloud copy (always on)</h3>
+  <div class="panel" style="display:grid;gap:8px">
+    {% if s.role == "cloud" %}
+      <p style="margin:0"><strong>This is the cloud copy.</strong> <span class="muted">It handles reminders, alerts and
+        briefings while your laptop is off, and answers from your phone. It has no screen, files or voice of its own.</span></p>
+      <p class="muted" style="margin:0">{{ sync_status or "The laptop hasn't synced yet." }}</p>
+    {% else %}
+      <p class="muted" style="margin:0">A second Prometheus on a free always-on computer (Oracle Cloud) keeps reminders, alerts
+        and briefings going when this laptop is off, and answers from your phone. The two stay in sync every 10 minutes
+        over a private link (Tailscale); while this laptop is on, the cloud copy stays quiet so nothing arrives twice.
+        Setup guide: <code>docs/cloud-setup.md</code> in the Prometheus folder.</p>
+      <form class="row" hx-post="/settings/cloud" hx-target="body" style="flex-wrap:wrap">
+        <input name="url" value="{{ s.cloud_url }}" placeholder="https://prometheus-cloud.your-tailnet.ts.net" style="flex:1;min-width:240px">
+        <input type="text" class="secret" spellcheck="false" data-lpignore="true" data-1p-ignore name="key" placeholder="{{ 'Sync key saved ✓ (paste to replace)' if sync_key_set else 'Sync key from the cloud setup' }}" autocomplete="off" style="width:220px">
+        <input type="password" name="password" placeholder="Your Prometheus password" autocomplete="current-password" required style="width:200px">
+        <button type="submit">Save</button>
+      </form>
+      {% if s.cloud_url %}<div class="row"><button type="button" hx-post="/settings/cloud/sync" hx-target="body">Sync now</button>
+        <span class="muted">{{ sync_status }}</span></div>{% endif %}
+    {% endif %}
+  </div>
+
   <h3>Backup to Google Drive</h3>
   <div class="panel" style="display:grid;gap:8px">
     <p class="muted" style="margin:0">Every night Prometheus backs up everything it knows (memory, chats, flashcards,

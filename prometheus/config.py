@@ -58,6 +58,8 @@ class Settings:
     voice_name: str = "af_heart"
     voice_speech: str = "fast"                  # fast | accent | hindi: how commands are turned into words
     auto_update: bool = True
+    role: str = "laptop"                   # "laptop", or "cloud" for the always-on copy
+    cloud_url: str = ""                    # on the laptop: the cloud copy's private address (Tailscale)
     backup_on: bool = False                # nightly encrypted backup to Google Drive
     research_brain: str = "auto"           # auto, or a model from the list in models/router.py
     code_windows_sandbox: bool = True
@@ -155,6 +157,7 @@ KEY_NAMES = {
     "GOOGLE_CLIENT": "Google client (ID|secret)",
     "GOOGLE_TOKEN": "Google sign-in",
     "BACKUP_KEY": "Backup key (made from your recovery code)",
+    "SYNC_TOKEN": "Cloud copy sync key",
 }
 MCP_SECRET = re.compile(r"^MCP_[A-Z0-9_]{1,40}$")   # one secret per connected app (a token, or NAME=value;…)
 SPACES_ALLOWED = {"EMAIL_PASSWORD"}             # app passwords are often shown in groups: "abcd efgh ijkl mnop"

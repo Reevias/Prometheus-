@@ -1228,8 +1228,34 @@ def register_routes(app: FastAPI, services: Services) -> None:
         if last:
             last = {**last, "when_text": _t.strftime("%d %b %Y %H:%M", _t.localtime(last["when"])),
                     "mb": f"{last['bytes'] / 1024 ** 2:.1f}"}
-        return {"backup_ready": bool(get_secret("BACKUP_KEY")), "backup_last": last,
+        return {"sync_status": store.kv_get("sync_status") or "", "sync_key_set": bool(get_secret("SYNC_TOKEN")),
+                "backup_ready": bool(get_secret("BACKUP_KEY")), "backup_last": last,
                 "backup_error": store.kv_get("backup_error") or ""}
+
+    @app.post("/settings/cloud", response_class=HTMLResponse)
+    def save_cloud(request: Request, url: str = Form(""), key: str = Form(""), password: str = Form("")):
+        denied = _key_gate(request, password)
+        if denied is not None:
+            return denied
+        url = url.strip().rstrip("/")
+        if url and not re.fullmatch(r"https://[A-Za-z0-9.-]+(:\d+)?", url):
+            return settings_page(request, 400, error="The cloud address looks like https://name.your-tailnet.ts.net")
+        if key.strip():
+            try:
+                set_secret("SYNC_TOKEN", key.strip())
+            except ValueError as e:
+                return settings_page(request, 400, error=str(e))
+        services.settings.cloud_url = url
+        save_settings(services.settings)
+        store.audit("user", "cloud_copy", {"set": bool(url)})
+        if url and services.sync is not None:
+            return settings_page(request, notice=services.sync.once() or "Saved.")
+        return settings_page(request, saved=True)
+
+    @app.post("/settings/cloud/sync", response_class=HTMLResponse)
+    def cloud_sync_now(request: Request):
+        said = services.sync.once() if services.sync is not None else ""
+        return settings_page(request, notice=said or "Add the cloud address and sync key first.")
 
     @app.post("/settings/backup/setup", response_class=HTMLResponse)
     def backup_setup(request: Request):

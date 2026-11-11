@@ -69,6 +69,19 @@ def _app(args) -> int:
     return run_desktop(settings)
 
 
+def _cloud_setup(args) -> int:
+    from prometheus.sync import token
+
+    s = load_settings()
+    s.role = "cloud"
+    s.voice_enabled = False
+    save_settings(s)
+    print("This computer is now Prometheus's always-on cloud copy.")
+    print("Sync key (paste it on your laptop in Settings → Cloud copy):")
+    print("  " + token())
+    return 0
+
+
 def _restore(args) -> int:
     import getpass
     from pathlib import Path as _P
@@ -243,13 +256,15 @@ def main(argv: list[str] | None = None) -> int:
     p_auto.add_argument("state", choices=["on", "off"])
     sub.add_parser("shortcut", help="make desktop and Start-menu shortcuts that open this copy")
     sub.add_parser("mcp", help="let another AI app (Antigravity, Claude Desktop) use Prometheus as a tool (stdio)")
+    sub.add_parser("cloud-setup", help="make this computer the always-on cloud copy and print its sync key")
     p_restore = sub.add_parser("restore", help="put a backup (.pbak from Google Drive) back on this computer")
     p_restore.add_argument("file")
     p_restore.add_argument("--overwrite", action="store_true", help="replace the memory already here")
     args = parser.parse_args(argv)
     return {"init": _init, "serve": _serve, "app": _app, "doctor": _doctor, "update": _update, "background": _background,
             "voice-setup": _voice_setup, "autostart": _autostart,
-            "shortcut": _shortcut, "mcp": _mcp, "restore": _restore}[args.command](args)
+            "shortcut": _shortcut, "mcp": _mcp, "restore": _restore,
+            "cloud-setup": _cloud_setup}[args.command](args)
 
 
 if __name__ == "__main__":

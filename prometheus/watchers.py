@@ -168,6 +168,10 @@ class Watchers:
         self.alert(f"hook:{time.time()}", f"{source}: {' '.join(text.split())[:300]}")
 
     def tick(self) -> None:
+        from prometheus.sync import quiet
+
+        if quiet(self.services):          # the cloud copy, while the laptop is on: the laptop does this
+            return None
         s = self.services.settings
         self.ticks += 1
         if self.ticks % EMAIL_EVERY == 1 or EMAIL_EVERY == 1:

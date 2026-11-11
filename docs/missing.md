@@ -1,9 +1,10 @@
 # Prometheus: what is still missing
 
-Updated 11 November 2026. Version 2.0. Built and tested here: 836 tests pass.
+Updated 11 November 2026. Version 2.0. Built and tested here: 845 tests pass.
 Not yet run end to end on the owner's real laptop.
 
 ## Just finished
+- **Encrypted nightly backup to Google Drive** (recovery code, `prometheus restore`), **an always-on cloud copy** on Oracle's free machine that syncs with the laptop, **seeing the screen**, and **21 OpenRouter models to choose from** (Kimi K3, Qwen 3.8 2.4T, DeepSeek V4…).
 - **Prometheus as a tool for other AI apps** (26): Antigravity, Claude Desktop and Cursor can search its memory, find files by name and ask questions; actions wait on Approvals.
 - **"Undo that"**, **study coach** (flashcards, chat and voice quizzes, spaced review, Anki export), **money tracker** (bank/UPI emails, budgets), **clipboard and screenshot memory**, **focus mode** (any length), **weekly laptop health check**, **exam countdown planner**, **lecture to notes**, **read-aloud**, **homework checker** and **assignment tracker**.
 - **Own icon and name**: window, taskbar, shortcuts, tray, notifications and browser tab show Prometheus, not Python.

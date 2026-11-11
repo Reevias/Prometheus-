@@ -225,6 +225,10 @@ class BriefingClock:
         return text
 
     def tick(self) -> list[str]:
+        from prometheus.sync import quiet
+
+        if quiet(self.services):          # the cloud copy, while the laptop is on: the laptop does this
+            return []
         s, store, now = self.services.settings, self.services.store, self.clock()
         sent = []
         today = time.strftime("%Y-%m-%d", time.localtime(now))
