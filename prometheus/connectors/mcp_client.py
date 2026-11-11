@@ -27,6 +27,8 @@ class StdioServer:
 
     def __init__(self, command: str, env: dict | None = None):
         argv = shlex.split(command, posix=os.name != "nt")
+        if os.name == "nt":       # Windows splitting keeps the quotes: "C:\Program Files\x.exe" → C:\Program Files\x.exe
+            argv = [a[1:-1] if len(a) >= 2 and a[0] == a[-1] and a[0] in "\"'" else a for a in argv]
         if not argv:
             raise MCPError("The server needs a command.")
         try:

@@ -29,7 +29,8 @@ class AutoUpdater:
         self._stop = threading.Event()
 
     def _git(self, *args: str) -> str:
-        proc = self.run(["git", "-C", str(self.code_dir), *args], capture_output=True, text=True, timeout=120)
+        proc = self.run(["git", "-C", str(self.code_dir), *args], capture_output=True, text=True, encoding="utf-8",
+                        errors="replace", timeout=120)
         if proc.returncode != 0:
             raise RuntimeError((proc.stderr or "").strip()[-200:] or "git failed")
         return (proc.stdout or "").strip()

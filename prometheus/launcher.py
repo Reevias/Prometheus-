@@ -74,7 +74,8 @@ def update_report(code_dir: Path | None = None, run=None, fetch: bool = True) ->
     out = {"current": version(code_dir), "commit": "", "date": "", "latest": "", "behind": 0, "news": [], "error": ""}
 
     def git(*args: str) -> str:
-        proc = run(["git", "-C", str(code_dir), *args], capture_output=True, text=True, timeout=60)
+        proc = run(["git", "-C", str(code_dir), *args], capture_output=True, text=True, encoding="utf-8",
+                   errors="replace", timeout=60)
         if proc.returncode != 0:
             raise RuntimeError((proc.stderr or "").strip()[-200:] or "git failed")
         return (proc.stdout or "").strip()
@@ -205,7 +206,7 @@ def update(code_dir: Path = CODE_DIR, run=None) -> str:
         raise RuntimeError("This copy of Prometheus is not a Git checkout, so it can't update itself.")
     run = run or subprocess.run
     pull = run(["git", "-C", str(code_dir), "pull", "--ff-only", "origin", "main"], capture_output=True, text=True,
-               timeout=180)
+               encoding="utf-8", errors="replace", timeout=180)
     if pull.returncode != 0:
         raise RuntimeError("The update did not go through (you may have local changes). " + (pull.stderr or "")[-300:])
     extras = []

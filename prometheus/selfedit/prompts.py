@@ -75,7 +75,7 @@ class PromptStore:
     def _git(self, *args: str) -> str:
         proc = subprocess.run(["git", "-c", "user.name=Prometheus", "-c", "user.email=prometheus@localhost",
                                "-c", "commit.gpgsign=false", *args], cwd=self.folder, capture_output=True,
-                              text=True, timeout=30)
+                              text=True, encoding="utf-8", errors="replace", timeout=30)   # Windows: never cp1252
         if proc.returncode:
             raise RuntimeError(proc.stderr.strip()[:300])
         return proc.stdout
