@@ -364,6 +364,7 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
     from prometheus.agents import study_agent as _sa
 
     _sa.STUDY = _study.Study(store, router, settings)
+    _sa.STUDY.folder = home / "Documents" / "Prometheus Study"
     orchestrator.interceptors.append(_sa.STUDY.answer)
     from prometheus import money as _money
     from prometheus.agents import money_agent as _ma

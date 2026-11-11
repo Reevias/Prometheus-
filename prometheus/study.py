@@ -74,8 +74,11 @@ def schedule(card: Card, verdict: str, now: float) -> tuple[float, float, float,
 class Study:
     def __init__(self, store, router=None, settings=None, clock=time.time):
         self.store, self.router, self.settings, self.clock = store, router, settings, clock
+        self.folder: Path | None = None        # where quiz PDFs go (Documents/Prometheus Study)
         with store._lock:
             store._db.executescript(SCHEMA)
+            if "log" not in {r["name"] for r in store._db.execute("PRAGMA table_info(quiz)")}:
+                store._db.execute("ALTER TABLE quiz ADD COLUMN log TEXT NOT NULL DEFAULT '[]'")
             store._db.commit()
 
     # -- cards ------------------------------------------------------------------------
@@ -202,6 +205,11 @@ class Study:
         else:
             verdict, feedback = self.mark(card, said)
         self.grade(card, verdict)
+        log = json.loads(state.get("log") or "[]")
+        log.append({"q": card.question, "said": said.strip()[:500], "verdict": verdict, "answer": card.answer,
+                    "feedback": feedback})
+        self.store._write("UPDATE quiz SET log = ? WHERE chat_id = ?", (json.dumps(log), chat_id))
+        state["log"] = json.dumps(log)
         right = state["right"] + (1 if verdict == "right" else 0)
         asked = state["asked"] + 1
         if verdict == "wrong" and rest.count(card.id) == 0 and asked < QUIZ_LENGTH * 2:
@@ -215,13 +223,45 @@ class Study:
                           (nxt.id, json.dumps(rest[1:]), asked, right, chat_id))
         return f"{mark} {feedback}\n\nQ{asked + 1}. {nxt.question}"
 
+    def quiz_pdf(self, state: dict) -> Path | None:
+        """The quiz as a PDF: each question, what was said, the mark and the right answer."""
+        log = json.loads(state.get("log") or "[]")
+        if not log or self.folder is None:
+            return None
+        from prometheus.actions.pdf import markdown_pdf
+
+        deck = state.get("deck") or "everything due"
+        when = time.strftime("%Y-%m-%d %H.%M", time.localtime(self.clock()))
+        right = sum(1 for e in log if e["verdict"] == "right")
+        lines = [f"# Quiz: {deck}", f"{time.strftime('%A %d %B %Y, %H:%M', time.localtime(self.clock()))} · "
+                                    f"score {right} of {len(log)}", ""]
+        for i, e in enumerate(log, 1):
+            mark = {"right": "Right", "partly": "Partly right", "wrong": "Wrong"}[e["verdict"]]
+            lines += [f"## {i}. {e['q']}", f"- **Your answer:** {e['said'] or '(skipped)'}", f"- **Mark:** {mark}",
+                      f"- **Answer:** {e['answer']}", ""]
+        missed = [e for e in log if e["verdict"] != "right"]
+        if missed:
+            lines += ["## To revise", *[f"- {e['q']}: {e['answer']}" for e in missed]]
+        self.folder.mkdir(parents=True, exist_ok=True)
+        path = self.folder / f"Quiz {deck_name(deck)} {when}.pdf"
+        path.write_bytes(markdown_pdf("\n".join(lines), f"Quiz: {deck}"))
+        task = self.store.latest_task(state["chat_id"])
+        if task:
+            self.store.add_output(int(task["id"]), str(path), "created")
+        return path
+
     def _finish(self, state: dict) -> str:
+        try:
+            pdf = self.quiz_pdf(state)
+        except Exception:
+            pdf = None
         self.store._write("DELETE FROM quiz WHERE chat_id = ?", (state["chat_id"],))
         self.store.kv_set("study_last", json.dumps({"when": self.clock(), "asked": state["asked"],
                                                     "right": state["right"]}))
         due = len(self.due())
         return (f"Quiz done: {state['right']} of {state['asked']} right." +
-                (f" {due} card(s) still due." if due else " Nothing else is due today."))
+                (f" {due} card(s) still due." if due else " Nothing else is due today.") +
+                (f" The questions and answers are saved as {pdf.name} (in Outputs)." if pdf else ""))
 
     def summary_today(self) -> str:
         due = len(self.due())

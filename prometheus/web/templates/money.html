@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block body %}
+<main class="single page">
+  <div class="page-head"><h2>Money</h2><span class="muted">{{ month_name }}</span></div>
+  {% if notice %}<p class="status-done">{{ notice }}</p>{% endif %}{% if error %}<p class="error">{{ error }}</p>{% endif %}
+  <section class="panel">
+    <p style="margin:0"><strong class="figure">₹{{ "{:,.0f}".format(total) }}</strong> <span class="muted">spent this month · ₹{{ "{:,.0f}".format(today) }} today</span></p>
+    {% if cats %}<div class="catbars">
+      {% for c in cats %}<div class="catbar">
+        <span>{{ c.name }}</span>
+        <div class="meter"><span style="width:{{ c.pct }}%" class="{{ 'bad' if c.over else 'warn' if c.near else '' }}"></span></div>
+        <span class="num">₹{{ "{:,.0f}".format(c.amount) }}{% if c.budget %} <span class="muted">/ ₹{{ "{:,.0f}".format(c.budget) }}</span>{% endif %}</span>
+      </div>{% endfor %}
+    </div>{% else %}<p class="muted empty">Nothing yet this month. Connect your email (bank and UPI alerts are read every half hour) or add spending below.</p>{% endif %}
+  </section>
+  <section class="panel">
+    <h3>Add spending</h3>
+    <form class="row" hx-post="/money/add" hx-target="body">
+      <input name="amount" inputmode="decimal" placeholder="₹ amount" required style="width:120px">
+      <input name="what" placeholder="What or where (chai, books, Uber…)" required style="flex:1">
+      <button type="submit" class="primary">Add</button>
+    </form>
+  </section>
+  <div class="row" style="justify-content:space-between"><h3>Recent</h3>
+    <div class="row"><button type="button" hx-post="/money/scan" hx-target="body">Check email now</button>
+    <button type="button" hx-post="/money/excel" hx-target="body">Open the spending sheet</button></div></div>
+  <table class="plain-table"><thead><tr><th>When</th><th>Where</th><th>Category</th><th class="num">Amount</th></tr></thead>
+  <tbody>{% for r in recent %}<tr><td>{{ r.when }}</td><td>{{ r.merchant }}</td><td>{{ r.category }}</td>
+    <td class="num">{{ "+" if r.kind == "received" else "" }}₹{{ "{:,.0f}".format(r.amount) }}</td></tr>
+  {% else %}<tr><td colspan="4" class="muted">Nothing recorded yet.</td></tr>{% endfor %}</tbody></table>
+  <p class="muted">Budgets are set in Settings → Money tracker.</p>
+</main>
+{% endblock %}

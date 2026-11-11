@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block body %}
+<main class="single page">
+  <div class="page-head"><h2>Exams and deadlines</h2></div>
+  {% if notice %}<p class="status-done">{{ notice }}</p>{% endif %}{% if error %}<p class="error">{{ error }}</p>{% endif %}
+
+  <h3>Due soon</h3>
+  {% if assignments %}<ul class="plain list">
+    {% for a in assignments %}<li class="{{ 'soon' if a.soon }}"><span><strong>{{ a.title }}</strong> <span class="muted">{{ a.when }}{% if a.soon %} · soon{% endif %}</span></span>
+      <button type="button" hx-post="/plans/done" hx-vals='{"id": "{{ a.id }}"}' hx-target="body">Done</button></li>{% endfor %}
+  </ul>{% else %}<p class="muted empty">Nothing due. Add one below, or list your college email senders in Settings → Assignments.</p>{% endif %}
+  <form class="row" hx-post="/plans/add" hx-target="body">
+    <input name="title" placeholder="What (e.g. Physics lab report)" required style="flex:1">
+    <input name="due" placeholder="When (Friday, 15 Nov 5pm)" required style="width:200px">
+    <button type="submit" class="primary">Add deadline</button>
+  </form>
+
+  <h3>Exam plans</h3>
+  {% for p in exams %}<section class="panel">
+    <div class="row" style="justify-content:space-between"><strong>{{ p.exam }}</strong><span class="muted">{{ p.left }} day{{ "s" if p.left != 1 }} to go · {{ p.date }}</span></div>
+    <ol class="plan">{% for d in p.days %}<li class="{{ 'today' if d.today }} {{ 'done' if d.done }}">
+      <span class="muted">{{ d.label }}</span> {{ d.topics }}</li>{% endfor %}</ol>
+  </section>{% else %}<p class="muted empty">No exam plans. Tell Prometheus "my maths exam is on 20 March" and give it the syllabus.</p>{% endfor %}
+</main>
+{% endblock %}

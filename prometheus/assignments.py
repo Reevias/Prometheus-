@@ -29,6 +29,10 @@ def parse_due(text: str, now: float) -> float | None:
     from prometheus.exams import parse_date
     from prometheus.reminders import _clock
 
+    rel = re.search(r"\bin (\d{1,3}) (day|week)s?\b", text or "", re.I)
+    if rel:
+        day = datetime.fromtimestamp(now).date() + timedelta(days=int(rel.group(1)) * (7 if rel.group(2).lower() == "week" else 1))
+        return datetime(day.year, day.month, day.day, 23, 59).timestamp()
     m = WHEN.search(text or "")
     if not m:
         return None

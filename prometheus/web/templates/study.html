@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block body %}
+<main class="single page">
+  <div class="page-head"><h2>Study</h2>
+    <span class="muted">{{ due_total }} card{{ "s" if due_total != 1 }} due{% if last %} · last quiz {{ last.right }} of {{ last.asked }}{% endif %}</span></div>
+  {% if notice %}<p class="status-done">{{ notice }}</p>{% endif %}{% if error %}<p class="error">{{ error }}</p>{% endif %}
+
+  <section class="panel">
+    <h3>Make flashcards</h3>
+    <form class="row" hx-post="/study/make" hx-target="body">
+      <input name="path" placeholder="Notes, PDF or slides (e.g. Documents/Physics/chapter 3.pdf)" required style="flex:1">
+      <input name="deck" placeholder="Deck name (optional)" style="width:180px">
+      <button type="submit" class="primary">Make cards</button>
+    </form>
+    <p class="muted" style="margin:0">Made by {{ "Claude" if cloud else "the local AI, on this laptop" }} (change in Settings → Study coach). It takes a minute; the cards appear below.</p>
+  </section>
+
+  <h3>Decks</h3>
+  {% if decks %}<div class="cards">
+    {% for d in decks %}<div class="panel card">
+      <strong>{{ d.deck }}</strong>
+      <span class="muted">{{ d.n }} card{{ "s" if d.n != 1 }} · {{ d.due or 0 }} due</span>
+      <div class="row">
+        <button type="button" class="primary" hx-post="/study/quiz" hx-vals='{"deck": "{{ d.deck }}"}' hx-swap="none"
+                hx-on::after-request="if (event.detail.xhr.responseURL) location.href = event.detail.xhr.responseURL">Quiz me</button>
+        <button type="button" hx-post="/study/export" hx-vals='{"deck": "{{ d.deck }}"}' hx-target="body">Export to Anki</button>
+      </div>
+    </div>{% endfor %}
+  </div>{% else %}<p class="muted empty">No flashcards yet. Make some from your notes above, or say "make flashcards from my physics notes".</p>{% endif %}
+
+  <h3>Quiz sheets</h3>
+  <ul class="plain">{% for p in pdfs %}<li>{% if p.id %}<a href="#" hx-post="/outputs/{{ p.id }}/open" hx-swap="none">{{ p.name }}</a>{% else %}{{ p.name }}{% endif %} <span class="muted">{{ p.when }}</span></li>
+  {% else %}<li class="muted">Each quiz you finish is saved here as a PDF.</li>{% endfor %}</ul>
+</main>
+{% endblock %}

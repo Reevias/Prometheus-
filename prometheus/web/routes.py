@@ -446,6 +446,162 @@ def register_routes(app: FastAPI, services: Services) -> None:
         return page(request, "skills.html", skills=services.skills.catalog(), shown=f"{name} / {ref}", text=text,
                     user_folder=str(services.skills.user))
 
+    # -- feature pages: study, money, exams and deadlines ---------------------------------------
+    def _study_chat() -> int:
+        return services.briefing.study_chat()
+
+    @app.get("/study", response_class=HTMLResponse)
+    def study_page(request: Request, notice: str = "", error: str = ""):
+        import json as _json
+        import time as _t
+
+        from prometheus.agents import study_agent
+
+        st = study_agent.STUDY
+        decks = st.decks() if st else []
+        pdfs = []
+        if st is not None and st.folder is not None and st.folder.exists():
+            for pth in sorted(st.folder.glob("Quiz *.pdf"), key=lambda x: -x.stat().st_mtime)[:20]:
+                rows = store._rows("SELECT id FROM outputs WHERE path = ? ORDER BY id DESC LIMIT 1", (str(pth),))
+                pdfs.append({"name": pth.stem, "id": rows[0]["id"] if rows else 0,
+                             "when": _t.strftime("%d %b %H:%M", _t.localtime(pth.stat().st_mtime))})
+        try:
+            last = _json.loads(store.kv_get("study_last") or "null")
+        except ValueError:
+            last = None
+        return page(request, "study.html", decks=decks, due_total=sum(d["due"] or 0 for d in decks), last=last,
+                    pdfs=pdfs, cloud=services.settings.study_cloud, notice=notice, error=error)
+
+    @app.post("/study/make", response_class=HTMLResponse)
+    def study_make(request: Request, path: str = Form(...), deck: str = Form("")):
+        text = f"make flashcards from {path.strip()}" + (f" in the deck {deck.strip()}" if deck.strip() else "")
+        services.start_task(_study_chat(), text)
+        return study_page(request, notice="Making the cards. They'll show here in a minute (progress is in the Study chat).")
+
+    @app.post("/study/quiz")
+    def study_quiz(deck: str = Form("")):
+        from prometheus.agents import study_agent
+
+        chat = _study_chat()
+        services.store.add_message(chat, "user", f"Quiz me on {deck}")
+        services.store.add_message(chat, "assistant", study_agent.STUDY.start_quiz(chat, deck), "instant")
+        return RedirectResponse(f"/chats/{chat}", status_code=303)
+
+    @app.post("/study/export", response_class=HTMLResponse)
+    def study_export(request: Request, deck: str = Form(...)):
+        from prometheus.agents import study_agent
+
+        path = study_agent.STUDY.export_anki(deck, services.home / "Documents" / "Prometheus Study")
+        return study_page(request, notice=f"Saved {path.name} in Documents/Prometheus Study. In Anki: File → Import.")
+
+    @app.get("/money", response_class=HTMLResponse)
+    def money_page(request: Request, notice: str = "", error: str = ""):
+        import time as _t
+
+        from prometheus.agents import money_agent
+
+        m = money_agent.MONEY
+        now = _t.time()
+        cats, recent, total, today = [], [], 0.0, 0.0
+        if m is not None:
+            by = m.by_category(m.month_start(now))
+            budgets = services.settings.money_budgets or {}
+            top = max(list(by.values()) + [b for b in budgets.values() if b] + [1])
+            for name, amount in by.items():
+                b = budgets.get(name)
+                cats.append({"name": name, "amount": amount, "budget": b,
+                             "pct": round(100 * amount / (b or top)) if (b or top) else 0,
+                             "over": bool(b and amount >= b), "near": bool(b and amount >= 0.8 * b)})
+            total = sum(by.values())
+            today = sum(r["amount"] for r in m._since(m.day_start(now)))
+            recent = [{**dict(r), "when": _t.strftime("%d %b %H:%M", _t.localtime(r["created"]))}
+                      for r in store._rows("SELECT * FROM spending ORDER BY created DESC LIMIT 25")]
+        for c in cats:
+            c["pct"] = min(100, c["pct"])
+        return page(request, "money.html", cats=cats, recent=recent, total=total, today=today,
+                    month_name=_t.strftime("%B %Y"), notice=notice, error=error)
+
+    @app.post("/money/add", response_class=HTMLResponse)
+    def money_add(request: Request, amount: str = Form(...), what: str = Form(...)):
+        from prometheus.agents import money_agent
+
+        try:
+            value = float(amount.replace(",", "").replace("₹", "").strip())
+            if not 0 < value < 10_000_000:
+                raise ValueError
+        except ValueError:
+            return money_page(request, error="The amount should be a number, like 250.")
+        money_agent.MONEY.add(value, what.strip()[:40], said=what)
+        return money_page(request, notice=f"Added ₹{value:,.0f} on {what.strip()[:40]}.")
+
+    @app.post("/money/scan", response_class=HTMLResponse)
+    def money_scan(request: Request):
+        from prometheus.agents import money_agent
+        from prometheus.agents.email_agent import mailbox
+
+        if not services.settings.email_address:
+            return money_page(request, error="Connect your email in Settings first.")
+        try:
+            added = money_agent.MONEY.scan_email(mailbox(), days=7)
+        except Exception as e:
+            return money_page(request, error=f"Couldn't read your email ({type(e).__name__}).")
+        return money_page(request, notice=f"Found {added} new bank or UPI alert(s).")
+
+    @app.post("/money/excel", response_class=HTMLResponse)
+    def money_excel(request: Request):
+        from prometheus.agents import money_agent
+
+        path = money_agent.MONEY.write_excel(services.home / "Documents" / "Prometheus Money")
+        try:
+            if services.laptop is not None:
+                import os as _os
+
+                _os.startfile(str(path))           # our own sheet, made just now
+        except Exception:
+            pass
+        return money_page(request, notice=f"Saved {path.name} in Documents/Prometheus Money.")
+
+    @app.get("/plans", response_class=HTMLResponse)
+    def plans_page(request: Request, notice: str = "", error: str = ""):
+        import time as _t
+        from datetime import date as _date
+
+        from prometheus.agents import assignments_agent, exams_agent
+        from prometheus.assignments import _when
+
+        tr, ex = assignments_agent.TRACKER, exams_agent.EXAMS
+        assigns = [{**a, "when": _when(a["due"]), "soon": a["due"] - _t.time() < 3 * 86400}
+                   for a in (tr.upcoming(60) if tr else [])]
+        exams = []
+        for p in (ex.plans() if ex else []):
+            days = [{"label": _date.fromisoformat(d["day"]).strftime("%a %d %b"), "topics": ", ".join(d["topics"]),
+                     "today": d["day"] == ex.today().isoformat(), "done": d["done"]} for d in ex.days(p["id"])]
+            exams.append({"exam": p["exam"], "date": p["exam_date"], "days": days,
+                          "left": (_date.fromisoformat(p["exam_date"]) - ex.today()).days})
+        return page(request, "plans.html", assignments=assigns, exams=exams, notice=notice, error=error)
+
+    @app.post("/plans/add", response_class=HTMLResponse)
+    def plans_add(request: Request, title: str = Form(...), due: str = Form(...)):
+        from prometheus.agents import assignments_agent
+
+        said = assignments_agent.TRACKER.tell(f"{title.strip()[:100]} due {due.strip()[:60]}")
+        if said is None:
+            return plans_page(request, error="I couldn't tell when it's due. Try 'Friday', '15 Nov' or '20/11 5pm'.")
+        return plans_page(request, notice=said)
+
+    @app.post("/plans/done", response_class=HTMLResponse)
+    def plans_done(request: Request, id: int = Form(...)):
+        from prometheus.agents import assignments_agent
+
+        tr = assignments_agent.TRACKER
+        rows = store._rows("SELECT title FROM assignments WHERE id = ?", (id,))
+        if rows:
+            store._write("UPDATE assignments SET done = 1 WHERE id = ?", (id,))
+            for r in store.reminders():
+                if rows[0]["title"] in r["text"]:
+                    store.cancel_reminder(r["id"])
+        return plans_page(request, notice=f"Marked {rows[0]['title']} as done." if rows else "")
+
     @app.get("/costs", response_class=HTMLResponse)
     def costs(request: Request):
         import time as _t

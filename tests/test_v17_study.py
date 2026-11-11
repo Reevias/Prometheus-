@@ -66,7 +66,10 @@ def test_stop_and_agent_and_orchestrator(app_client):
     out = services.orchestrator.run(chat, "quiz me on chemistry")
     assert "Symbol for sodium?" in out.answer
     out = services.orchestrator.run(chat, "Na")                  # answered without the AI planner
-    assert "Quiz done: 1 of 1" in out.answer
+    assert "Quiz done: 1 of 1" in out.answer and "(in Outputs)" in out.answer
+    pdf = next(study.folder.glob("Quiz chemistry *.pdf"))
+    assert pdf.read_bytes()[:4] == b"%PDF"
+    assert any(o["path"] == str(pdf) for o in services.store.outputs(chat))
 
 
 def test_daily_nudge(app_client):

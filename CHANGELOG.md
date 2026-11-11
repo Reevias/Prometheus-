@@ -1,6 +1,9 @@
 # Changelog
 
 ## 1.9
+- New pages in the menu: Study (decks with Quiz me and Export to Anki, make cards from a file, past quiz sheets), Money (this month by category against budgets, add spending, check email now, open the spending sheet, recent spending) and Exams and deadlines (what's due, add or tick off a deadline, each exam plan day by day with today highlighted).
+- Every finished quiz is saved as a PDF in Outputs: each question, your answer, the mark, the right answer, and a "to revise" list.
+- Polish: wrapped text in the side panels, Settings section names no longer cut off, approval cards show long text in a scrolling box, newer examples on an empty chat.
 - Security review fixes:
   - other AI apps' questions run read-only (nothing is changed, moved or remembered; actions still go to Approvals);
   - browser clicks are judged by the real button (full name, ids, whether it submits a form), so "Place ord" or a disguised checkout button waits for approval;

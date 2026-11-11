@@ -171,7 +171,7 @@ button.mic { display: inline-flex; align-items: center; gap: 8px; font-size: 13p
 
 /* outputs: files and folders a chat made or found */
 ul.outputs li { display: grid; gap: 4px; }
-.out-name { font-size: 13px; color: var(--text); word-break: break-all; }
+.out-name { font-size: 13px; color: var(--text); overflow-wrap: anywhere; word-break: normal; }
 .out-meta .tag { font-size: 11px; }
 .out-actions { display: flex; gap: 8px; }
 .out-actions button { font-size: 12px; padding: 4px 10px; }
@@ -256,3 +256,37 @@ section.set > h3 { margin-top: 24px; }
   .set-nav { position: static; max-height: none; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
   .set-group { grid-column: 1 / -1; }
 }
+
+/* feature pages */
+main.page { display: grid; gap: 16px; }
+main.page > h3, main.page h3 { margin: 8px 0 0; }
+.page-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.page-head h2 { margin: 0; }
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
+.card { display: grid; gap: 8px; align-content: start; }
+.empty { padding: 16px; border: 1px dashed var(--line-strong); border-radius: 12px; text-align: center; }
+.catbars { display: grid; gap: 8px; margin-top: 12px; }
+.catbar { display: grid; grid-template-columns: 150px 1fr 150px; gap: 12px; align-items: center; font-size: 14px; }
+.catbar .num { text-align: right; font-variant-numeric: tabular-nums; }
+.catbar .meter { margin: 0; }
+ul.list li { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+ul.list li.soon strong { color: var(--warn); }
+ol.plan { margin: 8px 0 0; padding-left: 20px; display: grid; gap: 4px; }
+ol.plan li.today { color: var(--text); font-weight: 500; }
+ol.plan li.done { color: var(--text-3); text-decoration: line-through; }
+@media (max-width: 640px) { .catbar { grid-template-columns: 1fr; gap: 2px; } .catbar .num { text-align: left; } }
+
+/* fixes after looking at every page */
+main.page { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; max-width: 880px; }
+main.page form.row { flex-wrap: wrap; }
+main.page .row > input { min-width: 0; }
+.set-nav { min-width: 0; }
+.set-nav input { width: 100%; box-sizing: border-box; }
+.set-nav a { white-space: normal; line-height: 1.35; }
+.catbar .meter { height: 8px; width: 100%; }
+.catbar .meter span { height: 100%; min-width: 2px; }
+.card .row { flex-wrap: wrap; }
+.approval > p:first-child strong { font-size: 15px; }
+.approval .tag, .approval .muted:first-of-type { white-space: nowrap; }
+.approval pre.diff { max-height: 360px; overflow: auto; white-space: pre-wrap; }
+main.single > h2:first-child { margin-top: 0; }
