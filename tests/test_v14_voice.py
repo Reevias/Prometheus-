@@ -303,3 +303,28 @@ def test_quiz_answers_need_no_wake_phrase():
     loop.followup = lambda: quiz["left"] > 0 and len(asked) >= 1
     loop.handle_wake(b"\x00" * 960)
     assert asked == ["Quiz me", "Na", "Cl"]
+
+
+def test_its_own_voice_coming_back_is_ignored():
+    asked = []
+    loop = VoiceLoop(FakeMic(tone(0.5)), HeardSpotter(3, "Hello Prometheus, the weather in Delhi is 31 degrees"),
+                     FakeTranscriber([]), FakeSpeaker(), lambda c: asked.append(c) or "")
+    loop.last_said, loop.last_said_at = "The weather in Delhi is 31 degrees and sunny.", __import__("time").monotonic()
+    loop.handle_wake(b"\x00" * 960)
+    assert asked == []
+    assert not loop.is_own_echo("open YouTube")
+
+
+def test_unclear_words_are_asked_again():
+    class Unsure(FakeTranscriber):
+        command = True
+        last_confidence, last_no_speech = -1.6, 0.2
+
+    asked = []
+    speaker = FakeSpeaker()
+    loop = VoiceLoop(FakeMic(tone(0.5) + tone(1.0) + tone(1.2, loud=False)),
+                     HeardSpotter(3, "Hello Prometheus, wether gith hub"), Unsure(["Hello Prometheus, wether gith hub",
+                                                                                   "what's the weather"]),
+                     speaker, lambda c: asked.append(c) or "")
+    loop.handle_wake(b"\x00" * 960)
+    assert asked == [] and speaker.chimes == 1 and "didn't catch" in speaker.said[-1]

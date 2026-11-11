@@ -181,6 +181,10 @@ class Transcriber:
                                                  hotwords="Hello Prometheus",
                                                  initial_prompt=COMMAND_PROMPT if self.command else None,
                                                  vad_filter=self.command)
+            segments = list(segments)
+            # how sure Whisper was: an average log-probability near 0 is sure, below about -1 is guessing
+            self.last_confidence = (sum(s.avg_logprob for s in segments) / len(segments)) if segments else -9.0
+            self.last_no_speech = max((s.no_speech_prob for s in segments), default=1.0)
             return " ".join(s.text for s in segments).strip()
 
 

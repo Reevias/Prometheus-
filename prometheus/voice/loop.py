@@ -39,6 +39,7 @@ class VoiceLoop:
         self.last_timing: dict = {}      # seconds per stage of the last command, shown in Settings
         self.followup = None             # callable -> True when the answer asked something (a quiz question)
         self._announcing = 0             # other threads speaking (reminders, alerts): the mic is ignored meanwhile
+        self.last_said, self.last_said_at = "", 0.0     # to recognise our own voice coming back through the mic
         self._announce_lock = threading.Lock()
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
@@ -133,6 +134,17 @@ class VoiceLoop:
         if not command:
             self.log("woke up but heard no command")
             return
+        if self.is_own_echo(command):
+            self.log("ignored: that was my own voice coming back")
+            return
+        if self.unclear() and getattr(self.transcriber, "command", False):
+            self._speak_quietly(getattr(self.speaker, "ask", self.speaker.chime))   # "Yes sir?": say it again
+            verdict, audio = self._record()
+            again = self.transcriber.text(audio).strip() if verdict == "done" else ""
+            if not again or self.unclear():
+                self._say("Sorry sir, I didn't catch that.")
+                return
+            command = strip_wake(again) or again
         self.last_heard = command
         t_heard = time.monotonic()
         from prometheus.quick import is_question
@@ -140,7 +152,7 @@ class VoiceLoop:
         ack = getattr(self.speaker, "ack", None)
         if not is_question(command):
             # an action: say what was heard, so a mishearing is caught before anything happens
-            self._speak_quietly(lambda: self.speaker.say(f"Yes sir. {command.rstrip('.!?')}."))
+            self._say(f"Yes sir. {command.rstrip('.!?')}.")
         elif ack is not None:
             self._speak_quietly(ack)                   # "Yes sir." — you know it heard you
         self.state = "thinking"
@@ -149,7 +161,7 @@ class VoiceLoop:
         t_answer = time.monotonic()
         if answer:
             self.state = "speaking"
-            self._speak_quietly(lambda: self.speaker.say(speakable(answer)))
+            self._say(answer, limit=320)
         self.last_timing = {"hearing": round(t_heard - t0, 1), "thinking": round(t_answer - t_think, 1),
                             "speaking": round(time.monotonic() - t_answer, 1)}
         self.log(f"voice timing: {self.last_timing}")
@@ -162,6 +174,8 @@ class VoiceLoop:
             self.state = "listening"
             verdict, audio = self._record(wait=8.0)
             reply = self.transcriber.text(audio).strip() if verdict == "done" else ""
+            if self.is_own_echo(reply):
+                continue                          # that was the question coming back from the speakers
             if not reply:
                 reply = "stop"                    # silence ends the quiz
             self.last_heard = reply
@@ -169,7 +183,7 @@ class VoiceLoop:
             answer = self.on_command(reply)
             if answer:
                 self.state = "speaking"
-                self._speak_quietly(lambda: self.speaker.say(speakable(answer, limit=400)))
+                self._say(answer, limit=400)
 
     def announce(self, text: str) -> None:
         """Speak from another thread (a reminder, an alert, the briefing) with the microphone ignored, and with
@@ -179,7 +193,8 @@ class VoiceLoop:
         with self._announce_lock:
             self._announcing += 1
         try:
-            self.speaker.say(scrub_wake(text))
+            self.last_said, self.last_said_at = scrub_wake(text), time.monotonic()
+            self.speaker.say(self.last_said)
         finally:
             time.sleep(0.3)
             self.mic.flush()
@@ -187,8 +202,38 @@ class VoiceLoop:
             with self._announce_lock:
                 self._announcing -= 1
 
+    def _say(self, text: str, limit: int | None = None) -> None:
+        line = speakable(text, limit=limit) if limit else text
+        self.last_said, self.last_said_at = line, time.monotonic()
+        self._speak_quietly(lambda: self.speaker.say(line))
+
+    def is_own_echo(self, heard: str) -> bool:
+        """True when what the mic picked up is just Prometheus's own last words coming back from the speakers."""
+        import difflib
+
+        if not self.last_said or time.monotonic() - self.last_said_at > 45 or not heard:
+            return False
+        a = " ".join(heard.lower().split())
+        b = " ".join(self.last_said.lower().split())
+        if len(a) < 8:
+            return False
+        return a in b or difflib.SequenceMatcher(None, a, b).ratio() > 0.55 or \
+            difflib.SequenceMatcher(None, a, b[:len(a) + 20]).ratio() > 0.6
+
+    def unclear(self) -> bool:
+        """Whisper was guessing (a noisy room, mumbling, or nothing said): better to ask again than to act."""
+        conf = getattr(self.transcriber, "last_confidence", 0.0)
+        no_speech = getattr(self.transcriber, "last_no_speech", 0.0)
+        return conf < -1.15 or no_speech > 0.75
+
     def _speak_quietly(self, action) -> None:
         """Speak with the microphone ignored, so Prometheus never hears (and answers) itself."""
-        action()
-        time.sleep(0.2)
-        self.mic.flush()
+        with self._announce_lock:
+            self._announcing += 1
+        try:
+            action()
+        finally:
+            time.sleep(0.6)                      # the room's echo dies down before listening again
+            self.mic.flush()
+            with self._announce_lock:
+                self._announcing -= 1
