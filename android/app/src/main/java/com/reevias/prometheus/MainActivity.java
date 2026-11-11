@@ -70,7 +70,18 @@ public class MainActivity extends Activity {
     }
 
     private void open(String address) {
-        // Chrome opens Prometheus on top; this screen stays behind until the owner comes back to it.
+        // The browser opens Prometheus on top. Behind it this screen says what's happening and has buttons, so the
+        // app is never a blank screen (a browser that's still setting up, no internet, Tailscale off…).
+        setContentView(R.layout.opening);
+        ((TextView) findViewById(R.id.where)).setText(address);
+        findViewById(R.id.again).setOnClickListener(v -> launch(address));
+        findViewById(R.id.change).setOnClickListener(v ->
+                showSetup(getSharedPreferences("prometheus", MODE_PRIVATE), address));
+        launch(address);
+    }
+
+    private void launch(String address) {
+        if (launcher != null) launcher.destroy();
         launcher = new TwaLauncher(this);
         launcher.launch(Uri.parse(address));
         launched = true;
@@ -79,7 +90,10 @@ public class MainActivity extends Activity {
     @Override
     protected void onRestart() {
         super.onRestart();
-        if (launched) finish();               // back from Prometheus: close, so Back leaves the app
+        if (launched) {
+            TextView status = findViewById(R.id.status);
+            if (status != null) status.setText("Prometheus is open in your browser.");
+        }
     }
 
     @Override

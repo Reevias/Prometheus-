@@ -21,6 +21,9 @@ PY
 }
 
 adb logcat -c
+# like a real phone: the browser is already set up (no first-run welcome screens)
+adb shell am set-debug-app --persistent com.android.chrome >/dev/null 2>&1
+adb shell 'echo "_ --disable-fre --no-default-browser-check --no-first-run" > /data/local/tmp/chrome-command-line'
 adb install -r "$APK" || fail "the APK didn't install"
 echo "installed"
 adb shell pm list packages | grep -q com.reevias.prometheus || fail "package missing after install"
@@ -58,4 +61,8 @@ crashed && fail "the app crashed when reopened"
 top=$(adb shell dumpsys activity activities | grep -m1 -E "topResumedActivity|mResumedActivity")
 echo "on top: $top"
 echo "$top" | grep -qiE "launcher|nexuslauncher" && fail "opening the app again went to the home screen"
+adb shell uiautomator dump /sdcard/ui.xml >/dev/null; adb pull /sdcard/ui.xml "$OUT/ui.xml" >/dev/null
+if echo "$top" | grep -q "com.reevias.prometheus"; then
+  grep -qiE "Opening Prometheus|open in your browser|Open Prometheus" "$OUT/ui.xml" || fail "the app showed a blank screen"
+fi
 echo "Android app test passed"
