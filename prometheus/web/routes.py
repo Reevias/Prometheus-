@@ -668,6 +668,31 @@ def register_routes(app: FastAPI, services: Services) -> None:
             store.audit("user", "voice_mute", {"muted": muted})
         return voice_pill(request)
 
+    def _train_view(request: Request):
+        v = services.voice
+        train = {"running": bool(v and v.trainer.running), "progress": v.trainer.progress if v else "",
+                 "profile": v.profile if v else None}
+        return page(request, "voice_train.html", train=train)
+
+    @app.get("/voice/train", response_class=HTMLResponse)
+    def voice_train_status(request: Request):
+        return _train_view(request)
+
+    @app.post("/voice/train", response_class=HTMLResponse)
+    def voice_train(request: Request):
+        if services.voice is not None:
+            services.voice.trainer.start()
+            store.audit("user", "voice_train", {})
+        return _train_view(request)
+
+    @app.post("/voice/train/forget", response_class=HTMLResponse)
+    def voice_train_forget(request: Request):
+        if services.voice is not None:
+            services.voice.profiles.forget()
+            services.voice.apply_profile(None)
+            services.voice.trainer.progress = "Training forgotten."
+        return _train_view(request)
+
     @app.post("/settings/voice", response_class=HTMLResponse)
     def set_voice(request: Request, on: str = Form("")):
         s = services.settings

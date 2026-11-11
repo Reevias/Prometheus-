@@ -19,6 +19,29 @@ class VoiceService:
         self.downloading = False
         self.error = ""
         self._lock = threading.Lock()
+        from prometheus.voice.training import ProfileStore, Trainer
+
+        self.profiles = ProfileStore(folder)
+        self.trainer = Trainer(self)
+        self.profile = self.profiles.load()
+        from prometheus.voice.text import set_learned
+
+        set_learned(self.profile)
+
+    def apply_profile(self, profile: dict | None) -> None:
+        """Use (or, with None, stop using) what training learned about the owner's voice."""
+        from prometheus.voice.text import set_learned
+        from prometheus.voice.training import thresholds
+
+        self.profile = profile
+        set_learned(profile)
+        spotter = getattr(self.loop, "spotter", None)
+        if spotter is not None:
+            t = thresholds(profile)
+            from prometheus.voice.engines import BURST_MAX
+
+            spotter.loud_min = t.get("loud", 500.0)
+            spotter.burst_max = t.get("burst_max", BURST_MAX)
 
     # -- what the screen shows ----------------------------------------------------------
     def state(self) -> str:
@@ -63,6 +86,8 @@ class VoiceService:
                                  KokoroSpeaker(self.models, self.services.settings.voice_name), self.command,
                                  log=lambda m: self.services.store.audit("voice", "note", {"text": m}))
                 loop.start()
+                self.loop = loop
+                self.apply_profile(self.profile)
             except Exception as e:      # no microphone, broken driver, damaged model…
                 self.error = f"Voice could not start: {type(e).__name__}: {e}"
                 return False

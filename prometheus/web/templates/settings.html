@@ -84,6 +84,7 @@
     <p class="muted" style="margin:0">Start every command with <strong>“Hello Prometheus”</strong>. It answers “Yes sir.” as soon as it has
     your command, so you know it heard you; “Yes sir?” means it heard its name and is waiting for the command.</p>
     {% if voice.heard %}<p class="muted" style="margin:0">Last heard: “{{ voice.heard }}”</p>{% endif %}
+    <div id="voice-train" hx-get="/voice/train" hx-trigger="load"></div>
   </div>
   {% endif %}
 

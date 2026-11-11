@@ -59,6 +59,9 @@ class VoiceLoop:
     # -- the loop --------------------------------------------------------------------------
     def run(self) -> None:
         while not self._stop.is_set():
+            if getattr(self, "training", False):      # the wake phrase is being trained: it reads the mic
+                time.sleep(0.05)
+                continue
             frame = self.mic.read(timeout=0.5)
             if frame is None:
                 continue

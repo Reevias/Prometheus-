@@ -1,0 +1,6 @@
+<div class="row" style="gap:8px;flex-wrap:wrap"
+  {% if train.running %}hx-get="/voice/train" hx-trigger="every 1s" hx-target="#voice-train" hx-swap="innerHTML"{% endif %}>
+  <span class="muted">{% if train.progress %}{{ train.progress }}{% elif train.profile %}Trained on your voice ({{ train.profile.after }} of {{ train.profile.samples }} tries recognised, {{ train.profile.before }} before training).{% else %}Not missing your “Hello Prometheus”? Train it on your voice: say it 8 times (about a minute).{% endif %}</span>
+  {% if not train.running %}<button type="button" hx-post="/voice/train" hx-target="#voice-train">Train wake phrase</button>
+  {% if train.profile %}<button type="button" class="danger" hx-post="/voice/train/forget" hx-target="#voice-train">Forget training</button>{% endif %}{% endif %}
+</div>

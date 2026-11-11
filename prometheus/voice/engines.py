@@ -190,6 +190,8 @@ class WakeSpotter:
         self._burst = 0           # frames since the current burst of speech started
         self._quiet = 0           # quiet frames at the end of it
         self._vosk_in_burst = False
+        self.loud_min = 500.0        # loudness that counts as speech (lower for a soft voice, after training)
+        self.burst_max = BURST_MAX   # longest burst worth checking (longer for a slow speaker, after training)
         self.last_text = ""          # what Whisper heard around the wake word
         self.phrase_done = False     # True when that check ran after the speaker paused (the command is complete)
         self.checks = 0              # how many times Whisper was asked (for the voice test)
@@ -213,12 +215,12 @@ class WakeSpotter:
 
     def feed(self, frame: bytes) -> bytes | None:
         self._recent.append(frame)
-        keep = int((BURST_MAX + 1.5) * RATE / FRAME)
+        keep = int((max(self.burst_max, BURST_MAX) + 1.5) * RATE / FRAME)
         if len(self._recent) > keep:
             del self._recent[: len(self._recent) - keep]
         self._since += 1
         level = rms(frame)
-        loud = level > max(500.0, self._noise * 3)
+        loud = level > max(self.loud_min, self._noise * 3)
         if not loud:
             self._noise = 0.98 * self._noise + 0.02 * level
         fired = self._trigger.feed(frame)
@@ -247,7 +249,7 @@ class WakeSpotter:
         if ended:
             spoken = (self._burst - self._quiet) * FRAME / RATE
             frames = self._burst + lead
-            if BURST_MIN <= spoken <= BURST_MAX and cooled:       # Vosk missed it (an accent): check anyway
+            if BURST_MIN <= spoken <= self.burst_max and cooled:       # Vosk missed it (an accent): check anyway
                 self.phrase_done = True
                 return self._check(frames)
             self._burst = self._quiet = 0

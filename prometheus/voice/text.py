@@ -13,21 +13,40 @@ def _words(text: str) -> list[tuple[str, int, int]]:
     return [(m.group().lower(), m.start(), m.end()) for m in re.finditer(r"[A-Za-z']+", text or "")]
 
 
-def find_wake(text: str) -> tuple[int, int] | None:
-    """Where the name is in the text (start, end), allowing for how speech-to-text misspells it."""
+LEARNED: dict | None = None     # the owner's trained profile (voice/training.py): how the name is heard for them
+
+
+def set_learned(profile: dict | None) -> None:
+    global LEARNED
+    LEARNED = profile if profile and profile.get("aliases") else None
+
+
+def find_wake(text: str, learned=None) -> tuple[int, int] | None:
+    """Where the name is in the text (start, end), allowing for how speech-to-text misspells it.
+    learned: None uses the trained profile, False ignores it, a dict uses that one."""
+    profile = LEARNED if learned is None else (learned or None)
+    aliases = set(profile.get("aliases", [])) if profile else set()
+    greetings = set(profile.get("greetings", [])) if profile else set()
     words = _words(text)
     for i, (w, start, end) in enumerate(words):
         w = w.replace("'", "")
         if NAME.match(w):
             return start, end
-        if i + 1 < len(words) and NAME.match(w + words[i + 1][0].replace("'", "")):   # "Prumi Theus"
+        two = w + words[i + 1][0].replace("'", "") if i + 1 < len(words) else ""
+        if two and NAME.match(two):                                                   # "Prumi Theus"
             return start, words[i + 1][2]
+        # a spelling learned in training counts only right after a greeting ("hello permit us")
+        if aliases and i > 0 and re.sub(r"[^a-z]", "", words[i - 1][0]) in greetings:
+            if re.sub(r"[^a-z]", "", two) in aliases:
+                return start, words[i + 1][2]
+            if re.sub(r"[^a-z]", "", w) in aliases:
+                return start, end
     return None
 
 
-def has_wake_word(text: str) -> bool:
+def has_wake_word(text: str, learned=None) -> bool:
     """True when the name was said ("Hello Prometheus", "Prometheus", or a common mishearing of it)."""
-    return find_wake(text) is not None
+    return find_wake(text, learned) is not None
 
 
 def strip_wake(text: str) -> str:

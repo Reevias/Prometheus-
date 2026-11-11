@@ -1,9 +1,10 @@
 # Prometheus: what is still missing
 
-Updated 11 November 2026. Version 1.4. Built and tested here: 683 tests pass.
+Updated 11 November 2026. Version 1.4. Built and tested here: 701 tests pass.
 Not yet run end to end on the owner's real laptop.
 
 ## Just finished
+- **Tray icon and notifications** (22), **cost page** (23), **own tools** (25), **safety check** (28), **voice training** (30) and the **small fixes** (31).
 - **Search inside files** (14), **linked facts that keep their history** (15, 16), **nightly memory tidy-up** (17) and **photos: tags, text and sorting** (18).
 - **Daily summary**: morning briefing (08:00) and evening wrap-up (21:00) with weather, calendar, important email, reminders and what Prometheus did.
 - **Email alerts and webhooks**: new mail from chosen senders every 5 minutes; a secret webhook address other apps (like GitHub) can call.
@@ -49,22 +50,22 @@ Not yet run end to end on the owner's real laptop.
 
 ## 6. Interaction and polish
 21. **Hand gestures** with the webcam (finger tracking).
-22. **Tray icon** and Windows notifications for everything, not only reminders.
-23. **Cost dashboard**: what each AI model has cost.
+22. **Tray icon and notifications**: done.
+23. **Cost dashboard**: done (monthly limit, warning at 80%).
 
 ## 7. Other agents
 24. **Hermes agent** on the desktop PC.
-25. **Self-edit level 2**: running tools Prometheus wrote itself (now possible with the code sandbox).
+25. **Self-edit level 2**: done (own tools, approved once by their code).
 26. **Antigravity calling Prometheus** the other way round (Prometheus as a tool server).
 
 ## 8. Safety still to add
 27. **Code sandbox**: done.
-28. **Automatic prompt-injection tests** (garak).
+28. **Prompt-injection tests**: done (Safety check in Settings, run against the real planner).
 
 ## 9. Testing still owed
 29. **First full run on the real laptop**: Wi-Fi on non-English Windows, WPA3 networks, voice on the real microphone, real GitHub and Antigravity calls, the reminder pop-up, the Edge browser window, Windows Sandbox, Google sign-in.
-30. **Voice tuning** from real use: the wake phrase "Hello Prometheus, what time is it?" woke 6 times in 10 in testing; the others 9 or 10 in 10.
-31. **Small leftovers**: one bad model name pauses its whole provider for 5 minutes; Remove can't delete a key set with `setx`; the browser may offer to save an API key as a password.
+30. **Voice tuning**: training on your voice is built; it still needs your 8 tries on the real microphone.
+31. **Small leftovers**: fixed.
 
 ## 10. On the owner's side
 32. **Claude API key** in Settings: this is what makes answers really good.
@@ -83,8 +84,7 @@ Not yet run end to end on the owner's real laptop.
 ## Suggested order
 1. Phone on Wi-Fi (12)
 2. Seeing the screen (4)
-3. Tray icon, cost dashboard (22, 23)
-4. Sorting photos on the phone (19)
-5. Study coach and money tracker (37, 38)
-6. Focus mode, laptop health check, clipboard memory (39 to 41)
-7. Camera, gestures, images and video (5, 20, 21)
+3. Sorting photos on the phone (19)
+4. Study coach and money tracker (37, 38)
+5. Focus mode, laptop health check, clipboard memory (39 to 41)
+6. Camera, gestures, images and video (5, 20, 21)
