@@ -19,6 +19,14 @@ class ProviderUnavailable(Exception):
     """No usable model (not running, no key, refused, network error)."""
 
 
+class PaidNeedsYes(ProviderUnavailable):
+    """Only a paid AI could answer, and paid AI waits for the owner's yes. The message is the question to show."""
+
+    def __init__(self, message: str, models: list[str] | None = None):
+        super().__init__(message)
+        self.models = models or []
+
+
 class PrivacyViolation(Exception):
     """A private (personal-data) route was configured with a cloud provider."""
 

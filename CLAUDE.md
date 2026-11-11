@@ -10,6 +10,7 @@ phone app. The owner is a student: use plain words.
 - Don't keep adding options to Settings: it is getting cluttered. New things go in the simple Features list (one
   on/off switch each), and technical knobs go under Advanced.
 - Only raise the version number for a real release.
+- AI models: don't add expensive ones (over $1 in or $4 out per million tokens). Paid models are only used after the owner says yes; free ones first.
 
 ## Checks before committing
 - Tests: `/home/user/venv314/bin/python -m pytest -q` (Python 3.14, the version Prometheus needs; all must pass).

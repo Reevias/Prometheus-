@@ -142,6 +142,8 @@ def _inputs(raw) -> dict:
     raise PlanError("Inputs must be key/value pairs.")
 
 
+PAID_YES = re.compile(r"^\W*(?:ok(?:ay)?[, ]+)?(?:yes|yeah|yep|sure|go ahead)?[, ]*(?:you can )?use (?:the )?paid"
+                      r"(?: ai| one| model)?(?: (?:for (?:this|it|that)|this once|once|this time))?\W*$", re.I)
 CODE_REQUEST = re.compile(r"\b(code|coding|script|python|javascript|typescript|java|c\+\+|rust|html|css|function|"
                           r"bug|debug|compile|program(?:me)?|algorithm|regex|sql|refactor|unit tests?|stack ?trace|"
                           r"traceback|pull request|commit|repo(?:sitory)?)\b", re.I)
@@ -556,6 +558,17 @@ class Orchestrator:
                 said = None
             if said:
                 return self._finish(chat_id, task_id, "done", said, "instant")
+        if PAID_YES.match(text or "") and not read_only and "<untrusted" not in text:
+            # "yes, use paid": the last request that was waiting for it runs again, with paid AI allowed this once
+            rows = self.store._rows("SELECT id, text FROM tasks WHERE chat_id = ? AND id < ? AND status = 'paused' "
+                                    "AND answer LIKE '%use paid%' ORDER BY id DESC LIMIT 1", (chat_id, task_id))
+            if not rows:
+                return self._finish(chat_id, task_id, "done", "There's nothing waiting for a paid AI in this chat.",
+                                    "instant")
+            self._finish(chat_id, task_id, "done", "OK, using a paid AI for that, this once.", "instant")
+            self.store.set_task_status(rows[0]["id"], "done", "Answered again with a paid AI (see below).")
+            with self.router.paid_allowed():
+                return self.run(chat_id, rows[0]["text"], read_only=read_only)
         if re.search(r"\bsave (?:this|that|it) as a (?:practice )?test\b", text or "", re.I) and "<untrusted" not in text:
             from prometheus.practice import from_last_task
 

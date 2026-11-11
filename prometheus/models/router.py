@@ -6,12 +6,14 @@ skips any that are unavailable or resting after a failure, and drops to free/loc
 from __future__ import annotations
 
 import re
+import contextlib
+import contextvars
 import time
 from typing import Callable
 
 from prometheus.config import Settings
 from prometheus.models.anthropic_provider import AnthropicProvider
-from prometheus.models.base import PrivacyViolation, Provider, ProviderUnavailable, Reply
+from prometheus.models.base import PaidNeedsYes, PrivacyViolation, Provider, ProviderUnavailable, Reply
 from prometheus.catalog import load_catalog
 from prometheus.models.compat import OpenAICompatProvider
 from prometheus.models.ollama import OllamaProvider
@@ -30,6 +32,9 @@ def split_entry(entry: str) -> tuple[str, str | None]:
     return name, (model or None) if sep else None
 
 
+_PAID_OK: contextvars.ContextVar[bool] = contextvars.ContextVar("prometheus_paid_ok", default=False)
+
+
 class ModelRouter:
     def __init__(self, providers: dict[str, Provider], routes: dict[str, list[str]], budget: Budget,
                  killswitch: KillSwitch, clock: Callable[[], float] = time.time):
@@ -40,6 +45,7 @@ class ModelRouter:
         self.clock = clock
         self._resting: dict[str, tuple[float, str]] = {}
         self.head = ""          # the lead AI chosen by hand ("" = follow the routes)
+        self.paid_needs_yes = False   # paid AI only after the owner says yes (a paid Brain picked by hand is a yes)
         for entry in routes.get("private", []):
             p = providers.get(split_entry(entry)[0])
             if p is None or not p.is_local:
@@ -78,13 +84,31 @@ class ModelRouter:
             return [self.head] + [e for e in route if e != self.head and self.is_free(e)]
         return route
 
+    @contextlib.contextmanager
+    def paid_allowed(self):
+        """Inside this block (one request the owner said yes to), paid AI may be used."""
+        token = _PAID_OK.set(True)
+        try:
+            yield
+        finally:
+            _PAID_OK.reset(token)
+
+    def _order(self, purpose: str) -> list[str]:
+        """Free AIs first while paid ones wait for a yes, so a yes is only asked when nothing free could answer."""
+        entries = self.entries_for(purpose)
+        if not self.paid_needs_yes or _PAID_OK.get():
+            return entries
+        return [e for e in entries if self.is_free(e) or e == self.head] + \
+               [e for e in entries if not (self.is_free(e) or e == self.head)]
+
     def complete(self, purpose: str, messages: list[dict], system: str, json_schema: dict | None = None,
                  max_tokens: int = 4096) -> Reply:
         self.killswitch.check()
         errors: list[str] = []
         empty: list[str] = []
+        waiting_yes: list[str] = []
         over_budget = False
-        for entry in self.entries_for(purpose):
+        for entry in self._order(purpose):
             name, model = split_entry(entry)
             provider = self.providers.get(name)
             if provider is None or not provider.available():
@@ -102,6 +126,9 @@ class ModelRouter:
             if not free and self.budget.state().stopped:
                 over_budget = True   # cap reached: skip paid models, keep looking for a free or local one
                 continue
+            if not free and self.paid_needs_yes and not _PAID_OK.get() and entry != self.head:
+                waiting_yes.append(f"{name} · {used_model}" if used_model else name)
+                continue             # paid: only after the owner's yes
             try:
                 reply = provider.complete(messages, system, json_schema=json_schema, max_tokens=max_tokens,
                                           model=model)
@@ -121,6 +148,12 @@ class ModelRouter:
                 errors.append(f"{name}: sent back an empty answer")
                 continue
             return reply
+        if waiting_yes:
+            names = ", ".join(dict.fromkeys(waiting_yes))
+            raise PaidNeedsYes(
+                f"No free AI could answer this right now ({'; '.join(errors) or 'none is set up for it'}). A paid one "
+                f"could: {names}. It usually costs well under a cent. Reply “yes, use paid” to use it for this "
+                "request, or try again later.", list(dict.fromkeys(waiting_yes)))
         if empty:
             raise ProviderUnavailable(
                 f"The AI ({', '.join(empty)}) sent back an empty answer. Try again in a moment, or pick another Brain "

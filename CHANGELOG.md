@@ -1,6 +1,8 @@
 # Changelog
 
 ## 2.3
+- Paid AI asks first: free AIs are always tried first, and when only a paid one could answer, Prometheus says which and waits; reply "yes, use paid" to use it for that request only. A paid Brain you pick yourself counts as a yes. Switch in Settings → AI.
+- Expensive models are no longer offered on OpenRouter (nothing over $1 in or $4 out per million tokens): 25 strong cheap or free ones remain. Kimi K3.1 Pro is still there for free through Ollama cloud.
 - 15 more strong models on OpenRouter, the big Ollama ones a laptop can't run: Beam 1.0 (501B), Muse Spark Open (816B), MiMo V2.6 Pro and Flash, GLM 5.3 Flash, Kimi K2.7 Code, gpt-oss 120B, Qwen 3.8 27B, MiniMax M3, Nemotron 3.5 Super, Muse Glimmer 30B, DeepSeek V4 Flash, and free ones (Nemotron 3.5 Super, Flint, Gemma 4 26B). 37 to choose from in total, as the Brain or the Research brain.
 - New AI models: **Ripple 65B** (Ricursive, on OpenRouter) plans coding requests ("fix this Python error", "write a script…"), with your normal Brain behind it. **Ollama cloud**: paste an Ollama key in Settings → AI and pick Kimi K3.1 Pro, GLM 5.3, DeepSeek V4.1 Flash, Mistral Large 4, gpt-oss 120B and seven more as the Brain; never used for private files. The private laptop AI is now **Granite 4.2 3B** (2.2 GB, better at plans and tools) and memory search uses **EmbeddingGemma 2**; the installer gets Ollama and both models, and older defaults switch over by themselves.
 - Fixed: "I couldn't make a working plan… not valid JSON (char 0)". The AI that plans sometimes used all its room on thinking and sent back nothing. Claude and OpenRouter models now get more room when that happens, an empty answer makes Prometheus try your next AI, and if none can answer it says so in plain words.

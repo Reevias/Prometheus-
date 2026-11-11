@@ -62,6 +62,7 @@ class Settings:
     voice_clap: bool = True                     # a double clap greets you, gives the brief and starts a conversation
     clap_sensitivity: float = 1.0               # higher hears softer claps (0.3 to 3)
     voice_barge_in: bool = True                 # talking over an answer stops it
+    paid_needs_yes: bool = True                 # paid AI only after the owner says yes (free ones are used first)
     code_brain: str = "auto"                    # who plans coding requests: auto (Ripple on OpenRouter), off, or a route entry
     features_off: list = field(default_factory=list)   # Settings → Features: the ones switched off
     paused: bool = False                        # Stop everything: no background jobs or outside actions

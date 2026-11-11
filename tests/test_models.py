@@ -221,3 +221,51 @@ def test_coding_requests_go_to_the_coding_brain():
 
     assert CODE_REQUEST.search("fix this python error") and CODE_REQUEST.search("write a script to rename files")
     assert not CODE_REQUEST.search("what's the weather tomorrow") and not CODE_REQUEST.search("find my physics notes")
+
+
+def test_paid_ai_waits_for_a_yes(tmp_path):
+    from prometheus.models.base import PaidNeedsYes
+
+    paid = FakeProvider(["from paid"], name="paidai", is_local=False)
+    free = FakeProvider(["from free"], name="freeai")
+    budget = Budget(Store(tmp_path / "m.db"), cap_usd=5.0)
+    r = make_router([paid, free], {"plan": ["paidai", "freeai"]}, budget)
+    r.paid_needs_yes = True
+    msg = [{"role": "user", "content": "x"}]
+    assert r.complete("plan", msg, "s").text == "from free"            # free first, nothing asked
+    only_paid = make_router([paid], {"plan": ["paidai"]}, budget)
+    only_paid.paid_needs_yes = True
+    with pytest.raises(PaidNeedsYes, match="yes, use paid"):
+        only_paid.complete("plan", msg, "s")
+    with only_paid.paid_allowed():
+        assert only_paid.complete("plan", msg, "s").text == "from paid"   # after the yes, this once
+    with pytest.raises(PaidNeedsYes):
+        only_paid.complete("plan", msg, "s")                             # and only that once
+    only_paid.head = "paidai"
+    assert only_paid.complete("plan", msg, "s").text == "from paid"       # a paid Brain picked by hand is a yes
+
+
+def test_yes_use_paid_reruns_the_waiting_request(app_client):
+    from prometheus.models.fake import FakeProvider as FP
+
+    paid = FP(['{"steps": [], "answer": "Paid answer."}'], name="paidai", is_local=False)
+    client, services = app_client(providers=[paid], routes={"plan": ["paidai"], "combine": ["paidai"],
+                                                            "research": ["paidai"], "private": []})
+    services.router.paid_needs_yes = True
+    store = services.store
+    chat = store.create_chat("t")
+    first = services.orchestrator.run(chat, "explain black holes")
+    assert first.status == "paused" and "yes, use paid" in first.answer
+    again = services.orchestrator.run(chat, "yes, use paid")
+    assert again.status == "done" and "Paid answer." in again.answer
+    assert services.orchestrator.run(chat, "yes use paid").answer.startswith("There's nothing waiting")
+
+
+def test_the_ask_first_switch(app_client):
+    from tests.conftest import login
+
+    client, services = app_client()
+    h = {"X-CSRF-Token": login(client)}
+    assert services.settings.paid_needs_yes and "Ask me before using a paid AI" in client.get("/settings").text
+    client.post("/settings/paid-yes", data={"on": ""}, headers=h)
+    assert services.settings.paid_needs_yes is False and services.router.paid_needs_yes is False

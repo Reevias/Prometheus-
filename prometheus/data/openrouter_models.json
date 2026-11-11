@@ -1,41 +1,13 @@
 {
  "updated": "2026-11-11",
- "note": "Strong models on OpenRouter, checked against openrouter.ai/api/v1/models. Prices are USD per million tokens (in / out).",
+ "note": "Strong but not expensive models on OpenRouter (at most $1 in / $4 out per million tokens, or free), checked against openrouter.ai/api/v1/models. Prices are USD per million tokens (in / out). Paid ones are only used after the owner says yes.",
  "models": [
-  {
-   "id": "moonshotai/kimi-k3",
-   "name": "Kimi K3",
-   "maker": "Moonshot",
-   "price": "0.19 / 16",
-   "about": "huge open model, 1M-token reading"
-  },
-  {
-   "id": "moonshotai/kimi-k3.1-pro",
-   "name": "Kimi K3.1 Pro",
-   "maker": "Moonshot",
-   "price": "2 / 10",
-   "about": "Kimi's strongest"
-  },
   {
    "id": "ricursiveai/ripple-65b-preview",
    "name": "Ripple 65B Preview",
    "maker": "Ricursive",
    "price": "0.20 / 0.60",
    "about": "built for coding agents, 1M-token reading"
-  },
-  {
-   "id": "qwen/qwen3.8-2.4t-a95b",
-   "name": "Qwen 3.8 (2.4T)",
-   "maker": "Alibaba",
-   "price": "2 / 6",
-   "about": "2.4 trillion parameters, 95B active"
-  },
-  {
-   "id": "qwen/qwen3.8-max-prime",
-   "name": "Qwen 3.8 Max Prime",
-   "maker": "Alibaba",
-   "price": "4 / 12",
-   "about": "Qwen's top model"
   },
   {
    "id": "qwen/qwen3.8-flash",
@@ -59,13 +31,6 @@
    "about": "very cheap"
   },
   {
-   "id": "z-ai/glm-5.3-prime",
-   "name": "GLM 5.3 Prime",
-   "maker": "Zhipu",
-   "price": "2.8 / 8.8",
-   "about": "Zhipu's top model"
-  },
-  {
    "id": "z-ai/glm-5.3",
    "name": "GLM 5.3",
    "maker": "Zhipu",
@@ -73,53 +38,11 @@
    "about": "cheap, long reading"
   },
   {
-   "id": "openai/gpt-6.1-sol",
-   "name": "GPT-6.1 Sol",
-   "maker": "OpenAI",
-   "price": "2 / 10",
-   "about": "OpenAI's flagship"
-  },
-  {
-   "id": "openai/gpt-6.1-terra",
-   "name": "GPT-6.1 Terra",
-   "maker": "OpenAI",
-   "price": "1 / 5",
-   "about": "balanced"
-  },
-  {
    "id": "openai/gpt-6-luna",
    "name": "GPT-6 Luna",
    "maker": "OpenAI",
    "price": "0.1 / 0.5",
    "about": "cheap"
-  },
-  {
-   "id": "google/gemini-4-carbon",
-   "name": "Gemini 4 Carbon",
-   "maker": "Google",
-   "price": "2 / 10",
-   "about": "Google's newest"
-  },
-  {
-   "id": "google/gemini-4-argon",
-   "name": "Gemini 4 Argon",
-   "maker": "Google",
-   "price": "2 / 10",
-   "about": "deep reasoning"
-  },
-  {
-   "id": "google/gemini-3.8-flash",
-   "name": "Gemini 3.8 Flash",
-   "maker": "Google",
-   "price": "0.83 / 4.1",
-   "about": "fast"
-  },
-  {
-   "id": "x-ai/grok-4.7",
-   "name": "Grok 4.7",
-   "maker": "xAI",
-   "price": "2 / 6",
-   "about": "xAI's newest"
   },
   {
    "id": "mistralai/mistral-large-4-0",
@@ -162,13 +85,6 @@
    "maker": "Reflection",
    "price": "0.30 / 1",
    "about": "501B, strong tools and reasoning, uses few words"
-  },
-  {
-   "id": "meta/muse-spark-open",
-   "name": "Muse Spark Open",
-   "maker": "Meta",
-   "price": "1.25 / 4.25",
-   "about": "816B open model, long multi-step work, sees images"
   },
   {
    "id": "xiaomi/mimo-v2.6-pro",

@@ -64,6 +64,10 @@
   another AI by itself if one is busy or out of credit. Keys stay on this laptop and are never shown again; adding or
   removing one needs your Prometheus password. Your personal files only ever go to the local model.</p>
   <p><strong>Working now:</strong> {% for p in providers if p.ready %}{{ p.name }}{{ ", " if not loop.last }}{% else %}<span class="muted">nothing yet. Add a key below, or start Ollama.</span>{% endfor %}</p>
+  <form hx-post="/settings/paid-yes" hx-target="body" class="row">
+    <label class="check"><input type="checkbox" name="on" value="1" {{ "checked" if s.paid_needs_yes }} onchange="this.form.requestSubmit()">
+      Ask me before using a paid AI <span class="muted">(free ones are always tried first; a paid Brain you pick yourself counts as a yes)</span></label>
+  </form>
   <div class="panel" id="ollama" style="display:grid;gap:8px">
     <strong>Ollama</strong>
     <p style="margin:0">On this laptop: <strong>{{ ollama.model }}</strong>

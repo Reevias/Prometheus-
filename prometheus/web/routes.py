@@ -1658,6 +1658,14 @@ def register_routes(app: FastAPI, services: Services) -> None:
         store.audit("user", "kill_reset", {})
         return HTMLResponse("")
 
+    @app.post("/settings/paid-yes", response_class=HTMLResponse)
+    def set_paid_yes(request: Request, on: str = Form("")):
+        services.settings.paid_needs_yes = bool(on)
+        save_settings(services.settings)
+        apply_settings(services)
+        store.audit("user", "paid_needs_yes", {"on": bool(on)})
+        return settings_page(request, saved=True)
+
     @app.post("/settings/feature", response_class=HTMLResponse)
     def set_feature(request: Request, key: str = Form(...), on: str = Form("")):
         from prometheus.features import BY_KEY, set_on
