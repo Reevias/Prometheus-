@@ -87,4 +87,4 @@ Not yet run end to end on the owner's real laptop.
 4. Sorting photos on the phone (19)
 5. Study coach and money tracker (37, 38)
 6. Focus mode, laptop health check, clipboard memory (39 to 41)
-7. Photos, camera, gestures, images and video (18 to 21, 5)
+7. Camera, gestures, images and video (5, 20, 21)
