@@ -63,8 +63,25 @@ class Quick:
     action: bool = False                              # it changes something (said back first, by voice)
 
 
+_NUM = {w: i for i, w in enumerate("zero one two three four five six seven eight nine ten eleven twelve thirteen "
+                                   "fourteen fifteen sixteen seventeen eighteen nineteen twenty".split())}
+_NUM.update({"thirty": 30, "forty": 40, "forty five": 45, "fifty": 50, "sixty": 60, "ninety": 90, "a": 1, "an": 1,
+             "twenty five": 25, "half an": 0.5, "half a": 0.5})
+SPOKEN_AMOUNT = re.compile(r"\b(" + "|".join(sorted(map(re.escape, _NUM), key=len, reverse=True)) +
+                           r")\s+(seconds?|secs?|minutes?|mins?|hours?|hrs?|days?|weeks?)\b", re.I)
+
+
+def spoken_numbers(text: str) -> str:
+    """"ten minutes" → "10 minutes": speech-to-text often writes amounts of time as words."""
+    def num(m):
+        n = _NUM[m.group(1).lower()]
+        return f"{n:g} {m.group(2)}"
+    return SPOKEN_AMOUNT.sub(num, text)
+
+
 def clean(text: str) -> str:
     t = " ".join((text or "").split())
+    t = spoken_numbers(t)
     t = FILLER.sub("", t)
     t = TAIL.sub("", t)
     return t.strip(" ,.!?")
@@ -206,7 +223,8 @@ def understand(text: str, store=None, now: float | None = None) -> Quick | None:
         if parse_due(am.group(2), now) is not None:
             return Quick(steps=[_step("assignments", f"Track {am.group(1)}", action="add", title=am.group(1),
                                       due=am.group(2))], action=True)
-    if re.search(r"\bwhat(?:'s| is)? due\b|\bmy (?:assignments|deadlines)\b|\bany deadlines\b", low):
+    if re.search(r"\bwhat(?:'s| is)? due\b|\bmy (?:assignments|deadlines)\b|\bany deadlines\b|"
+                 r"\b(?:assignments?|deadlines?|homework)\b.{0,20}\bdue\b", low):
         return Quick(steps=[_step("assignments", "What's due", action="list")])
     if re.search(r"\b(add|install|save|learn|get)\b.*\bthis (?:github )?(?:repo|repository|project)\b", low):
         return Quick(steps=[_step("screen", "Add the repo on screen", action="add_repo")], action=True)

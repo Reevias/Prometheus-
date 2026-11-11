@@ -4,36 +4,58 @@
   {% if error %}<p class="error">{{ error }}</p>{% endif %}{% if saved %}<p class="status-done">Saved.</p>{% endif %}{% if notice %}<p class="status-done">{{ notice }}</p>{% endif %}
   <nav class="set-nav" aria-label="Settings sections">
     <input type="search" id="set-search" placeholder="Search settings" autocomplete="off" oninput="promFilterSettings(this.value)">
+    <span class="set-group">Everyday</span>
+    <a href="#features">Features on and off</a>
     <span class="set-group">AI and models</span>
     <a href="#ai">AI</a>
     <span class="set-group">Voice</span>
     <a href="#voice">Voice</a>
     <span class="set-group">Connections</span>
     <a href="#connections">Connections</a>
-    <a href="#use-prometheus-from-other-ai-apps">Use Prometheus from other AI apps</a>
-    <a href="#obsidian">Obsidian</a>
-    <span class="set-group">Study and school</span>
-    <a href="#assignments">Assignments</a>
-    <a href="#study-coach">Study coach</a>
-    <span class="set-group">Daily life</span>
-    <a href="#notifications">Notifications</a>
-    <a href="#focus-mode">Focus mode</a>
-    <a href="#clipboard-and-screenshot-memory">Clipboard and screenshot memory</a>
-    <a href="#money-tracker">Money tracker</a>
-    <a href="#search-inside-files">Search inside files</a>
-    <a href="#daily-summary">Daily summary</a>
-    <a href="#watchers">Watchers</a>
+    <a class="adv" href="#use-prometheus-from-other-ai-apps">Use Prometheus from other AI apps</a>
+    <a class="adv" href="#obsidian">Obsidian</a>
+    <span class="set-group adv">Study and school</span>
+    <a class="adv" href="#assignments">Assignments</a>
+    <a class="adv" href="#study-coach">Study coach</a>
+    <span class="set-group adv">Daily life</span>
+    <a class="adv" href="#notifications">Notifications</a>
+    <a class="adv" href="#focus-mode">Focus mode</a>
+    <a class="adv" href="#clipboard-and-screenshot-memory">Clipboard and screenshot memory</a>
+    <a class="adv" href="#money-tracker">Money tracker</a>
+    <a class="adv" href="#search-inside-files">Search inside files</a>
+    <a class="adv" href="#daily-summary">Daily summary</a>
+    <a class="adv" href="#watchers">Watchers</a>
     <span class="set-group">Safety and privacy</span>
-    <a href="#safety-check">Safety check</a>
-    <a href="#always-allowed">Always allowed</a>
-    <a href="#places-prometheus-may-use">Places Prometheus may use</a>
+    <a href="#safety-check">Phone, cloud copy and backup</a>
+    <a class="adv" href="#always-allowed">Always allowed</a>
+    <a class="adv" href="#places-prometheus-may-use">Places Prometheus may use</a>
     <span class="set-group">General</span>
     <a href="#general">General</a>
-    <a href="#github">GitHub</a>
-    <a href="#other-keys">Other keys</a>
+    <a class="adv" href="#github">GitHub</a>
+    <a class="adv" href="#other-keys">Other keys</a>
+    <a class="adv" href="#practice-tests">Practice tests</a>
+    <button type="button" class="ghost" id="adv-toggle" onclick="promAdvanced()" style="margin-top:12px;text-align:left;padding:4px 10px">Show advanced settings</button>
   </nav>
   <div class="set-body">
   <h2>Settings</h2>
+
+  <section class="set" id="features" data-group="Everyday">
+  <h3>Features on and off</h3>
+  <p class="muted">Switch off anything you don't use. A switched-off feature does nothing in the background, and
+  Prometheus won't use it for your requests. <strong>Stop all</strong> at the top pauses everything at once (it stays
+  paused after a restart, until you press Resume).</p>
+  {% for group, items in features %}
+  <div class="panel feature-group">
+    <strong>{{ group }}</strong>
+    {% for f in items %}
+    <form hx-post="/settings/feature" hx-swap="none" class="feature-row">
+      <input type="hidden" name="key" value="{{ f.key }}">
+      <label class="check"><input type="checkbox" name="on" value="1" {{ "checked" if f.on }} onchange="this.form.requestSubmit()"> {{ f.label }}</label>
+    </form>
+    {% endfor %}
+  </div>
+  {% endfor %}
+  </section>
 
   <section class="set" id="ai" data-group="AI and models">
   <h3>AI</h3>
@@ -250,7 +272,7 @@
   </div>
 
   </section>
-  <section class="set" id="use-prometheus-from-other-ai-apps" data-group="Connections">
+  <section class="set adv" id="use-prometheus-from-other-ai-apps" data-group="Connections">
   <h3>Use Prometheus from other AI apps</h3>
   <div class="panel">
     <p class="muted">Antigravity, Claude Desktop, Cursor and other apps that support MCP can search what Prometheus
@@ -262,7 +284,7 @@
   </div>
 
   </section>
-  <section class="set" id="obsidian" data-group="Connections">
+  <section class="set adv" id="obsidian" data-group="Connections">
   <h3>Obsidian</h3>
   {% if obsidian_error %}<p class="error">{{ obsidian_error }}</p>{% endif %}
   <div class="panel" style="display:grid;gap:10px">
@@ -287,7 +309,7 @@
   </div>
 
   </section>
-  <section class="set" id="assignments" data-group="Study and school">
+  <section class="set adv" id="assignments" data-group="Study and school">
   <h3>Assignments</h3>
   <form class="panel" hx-post="/settings/assignments" hx-target="body" style="display:grid;gap:8px">
     <label>College or school email senders to read for deadlines (addresses or domains, comma separated)
@@ -298,7 +320,7 @@
   </form>
 
   </section>
-  <section class="set" id="study-coach" data-group="Study and school">
+  <section class="set adv" id="study-coach" data-group="Study and school">
   <h3>Study coach</h3>
   <form class="panel" hx-post="/settings/study" hx-target="body" style="display:grid;gap:8px">
     <label class="check"><input type="checkbox" name="cloud" value="1" {{ "checked" if s.study_cloud }}> Let Claude make
@@ -309,7 +331,7 @@
   </form>
 
   </section>
-  <section class="set" id="notifications" data-group="Daily life">
+  <section class="set adv" id="notifications" data-group="Daily life">
   <h3>Notifications</h3>
   <form class="panel" hx-post="/settings/notifications" hx-target="body" style="display:grid;gap:6px">
     <p class="muted">Reminders and alerts always pop up. Choose what else does:</p>
@@ -325,7 +347,7 @@
   </form>
 
   </section>
-  <section class="set" id="focus-mode" data-group="Daily life">
+  <section class="set adv" id="focus-mode" data-group="Daily life">
   <h3>Focus mode</h3>
   <form class="panel" hx-post="/settings/focus" hx-target="body" style="display:grid;gap:8px">
     <p class="muted">Say "focus for 2 hours", "focus until 6" or "focus mode on" (until you say "stop focus"). Prometheus
@@ -339,7 +361,7 @@
   </form>
 
   </section>
-  <section class="set" id="clipboard-and-screenshot-memory" data-group="Daily life">
+  <section class="set adv" id="clipboard-and-screenshot-memory" data-group="Daily life">
   <h3>Clipboard and screenshot memory</h3>
   <form class="panel" hx-post="/settings/clips" hx-target="body" style="display:grid;gap:8px">
     <label class="check"><input type="checkbox" name="on" value="1" {{ "checked" if s.clip_on }}> Remember text and links
@@ -350,7 +372,7 @@
   </form>
 
   </section>
-  <section class="set" id="money-tracker" data-group="Daily life">
+  <section class="set adv" id="money-tracker" data-group="Daily life">
   <h3>Money tracker</h3>
   <form class="panel" hx-post="/settings/money" hx-target="body" style="display:grid;gap:8px">
     <label class="check"><input type="checkbox" name="on" value="1" {{ "checked" if s.money_on }}> Read bank and UPI
@@ -363,7 +385,7 @@
   </form>
 
   </section>
-  <section class="set" id="search-inside-files" data-group="Daily life">
+  <section class="set adv" id="search-inside-files" data-group="Daily life">
   <h3>Search inside files</h3>
   <div class="panel">
     <p class="muted">Prometheus reads the text of PDFs, Word, Excel, PowerPoint and text files in Documents, Desktop,
@@ -373,7 +395,7 @@
   </div>
 
   </section>
-  <section class="set" id="daily-summary" data-group="Daily life">
+  <section class="set adv" id="daily-summary" data-group="Daily life">
   <h3>Daily summary</h3>
   <form class="panel" hx-post="/settings/briefing" hx-target="body" style="display:grid;gap:8px">
     <label class="check"><input type="checkbox" name="morning_on" value="1" {{ "checked" if s.briefing_morning_on }}> Morning briefing at
@@ -396,7 +418,7 @@
   </div>
 
   </section>
-  <section class="set" id="watchers" data-group="Daily life">
+  <section class="set adv" id="watchers" data-group="Daily life">
   <h3>Watchers</h3>
   <p class="muted">Prometheus speaks up by itself: in the “Prometheus alerts” chat, as a Windows notification, and out loud if voice is on.</p>
   <div class="panel" style="display:grid;gap:8px">
@@ -497,7 +519,7 @@
   </div>
 
   </section>
-  <section class="set" id="always-allowed" data-group="Safety and privacy">
+  <section class="set adv" id="always-allowed" data-group="Safety and privacy">
   <h3>Always allowed</h3>
   <p class="muted">Small things you said yes to in a chat. They aren't asked again, in any chat. Big things (installs,
   power, Wi-Fi, GitHub posts, money) always wait on the Approvals page.</p>
@@ -508,7 +530,7 @@
   </ul>
 
   </section>
-  <section class="set" id="places-prometheus-may-use" data-group="Safety and privacy">
+  <section class="set adv" id="places-prometheus-may-use" data-group="Safety and privacy">
   <h3>Places Prometheus may use</h3>
   {% if place_error %}<p class="error">{{ place_error }}</p>{% endif %}
   <p class="muted">Prometheus can find, copy, move and rename files in these places, and every change can be undone on
@@ -552,13 +574,13 @@
     <button type="submit" class="primary">Save settings</button>
   </form>
   </section>
-  <section class="set" id="github" data-group="General">
+  <section class="set adv" id="github" data-group="General">
   <h3>GitHub</h3>
   <p class="muted">So Prometheus can read its own repository ({{ s.github_repo }}), and open issues, pull requests or update itself (each waits for your approval).
   Make a key at <code>github.com/settings/personal-access-tokens/new</code>: repository access <strong>only</strong> {{ s.github_repo }};
   permissions: Contents, Issues and Pull requests set to read and write, Actions and Metadata set to read. Paste it below.</p>
   </section>
-  <section class="set" id="other-keys" data-group="General">
+  <section class="set adv" id="other-keys" data-group="General">
   <h3>Other keys</h3>
   {% for k in other_keys %}
   <form hx-post="/settings/keys" hx-target="body" class="panel row">
@@ -572,12 +594,31 @@
   <p class="muted">Spent this month: ${{ "%.4f"|format(budget.spent) }} of ${{ "%.2f"|format(budget.cap) }}. <a href="/costs">Details</a></p>
 
   </section>
+  <section class="set adv" id="practice-tests" data-group="General">
+  <h3>Practice tests</h3>
+  <p class="muted">Your real requests, re-checked after every update so a change that breaks something shows up (it
+  only plans, nothing is done). Add one by saying <strong>“save this as a practice test”</strong> after a request that
+  went right. {{ practice_count }} tests.</p>
+  <p class="muted" style="margin:0">{{ practice_last or "Not run yet." }}</p>
+  <form hx-post="/settings/practice/run" hx-target="#practice-result" class="row">
+    <button type="submit">Run the practice tests now</button>
+    <span id="practice-result"></span>
+  </form>
+  </section>
   <p id="set-none" class="muted" hidden>No setting matches that.</p>
   </div>
 </main>
 <script>
+  function promAdvanced(force) {
+    const on = force !== undefined ? force : !document.body.classList.contains("show-adv");
+    document.body.classList.toggle("show-adv", on);
+    document.getElementById("adv-toggle").textContent = on ? "Hide advanced settings" : "Show advanced settings";
+    try { localStorage.setItem("prom-adv", on ? "1" : ""); } catch (e) {}
+  }
+  try { if (localStorage.getItem("prom-adv") || (location.hash && document.querySelector(location.hash + ".adv"))) promAdvanced(true); } catch (e) {}
   function promFilterSettings(q) {
     q = (q || "").toLowerCase().trim();
+    document.body.classList.toggle("searching", !!q);
     let shown = 0;
     document.querySelectorAll("section.set").forEach((s) => {
       const hit = !q || s.textContent.toLowerCase().includes(q);

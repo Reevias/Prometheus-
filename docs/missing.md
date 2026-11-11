@@ -1,9 +1,10 @@
 # Prometheus: what is still missing
 
-Updated 11 November 2026. Version 2.3. Built and tested here: 872 tests pass.
+Updated 11 November 2026. Version 2.3. Built and tested here: 883 tests pass.
 Not yet run end to end on the owner's real laptop.
 
 ## Just finished
+- **One-line install, Prometheus-Setup.exe and Prometheus.apk** (built by GitHub on each release), own icon in Windows search, **simpler Settings with Features on and off**, **Stop all that stays stopped**, **weekly report card**, **practice tests** and **ready-made jobs** (everything from the "Build your first AI agent" guide).
 - **Chatbot-level voice**: ElevenLabs hearing (Scribe v2) and speaking (Flash), falling back to the laptop by itself; **double clap** to be greeted with a brief and talk without the name; **talk over it** to interrupt.
 - **Phone control** over wireless debugging, `prometheus doctor` version check, restart by itself after updates, and the second security review.
 - **Prometheus on the phone** (12): installable app, notifications, hold-to-talk, photos and files, bank SMS, phone photos (19), laptop jobs from the phone.
@@ -75,16 +76,10 @@ Not yet run end to end on the owner's real laptop.
 30. **Voice tuning**: ElevenLabs, the double clap and interrupting are built; still needs your real-microphone test (try two claps from across the room, and talking over an answer on speakers; send the timings from Settings).
 31. **Small leftovers**: fixed.
 
-## 9b. From the "Build your first AI agent" guide
-Prometheus already has the guide's six building blocks (a model, instructions, knowledge, tools and MCP, triggers, guardrails) and its first build (the morning briefing, drafts that never send by themselves). Not built yet:
-- **Weekly report card**: how many jobs it did, how many you changed, how often it asked you, and the cost (only the cost exists).
-- **Practice test set**: 20 to 30 of your real requests re-run after every change, pass or fail.
-- **One "stop everything" switch**: pauses every schedule, watcher and connection at once.
-- **Ready-made jobs**: call or lecture notes into actions and a follow-up message; a weekly news digest; PDFs into a spreadsheet with gaps marked MISSING.
-
 ## 10. On the owner's side
 32. **Claude API key** in Settings: this is what makes answers really good.
 33. **GitHub token** for the own repository (fine-grained, one repo).
+33a. **Make the repository public** (GitHub → Settings → General → Change visibility). Needed for the one-line install, and GitHub only builds the installer and the app for free on public repositories.
 33b. **ElevenLabs key** in Settings → Voice (the free plan covers only a few minutes a month; the cheapest paid plan is enough for daily use).
 34. **Backups** (File History or OneDrive) on before big file sorting.
 35. **2 or 3 exact tasks that went wrong**, to keep as permanent tests.

@@ -245,7 +245,11 @@ class SyncClock:
                           chat_id=r["chat_id"])
 
     def loop(self) -> None:
+        from prometheus.features import running
+
         while not self._stop.wait(EVERY):
+            if not running(self.services.settings, "sync"):
+                continue
             try:
                 self.once()
             except Exception:

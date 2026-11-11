@@ -204,7 +204,11 @@ class LaptopJobs:
         return len(jobs)
 
     def loop(self) -> None:
+        from prometheus.features import running
+
         while not self._stop.wait(30):
+            if not running(self.services.settings, "laptop_jobs"):
+                continue
             try:
                 self.once()
             except Exception:

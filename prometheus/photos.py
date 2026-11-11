@@ -101,6 +101,7 @@ def is_screenshot(path: Path) -> bool:
 
 class PhotoIndex(FileIndex):
     TABLE, SUFFIXES, MAX_BYTES, KV = "photo_index", PHOTO_SUFFIXES, 30 * 1024 * 1024, "photo_index_status"
+    FEATURE = "photos"
     MAIN = PHOTO_PLACES
 
     def __init__(self, store, policy, extra_roots=(), looker=None, **kw):

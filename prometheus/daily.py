@@ -28,6 +28,20 @@ class DailyJobs:
         self._stop = threading.Event()
         self.log: list[str] = []
 
+    def practice_after_update(self) -> None:
+        """After an update: re-check the practice tests and say so in the alerts if any now fail."""
+        orchestrator = getattr(self.services, "orchestrator", None)
+        if orchestrator is None:
+            return
+        try:
+            from prometheus import practice
+
+            result = practice.run(orchestrator)
+            if result["failed"] and hasattr(self.services, "notify"):
+                self.services.notify("alert", "After the update, practice tests: " + practice.describe(result))
+        except Exception:
+            pass
+
     def run_once(self, background: bool = False) -> list[str]:
         store, s = self.services.store, self.services.settings
         store.kv_set("daily_last", self.clock())
@@ -40,7 +54,9 @@ class DailyJobs:
         except Exception as e:               # no model available tonight: the ratings wait for tomorrow
             done.append(f"Learning skipped: {type(e).__name__}")
         orchestrator = getattr(self.services, "orchestrator", None)
-        if orchestrator is not None and getattr(orchestrator, "facts", None) is not None:
+        from prometheus.features import on as _on
+
+        if orchestrator is not None and getattr(orchestrator, "facts", None) is not None and _on(s, "tidy"):
             try:
                 tidied = orchestrator.facts.tidy()
                 done.append(f"Memory tidy-up: {len(tidied)} changes." if tidied else "Memory is tidy.")
@@ -68,6 +84,7 @@ class DailyJobs:
             if msg and hasattr(self.services, "notify"):
                 self.services.notify("update", f"Prometheus updated: {msg[:120]}")
             if msg:
+                self.practice_after_update()
                 updater.restart_when_idle()         # same way it was started, once nothing is running
         self.log = done
         store.audit("system", "daily", {"done": done})
@@ -77,7 +94,11 @@ class DailyJobs:
         if self._stop.wait(START_DELAY):
             return
         while True:
-            if due(self.clock(), float(self.services.store.kv_get("daily_last", 0) or 0)):
+            from prometheus.features import paused
+
+            if paused(self.services.settings):
+                pass
+            elif due(self.clock(), float(self.services.store.kv_get("daily_last", 0) or 0)):
                 self.run_once(background)
             if self._stop.wait(CHECK_EVERY):
                 return

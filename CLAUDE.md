@@ -17,16 +17,19 @@ phone app. The owner is a student: use plain words.
 - A new secret: add it to `KEY_NAMES` in `prometheus/config.py`.
 - Keep `CHANGELOG.md` and `docs/missing.md` up to date.
 
-## Next steps (agreed 11 Nov 2026), in order
-1. **Going public**: scan the whole git history for keys, passwords, personal email or files; remove them (history
-   rewrite allowed). Then the owner makes the repo public.
-2. **Own icon in Windows search**: the Start-menu entry shows the Python icon. Give the shortcut a stable icon
-   path and the app's AppUserModelID, and refresh the icon cache.
-3. **One-line install**: `irm <raw link>/scripts/install.ps1 | iex` in PowerShell (works once the repo is public).
-4. **Prometheus-Setup.exe**: a real Windows installer, built by GitHub Actions and attached to a GitHub Release.
-5. **Android APK**: Prometheus.apk built by GitHub Actions, opening the cloud copy; put on the Release and on the
-   /phone page.
-6. **Settings: Simple + Advanced**, plus a **Features** list with an on/off switch for every feature.
-7. **From the "Build your first AI agent" PDF**: a stop-everything switch, a weekly report card, a practice test
-   set, and ready-made jobs (notes into actions and a follow-up, a weekly news digest, PDFs into a spreadsheet with
-   gaps marked MISSING).
+## Status (11 Nov 2026)
+Done: history checked (no secrets; only the first commit's author email, kept because rewriting would break
+`git pull --ff-only` updates on the laptop and the cloud copy), icon and app id on the shortcut, one-line install,
+`installer/prometheus.iss` and `.github/workflows/release.yml` (Setup.exe + APK on a Release), `android/` app,
+Settings Simple + Advanced with `prometheus/features.py`, persistent Stop all, `report.py`, `practice.py`,
+`agents/jobs_agent.py`.
+
+Waiting on the owner:
+- Make the repository public. Every GitHub Actions run fails within seconds while it's private (no runner starts:
+  the free minutes are used up), so the Release can't be built until then. After that, run "Release" from the
+  Actions tab (or push a tag `v2.3.0`).
+- Optional: add `ANDROID_KEYSTORE` (base64 .jks) and `ANDROID_KEYSTORE_PASSWORD` secrets, so new APK versions install
+  over old ones. Without them each APK is signed with a throwaway test key.
+
+Not yet checked on real hardware: the shortcut app-id PowerShell (the release workflow checks it on Windows),
+the APK, the clap and ElevenLabs voice.

@@ -328,7 +328,7 @@ class Orchestrator:
             untrusted(h.context[:CHAT_PASSAGE_CHARS], h.title) for h in hits) + "\n\n"
 
     def _plan(self, text: str, history: list[dict] | None = None, chat_id: int | None = None) -> Plan:
-        agents = "\n".join(f"- {name}: {cls.description}" for name, cls in self.registry.items())
+        agents = "\n".join(f"- {name}: {cls.description}" for name, cls in self._usable_agents())
         system = f"{self._prompt('planner')}\n\nWriting rules:\n{self._style()}\n\nAgents:\n{agents}"
         catalog = self.skills.catalog_text() if self.skills else ""
         if catalog:
@@ -420,12 +420,25 @@ class Orchestrator:
         except Exception:
             return 0.0
 
+    def _usable_agents(self):
+        """The agents the planner may use: not those of a feature switched off in Settings → Features."""
+        from prometheus.features import agent_blocked
+
+        settings = getattr(self, "settings", None)
+        return [(n, c) for n, c in self.registry.items() if not agent_blocked(settings, n)]
+
     def _run_step(self, task_id: int, st: dict, results: dict, private: set, label: str = ""):
         sid = self.store.add_step(task_id, st["agent"], label + st["goal"], st["inputs"])
         agent_cls = self.registry.get(st["agent"])
         try:
             if agent_cls is None:
                 raise PlanError(f"Unknown agent {st['agent']}")
+            from prometheus.features import agent_blocked
+
+            blocked = agent_blocked(getattr(self, "settings", None), st["agent"])
+            if blocked:
+                self.store.finish_step(sid, "failed", blocked)
+                return StepResult("failed", blocked), agent_cls
             if agent_cls.private_outputs:
                 private.add(st["id"])
             inputs = resolve_inputs(st["inputs"], results, frozenset(private),
@@ -480,7 +493,7 @@ class Orchestrator:
 
     def _repair(self, text: str, st: dict, tries: list, agent_cls) -> dict | None:
         """Ask the lead AI for ONE different way to reach the same goal, or None to stop."""
-        agents = "\n".join(f"- {name}: {cls.description}" for name, cls in self.registry.items())
+        agents = "\n".join(f"- {name}: {cls.description}" for name, cls in self._usable_agents())
         lines = []
         for a, r in tries:
             hidden = getattr(self.registry.get(a["agent"]), "private_outputs", False)
@@ -528,11 +541,18 @@ class Orchestrator:
                 said = None
             if said:
                 return self._finish(chat_id, task_id, "done", said, "instant")
+        if re.search(r"\bsave (?:this|that|it) as a (?:practice )?test\b", text or "", re.I) and "<untrusted" not in text:
+            from prometheus.practice import from_last_task
+
+            return self._finish(chat_id, task_id, "done", from_last_task(self.store, chat_id), "instant")
         from prometheus.quick import understand
 
         try:
             # instant phrases are for the owner's own words only, never for text that carries outside content
-            fast = None if "<untrusted" in text else understand(text, self.store)
+            from prometheus.features import on as _feature_on
+
+            fast = (None if "<untrusted" in text or not _feature_on(getattr(self, "settings", None), "instant")
+                    else understand(text, self.store))
         except Exception:
             fast = None
         if read_only and fast is not None and fast.action:

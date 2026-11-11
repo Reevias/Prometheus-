@@ -759,6 +759,9 @@ def register_routes(app: FastAPI, services: Services) -> None:
                     voices=__import__("prometheus.voice.engines", fromlist=["VOICES"]).VOICES,
                     eleven_voices=__import__("prometheus.voice.cloud", fromlist=["VOICES"]).VOICES,
                     eleven_key=bool(have.get("ELEVENLABS_API_KEY")),
+                    features=__import__("prometheus.features", fromlist=["view"]).view(s),
+                    practice_count=len(__import__("prometheus.practice", fromlist=["tests"]).tests(store)),
+                    practice_last=__import__("prometheus.practice", fromlist=["last_result"]).last_result(store),
                     speech_models=[(k, v[2]) for k, v in __import__("prometheus.voice.engines",
                                                                     fromlist=["SPEECH"]).SPEECH.items()],
                     home=str(services.home), bad_places=bad_places,
@@ -1606,12 +1609,41 @@ def register_routes(app: FastAPI, services: Services) -> None:
 
     @app.post("/kill")
     def kill():
+        """Stop everything: running tasks stop, and every background job, watcher, sync and connection stays
+        paused (even after a restart) until Resume."""
         services.killswitch.trigger("Stopped by the user")
+        services.settings.paused = True
+        save_settings(services.settings)
         store.audit("user", "kill", {})
         return HTMLResponse("")
 
     @app.post("/kill/reset")
     def kill_reset():
         services.killswitch.reset()
+        services.settings.paused = False
+        save_settings(services.settings)
         store.audit("user", "kill_reset", {})
         return HTMLResponse("")
+
+    @app.post("/settings/feature", response_class=HTMLResponse)
+    def set_feature(request: Request, key: str = Form(...), on: str = Form("")):
+        from prometheus.features import BY_KEY, set_on
+
+        if key not in BY_KEY:
+            return settings_page(request, 400, key_error="Unknown feature.")
+        set_on(services.settings, key, bool(on))
+        save_settings(services.settings)
+        apply_settings(services)
+        store.audit("user", "feature", {"key": key, "on": bool(on)})
+        return HTMLResponse("")
+
+    @app.post("/settings/practice/run", response_class=HTMLResponse)
+    def practice_run(request: Request):
+        from prometheus import practice
+
+        try:
+            result = practice.describe(practice.run(services.orchestrator))
+        except Exception as e:
+            result = f"The practice tests couldn't run: {type(e).__name__}."
+        store.audit("user", "practice_run", {})
+        return HTMLResponse(f'<p class="muted" style="margin:0">{__import__("html").escape(result)}</p>')

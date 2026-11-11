@@ -230,6 +230,10 @@ class BriefingClock:
         if quiet(self.services):          # the cloud copy, while the laptop is on: the laptop does this
             return []
         s, store, now = self.services.settings, self.services.store, self.clock()
+        from prometheus.features import on as feature_on, paused
+
+        if paused(s):
+            return []
         sent = []
         today = time.strftime("%Y-%m-%d", time.localtime(now))
         for kind, on, at in (("morning", s.briefing_morning_on, s.briefing_morning),
@@ -244,12 +248,30 @@ class BriefingClock:
                 store.kv_set(key, today)
                 self.deliver(kind)
                 sent.append(kind)
-        sent += self.study_nudge(now, today)
-        sent += self.money_check(now)
-        sent += self.health_check(now)
-        sent += self.exam_posts(now, today)
-        sent += self.assignment_check(now)
+        for key, job in (("study_nudge", lambda: self.study_nudge(now, today)), ("money", lambda: self.money_check(now)),
+                         ("health", lambda: self.health_check(now)), ("exams", lambda: self.exam_posts(now, today)),
+                         ("assignments", lambda: self.assignment_check(now)),
+                         ("weekly_report", lambda: self.weekly_report(now, today))):
+            if feature_on(s, key):
+                sent += job()
         return sent
+
+    def weekly_report(self, now: float, today: str) -> list[str]:
+        """Sunday evening: the week's report card in the Daily briefing chat."""
+        lt = time.localtime(now)
+        if lt.tm_wday != 6 or lt.tm_hour < 19 or self.services.store.kv_get("weekly_report") == today:
+            return []
+        self.services.store.kv_set("weekly_report", today)
+        from prometheus.report import week
+
+        text = week(self.services, now)
+        self.services.store.add_message(self.chat(), "assistant", text, "weekly report")
+        if self.notify is not None:
+            try:
+                self.notify("Your weekly report card is ready.")
+            except Exception:
+                pass
+        return ["weekly_report"]
 
     def assignment_check(self, now: float) -> list[str]:
         """Every half hour: new deadlines in emails from the chosen college/school senders."""

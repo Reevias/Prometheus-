@@ -165,6 +165,10 @@ class Watchers:
 
     def webhook(self, source: str, text: str) -> None:
         """Something outside called Prometheus's webhook address: say it (its text is shown, never obeyed)."""
+        from prometheus.features import running
+
+        if not running(self.services.settings, "webhooks"):
+            return
         self.alert(f"hook:{time.time()}", f"{source}: {' '.join(text.split())[:300]}")
 
     def tick(self) -> None:
@@ -173,8 +177,12 @@ class Watchers:
         if quiet(self.services):          # the cloud copy, while the laptop is on: the laptop does this
             return None
         s = self.services.settings
+        from prometheus.features import on, paused
+
+        if paused(s):
+            return None
         self.ticks += 1
-        if self.ticks % EMAIL_EVERY == 1 or EMAIL_EVERY == 1:
+        if (self.ticks % EMAIL_EVERY == 1 or EMAIL_EVERY == 1) and on(s, "email_alerts"):
             self.check_email()
         if s.watch_battery and self.laptop is not None:
             self.check_battery()
@@ -182,7 +190,7 @@ class Watchers:
             self.check_disk()
         if s.watch_cpu and self.laptop is not None:
             self.check_cpu()
-        if s.watch_folders:
+        if s.watch_folders and on(s, "watch_folders"):
             self.check_folders()
 
     def loop(self) -> None:

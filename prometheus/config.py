@@ -62,6 +62,8 @@ class Settings:
     voice_clap: bool = True                     # a double clap greets you, gives the brief and starts a conversation
     clap_sensitivity: float = 1.0               # higher hears softer claps (0.3 to 3)
     voice_barge_in: bool = True                 # talking over an answer stops it
+    features_off: list = field(default_factory=list)   # Settings → Features: the ones switched off
+    paused: bool = False                        # Stop everything: no background jobs or outside actions
     auto_update: bool = True
     auto_restart: bool = True              # after an update, restart by itself once nothing is running
     phone_target: str = ""                 # the phone's wireless-debugging address, e.g. 100.64.1.2:41234

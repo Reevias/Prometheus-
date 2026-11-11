@@ -157,8 +157,12 @@ class ClipMemory:
     # -- the background watcher ------------------------------------------------------------
     def loop(self) -> None:
         n = 0
+        from prometheus.features import running
+
         while not self._stop.wait(POLL):
             n += 1
+            if not running(None, "clipboard"):
+                continue
             try:
                 self.check_clipboard()
                 if n % 15 == 0:                     # every 30 seconds

@@ -327,3 +327,9 @@ main.single > h2:first-child { margin-top: 0; }
   .chat-head select { max-width: calc(100vw - 120px); }
   .command textarea::placeholder { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 }
+
+/* Settings: everyday first, the rest behind "Show advanced settings" (search looks everywhere) */
+body:not(.show-adv):not(.searching) .settings .adv { display: none; }
+.feature-group { display: grid; gap: 4px; margin-bottom: 8px; }
+.feature-row { margin: 0; }
+button.ghost { background: none; border-color: transparent; color: var(--text-2); }

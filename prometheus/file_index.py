@@ -36,6 +36,7 @@ def is_night(now: float) -> bool:
 
 class FileIndex:
     TABLE, SUFFIXES, MAX_BYTES, MAIN, KV = "file_index", SUFFIXES, MAX_BYTES, MAIN, "file_index_status"
+    FEATURE = "file_search"          # Settings → Features switch for the nightly reading
 
     def __init__(self, store, policy, extra_roots=(), clock=time.time, pause: float = PAUSE):
         self.store, self.policy, self.clock, self.pause = store, policy, clock, pause
@@ -169,7 +170,11 @@ class FileIndex:
         return None
 
     def loop(self) -> None:
+        from prometheus.features import running
+
         while not self._stop.wait(CHECK_EVERY):
+            if not running(None, self.FEATURE):
+                continue
             try:
                 self.tick()
             except Exception:

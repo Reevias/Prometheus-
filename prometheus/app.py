@@ -276,6 +276,12 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
 
     orchestrator = Orchestrator(store, router, REGISTRY, make_context, killswitch, prompts.folder, skills=skills)
     orchestrator.extra_catalog = apps_agent.MANAGER.catalog_text
+    orchestrator.settings = settings          # Features switches and Stop everything
+    from prometheus import features as _features
+
+    _features.CURRENT = settings
+    if getattr(settings, "paused", False):
+        killswitch.trigger("Stopped by the user (Stop all is still on)")   # stays stopped after a restart
     orchestrator.step_tries = max(1, min(int(settings.step_tries), 6))
     orchestrator.task_budget = max(0.01, min(float(settings.task_budget_usd), 10.0))
     services = Services(settings, home, store, policy, journal, files, permissions, approvals, budget, killswitch,
