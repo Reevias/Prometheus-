@@ -38,6 +38,9 @@ class Reminders(Agent):
             except WhenError as e:
                 return StepResult("failed", str(e))
             rid = ctx.store.add_reminder(chat_id, task, when.due, when.repeat, kind="goal")
+            from prometheus import undo
+
+            undo.record(ctx.store, "reminder", f"the standing goal '{task}'", {"id": rid})
             again = {"daily": " and every day after", "weekdays": " and every weekday after", "weekly": " and every week after"}
             return StepResult("done", f"Standing goal saved: '{task}' {describe(when.due)}{again.get(when.repeat, '')}. "
                                       "I'll run it by myself and post the result here.", {"id": rid, "due": when.due})
@@ -48,6 +51,9 @@ class Reminders(Agent):
             except WhenError as e:
                 return StepResult("failed", str(e))
             rid = ctx.store.add_reminder(chat_id, text, when.due, when.repeat)
+            from prometheus import undo
+
+            undo.record(ctx.store, "reminder", f"the reminder '{text}' {describe(when.due)}", {"id": rid})
             again = {"daily": ", then every day", "weekdays": ", then every weekday", "weekly": ", then every week"}
             return StepResult("done", f"Reminder set: '{text}' {describe(when.due)}{again.get(when.repeat, '')}.",
                               {"id": rid, "due": when.due})

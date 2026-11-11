@@ -215,6 +215,10 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
     def set_model(payload: dict) -> str:
         provider, model = str(payload["provider"]), str(payload["model"])
         field = {"openrouter": "openrouter_model", "anthropic": "anthropic_model", "ollama": "ollama_model"}[provider]
+        from prometheus import undo
+
+        undo.record(store, "setting", f"switching {provider} to {model}",
+                    {"field": field, "old": getattr(settings, field), "provider": provider})
         setattr(settings, field, model)
         save_settings(settings)
         live = router.providers.get(provider)
@@ -346,6 +350,11 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
     _mcp_token()                                  # made once; the stdio bridge reads it from the key store
 
     approvals.register("mcp_action", action_handler(services))
+    from prometheus import undo as _undo
+    from prometheus.agents import google_agent as _ga
+
+    _undo.SERVICES, _ga.UNDO_STORE = services, store
+    approvals.register("undo", _undo.handler)
     return services
 
 

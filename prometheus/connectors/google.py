@@ -123,6 +123,9 @@ class Google:
             body["location"] = location[:200]
         return self._call("POST", CAL, json=body).json()
 
+    def delete_event(self, event_id: str) -> None:
+        self._call("DELETE", f"{CAL}/{event_id}")
+
     def move_event(self, event_id: str, start: float, minutes: int = 60) -> dict:
         body = {"start": {"dateTime": self._iso(start)}, "end": {"dateTime": self._iso(start + minutes * 60)}}
         return self._call("PATCH", f"{CAL}/{event_id}", json=body).json()

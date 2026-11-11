@@ -75,14 +75,21 @@ class GoogleAgent(Agent):
         return StepResult("failed", "I can: events, add_event, move_event, drive_search, drive_read.")
 
 
+UNDO_STORE = None        # set by the app
+
+
 def event_handler(payload: dict) -> str:
     try:
         g = google()
         if payload.get("action") == "move_event":
             g.move_event(str(payload["id"]), float(payload["start"]), int(payload.get("minutes") or 60))
             return f"Moved it to {describe(float(payload['start']))}."
-        g.add_event(str(payload["title"]), float(payload["start"]), int(payload.get("minutes") or 60),
-                    str(payload.get("location") or ""))
+        made = g.add_event(str(payload["title"]), float(payload["start"]), int(payload.get("minutes") or 60),
+                           str(payload.get("location") or ""))
+        if UNDO_STORE is not None and isinstance(made, dict) and made.get("id"):
+            from prometheus import undo
+
+            undo.record(UNDO_STORE, "google_event", f"the calendar event '{payload['title']}'", {"id": made["id"]})
         return f"Added '{payload['title']}' {describe(float(payload['start']))}."
     except GoogleError as e:
         raise RuntimeError(str(e)) from e

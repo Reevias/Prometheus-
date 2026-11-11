@@ -1,6 +1,7 @@
 # Changelog
 
 ## 1.8
+- "Undo that" (typed or spoken, instant): reverses the last thing Prometheus did in the past hour, after a yes in the chat: moved, renamed or new files and notes, sorted photos, a reminder or standing goal, a calendar event it added, facts it saved, a model change. Sent email can't be unsent, and it says so.
 - Use Prometheus from other AI apps (MCP): Antigravity, Claude Desktop, Cursor and others can search what Prometheus remembers, look up facts about people, find your files by what's in them (names and folders only), and ask it questions. Anything that changes something goes to your Approvals page first. Text from your private files never leaves. The setup to paste is in Settings; the desktop app now keeps its usual port so other apps can find it.
 
 ## 1.7

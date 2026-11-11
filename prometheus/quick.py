@@ -137,6 +137,9 @@ def understand(text: str, store=None, now: float | None = None) -> Quick | None:
             said = ""
         if said:
             return Quick(answer=("Tomorrow: " if tomorrow else "Today: ") + said + ".")
+    if re.fullmatch(r"(undo|undo that|undo it|undo the last (?:thing|action|step)|reverse that|take that back|"
+                    r"wapas karo|undo karo)", low):
+        return Quick(steps=[_step("undo", "Undo the last action", action="undo")], action=True)
     m = OPEN.match(t)
     if m:
         target = (m.group(1) or m.group(2) or "").strip(" .")

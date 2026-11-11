@@ -278,15 +278,19 @@ class Orchestrator:
     def _save_facts(self, chat_id: int, task_id: int, facts: list[dict]) -> None:
         """Lasting facts from the owner's message are saved by themselves and listed under the answer."""
         title = dict(self.store.chats()).get(chat_id, "chat")
-        noted = []
+        noted, saved_ids = [], []
         for f in facts[:MAX_FACTS]:
             if SECRETISH.search(f"{f['attribute']} {f['value']}"):
                 continue
             fid, said = self.facts.save(f["subject"], f["attribute"], f["value"], source=f"chat: {title}")
             if fid:
                 noted.append(said)
+                saved_ids.append(fid)
         if noted:
             self._remembered[task_id] = noted
+            from prometheus import undo
+
+            undo.record(self.store, "fact", "remembering " + "; ".join(noted)[:200], {"ids": saved_ids})
 
     def _earlier_chats(self, text: str, chat_id: int | None) -> str:
         """The few parts of earlier chats that match this request. Parts already in the recent history are skipped;

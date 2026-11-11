@@ -80,6 +80,11 @@ class EmailAgent(Agent):
 
 def send_email_handler(payload: dict) -> str:
     try:
-        return mailbox().send(str(payload.get("to", "")), str(payload.get("subject", "")), str(payload.get("body", "")))
+        sent = mailbox().send(str(payload.get("to", "")), str(payload.get("subject", "")), str(payload.get("body", "")))
+        from prometheus import undo
+
+        if undo.SERVICES is not None:
+            undo.record(undo.SERVICES.store, "email", f"the email to {payload.get('to', '')}", {})
+        return sent
     except EmailError as e:
         raise RuntimeError(str(e)) from e
