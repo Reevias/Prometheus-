@@ -156,14 +156,44 @@ class SystemAgent(Agent):
             ctx.store.audit(self.name, "app_open", {"target": str(name)[:60]})
             return StepResult("done", text)
         except AppNotInstalled:
-            site = site_for(name)
-            if site:
-                open_site(site)
-                ctx.store.audit(self.name, "open_site", {"target": str(name)[:60], "url": site})
-                return StepResult("done", f"{name} isn't installed, so I opened {site} in your browser. Say "
-                                          f"'install {name}' if you want the app.", {"url": site})
-            return StepResult("failed", f"{name} isn't installed on this laptop. Say 'install {name}' and I'll find "
-                                        "it (installing waits for your approval), or 'open the Microsoft Store'.")
+            return self._not_installed(ctx, name)
+
+    def _offer_install(self, ctx: AgentContext, name: str) -> str:
+        """Find the app and ask in the chat whether to install it. Returns what to tell the owner ('' = not found)."""
+        try:
+            found = self.laptop.find_package(name)
+        except LaptopError:
+            found = []
+        if not found:
+            return ""
+        best = found[0]
+        where = "the Microsoft Store" if best["source"] == "msstore" else "winget"
+        ctx.approvals.ask("install_app_chat", f"Install {best['name']} (from {where})",
+                          {"action": "install_app", "target": best["id"], "source": best["source"]},
+                          (f"install:{best['id']}", ""), chat_id=ctx.chat_id())
+        return f"{best['name']} can be installed from {where}"
+
+    def _not_installed(self, ctx: AgentContext, name: str) -> StepResult:
+        """The app isn't on this laptop: its website first; if that isn't what you want, install it; if it can't be
+        found to install, the Microsoft Store opens on a search for it."""
+        site = site_for(name)
+        if site:
+            open_site(site)
+            ctx.store.audit(self.name, "open_site", {"target": str(name)[:60], "url": site})
+            offer = self._offer_install(ctx, name)
+            extra = f" If you'd rather have the app, {offer}: tap Install below." if offer else ""
+            return StepResult("done", f"{name} isn't installed, so I opened {site} in your browser.{extra}",
+                              {"url": site})
+        offer = self._offer_install(ctx, name)
+        if offer:
+            return StepResult("waiting_approval", f"{name} isn't installed and has no website I know. {offer}: "
+                                                  "tap Install below and I'll set it up.")
+        try:
+            self.laptop.store_open(name)
+            return StepResult("done", f"{name} isn't installed and I couldn't find it to install, so I opened the "
+                                      f"Microsoft Store on a search for {name}.", {"url": "ms-store"})
+        except LaptopError:
+            return StepResult("failed", f"{name} isn't installed on this laptop and I couldn't find it to install.")
 
     def _install(self, ctx: AgentContext, target: str) -> StepResult:
         """Find the exact package first, so the approval names exactly what will be installed."""

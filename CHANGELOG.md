@@ -1,6 +1,8 @@
 # Changelog
 
 ## 1.4
+- Opening an app that isn't installed: its website opens with an Install button in the chat; with no website it offers to install; if it can't be found, the Microsoft Store opens on a search for it.
+- docs/Prometheus-missing.pdf: everything still missing, grouped, with the suggested order.
 - Planning loop: when a step fails, Prometheus tries another way (up to 3 tries, never the same try twice, e.g. the website when the app isn't installed); after actions it checks the goal is really reached (the app's window opened, the files are there, the note or reminder was saved) before saying done; each task stops at $0.20 of paid AI or 12 steps. Limits are in Settings. Details from personal files never go into the retry request.
 - Approvals, two kinds: small things (an unfamiliar website or file, a click, pressing Enter, switching models) are asked right in the chat with Allow / Always allow this site or folder / Don't allow. A yes is remembered in every chat; the list is in Settings, under Always allowed, with Remove. Big things (installs, power, Wi-Fi, GitHub posts, cloning, self-edits, repo of the day, paid cloud jobs, big Recycle Bin batches) stay on the Approvals page.
 - Alarms, timers and reminders: "alarm for 10 mins", "remind me at 6 to call mom", "every day at 8am tell me the weather". They ring with a Windows notification, are spoken if voice is on, appear in the chat, survive restarts (fired at the next start if missed), and are listed under "Coming up" with Cancel.

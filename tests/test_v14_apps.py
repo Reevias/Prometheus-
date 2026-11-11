@@ -43,15 +43,15 @@ def test_installed_app_opens_without_approval(make_ctx, opened):
 def test_missing_app_opens_its_website_without_approval(make_ctx, opened):
     ctx = make_ctx()
     res = SystemAgent(FakeLaptop()).run("open spotify", {"action": "app_open", "target": "Spotify"}, ctx)
-    assert res.status == "done" and opened == ["https://open.spotify.com/"] and "install Spotify" in res.summary
-    assert ctx.store.approvals() == []
+    assert res.status == "done" and opened == ["https://open.spotify.com/"] and "isn't installed" in res.summary
+    assert ctx.store.approvals() == []                          # nothing to install found: nothing asked
     res = SystemAgent(FakeLaptop()).run("x", {"action": "app_open", "target": "WhatsApp"}, ctx)
     assert opened[-1] == "https://web.whatsapp.com/"
 
 
 def test_unknown_missing_app_points_to_the_store(make_ctx, opened):
     res = SystemAgent(FakeLaptop()).run("x", {"action": "app_open", "target": "Blender"}, make_ctx())
-    assert res.status == "failed" and "install Blender" in res.summary and opened == []
+    assert res.status == "done" and "Microsoft Store" in res.summary and opened == []   # Store search instead
 
 
 def test_install_by_name_finds_package_then_asks(make_ctx):
@@ -135,3 +135,41 @@ def test_opener_plays_on_spotify_search(make_ctx):
     res = Opener(launcher=seen.append).run("play lofi on spotify",
                                            {"target": "https://open.spotify.com/search/lofi"}, ctx)
     assert res.status == "done" and seen == ["https://open.spotify.com/search/lofi"] and ctx.store.approvals() == []
+
+
+SPOTIFY_PKG = [{"name": "Spotify - Music and Podcasts", "id": "9NCBCSZSJRSB", "source": "msstore"}]
+
+
+class StoreLaptop(FakeLaptop):
+    def __init__(self, **kw):
+        super().__init__(**kw)
+        self.store_searches = []
+
+    def store_open(self, query=""):
+        self.store_searches.append(query)
+        return "opened store"
+
+
+def test_missing_app_with_website_opens_site_and_offers_install_in_chat(make_ctx, opened):
+    ctx = make_ctx()
+    lp = StoreLaptop(packages=SPOTIFY_PKG)
+    res = SystemAgent(lp).run("x", {"action": "app_open", "target": "Spotify"}, ctx)
+    assert res.status == "done" and opened == ["https://open.spotify.com/"] and "tap Install below" in res.summary
+    ask = ctx.store.asks_for_chat(ctx.chat_id())[0]
+    assert ask.kind == "install_app_chat" and ask.payload["target"] == "9NCBCSZSJRSB"
+    assert ctx.store.big_approvals() == []                    # asked in the chat, not on the Approvals page
+
+
+def test_missing_app_without_website_asks_to_install(make_ctx, opened):
+    ctx = make_ctx()
+    lp = StoreLaptop(packages=[{"name": "Blender", "id": "BlenderFoundation.Blender", "source": "winget"}])
+    res = SystemAgent(lp).run("x", {"action": "app_open", "target": "Blender"}, ctx)
+    assert res.status == "waiting_approval" and opened == [] and "Install below" in res.summary
+    assert ctx.store.asks_for_chat(ctx.chat_id())[0].payload["target"] == "BlenderFoundation.Blender"
+
+
+def test_unknown_app_opens_the_store_search(make_ctx, opened):
+    ctx = make_ctx()
+    lp = StoreLaptop()
+    res = SystemAgent(lp).run("x", {"action": "app_open", "target": "Zorblax"}, ctx)
+    assert res.status == "done" and lp.store_searches == ["Zorblax"] and "Microsoft Store" in res.summary

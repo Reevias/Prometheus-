@@ -179,6 +179,8 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
     approvals.register("set_model", set_model)
     approvals.register("github_action", lambda payload: github_action_handler(payload, GitHubAgent()))
     approvals.register("laptop_action", lambda payload: laptop_action_handler(payload, Laptop()))
+    # installing an app the owner tried to open: asked right in the chat, and only for that one package
+    approvals.register("install_app_chat", lambda payload: laptop_action_handler(payload, Laptop()))
     approvals.register("wifi_password", lambda payload, secret: wifi_password_handler(payload, secret, Laptop()),
                        needs_secret=True)
 
