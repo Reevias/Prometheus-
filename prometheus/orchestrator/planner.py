@@ -142,6 +142,11 @@ def _inputs(raw) -> dict:
     raise PlanError("Inputs must be key/value pairs.")
 
 
+CODE_REQUEST = re.compile(r"\b(code|coding|script|python|javascript|typescript|java|c\+\+|rust|html|css|function|"
+                          r"bug|debug|compile|program(?:me)?|algorithm|regex|sql|refactor|unit tests?|stack ?trace|"
+                          r"traceback|pull request|commit|repo(?:sitory)?)\b", re.I)
+
+
 def validate_plan(raw: str, registry: dict) -> Plan:
     text = raw.strip()
     if text.startswith("```"):
@@ -378,14 +383,16 @@ class Orchestrator:
             content += "Saved passages that may help:\n" + "\n".join(
                 untrusted(h.match[:PASSAGE_CHARS], h.source or h.title) for h in passages) + "\n\n"
         messages = list(history or []) + [{"role": "user", "content": content + f"Request: {text}"}]
-        reply = self.router.complete("plan", messages, system, json_schema=PLAN_SCHEMA, max_tokens=4000)
+        # coding requests go to the coding brain (Ripple) when one is set up; everything else to the normal one
+        purpose = "code" if CODE_REQUEST.search(text or "") and self.router.routes.get("code") else "plan"
+        reply = self.router.complete(purpose, messages, system, json_schema=PLAN_SCHEMA, max_tokens=4000)
         label = f"{reply.provider} · {reply.model}"
         try:
             plan = validate_plan(reply.text, self.registry)
         except PlanError as e:
             messages += [{"role": "assistant", "content": reply.text or "(empty)"},
                          {"role": "user", "content": f"That reply is not valid: {e} Reply with corrected JSON only."}]
-            reply = self.router.complete("plan", messages, system, json_schema=PLAN_SCHEMA, max_tokens=4000)
+            reply = self.router.complete(purpose, messages, system, json_schema=PLAN_SCHEMA, max_tokens=4000)
             label = f"{reply.provider} · {reply.model}"
             try:
                 plan = validate_plan(reply.text, self.registry)

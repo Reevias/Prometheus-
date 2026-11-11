@@ -157,6 +157,10 @@ def head_choices(router: "ModelRouter") -> list[tuple[str, str]]:
             out.append((entry, f"OpenRouter: {model or 'default'}"))
             out += [(f"openrouter:{m['id']}", f"OpenRouter: {m['name']} ({m['maker']}, ${m['price']} per M tokens)")
                     for m in openrouter_models() if f"openrouter:{m['id']}" != entry]
+        elif name == "ollama-cloud":
+            info = getattr(p, "info", None)
+            for m in (info.models if info else (model,)):
+                out.append((f"ollama-cloud:{m}", f"Ollama cloud: {m} (free plan with limits; not for private files)"))
         else:
             info = getattr(p, "info", None)
             label = info.name if info else name
@@ -192,6 +196,9 @@ for _m in openrouter_models():
     RESEARCH_LABELS[_m["id"]] = f"{_m['name']} ({_m['maker']}; {_m['about']}; ${_m['price']} per M tokens)"
 
 
+CODE_BRAINS = {"auto": "openrouter:ricursiveai/ripple-65b-preview", "off": ""}
+
+
 def build_routes(settings: Settings) -> dict[str, list[str]]:
     """The user's routes, plus every free provider that is on: ones with a key first, no-key ones after them,
     the local model last. Never added to the private route."""
@@ -217,6 +224,10 @@ def build_routes(settings: Settings) -> dict[str, list[str]]:
             if not any(split_entry(e)[0] == info.id for e in names):
                 local = [e for e in names if split_entry(e)[0] == "ollama"]
                 names[:] = [e for e in names if e not in local] + [entry] + local   # local stays the last resort
+    code = CODE_BRAINS.get(getattr(settings, "code_brain", "auto"), getattr(settings, "code_brain", ""))
+    if code and "plan" in routes:
+        # coding requests are planned by the coding brain first; the normal planning route stays behind it
+        routes["code"] = [code] + [e for e in routes["plan"] if e != code]
     return routes
 
 

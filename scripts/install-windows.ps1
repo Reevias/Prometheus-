@@ -82,6 +82,21 @@ $VoiceOk = ($LASTEXITCODE -eq 0)
 if ($VoiceOk) { & $Python -m pip install --quiet --no-deps --ignore-requires-python "kokoro-onnx>=0.4"; $VoiceOk = ($LASTEXITCODE -eq 0) }
 if (-not $VoiceOk) { Write-Host "Voice packages could not be installed on Python $Py. Prometheus works without voice; Python 3.14 fixes this." }
 
+# The private laptop AI (reads your files, never leaves the laptop) and the memory-search model, through Ollama.
+if (-not (Get-Command ollama -ErrorAction SilentlyContinue) -and (Get-Command winget -ErrorAction SilentlyContinue)) {
+    Write-Host "Installing Ollama (runs the private AI on this laptop)..."
+    winget install --id Ollama.Ollama -e --silent --accept-package-agreements --accept-source-agreements | Out-Null
+    Refresh-Path
+}
+if (Get-Command ollama -ErrorAction SilentlyContinue) {
+    try { & ollama list 2>$null | Out-Null } catch { }
+    if ($LASTEXITCODE -ne 0) { Start-Process ollama -ArgumentList "serve" -WindowStyle Hidden; Start-Sleep -Seconds 4 }
+    Write-Host "Getting the private laptop AI (Granite 4.2 3B, 2.2 GB) and memory search (EmbeddingGemma 2, 0.3 GB), once..."
+    try { & ollama pull granite4.2:3b; & ollama pull embeddinggemma-2:270m } catch { Write-Host "Couldn't download them now; Prometheus works without them and you can run: ollama pull granite4.2:3b" }
+} else {
+    Write-Host "Ollama isn't installed, so there's no private laptop AI yet. Get it from https://ollama.com/download, then run: ollama pull granite4.2:3b"
+}
+
 $Settings = Join-Path $env:LOCALAPPDATA "Prometheus\settings.json"
 $HasPassword = (Test-Path $Settings) -and ((Get-Content $Settings -Raw) -match '"password_hash":\s*"[^"]+"')
 if (-not $HasPassword) { & $Python -m prometheus.cli init }

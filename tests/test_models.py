@@ -186,3 +186,38 @@ def test_claude_gets_more_room_when_thinking_used_it_all(monkeypatch):
     monkeypatch.setattr(p, "_get_client", lambda: SimpleNamespace(beta=SimpleNamespace(messages=Msgs())), raising=False)
     reply = p.complete([{"role": "user", "content": "x"}], "s", json_schema={"type": "object"}, max_tokens=4000)
     assert reply.text == '{"steps": []}' and calls == [4000, 16000]
+
+
+def test_new_models_ripple_codes_ollama_cloud_never_private(monkeypatch):
+    from prometheus.catalog import load_catalog
+    from prometheus.config import Settings, load_settings, save_settings
+    from prometheus.models.router import build_routes, openrouter_models
+
+    assert any(m["id"] == "ricursiveai/ripple-65b-preview" for m in openrouter_models())
+    cloud = next(p for p in load_catalog() if p.id == "ollama-cloud")
+    assert cloud.base_url == "https://ollama.com/v1" and cloud.key_name == "OLLAMA_CLOUD_API_KEY"
+    assert "kimi-k3.1-pro" in cloud.models
+    routes = build_routes(Settings())
+    assert routes["code"][0] == "openrouter:ricursiveai/ripple-65b-preview"
+    assert routes["code"][1:] == [e for e in routes["plan"] if e != routes["code"][0]]   # normal brain behind it
+    assert not any(e.startswith("ollama-cloud") for e in routes.get("private", []))
+    assert "code" not in build_routes(Settings(code_brain="off"))
+    assert Settings().ollama_model == "granite4.2:3b" and Settings().embed_model == "embeddinggemma-2:270m"
+
+
+def test_old_default_models_move_to_the_new_ones(tmp_path):
+    from prometheus.config import Settings, load_settings, save_settings
+
+    path = tmp_path / "settings.json"
+    save_settings(Settings(ollama_model="qwen3.5:2b", embed_model="nomic-embed-text"), path)
+    s = load_settings(path)
+    assert s.ollama_model == "granite4.2:3b" and s.embed_model == "embeddinggemma-2:270m"
+    save_settings(Settings(ollama_model="llama9:7b"), path)
+    assert load_settings(path).ollama_model == "llama9:7b"          # one picked by hand stays
+
+
+def test_coding_requests_go_to_the_coding_brain():
+    from prometheus.orchestrator.planner import CODE_REQUEST
+
+    assert CODE_REQUEST.search("fix this python error") and CODE_REQUEST.search("write a script to rename files")
+    assert not CODE_REQUEST.search("what's the weather tomorrow") and not CODE_REQUEST.search("find my physics notes")

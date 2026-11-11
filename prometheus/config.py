@@ -51,7 +51,7 @@ class Settings:
     allow_lan: bool = False
     budget_usd: float = 5.0
     routes: dict[str, list[str]] = field(default_factory=_default_routes)
-    ollama_model: str = "qwen3.5:2b"
+    ollama_model: str = "granite4.2:3b"   # the private laptop AI (2.2 GB; reads your files)
     ollama_url: str = "http://127.0.0.1:11434"
     voice_enabled: bool = False                 # listen for "Prometheus" and answer out loud
     voice_autostart: bool = False
@@ -62,6 +62,7 @@ class Settings:
     voice_clap: bool = True                     # a double clap greets you, gives the brief and starts a conversation
     clap_sensitivity: float = 1.0               # higher hears softer claps (0.3 to 3)
     voice_barge_in: bool = True                 # talking over an answer stops it
+    code_brain: str = "auto"                    # who plans coding requests: auto (Ripple on OpenRouter), off, or a route entry
     features_off: list = field(default_factory=list)   # Settings → Features: the ones switched off
     paused: bool = False                        # Stop everything: no background jobs or outside actions
     auto_update: bool = True
@@ -120,7 +121,7 @@ class Settings:
     head_model: str = ""                        # the lead AI chosen by hand, e.g. "anthropic:claude-haiku-5-5" ("" = auto)
     extra_folders: list[str] = field(default_factory=list)   # drives or folders outside the user folder it may use
     memory_folder: str = ""                     # where every chat is saved as files ("" = <home>/Prometheus memory)
-    embed_model: str = "nomic-embed-text"       # local model for meaning-based memory search ("" = words only)
+    embed_model: str = "embeddinggemma-2:270m"       # local model for meaning-based memory search ("" = words only)
     anthropic_model: str = "claude-opus-5-5"
     openrouter_model: str = "openrouter/auto"   # strong model: planning and final answers
     github_repo: str = "Reevias/Prometheus-"    # the repository Prometheus may read and update
@@ -146,7 +147,16 @@ def load_settings(path: Path | None = None) -> Settings:
     settings = Settings(**{k: v for k, v in raw.items() if k in known})
     if settings.routes in _old_default_routes():
         settings.routes = _default_routes()
+    # older defaults move to the newer models (a model the owner picked by hand stays)
+    if settings.ollama_model in OLD_LOCAL_MODELS:
+        settings.ollama_model = Settings.ollama_model
+    if settings.embed_model in OLD_EMBED_MODELS:
+        settings.embed_model = Settings.embed_model
     return settings
+
+
+OLD_LOCAL_MODELS = {"qwen3.5:2b"}
+OLD_EMBED_MODELS = {"nomic-embed-text"}
 
 
 def save_settings(settings: Settings, path: Path | None = None) -> None:
@@ -169,6 +179,7 @@ KEY_NAMES = {
     "SYNC_TOKEN": "Cloud copy sync key",
     "VAPID_PRIVATE": "Phone notifications key",
     "ELEVENLABS_API_KEY": "ElevenLabs (voice)",
+    "OLLAMA_CLOUD_API_KEY": "Ollama cloud",
 }
 MCP_SECRET = re.compile(r"^MCP_[A-Z0-9_]{1,40}$")   # one secret per connected app (a token, or NAME=value;…)
 SPACES_ALLOWED = {"EMAIL_PASSWORD"}             # app passwords are often shown in groups: "abcd efgh ijkl mnop"

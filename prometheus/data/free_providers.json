@@ -212,6 +212,26 @@
     "tencent/Hunyuan-MT-7B",
     "XingChenAGI/Xing4.0-29B"
    ]
+  },
+  {
+   "name": "Ollama Cloud",
+   "baseUrl": "https://ollama.com/v1",
+   "signupUrl": "https://ollama.com/settings/keys",
+   "description": "Big open models run on Ollama's computers (nothing to download): Kimi K3.1 Pro, GLM 5.3, DeepSeek V4.1, Mistral Large 4, gpt-oss 120B and more. Free plan with usage limits. Ollama says it doesn't train on prompts. Never used for your private files.",
+   "models": [
+    "kimi-k3.1-pro",
+    "glm-5.3",
+    "deepseek-v4.1-flash",
+    "mistral-large-4",
+    "gpt-oss:120b",
+    "minimax-m3.1-flash",
+    "glm-5.3-flash",
+    "mimo-v2.6-pro",
+    "nemotron-3-ultra",
+    "gemma4:31b",
+    "kimi-k2.7-code",
+    "gpt-oss:20b"
+   ]
   }
  ]
 }

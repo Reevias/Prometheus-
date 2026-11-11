@@ -108,7 +108,7 @@ better and sounds natural. Without the key, everything is heard and spoken on th
 folder, not Documents, because Documents is often synced to OneDrive. Prometheus fetches only the matching parts of
 earlier chats for a new question, never whole chats.
 
-**Meaning-based memory search (optional):** `ollama pull nomic-embed-text`. Without it, memory search uses words.
+**Meaning-based memory search:** the installer gets `embeddinggemma-2:270m` through Ollama. Without it, memory search uses words.
 
 ## AI models
 
@@ -119,7 +119,9 @@ laptop, are never shown again, and work straight away.
 - **Free providers:** Settings lists Groq, Gemini, Mistral, NVIDIA and others, with a search box. Tick "Use it"
   to switch one on. Three need no key (Kilo Code, LLM7.io, OVHcloud) but have tight limits. Providers marked
   "may log or train on prompts" can keep what you send them.
-- **Local (free, private):** start Ollama and keep `qwen3.5:2b` pulled. Personal files only ever go to local models.
+- **Local (free, private):** Ollama with `granite4.2:3b` (2.2 GB; the installer gets it). Personal files only ever go to local models.
+- **Ollama cloud:** big open models (Kimi K3.1 Pro, GLM 5.3, DeepSeek V4.1, Mistral Large 4, gpt-oss 120B…) run on Ollama's computers. Paste an Ollama key (ollama.com/settings/keys) in Settings → AI and pick one as the Brain. Never used for private files.
+- **Coding brain:** requests about code are planned by Ripple 65B (Ricursive, on OpenRouter, $0.20 / $0.60 per million tokens) when you have an OpenRouter key; otherwise by the normal Brain.
 - **Claude:** add an Anthropic key later. Use prepaid credit with auto-reload off.
 
 Prometheus switches models by itself: if one is down, out of credit or rate-limited it rests for 5 minutes and

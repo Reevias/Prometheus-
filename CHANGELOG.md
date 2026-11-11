@@ -1,6 +1,7 @@
 # Changelog
 
 ## 2.3
+- New AI models: **Ripple 65B** (Ricursive, on OpenRouter) plans coding requests ("fix this Python error", "write a script…"), with your normal Brain behind it. **Ollama cloud**: paste an Ollama key in Settings → AI and pick Kimi K3.1 Pro, GLM 5.3, DeepSeek V4.1 Flash, Mistral Large 4, gpt-oss 120B and seven more as the Brain; never used for private files. The private laptop AI is now **Granite 4.2 3B** (2.2 GB, better at plans and tools) and memory search uses **EmbeddingGemma 2**; the installer gets Ollama and both models, and older defaults switch over by themselves.
 - Fixed: "I couldn't make a working plan… not valid JSON (char 0)". The AI that plans sometimes used all its room on thinking and sent back nothing. Claude and OpenRouter models now get more room when that happens, an empty answer makes Prometheus try your next AI, and if none can answer it says so in plain words.
 - Fixed on Python 3.14: photo text reading (now rapidocr 3) and the laptop voice (Kokoro, whose label still says "up to 3.13" but works on 3.14) install properly. GitHub now installs every add-on on Windows with Python 3.14 on each change.
 - Fixed: Settings squeezed into a narrow column after pressing any Save, the safety check or a voice button (the "Saved." message took the menu's place in the layout). Messages now appear as a short notice at the bottom. The click-through test now also checks the layout after every button.
