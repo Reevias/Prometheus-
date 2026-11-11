@@ -113,6 +113,12 @@ def _done_today(services) -> list[str]:
     fired = store._rows("SELECT COUNT(*) AS n FROM messages WHERE created > ? AND model = 'reminder'", (since,))[0]["n"]
     if fired:
         lines.append(f"{fired} reminders rang")
+    try:
+        photos = store._rows("SELECT COUNT(*) AS n FROM photo_index WHERE read > ?", (since,))[0]["n"]
+    except Exception:
+        photos = 0
+    if photos:
+        lines.append(f"{photos} new photos looked at (say \"sort my photos\" to put them in folders)")
     if any(a.kind == "add_skill" for a in store.big_approvals()):
         lines.append("a repo of the day is waiting on the Approvals page")
     return lines

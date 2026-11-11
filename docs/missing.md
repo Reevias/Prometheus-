@@ -1,9 +1,10 @@
 # Prometheus: what is still missing
 
-Updated 11 November 2026. Version 1.4. Built and tested here: 675 tests pass.
+Updated 11 November 2026. Version 1.4. Built and tested here: 683 tests pass.
 Not yet run end to end on the owner's real laptop.
 
 ## Just finished
+- **Search inside files** (14), **linked facts that keep their history** (15, 16), **nightly memory tidy-up** (17) and **photos: tags, text and sorting** (18).
 - **Daily summary**: morning briefing (08:00) and evening wrap-up (21:00) with weather, calendar, important email, reminders and what Prometheus did.
 - **Email alerts and webhooks**: new mail from chosen senders every 5 minutes; a secret webhook address other apps (like GitHub) can call.
 - **Browser automation**: its own visible Edge window and profile; pay/order on the Approvals page, sign in/submit/post asked in the chat, passwords typed only by you, Take over button.
@@ -34,15 +35,15 @@ Not yet run end to end on the owner's real laptop.
 11. **Gmail, Google Calendar and Drive**: done (needs your Google sign-in in Settings).
 12. **Phone access**: on home Wi-Fi first (QR code), then anywhere with Tailscale.
 13. **Excel and slides**: done.
-14. **Search inside files**: find the file that mentions "invoice 4521", not only by name.
+14. **Search inside files**: done.
 
 ## 4. Memory
-15. **Links between facts** (knowledge graph): "Ravi, brother, lives in Pune, birthday 12 March".
-16. **Replacing facts that changed**: new phone number or address, the old one kept with a date.
-17. **Nightly memory tidy-up**: merge duplicates, drop stale facts.
+15. **Links between facts**: done.
+16. **Replacing facts that changed**: done.
+17. **Nightly memory tidy-up**: done (with Undo).
 
 ## 5. Photos and media
-18. **Sort photos by what is in them** (beach, people, documents) and read text in images (OCR).
+18. **Sort photos by what is in them**: done (tags, text in photos, sorting into folders after a yes).
 19. **Sort the photos on the phone.**
 20. **Make images and videos**: needs a cloud graphics card; the laptop has none.
 
@@ -80,10 +81,10 @@ Not yet run end to end on the owner's real laptop.
 41. **Weekly laptop health check**: every Sunday, disk space, big old files, startup apps slowing the laptop, Windows updates waiting, battery health, with one-click fixes asked first.
 
 ## Suggested order
-1. Memory links and fact updates (15, 16)
-2. Phone on Wi-Fi (12)
-3. Seeing the screen (4)
-4. Search inside files, tray icon, cost dashboard (14, 22, 23)
+1. Phone on Wi-Fi (12)
+2. Seeing the screen (4)
+3. Tray icon, cost dashboard (22, 23)
+4. Sorting photos on the phone (19)
 5. Study coach and money tracker (37, 38)
 6. Focus mode, laptop health check, clipboard memory (39 to 41)
 7. Photos, camera, gestures, images and video (18 to 21, 5)

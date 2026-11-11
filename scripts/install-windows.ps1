@@ -36,6 +36,8 @@ $Python = Join-Path $Venv "Scripts\python.exe"
 & $Python -m pip install --quiet -e "$Dir[desktop]"
 # Browser control (uses Microsoft Edge, already on Windows): optional too.
 & $Python -m pip install --quiet -e "$Dir[desktop,browser]"
+# Photos (what's in them, text in them; models download once, about 600 MB): optional too.
+& $Python -m pip install --quiet -e "$Dir[desktop,browser,photos]"
 # Voice (say "Prometheus"): optional, so a failed voice install never stops Prometheus itself.
 & $Python -m pip install --quiet -e "$Dir[desktop,browser,voice]"
 $VoiceOk = ($LASTEXITCODE -eq 0)

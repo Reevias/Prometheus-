@@ -61,6 +61,7 @@ class Services:
     watchers: object = None
     briefing: object = None
     file_index: object = None
+    photos: object = None
     laptop: object = None
     browser: object = None
 
@@ -277,6 +278,11 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
 
     services.file_index = _fi.FileIndex(store, policy, usable_extra_folders(settings, home))
     _fi.CURRENT = services.file_index
+    from prometheus import photos as _ph
+
+    services.photos = _ph.PhotoIndex(store, policy)
+    _ph.CURRENT = services.photos
+    approvals.register("photo_sort", lambda payload: _ph.sort_handler(payload, policy, files))
     approvals.register("add_skill", lambda payload: RepoOfTheDay(services).add(payload))
     return services
 
