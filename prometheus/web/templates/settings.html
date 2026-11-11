@@ -133,6 +133,26 @@
     </form>
   </div>
 
+  <h3>Watchers</h3>
+  <p class="muted">Prometheus speaks up by itself: in the “Prometheus alerts” chat, as a Windows notification, and out loud if voice is on.</p>
+  <div class="panel" style="display:grid;gap:8px">
+    {% for key, label in [("watch_battery", "Battery below 20%"), ("watch_disk", "Main drive over 90% full"), ("watch_cpu", "CPU over 90% for 5 minutes")] %}
+    <form hx-post="/settings/watch" hx-target="body"><input type="hidden" name="key" value="{{ key }}">
+      <label class="check"><input type="checkbox" name="on" value="1" {{ "checked" if s[key] }} onchange="this.form.requestSubmit()"> {{ label }}</label></form>
+    {% endfor %}
+    <strong>Watch a folder</strong>
+    <p class="muted" style="margin:0">New files in it are told to you, or handled by itself if you say what to do (for example
+    “file new PDFs into Documents/PDFs”).</p>
+    <ul class="plain">{% for w in s.watch_folders %}<li>{{ w.path }}{% if w.goal %} <span class="muted">→ {{ w.goal }}</span>{% endif %}
+      <form hx-post="/settings/watch/folder/remove" hx-target="body" style="display:inline"><input type="hidden" name="path" value="{{ w.path }}"><button type="submit" class="danger">Remove</button></form></li>
+    {% else %}<li class="muted">No folders watched.</li>{% endfor %}</ul>
+    <form class="row" hx-post="/settings/watch/folder" hx-target="body">
+      <input type="text" name="path" placeholder="Folder, e.g. Downloads" required style="max-width:220px">
+      <input type="text" name="goal" placeholder="What to do with new files (optional)">
+      <button type="submit">Watch</button>
+    </form>
+  </div>
+
   <h3>Always allowed</h3>
   <p class="muted">Small things you said yes to in a chat. They aren't asked again, in any chat. Big things (installs,
   power, Wi-Fi, GitHub posts, money) always wait on the Approvals page.</p>

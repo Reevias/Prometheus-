@@ -40,7 +40,11 @@ def create_app(services: Services, background: bool = False) -> FastAPI:
             services.daily.start(background=background)
         if services.reminders is not None:
             services.reminders.start()
+        if services.watchers is not None:
+            services.watchers.start()
         yield
+        if services.watchers is not None:
+            services.watchers.stop()
         if services.reminders is not None:
             services.reminders.stop()
         if services.daily is not None:

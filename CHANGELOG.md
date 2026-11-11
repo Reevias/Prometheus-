@@ -1,6 +1,8 @@
 # Changelog
 
 ## 1.4
+- Standing goals: "every night at 11 tidy my Downloads" runs the task by itself on schedule and posts the result in that chat (waits if the chat is busy); listed under Coming up with a goal tag.
+- Watchers: battery below 20% and disk over 90% (on), CPU over 90% for 5 minutes (off), and watched folders whose new files are told to you or handled by a goal ("file new PDFs into Documents/PDFs"). Alerts go to the "Prometheus alerts" chat, a Windows notification and the voice; each is said once until things change.
 - Learns from its own tasks: when a step failed and another way worked (or nothing did), Prometheus writes a short lesson, uses matching lessons when planning similar requests, and folds general ones into its nightly rules. Lessons from steps that read personal files never include what was found. Listed on the Memory page with Delete.
 - Connections: email from any provider with an app password (check unread, search, read without marking as read; sending waits for approval; private to the local model unless allowed), calendars through their secret iCal link (today, tomorrow, the week, search; repeating events), and any other app with an MCP server (command or web address; read-only tools run, changes are asked in the chat and can be always allowed per app). All in Settings → Connections, behind your password.
 - Opening an app that isn't installed: its website opens with an Install button in the chat; with no website it offers to install; if it can't be found, the Microsoft Store opens on a search for it.

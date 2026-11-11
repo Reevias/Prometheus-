@@ -1,28 +1,31 @@
 # Prometheus: what is still missing
 
-Updated 11 November 2026. Version 1.4. Built, tested here and on GitHub: 630 tests pass on Python 3.12 and 3.14.
+Updated 11 November 2026. Version 1.4. Built, tested here and on GitHub: 647 tests pass on Python 3.12 and 3.14.
 Not yet run end to end on the owner's real laptop.
 
 ## Just finished
+- **Connections**: email from any provider (app password; reads without marking read; sending waits for approval), calendars through their secret iCal link, and any app with an MCP server (Notion, Slack, Spotify…).
+- **Learning from failed tasks**: what failed and what worked is written down and used next time; general lessons become nightly rules.
+- **Standing goals and watchers**: scheduled tasks ("every night tidy Downloads"); battery, disk, CPU and folder alerts.
 - **Planning loop**: each step gets up to 3 tries, a different way each time; after actions it checks the goal really happened (app window open, files there); each task stops at $0.20 of paid AI or 12 steps.
 - **Opening apps**: installed app first; if missing, its website, with an Install button in the chat; with no website, it offers to install; if it can't be found, the Microsoft Store opens on a search.
 
 ## 1. Planning and autonomy
-1. **Long goals in the background**: "tidy Downloads every night", "every Monday summarise my notes". Saved goals that run on a schedule, with Pause and Delete.
-2. **Learning from its own failed tasks**: when a retry works, write down the lesson so it gets it right first time next time. (Next step.)
+1. **Long goals in the background**: done (standing goals).
+2. **Learning from its own failed tasks**: done.
 3. **Daily summary**: what happened today, what is coming tomorrow, spoken and written. (Chosen at the start, not built.)
 
 ## 2. Senses and triggers
 4. **Seeing the screen**: understand a screenshot so it can click "the Download button" instead of exact positions.
 5. **Camera**: one photo when asked ("what am I holding?"), never always on.
-6. **Watchers**: a new file in a chosen folder, battery low, CPU busy, disk almost full; speaks up or starts a goal.
-7. **Email and webhook triggers**: "tell me when the bank emails", "Sir, the tests failed on GitHub".
+6. **Watchers**: done (battery, disk, CPU, folders).
+7. **Email and webhook triggers**: email reading is done; still missing: alerts when a new email arrives, and webhooks.
 
 ## 3. Tools
-8. **MCP support**: plug in ready-made tool servers (Notion, Slack, home devices and more). New servers start off until approved.
+8. **MCP support**: done (command or web address; changes asked in the chat).
 9. **Browser automation**: forms, logins, clicking through sites, in its own browser profile; asks before logging in, submitting, paying or posting.
 10. **Running code safely**: a sandbox (Windows Sandbox on Pro, otherwise a locked Python) with one scratch folder, no network, time and memory limits.
-11. **Gmail, Google Calendar and Drive**: read freely, ask before sending, accepting or sharing.
+11. **Gmail, Google Calendar and Drive**: email and calendar reading are done (any provider); still missing: adding calendar events and Google Drive.
 12. **Phone access**: on home Wi-Fi first (QR code), then anywhere with Tailscale.
 13. **Excel and slides** as outputs. (PDF and Word are done.)
 14. **Search inside files**: find the file that mentions "invoice 4521", not only by name.
@@ -64,10 +67,8 @@ Not yet run end to end on the owner's real laptop.
 36. **Ollama running** for private answers (file and note questions use the local model only).
 
 ## Suggested order
-1. Learning from failed tasks (2)
-2. Watchers and background goals (6, 1)
-3. Memory links and fact updates (15, 16)
-4. Gmail, Calendar, Drive and email triggers (11, 7)
+1. Memory links and fact updates (15, 16)
+2. New-email alerts, calendar events, Drive (7, 11)
 5. Phone on Wi-Fi (12)
 6. MCP (8)
 7. Seeing the screen (4)

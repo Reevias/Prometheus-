@@ -167,6 +167,8 @@ class Store:
             if "summary" not in {r["name"] for r in self._db.execute("PRAGMA table_info(chats)")}:
                 self._db.execute("ALTER TABLE chats ADD COLUMN summary TEXT NOT NULL DEFAULT ''")
                 self._db.execute("ALTER TABLE chats ADD COLUMN summary_upto INTEGER NOT NULL DEFAULT 0")
+            if "kind" not in {r["name"] for r in self._db.execute("PRAGMA table_info(reminders)")}:
+                self._db.execute("ALTER TABLE reminders ADD COLUMN kind TEXT NOT NULL DEFAULT 'reminder'")
             approval_cols = {r["name"] for r in self._db.execute("PRAGMA table_info(approvals)")}
             if "inline" not in approval_cols:
                 self._db.execute("ALTER TABLE approvals ADD COLUMN chat_id INTEGER NOT NULL DEFAULT 0")
@@ -238,9 +240,10 @@ class Store:
         return rows[0]["named_by"] if rows else "auto"
 
     # -- reminders -------------------------------------------------------------------------
-    def add_reminder(self, chat_id: int, text: str, due: float, repeat: str = "") -> int:
-        return self._write("INSERT INTO reminders (chat_id, text, due, repeat, created) VALUES (?, ?, ?, ?, ?)",
-                           (chat_id, text, due, repeat, time.time()))
+    def add_reminder(self, chat_id: int, text: str, due: float, repeat: str = "", kind: str = "reminder") -> int:
+        """kind: 'reminder' (ring and say it) or 'goal' (run it as a task at that time)."""
+        return self._write("INSERT INTO reminders (chat_id, text, due, repeat, created, kind) VALUES (?, ?, ?, ?, ?, ?)",
+                           (chat_id, text, due, repeat, time.time(), kind))
 
     def reminders(self, chat_id: int | None = None) -> list[dict]:
         sql = "SELECT * FROM reminders WHERE state = 'waiting'" + (" AND chat_id = ?" if chat_id is not None else "")

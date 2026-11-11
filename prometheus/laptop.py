@@ -430,6 +430,19 @@ def notify(self, text: str) -> None:
     _ps(self, NOTIFY_SCRIPT, {"PROM_TEXT": str(text)[:300]})
 
 
+CPU_SCRIPT = "(Get-CimInstance Win32_Processor | Measure-Object -Property LoadPercentage -Average).Average"
+
+
+def cpu_load(self) -> int:
+    """Average CPU use right now, 0 to 100."""
+    self._need_windows()
+    out = _ps(self, CPU_SCRIPT, timeout=20).strip().splitlines()
+    try:
+        return int(float(out[-1]))
+    except (IndexError, ValueError) as e:
+        raise LaptopError("Windows didn't report the CPU load.") from e
+
+
 def store_open(self, query: str = "") -> str:
     """Open the Microsoft Store, on a search for `query` if given."""
     self._need_windows()
@@ -603,5 +616,5 @@ def install_app(self, package: str, source: str = "") -> str:
 
 
 for _f in (app_open, app_close, window, apps_running, volume, mute, brightness, dark_mode, screenshot, type_text,
-           press_keys, click, power, install_app, store_open, find_package, notify):
+           press_keys, click, power, install_app, store_open, find_package, notify, cpu_load):
     setattr(Laptop, _f.__name__, _f)

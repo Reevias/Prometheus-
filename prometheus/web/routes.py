@@ -765,6 +765,40 @@ def register_routes(app: FastAPI, services: Services) -> None:
         store.audit("user", "app_removed", {"name": name})
         return settings_page(request, saved=True)
 
+    @app.post("/settings/watch", response_class=HTMLResponse)
+    def set_watch(request: Request, key: str = Form(...), on: str = Form("")):
+        if key not in ("watch_battery", "watch_disk", "watch_cpu"):
+            return Response(status_code=400)
+        setattr(services.settings, key, bool(on))
+        save_settings(services.settings)
+        store.audit("user", "watcher", {"key": key, "on": bool(on)})
+        return settings_page(request, saved=True)
+
+    @app.post("/settings/watch/folder", response_class=HTMLResponse)
+    def watch_folder(request: Request, path: str = Form(...), goal: str = Form("")):
+        from prometheus.agents.files import resolve_place
+        from prometheus.safety.paths import PathBlocked
+
+        folder = resolve_place(path.strip()[:400], services.home)
+        try:
+            folder = services.policy.check_read(folder)
+        except PathBlocked as e:
+            return settings_page(request, 400, error=str(e))
+        if not folder.is_dir():
+            return settings_page(request, 400, error=f"{folder} isn't a folder.")
+        s = services.settings
+        s.watch_folders = [w for w in s.watch_folders if w.get("path") != str(folder)]
+        s.watch_folders.append({"path": str(folder), "goal": " ".join(goal.split())[:300]})
+        save_settings(s)
+        store.audit("user", "watch_folder", {"path": str(folder)})
+        return settings_page(request, saved=True)
+
+    @app.post("/settings/watch/folder/remove", response_class=HTMLResponse)
+    def unwatch_folder(request: Request, path: str = Form(...)):
+        services.settings.watch_folders = [w for w in services.settings.watch_folders if w.get("path") != path]
+        save_settings(services.settings)
+        return settings_page(request, saved=True)
+
     @app.post("/settings/free", response_class=HTMLResponse)
     def set_free(request: Request, on: str = Form("")):
         s = services.settings

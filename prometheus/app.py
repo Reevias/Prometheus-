@@ -58,6 +58,7 @@ class Services:
     updater: object = None
     daily: object = None
     reminders: object = None
+    watchers: object = None
 
     def start_rewrite(self, chat_id: int, message_id: int, note: str = "") -> threading.Thread:
         """Rewrite an answer the owner marked 'could be better', in the background."""
@@ -235,6 +236,17 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
             Laptop().notify(text)
 
     services.reminders = ReminderClock(services, notify=_notify)
+    import sys as _sys
+
+    from prometheus.watchers import Watchers
+
+    if _sys.platform == "win32":
+        from prometheus.laptop import Laptop as _Laptop
+
+        _lp = _Laptop()
+    else:
+        _lp = None
+    services.watchers = Watchers(services, laptop=_lp, notify=_notify)
     approvals.register("add_skill", lambda payload: RepoOfTheDay(services).add(payload))
     return services
 

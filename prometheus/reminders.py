@@ -146,6 +146,9 @@ class ReminderClock:
 
     def fire(self, r: dict) -> None:
         store = self.services.store
+        if r.get("kind") == "goal":
+            self.run_goal(r)
+            return
         late = self.clock() - r["due"] > 120
         text = f"⏰ Reminder: {r['text']}" + (" (this was due while Prometheus was off)" if late else "")
         store.add_message(r["chat_id"], "assistant", text, "reminder")
@@ -161,6 +164,22 @@ class ReminderClock:
                 loop.speaker.say(f"Reminder, sir: {r['text']}")
             except Exception:
                 pass
+        nxt = next_time(r["due"], r["repeat"])
+        while nxt is not None and nxt <= self.clock():
+            nxt = next_time(nxt, r["repeat"])
+        store.reminder_fired(r["id"], nxt)
+
+    def run_goal(self, r: dict) -> None:
+        """A standing goal: run it like a typed request, in the chat it came from."""
+        store = self.services.store
+        if r["chat_id"] in getattr(self.services, "running", {}):
+            store.reminder_fired(r["id"], self.clock() + 300)          # that chat is busy: try again in 5 minutes
+            return
+        store.add_message(r["chat_id"], "assistant", f"Running your standing goal: {r['text']}", "goal")
+        try:
+            self.services.start_task(r["chat_id"], r["text"])
+        except Exception:
+            pass
         nxt = next_time(r["due"], r["repeat"])
         while nxt is not None and nxt <= self.clock():
             nxt = next_time(nxt, r["repeat"])

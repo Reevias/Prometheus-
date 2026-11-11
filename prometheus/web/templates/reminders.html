@@ -1,5 +1,5 @@
 <ul class="plain outputs">
-  {% for r in reminders %}<li><div class="out-name">{{ r.text }}</div>
+  {% for r in reminders %}<li><div class="out-name">{% if r.kind == "goal" %}<span class="tag">goal</span> {% endif %}{{ r.text }}</div>
     <div class="out-meta"><span class="muted">{{ r.when }}{{ ", repeats " ~ r.repeat if r.repeat }}</span></div>
     <div class="out-actions"><button type="button" class="danger" hx-post="/reminders/{{ r.id }}/cancel" hx-target="#reminders">Cancel</button></div></li>
   {% else %}<li class="muted">No reminders. Try “alarm for 10 minutes” or “remind me at 6 to call mom”.</li>{% endfor %}

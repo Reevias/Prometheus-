@@ -1,0 +1,147 @@
+"""Watchers: Prometheus speaks up by itself. Battery low, disk almost full, CPU busy for a while, new files in a
+chosen folder (which can start a standing goal, e.g. "file new PDFs into Documents/PDFs").
+
+Alerts go to the "Prometheus alerts" chat, a Windows notification, and the voice if it's on. Each alert is said once
+until things change (battery charged again, disk freed, CPU calm).
+"""
+from __future__ import annotations
+
+import os
+import shutil
+import threading
+import time
+from pathlib import Path
+
+CHECK_EVERY = 60
+BATTERY_LOW, BATTERY_OK = 20, 25
+DISK_FULL = 0.90
+CPU_BUSY, CPU_MINUTES = 90, 5
+ALERTS_CHAT = "Prometheus alerts"
+NEW_FILES_SHOWN = 20
+
+
+class Watchers:
+    def __init__(self, services, laptop=None, notify=None, clock=time.time):
+        self.services, self.laptop, self.notify, self.clock = services, laptop, notify, clock
+        self.said: set[str] = set()
+        self.cpu_high = 0
+        self.seen: dict[str, set[str]] = {}
+        self._stop = threading.Event()
+
+    # -- telling the owner ----------------------------------------------------------------
+    def alerts_chat(self) -> int:
+        store = self.services.store
+        for chat_id, title in store.chats():
+            if title == ALERTS_CHAT:
+                return chat_id
+        chat_id = store.create_chat(ALERTS_CHAT)
+        store.rename_chat(chat_id, ALERTS_CHAT, by="user")
+        return chat_id
+
+    def alert(self, key: str, text: str) -> bool:
+        if key in self.said:
+            return False
+        self.said.add(key)
+        self.services.store.add_message(self.alerts_chat(), "assistant", text, "watcher")
+        if self.notify is not None:
+            try:
+                self.notify(text)
+            except Exception:
+                pass
+        loop = getattr(getattr(self.services, "voice", None), "loop", None)
+        if loop is not None and not loop.muted:
+            try:
+                loop.speaker.say(f"Sir, {text[0].lower() + text[1:]}")
+            except Exception:
+                pass
+        return True
+
+    # -- the checks ------------------------------------------------------------------------
+    def check_battery(self) -> None:
+        try:
+            b = self.laptop.battery()
+        except Exception:
+            return
+        if b["charging"] or b["percent"] >= BATTERY_OK:
+            self.said.discard("battery")
+        elif b["percent"] < BATTERY_LOW:
+            self.alert("battery", f"Battery is at {b['percent']}%. Plug in the charger soon.")
+
+    def check_disk(self) -> None:
+        try:
+            usage = shutil.disk_usage(self.services.home)
+        except OSError:
+            return
+        used = usage.used / usage.total if usage.total else 0
+        if used < DISK_FULL - 0.02:
+            self.said.discard("disk")
+        elif used >= DISK_FULL:
+            free_gb = usage.free / 1024 ** 3
+            self.alert("disk", f"Your main drive is {used:.0%} full ({free_gb:.1f} GB left). Ask me to find big files "
+                               "to clear.")
+
+    def check_cpu(self) -> None:
+        try:
+            load = self.laptop.cpu_load()
+        except Exception:
+            return
+        self.cpu_high = self.cpu_high + 1 if load >= CPU_BUSY else 0
+        if self.cpu_high == 0:
+            self.said.discard("cpu")
+        elif self.cpu_high * CHECK_EVERY >= CPU_MINUTES * 60:
+            self.alert("cpu", f"The CPU has been over {CPU_BUSY}% for {CPU_MINUTES} minutes. Ask me which apps are "
+                              "open if you want to close something.")
+
+    def check_folders(self) -> None:
+        policy = self.services.policy
+        for w in self.services.settings.watch_folders or []:
+            folder = Path(w.get("path", ""))
+            try:
+                policy.check_read(folder)
+                names = {e.name for e in os.scandir(folder) if e.is_file() and not e.name.startswith((".", "~$"))
+                         and not e.name.endswith((".crdownload", ".part", ".tmp"))}
+            except Exception:
+                continue
+            key = str(folder)
+            if key not in self.seen:                 # first look: remember what is already there
+                self.seen[key] = names
+                continue
+            new = sorted(names - self.seen[key])
+            self.seen[key] = names
+            if not new:
+                continue
+            paths = [str(folder / n) for n in new[:NEW_FILES_SHOWN]]
+            goal = " ".join(str(w.get("goal") or "").split())
+            chat = self.alerts_chat()
+            if goal and chat not in self.services.running:
+                self.services.store.add_message(chat, "assistant", f"New in {folder.name}: {', '.join(new[:5])}. "
+                                                                   f"Doing your goal: {goal}", "watcher")
+                self.services.start_task(chat, f"{goal}\nThe new files: {paths}")
+            elif not goal:
+                self.said.discard(f"folder:{key}")
+                self.alert(f"folder:{key}", f"New in {folder.name}: {', '.join(new[:5])}"
+                                            + (f" and {len(new) - 5} more" if len(new) > 5 else "") + ".")
+
+    def tick(self) -> None:
+        s = self.services.settings
+        if s.watch_battery and self.laptop is not None:
+            self.check_battery()
+        if s.watch_disk:
+            self.check_disk()
+        if s.watch_cpu and self.laptop is not None:
+            self.check_cpu()
+        if s.watch_folders:
+            self.check_folders()
+
+    def loop(self) -> None:
+        while not self._stop.wait(CHECK_EVERY):
+            try:
+                self.tick()
+            except Exception:
+                pass
+
+    def start(self) -> None:
+        threading.Thread(target=self.loop, name="prometheus-watchers", daemon=True).start()
+
+    def stop(self) -> None:
+        self._stop.set()

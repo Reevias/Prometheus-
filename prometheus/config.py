@@ -65,7 +65,11 @@ class Settings:
     email_imap_host: str = ""                   # "" = worked out from the address
     email_smtp_host: str = ""
     email_cloud_ok: bool = False
-    mcp_servers: list[dict] = field(default_factory=list)   # [{name, kind: command|url, target, enabled}]                # let cloud AI read email (off: only the local model)                    # the connected Obsidian vault folder ("" = not connected)                    # install new versions from GitHub by itself                # the speaking voice (Kokoro voice id)               # start Prometheus (and listening) when Windows starts
+    mcp_servers: list[dict] = field(default_factory=list)
+    watch_battery: bool = True                  # say so when the battery drops below 20%
+    watch_disk: bool = True                     # say so when the main drive is over 90% full
+    watch_cpu: bool = False                     # say so when the CPU is over 90% for 5 minutes
+    watch_folders: list[dict] = field(default_factory=list)   # [{path, goal}]: new files there start the goal   # [{name, kind: command|url, target, enabled}]                # let cloud AI read email (off: only the local model)                    # the connected Obsidian vault folder ("" = not connected)                    # install new versions from GitHub by itself                # the speaking voice (Kokoro voice id)               # start Prometheus (and listening) when Windows starts
     head_model: str = ""                        # the lead AI chosen by hand, e.g. "anthropic:claude-haiku-5-5" ("" = auto)
     extra_folders: list[str] = field(default_factory=list)   # drives or folders outside the user folder it may use
     memory_folder: str = ""                     # where every chat is saved as files ("" = <home>/Prometheus memory)
