@@ -9,7 +9,7 @@ DIR="$HOME/prometheus"
 
 echo "== 1/6 System packages"
 sudo apt-get update -qq
-sudo apt-get install -y -qq git python3 python3-venv python3-pip curl >/dev/null
+sudo apt-get install -y -qq git python3 python3-venv python3-pip curl adb >/dev/null   # adb: phone control
 
 echo "== 2/6 Prometheus's code"
 if [ ! -d "$DIR/.git" ]; then

@@ -1,6 +1,7 @@
 # Changelog
 
 ## 2.2
+- Phone control (Android, through wireless debugging; steps in docs/phone-setup.md section 6): open apps and links, see the phone screen, tap what's on it (found from Android's own list of buttons, so taps land exactly), type, swipe and press keys, phone settings (Wi-Fi, Bluetooth, Do not disturb, volume, brightness, rotation, mobile data), alarms and timers, WhatsApp or SMS messages and calls to your contacts, notifications and battery. Taps, typing, messages and calls are asked in the chat first showing exactly what will happen; anything that could pay goes to the Approvals page; never into password boxes or terminal apps. Works from the cloud copy over Tailscale, so it's available from anywhere.
 - `prometheus doctor` now says which version you have (with its date) and the newest on GitHub: "you're up to date", or how many updates are waiting and what's new in them.
 - Restarts by itself after an update: as soon as nothing is running (no task, voice command, quiz or reading aloud), Prometheus reopens the same way it was started (the window, in the background or as a server) and tells you what's new. Settings: auto_restart.
 

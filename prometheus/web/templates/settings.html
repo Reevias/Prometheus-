@@ -386,6 +386,25 @@
 
   </section>
   <section class="set" id="safety-check" data-group="Safety and privacy">
+  <h3>Phone control</h3>
+  <div class="panel" style="display:grid;gap:8px">
+    <p class="muted" style="margin:0">Prometheus can control your Android phone (open apps, see and tap the screen, settings,
+      alarms, messages and calls; taps, typing, messages and calls are asked first). Steps are in
+      <code>docs/phone-setup.md</code> (section 6). On the phone: Settings → Developer options → <strong>Wireless debugging</strong>.</p>
+    {% if phone_error %}<p class="error" style="margin:0">{{ phone_error }}</p>{% endif %}
+    <form class="row" hx-post="/settings/phone/pair" hx-target="body" style="flex-wrap:wrap">
+      <span class="muted">1. Pair once: tap “Pair device with pairing code” on the phone, then type what it shows</span>
+      <input name="target" placeholder="IP:port shown under the code" style="width:200px">
+      <input name="code" placeholder="6-digit code" inputmode="numeric" style="width:120px">
+      <button type="submit">Pair</button>
+    </form>
+    <form class="row" hx-post="/settings/phone/connect" hx-target="body" style="flex-wrap:wrap">
+      <span class="muted">2. Connect: the IP address &amp; port at the top of Wireless debugging (again after the phone restarts)</span>
+      <input name="target" value="{{ s.phone_target }}" placeholder="100.64.1.2:41234" style="width:200px">
+      <button type="submit" class="primary">Connect</button>
+    </form>
+  </div>
+
   <h3>Cloud copy (always on)</h3>
   <div class="panel" style="display:grid;gap:8px">
     {% if s.role == "cloud" %}

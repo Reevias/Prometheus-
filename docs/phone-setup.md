@@ -37,3 +37,23 @@ Browsers can't read SMS, so a small free app forwards them:
    (the webhook secret is in Prometheus → Settings → Daily summary → Webhook)
    Body (JSON): `{"from": "[sms_number]", "text": "[sms_message]"}`
 4. Save. Each bank or UPI SMS is added to your spending; other SMS are ignored.
+
+## 6. Let Prometheus control the phone (Android)
+This uses Android's own **wireless debugging**: no extra app. About 3 minutes, once.
+1. Phone Settings → About phone → tap **Build number** 7 times (this unlocks Developer options).
+2. Settings → System → **Developer options** → turn on **Wireless debugging** (allow it on your Wi-Fi when asked).
+   Keep Tailscale on, so the cloud copy can reach the phone from anywhere.
+3. Tap **Pair device with pairing code**. In Prometheus → Settings → **Phone control**, type the address and the
+   6-digit code it shows, then press **Pair**.
+4. Back on the Wireless debugging screen, use the **IP address & port** shown at the top with **Connect**.
+   Use the phone's Tailscale address (in the Tailscale app, it starts with 100.) with that port, so it works away
+   from home too.
+
+After the phone restarts, Wireless debugging gets a new port: open it, and press Connect in Prometheus with the
+new port (no need to pair again).
+
+What you can say: "open Spotify on my phone", "what's on my phone screen", "tap Accept", "turn off wifi on my
+phone", "set an alarm for 6:30 on my phone", "WhatsApp Ravi that I'm 10 minutes late", "call Mom", "read my phone
+notifications", "how much battery does my phone have". Taps, typing, messages and calls are always asked first,
+showing exactly what will happen; anything that could pay waits on the Approvals page. Prometheus never types
+into password boxes and never opens terminal apps on the phone.

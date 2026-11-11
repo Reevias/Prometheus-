@@ -450,6 +450,10 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
     from prometheus import phone as _phone
 
     services.laptop_jobs = _phone.LaptopJobs(services)
+    from prometheus.agents import phone_agent as _pa
+
+    _pa.SERVICES = services
+    approvals.register("phone_action", _pa.action_handler)
 
     def _to_laptop(chat_id: int, text: str, plan) -> str:
         """On the cloud copy: a request that needs the laptop (its screen, files or apps) waits for the laptop."""

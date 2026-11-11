@@ -69,6 +69,8 @@ Plans:
 - Assignment or homework deadlines ("lab report due Friday", "what's due this week") use the assignments agent.
 - When the owner means something on their screen ("this", "here", "this error", "what I'm pointing at", "click
   the blue button", "add this repo"), use the screen agent (look, click or add_repo). Only then; never otherwise.
+- Anything "on my phone" (open an app, see or tap the phone screen, phone settings, an alarm, WhatsApp or SMS
+  someone, call someone, phone notifications) uses the phone agent. Messages: put the exact text in "text".
 - Exact sums, statistics, working with numbers in a CSV or Excel file, or drawing a chart: use the code agent with a
   complete Python script in "code" (print the answer; save charts as .png in the current folder) and the owner's
   files in "files". Scripts have no internet; never put keys or passwords in them.

@@ -109,6 +109,29 @@ def understand(text: str, store=None, now: float | None = None) -> Quick | None:
         return Quick(answer=f"It's {_clock(now)}.")
     if DATE.search(low):
         return Quick(answer=f"Today is {_day(now)}.")
+    if re.search(r"\b(on|in|from) my (phone|mobile)\b", low):
+        rest = re.sub(r"\s*\b(on|in|from) my (phone|mobile)\b", "", low).strip(" ,.")
+        m = re.match(r"^(?:open|launch|start)\s+(.+)$", rest)
+        if m and len(m.group(1).split()) <= 4:
+            return Quick(steps=[_step("phone", f"Open {m.group(1)} on the phone", action="open_app",
+                                      app=m.group(1))], action=True)
+        m = re.match(r"^(?:turn|switch)\s+(on|off)\s+(?:the\s+)?(wifi|wi-fi|bluetooth|dnd|do not disturb|"
+                     r"mobile data|data)$|^(?:turn|switch)\s+(?:the\s+)?(wifi|wi-fi|bluetooth|dnd|do not disturb|"
+                     r"mobile data|data)\s+(on|off)$", rest)
+        if m:
+            onoff = m.group(1) or m.group(4)
+            what = (m.group(2) or m.group(3)).replace("wi-fi", "wifi")
+            return Quick(steps=[_step("phone", f"Phone {what} {onoff}", action="setting", what=what, value=onoff)],
+                         action=True)
+        m = re.match(r"^(?:set\s+(?:an?\s+)?)?alarm\s+(?:for|at)\s+(.+)$", rest)
+        if m:
+            return Quick(steps=[_step("phone", "Phone alarm", action="alarm", time=m.group(1))], action=True)
+        if re.search(r"\bbattery\b", rest):
+            return Quick(steps=[_step("phone", "Phone battery", action="battery")])
+        if re.search(r"\bnotifications?\b", rest):
+            return Quick(steps=[_step("phone", "Phone notifications", action="notifications")])
+        if re.search(r"\bwhat(?:'s| is)\b.*\bscreen\b|\bscreen\b", rest):
+            return Quick(steps=[_step("phone", "Look at the phone", action="look", question=t)])
     m = REMIND.match(t)
     if m:
         what, when = (m.group(1), m.group(2)) if m.group(1) else (m.group(4), m.group(3))

@@ -1278,6 +1278,29 @@ def register_routes(app: FastAPI, services: Services) -> None:
                 "backup_ready": bool(get_secret("BACKUP_KEY")), "backup_last": last,
                 "backup_error": store.kv_get("backup_error") or ""}
 
+    @app.post("/settings/phone/pair", response_class=HTMLResponse)
+    def phone_pair(request: Request, target: str = Form(""), code: str = Form("")):
+        from prometheus.connectors.android import Phone, PhoneError
+
+        try:
+            said = Phone().pair(target.strip(), code.strip())
+        except PhoneError as e:
+            return settings_page(request, 400, phone_error=str(e))
+        return settings_page(request, notice=said + " Now connect (step 2).")
+
+    @app.post("/settings/phone/connect", response_class=HTMLResponse)
+    def phone_connect(request: Request, target: str = Form("")):
+        from prometheus.connectors.android import Phone, PhoneError
+
+        try:
+            said = Phone().connect(target.strip())
+        except PhoneError as e:
+            return settings_page(request, 400, phone_error=str(e))
+        services.settings.phone_target = target.strip()
+        save_settings(services.settings)
+        store.audit("user", "phone_connected", {})
+        return settings_page(request, notice=said)
+
     @app.post("/settings/cloud", response_class=HTMLResponse)
     def save_cloud(request: Request, url: str = Form(""), key: str = Form(""), password: str = Form("")):
         denied = _key_gate(request, password)
