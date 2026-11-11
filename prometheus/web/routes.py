@@ -112,6 +112,52 @@ def register_routes(app: FastAPI, services: Services) -> None:
             services.start_task(chat_id, text)
         return messages_partial(request, chat_id)
 
+    @app.post("/chats/{chat_id}/upload", response_class=HTMLResponse)
+    async def upload(request: Request, chat_id: int):
+        from prometheus.phone import save_upload, what_to_do
+
+        form = await request.form()
+        f = form.get("file")
+        if f is None or not getattr(f, "filename", ""):
+            return messages_partial(request, chat_id)
+        data = await f.read()
+        try:
+            path = save_upload(services.home, f.filename, data)
+        except ValueError as e:
+            store.add_message(chat_id, "assistant", str(e), "phone")
+            return messages_partial(request, chat_id)
+        if chat_id not in services.running:
+            services.start_task(chat_id, what_to_do(path, str(form.get("text") or "")))
+        return messages_partial(request, chat_id)
+
+    @app.get("/push/key")
+    def push_key():
+        from prometheus.phone import vapid_keys
+
+        return HTMLResponse(vapid_keys()[1], media_type="text/plain")
+
+    @app.post("/push/subscribe")
+    async def push_subscribe(request: Request):
+        import json as _json
+
+        from prometheus.phone import push, subscribe
+
+        try:
+            subscribe(store, _json.loads(await request.body()))
+        except (ValueError, TypeError):
+            return HTMLResponse("That isn't a push subscription.", status_code=400)
+        store.audit("user", "phone_notifications", {})
+        import threading as _th
+
+        def hello():
+            try:
+                push(store, "Prometheus", "Notifications are on. You'll get reminders and alerts here.")
+            except Exception:
+                pass                       # the push service was unreachable: the next one will try again
+
+        _th.Thread(target=hello, daemon=True).start()
+        return HTMLResponse("ok")
+
     @app.post("/chats/{chat_id}/rename")
     def rename(request: Request, chat_id: int, title: str = Form("")):
         # The new name comes from the form, or from htmx's prompt box.

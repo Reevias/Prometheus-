@@ -24,7 +24,8 @@ fi
 echo "== 3/6 Python packages (a few minutes)"
 python3 -m venv "$DIR/.venv"
 "$DIR/.venv/bin/pip" install -q --upgrade pip
-"$DIR/.venv/bin/pip" install -q -e "$DIR"
+"$DIR/.venv/bin/pip" install -q -e "$DIR[photos]" || "$DIR/.venv/bin/pip" install -q -e "$DIR"
+"$DIR/.venv/bin/pip" install -q faster-whisper || true      # lecture notes from recordings sent by the phone
 
 echo "== 4/6 Password and cloud mode"
 if ! "$DIR/.venv/bin/python" -c "from prometheus.config import load_settings; import sys; sys.exit(0 if load_settings().password_hash else 1)"; then

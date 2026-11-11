@@ -64,6 +64,7 @@ class Services:
     file_index: object = None
     clips: object = None
     sync: object = None
+    laptop_jobs: object = None
     focus: object = None
     photos: object = None
     laptop: object = None
@@ -296,11 +297,37 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
         import sys
 
         if sys.platform == "win32":
-            from prometheus.laptop import Laptop
+            try:
+                from prometheus.laptop import Laptop
 
-            Laptop().notify(text)
+                Laptop().notify(text)
+            except Exception:
+                pass
+        _to_phone(text)
 
-    services.notifier = _notify if __import__("sys").platform == "win32" else None
+    def _to_phone(text: str) -> None:
+        """The phone too: straight from the cloud copy, or handed to it by the laptop."""
+        import threading as _th
+
+        def go():
+            from prometheus import phone, sync
+
+            try:
+                if getattr(settings, "role", "laptop") == "cloud":
+                    phone.push(store, "Prometheus", text)
+                elif getattr(settings, "cloud_url", "") and sync.token(create=False):
+                    import httpx
+
+                    httpx.post(settings.cloud_url.rstrip("/") + "/api/notify", json={"title": "Prometheus", "text": text},
+                               headers={"Authorization": f"Bearer {sync.token(create=False)}"}, timeout=15)
+                else:
+                    phone.push(store, "Prometheus", text)
+            except Exception:
+                pass
+
+        _th.Thread(target=go, daemon=True).start()
+
+    services.notifier = _notify
 
     def _budget_warning(text: str) -> None:
         services.notify("budget", text)
@@ -420,6 +447,24 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
     from prometheus.sync import SyncClock
 
     services.sync = SyncClock(services)
+    from prometheus import phone as _phone
+
+    services.laptop_jobs = _phone.LaptopJobs(services)
+
+    def _to_laptop(chat_id: int, text: str, plan) -> str:
+        """On the cloud copy: a request that needs the laptop (its screen, files or apps) waits for the laptop."""
+        if getattr(settings, "role", "laptop") != "cloud":
+            return ""
+        if not any(st["agent"] in _phone.LAPTOP_AGENTS for st in plan.steps):
+            return ""
+        _phone.queue_for_laptop(store, dict(store.chats()).get(chat_id, _phone.PHONE_CHAT), text)
+        from prometheus.sync import laptop_away
+
+        return ("Sent to your laptop: it's on, so it'll do it in a moment and the answer will appear here."
+                if not laptop_away(store) else
+                "That needs your laptop. It's off right now, so it'll be done as soon as the laptop is on.")
+
+    orchestrator.before_steps = _to_laptop
     approvals.register("standing_goal", _ra.goal_handler)
     from prometheus.agents import screen_agent as _scr
 

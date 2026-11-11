@@ -1,9 +1,10 @@
 # Prometheus: what is still missing
 
-Updated 11 November 2026. Version 2.0. Built and tested here: 845 tests pass.
+Updated 11 November 2026. Version 2.0. Built and tested here: 850 tests pass.
 Not yet run end to end on the owner's real laptop.
 
 ## Just finished
+- **Prometheus on the phone** (12): installable app, notifications, hold-to-talk, photos and files, bank SMS, phone photos (19), laptop jobs from the phone.
 - **Encrypted nightly backup to Google Drive** (recovery code, `prometheus restore`), **an always-on cloud copy** on Oracle's free machine that syncs with the laptop, **seeing the screen**, and **21 OpenRouter models to choose from** (Kimi K3, Qwen 3.8 2.4T, DeepSeek V4…).
 - **Prometheus as a tool for other AI apps** (26): Antigravity, Claude Desktop and Cursor can search its memory, find files by name and ask questions; actions wait on Approvals.
 - **"Undo that"**, **study coach** (flashcards, chat and voice quizzes, spaced review, Anki export), **money tracker** (bank/UPI emails, budgets), **clipboard and screenshot memory**, **focus mode** (any length), **weekly laptop health check**, **exam countdown planner**, **lecture to notes**, **read-aloud**, **homework checker** and **assignment tracker**.
@@ -39,7 +40,7 @@ Not yet run end to end on the owner's real laptop.
 9. **Browser automation**: done.
 10. **Running code safely**: done. (The Windows Sandbox path is untested until the real laptop.)
 11. **Gmail, Google Calendar and Drive**: done (needs your Google sign-in in Settings).
-12. **Phone access**: on home Wi-Fi first (QR code), then anywhere with Tailscale.
+12. **Phone access**: done (installable app through the cloud copy and Tailscale).
 13. **Excel and slides**: done.
 14. **Search inside files**: done.
 
@@ -50,7 +51,7 @@ Not yet run end to end on the owner's real laptop.
 
 ## 5. Photos and media
 18. **Sort photos by what is in them**: done (tags, text in photos, sorting into folders after a yes).
-19. **Sort the photos on the phone.**
+19. **Sort the photos on the phone**: done (photos sent from the phone are tagged and sortable).
 20. **Make images and videos**: needs a cloud graphics card; the laptop has none.
 
 ## 6. Interaction and polish
@@ -93,6 +94,5 @@ Not yet run end to end on the owner's real laptop.
 47. **"Undo that"**: done.
 
 ## Suggested order
-1. Phone link (12), then phone SMS for the money tracker and phone photos for the homework checker
-2. Sorting photos on the phone (19)
-3. Camera, gestures, images and video (5, 20, 21)
+1. First real run on the laptop, the cloud copy and the phone (29, 30)
+2. Camera, gestures, images and video (5, 20, 21)

@@ -220,6 +220,7 @@ class Orchestrator:
         self.extra_catalog = None          # callable: tools of connected apps, for the planner
         self.extra_sections: list = []     # (heading, callable returning text) added to the planner's system
         self.interceptors: list = []       # callables (chat_id, text) -> answer or None: e.g. a quiz in progress
+        self.before_steps = None           # callable (chat_id, text, plan) -> answer to stop with, or "" to go on
         self.skills = skills
         from prometheus.memory.facts import Facts
 
@@ -558,6 +559,13 @@ class Orchestrator:
         if not plan.steps:                        # no tools needed: the plan call already wrote the answer
             return self._finish(chat_id, task_id, "done", plan.answer, plan.model, topic=topic)
 
+        if self.before_steps is not None:
+            try:
+                handed = self.before_steps(chat_id, text, plan)
+            except Exception:
+                handed = ""
+            if handed:
+                return self._finish(chat_id, task_id, "done", handed, "phone")
         results: dict[int, StepResult] = {}
         bad: set[int] = set()
         private: set[int] = set()

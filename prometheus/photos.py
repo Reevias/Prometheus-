@@ -114,6 +114,10 @@ class PhotoIndex(FileIndex):
         home = self.policy.home
         out = [home / p for p in self.MAIN if (home / p).is_dir()]
         out += [p / "Pictures" for p in home.glob("OneDrive - *") if (p / "Pictures").is_dir()]
+        from prometheus.phone import UPLOADS
+
+        if (home / UPLOADS / "Photos").is_dir():
+            out.append(home / UPLOADS / "Photos")          # photos sent from the phone
         return out
 
     def read(self, path: Path) -> str:

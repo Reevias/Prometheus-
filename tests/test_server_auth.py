@@ -26,6 +26,12 @@ def test_every_route_requires_login(app_client):
         if path == "/hooks/{token}":    # open on purpose for other apps; a wrong secret gets "not found"
             assert client.post("/hooks/wrong", json={}).status_code == 404
             continue
+        if path in ("/manifest.webmanifest", "/sw.js"):   # the phone app's install files: no private data
+            assert client.get(path).status_code == 200
+            continue
+        if path == "/hooks/{token}/sms":                 # bank SMS: a wrong secret gets "not found"
+            assert client.post("/hooks/wrong/sms", json={}).status_code == 404
+            continue
         if path == "/healthz":          # open on purpose, so a second window finds the running copy
             assert client.get(path).json() == {"app": "prometheus"}
             continue

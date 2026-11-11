@@ -14,6 +14,7 @@ authors = [{name = "Reevias"}]
 dependencies = [
     "fpdf2>=2.7",
     "cryptography>=42",
+    "pywebpush>=2.0",
     "openpyxl>=3.1",
     "python-pptx>=1.0",
     "fastapi>=0.115",

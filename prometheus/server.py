@@ -15,14 +15,19 @@ from prometheus.auth import LoginLimiter, Sessions, verify_password
 
 SESSION_COOKIE = "prom_session"
 CSRF_COOKIE = "csrf_token"
-OPEN_PATHS = ("/login", "/healthz", "/google/callback")
+OPEN_PATHS = ("/login", "/healthz", "/google/callback", "/manifest.webmanifest", "/sw.js")
+MANIFEST = {"name": "Prometheus", "short_name": "Prometheus", "start_url": "/", "scope": "/", "display": "standalone",
+            "background_color": "#0e0f11", "theme_color": "#0e0f11", "description": "Your own AI assistant",
+            "icons": [{"src": "/static/icon-192.png", "sizes": "192x192", "type": "image/png"},
+                      {"src": "/static/icon-512.png", "sizes": "512x512", "type": "image/png"},
+                      {"src": "/static/icon-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}]}
 APP_ID = "prometheus"
 
 
 def _login_page(message: str = "") -> str:
     note = f'<p class="error">{html.escape(message)}</p>' if message else ""
     return ("<!doctype html><html lang='en'><head><meta charset='utf-8'>"
-            "<meta name='viewport' content='width=device-width, initial-scale=1'><title>Prometheus</title><link rel='icon' type='image/png' href='/static/favicon.png'>"
+            "<meta name='viewport' content='width=device-width, initial-scale=1'><title>Prometheus</title><link rel='icon' type='image/png' href='/static/favicon.png'><link rel='manifest' href='/manifest.webmanifest'><meta name='theme-color' content='#0e0f11'><link rel='apple-touch-icon' href='/static/icon-192.png'>"
             "<script>try{var t=localStorage.getItem('prom-theme');if(t)document.documentElement.dataset.theme=t}catch(e){}</script>"
             "<link rel='stylesheet' href='/static/style.css'></head><body class='login'>"
             "<canvas class='orb orb-login' data-orb data-state='idle' aria-hidden='true'></canvas>"
@@ -75,6 +80,10 @@ def create_app(services: Services, background: bool = False) -> FastAPI:
             services.clips.start()
         if services.sync is not None and not cloud:
             services.sync.start()
+        if getattr(services, "laptop_jobs", None) is not None and not cloud:
+            services.laptop_jobs.start()
+        if services.photos is not None and cloud:
+            services.photos.start()            # on the cloud copy: only photos sent from the phone
         if services.focus is not None:
             services.focus.start_clock()
         yield
@@ -106,7 +115,8 @@ def create_app(services: Services, background: bool = False) -> FastAPI:
     @app.middleware("http")
     async def guard(request: Request, call_next):
         path = request.url.path
-        if path in OPEN_PATHS or path.startswith(("/static/", "/hooks/")) or path in ("/api/mcp", "/api/sync"):
+        if path in OPEN_PATHS or path.startswith(("/static/", "/hooks/")) or path in (
+                "/api/mcp", "/api/sync", "/api/notify", "/api/laptop-jobs"):
             # hooks and the tool server check their own secret
             return await call_next(request)
         csrf = sessions.get(request.cookies.get(SESSION_COOKIE))
@@ -147,6 +157,74 @@ def create_app(services: Services, background: bool = False) -> FastAPI:
         resp.delete_cookie(SESSION_COOKIE)
         resp.delete_cookie(CSRF_COOKIE)
         return resp
+
+    @app.get("/manifest.webmanifest")
+    def manifest():
+        return Response(json.dumps(MANIFEST), media_type="application/manifest+json")
+
+    @app.get("/sw.js")
+    def service_worker():
+        from pathlib import Path as _P
+
+        body = (_P(__file__).resolve().parent / "web" / "static" / "sw.js").read_text(encoding="utf-8")
+        return Response(body, media_type="application/javascript", headers={"Service-Worker-Allowed": "/"})
+
+    def _sync_key_ok(request: Request) -> bool:
+        from prometheus.sync import token
+
+        sent = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+        expected = token(create=False)
+        local = (request.client.host if request.client else "") in ("127.0.0.1", "::1", "testclient")
+        return bool(expected) and local and hmac.compare_digest(sent.encode(), expected.encode())
+
+    @app.post("/api/notify")
+    async def notify_endpoint(request: Request):
+        """The laptop handing a notification to the cloud copy, which sends it to the phone."""
+        import asyncio
+
+        from prometheus.phone import push
+
+        if not _sync_key_ok(request):
+            return Response(status_code=401)
+        try:
+            body = json.loads((await request.body())[:20000] or b"{}")
+        except ValueError:
+            return Response(status_code=400)
+        n = await asyncio.to_thread(push, services.store, str(body.get("title") or "Prometheus"),
+                                    str(body.get("text") or ""), str(body.get("url") or "/"))
+        return Response(json.dumps({"sent": n}), media_type="application/json")
+
+    @app.post("/api/laptop-jobs")
+    async def laptop_jobs(request: Request):
+        """The laptop picking up what the phone asked for that only the laptop can do."""
+        import time as _t
+
+        from prometheus.phone import take_jobs
+
+        if not _sync_key_ok(request):
+            return Response(status_code=401)
+        services.store.kv_set("laptop_seen", _t.time())
+        return Response(json.dumps({"jobs": take_jobs(services.store)}), media_type="application/json")
+
+    @app.post("/hooks/{token}/sms")
+    async def sms_hook(request: Request, token: str):
+        """Bank SMS forwarded from the phone (MacroDroid or another SMS forwarder) into the money tracker."""
+        from prometheus.agents import money_agent
+        from prometheus.phone import sms_to_money
+
+        expected = services.settings.webhook_token
+        if not expected or not hmac.compare_digest(token.encode(), expected.encode()):
+            return Response(status_code=404)
+        raw = (await request.body())[:20000]
+        try:
+            body = json.loads(raw or b"{}")
+        except ValueError:
+            body = {"text": raw.decode("utf-8", errors="replace")}
+        if money_agent.MONEY is None:
+            return Response("Money tracker is off.", status_code=503)
+        said = sms_to_money(money_agent.MONEY, str(body.get("from") or body.get("sender") or ""),
+                            str(body.get("text") or body.get("message") or body.get("body") or ""))
+        return Response(said)
 
     @app.post("/api/sync")
     async def sync_endpoint(request: Request):

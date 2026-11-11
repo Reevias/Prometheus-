@@ -5,11 +5,16 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Prometheus</title>
   <link rel="icon" type="image/png" href="/static/favicon.png">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <meta name="theme-color" content="#0e0f11">
+  <link rel="apple-touch-icon" href="/static/icon-192.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="htmx-config" content='{"responseHandling": [{"code": "204", "swap": false}, {"code": "[23]..", "swap": true}, {"code": "[45]..", "swap": true, "error": true}]}'>
   <script>try{var t=localStorage.getItem("prom-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
   <link rel="stylesheet" href="/static/style.css">
   <script src="/static/htmx.min.js"></script>
   <script src="/static/orb.js" defer></script>
+  <script src="/static/phone.js" defer></script>
 </head>
 <body hx-headers='{"X-CSRF-Token": "{{ csrf }}"}'>
 <header>
@@ -52,7 +57,10 @@
       <a href="/costs" {% if nav == "/costs" %}aria-current="page"{% endif %}><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 19V9M12 19V5M19 19v-7"/></svg><span>Costs</span></a>
       <a href="/settings" {% if nav == "/settings" %}aria-current="page"{% endif %}><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/></svg><span>Settings</span></a>
   </nav>
+  <div class="drawer-chats"><span class="set-group">Chats</span>
+    <div hx-get="/chats/search?q=" hx-trigger="load" hx-swap="innerHTML"></div></div>
   <div class="drawer-foot">
+    <button type="button" id="notify-btn" onclick="promNotify()">Turn on phone notifications</button>
     <button type="button" hx-post="/logout" hx-swap="none" hx-on::after-request="location.href='/login'">Log out</button>
   </div>
 </aside>

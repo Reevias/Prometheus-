@@ -25,6 +25,16 @@
     </div>
     <form id="command" class="row command" hx-post="/chats/{{ chat_id }}/send" hx-target="#messages"
           hx-on::after-request="this.reset(); this.querySelector('textarea').style.height=''">
+      <label class="attach" title="Send a photo or file">
+        <input type="file" name="file" accept="image/*,.pdf,.docx,.pptx,.xlsx,.txt,.md,.csv,audio/*,video/*" hidden
+               hx-post="/chats/{{ chat_id }}/upload" hx-encoding="multipart/form-data" hx-trigger="change" hx-target="#messages"
+               hx-include="closest form">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M21 12.5l-8.6 8.6a5 5 0 0 1-7.1-7.1l9.2-9.2a3.4 3.4 0 0 1 4.8 4.8l-9.2 9.2a1.7 1.7 0 0 1-2.4-2.4l8.5-8.5"/></svg>
+      </label>
+      <button type="button" class="talk" title="Hold to talk" aria-label="Hold to talk"
+              onpointerdown="promTalkStart(this)" onpointerup="promTalkStop(this)" onpointerleave="promTalkStop(this)">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+      </button>
       <textarea name="text" rows="1" placeholder="Message Prometheus" title="Enter sends. Shift+Enter starts a new line." required autofocus
                 oninput="this.style.height=''; this.style.height=Math.min(this.scrollHeight, 160)+'px'"
                 onkeydown="if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); if (this.value.trim()) this.form.requestSubmit(); }"></textarea>

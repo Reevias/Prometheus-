@@ -158,6 +158,7 @@ KEY_NAMES = {
     "GOOGLE_TOKEN": "Google sign-in",
     "BACKUP_KEY": "Backup key (made from your recovery code)",
     "SYNC_TOKEN": "Cloud copy sync key",
+    "VAPID_PRIVATE": "Phone notifications key",
 }
 MCP_SECRET = re.compile(r"^MCP_[A-Z0-9_]{1,40}$")   # one secret per connected app (a token, or NAME=value;…)
 SPACES_ALLOWED = {"EMAIL_PASSWORD"}             # app passwords are often shown in groups: "abcd efgh ijkl mnop"

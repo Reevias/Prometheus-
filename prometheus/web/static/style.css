@@ -290,3 +290,36 @@ main.page .row > input { min-width: 0; }
 .approval .tag, .approval .muted:first-of-type { white-space: nowrap; }
 .approval pre.diff { max-height: 360px; overflow: auto; white-space: pre-wrap; }
 main.single > h2:first-child { margin-top: 0; }
+
+/* phone */
+.command .attach, .command .talk { display: inline-grid; place-items: center; width: 40px; min-width: 40px; height: 40px; padding: 0;
+  border-radius: 10px; background: var(--raised); border: 1px solid var(--line); color: var(--text-2); cursor: pointer; }
+.command .talk.live { background: var(--action); color: #fff; border-color: var(--action); }
+.drawer-chats { display: grid; gap: 4px; max-height: 40vh; overflow-y: auto; }
+.drawer-chats ul.plain { margin-top: 0; }
+.drawer-foot { display: grid; gap: 8px; }
+@media (max-width: 760px) {
+  header { gap: 8px; padding: 8px 12px; }
+  header #status-mini, header .theme-toggle { display: none; }
+  main { padding: 8px; gap: 8px; }
+  main > section.panel:first-child, main > aside.panel { display: none; }   /* chats and side panel live in the menu */
+  .chat { min-height: calc(100vh - 72px); }
+  .chat-head { flex-wrap: wrap; gap: 6px; }
+  .chat-head h2 { font-size: 18px; flex: 1 1 100%; }
+  main.settings { padding: 12px; }
+  main.single { padding: 12px; }
+}
+@media (max-width: 760px) {
+  main { grid-template-columns: minmax(0, 1fr) !important; }
+  .chat, .chat > *, #messages { min-width: 0; max-width: 100%; }
+  .chat-head select { max-width: 100%; min-width: 0; flex: 1 1 140px; }
+  .command { gap: 6px; }
+  .command textarea { flex: 1 1 auto; min-width: 0; }
+  .command button.primary { padding-left: 12px; padding-right: 12px; }
+  #messages .example, #messages button { max-width: 100%; white-space: normal; }
+}
+@media (max-width: 760px) {
+  .chat-head { overflow: hidden; }
+  .chat-head select { max-width: calc(100vw - 120px); }
+  .command textarea::placeholder { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+}
