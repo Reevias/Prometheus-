@@ -144,17 +144,122 @@
   },
   {
    "id": "nvidia/nemotron-3-ultra-550b-a55b:free",
-   "name": "Nemotron 3 Ultra (550B), free",
+   "name": "Nemotron 3 Ultra (550B)",
    "maker": "NVIDIA",
    "price": "free",
-   "about": "free tier; may be slow or limited"
+   "about": "may be slow or limited"
   },
   {
    "id": "google/gemma-4-31b-it:free",
-   "name": "Gemma 4 31B, free",
+   "name": "Gemma 4 31B",
    "maker": "Google",
    "price": "free",
-   "about": "open model, free tier"
+   "about": "open model"
+  },
+  {
+   "id": "reflection/beam-1.0-501b-a23b",
+   "name": "Beam 1.0",
+   "maker": "Reflection",
+   "price": "0.30 / 1",
+   "about": "501B, strong tools and reasoning, uses few words"
+  },
+  {
+   "id": "meta/muse-spark-open",
+   "name": "Muse Spark Open",
+   "maker": "Meta",
+   "price": "1.25 / 4.25",
+   "about": "816B open model, long multi-step work, sees images"
+  },
+  {
+   "id": "xiaomi/mimo-v2.6-pro",
+   "name": "MiMo V2.6 Pro",
+   "maker": "Xiaomi",
+   "price": "0.43 / 0.87",
+   "about": "1T model, sees images and hears audio, cheap for its size"
+  },
+  {
+   "id": "xiaomi/mimo-v2.6-flash",
+   "name": "MiMo V2.6 Flash",
+   "maker": "Xiaomi",
+   "price": "0.14 / 0.28",
+   "about": "fast and cheap, sees images"
+  },
+  {
+   "id": "z-ai/glm-5.3-flash",
+   "name": "GLM 5.3 Flash",
+   "maker": "Z.ai",
+   "price": "0.04 / 0.08",
+   "about": "very cheap, sees images, near-flagship coding"
+  },
+  {
+   "id": "moonshotai/kimi-k2.7-code",
+   "name": "Kimi K2.7 Code",
+   "maker": "Moonshot",
+   "price": "0.60 / 3.50",
+   "about": "coding-focused Kimi"
+  },
+  {
+   "id": "openai/gpt-oss-120b",
+   "name": "gpt-oss 120B",
+   "maker": "OpenAI (open model)",
+   "price": "0.15 / 0.60",
+   "about": "OpenAI's open reasoning model"
+  },
+  {
+   "id": "qwen/qwen3.8-27b",
+   "name": "Qwen 3.8 27B",
+   "maker": "Alibaba",
+   "price": "0.15 / 1.88",
+   "about": "the Ollama qwen3.8 model, sees images"
+  },
+  {
+   "id": "minimax/minimax-m3",
+   "name": "MiniMax M3",
+   "maker": "MiniMax",
+   "price": "0.30 / 1.20",
+   "about": "coding and agents, sees images"
+  },
+  {
+   "id": "nvidia/nemotron-3.5-super-vl",
+   "name": "Nemotron 3.5 Super",
+   "maker": "NVIDIA",
+   "price": "0.15 / 0.47",
+   "about": "120B, documents and images"
+  },
+  {
+   "id": "nvidia/nemotron-3.5-super-vl:free",
+   "name": "Nemotron 3.5 Super",
+   "maker": "NVIDIA",
+   "price": "free",
+   "about": "open model"
+  },
+  {
+   "id": "recursive/flint-v1.0:free",
+   "name": "Flint",
+   "maker": "Recursive",
+   "price": "free",
+   "about": "40B coding-agent model"
+  },
+  {
+   "id": "google/gemma-4-26b-a4b-it:free",
+   "name": "Gemma 4 26B",
+   "maker": "Google",
+   "price": "free",
+   "about": "sees images"
+  },
+  {
+   "id": "meta/muse-glimmer-30b",
+   "name": "Muse Glimmer 30B",
+   "maker": "Meta",
+   "price": "0.30 / 1.20",
+   "about": "built for always-on agents, sees images"
+  },
+  {
+   "id": "deepseek/deepseek-v4-flash",
+   "name": "DeepSeek V4 Flash",
+   "maker": "DeepSeek",
+   "price": "0.09 / 0.18",
+   "about": "cheapest strong all-rounder"
   }
  ]
 }

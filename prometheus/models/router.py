@@ -155,7 +155,7 @@ def head_choices(router: "ModelRouter") -> list[tuple[str, str]]:
             out.append((entry, f"On this laptop: {model or 'local model'} (free, private, slower)"))
         elif name == "openrouter":
             out.append((entry, f"OpenRouter: {model or 'default'}"))
-            out += [(f"openrouter:{m['id']}", f"OpenRouter: {m['name']} ({m['maker']}, ${m['price']} per M tokens)")
+            out += [(f"openrouter:{m['id']}", f"OpenRouter: {m['name']} ({m['maker']}, {price_text(m['price'])})")
                     for m in openrouter_models() if f"openrouter:{m['id']}" != entry]
         elif name == "ollama-cloud":
             info = getattr(p, "info", None)
@@ -177,6 +177,10 @@ def provider_on(info, settings: Settings) -> bool:
 
 
 # Which AI writes research reports (Settings → AI → Research brain). Kimi runs on Moonshot's servers via OpenRouter.
+def price_text(price: str) -> str:
+    return "free, with daily limits" if str(price).strip().lower() == "free" else f"${price} per M tokens"
+
+
 def openrouter_models() -> list[dict]:
     """A hand-picked list of strong models on OpenRouter (prometheus/data/openrouter_models.json)."""
     import json as _json
@@ -193,7 +197,7 @@ RESEARCH_BRAINS = {"auto": "", "claude": "anthropic"}
 RESEARCH_LABELS = {"auto": "Automatic (as before: the cheapest good model)", "claude": "Claude"}
 for _m in openrouter_models():
     RESEARCH_BRAINS[_m["id"]] = f"openrouter:{_m['id']}"
-    RESEARCH_LABELS[_m["id"]] = f"{_m['name']} ({_m['maker']}; {_m['about']}; ${_m['price']} per M tokens)"
+    RESEARCH_LABELS[_m["id"]] = f"{_m['name']} ({_m['maker']}; {_m['about']}; {price_text(_m['price'])})"
 
 
 CODE_BRAINS = {"auto": "openrouter:ricursiveai/ripple-65b-preview", "off": ""}
