@@ -200,6 +200,7 @@ class Orchestrator:
         self.prompts_dir = Path(prompts_dir) if prompts_dir else PACKAGE_PROMPTS
         self.step_tries, self.task_budget, self.max_steps = STEP_TRIES, TASK_BUDGET, MAX_TASK_STEPS
         self.extra_catalog = None          # callable: tools of connected apps, for the planner
+        self.extra_sections: list = []     # (heading, callable returning text) added to the planner's system
         self.skills = skills
         from prometheus.memory.facts import Facts
 
@@ -317,6 +318,13 @@ class Orchestrator:
             if connected:
                 system += ("\n\nConnected apps (use the apps agent: action call, app, tool, arguments as a JSON "
                            "object):\n" + connected)
+        for heading, make in self.extra_sections:
+            try:
+                text_ = make()
+            except Exception:
+                text_ = ""
+            if text_:
+                system += f"\n\n{heading}:\n{text_}"
         known = [t["topic"] for t in self.store.topics(KNOWN_TOPICS)]
         system += ("\n\nTopic: set \"topic\" to 1 to 3 lowercase words naming what this request is about (for example "
                    "weather, taxes, python learning). Reuse one of these earlier topics when it fits: "

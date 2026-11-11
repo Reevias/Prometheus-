@@ -1,6 +1,7 @@
 # Changelog
 
 ## 1.6
+- Own tools (self-edit level 2): for jobs that keep coming back, Prometheus can write itself a small Python tool. You see its code once on the Approvals page; after that it uses the tool without asking, always in the sandbox (no internet, only its own folder). If the code changes it asks again. Approved tools are listed on the Skills page with their code, how often they ran, and Remove.
 - Costs page (in the top bar): this month's spending on paid AI against your limit, a bar for each of the last 30 days, and a table by model (calls, tokens, cost) and by chat. The spending limit is now monthly (it starts again on the 1st); at 80% you get one notification and a note in the Daily briefing chat; at 100% paid models stop and free or local ones keep working.
 - Tray icon and notifications: an ember icon by the Windows clock (Open, Hide window, Quit). Closing the window now only hides it, so voice, reminders and night jobs keep working; Quit in the icon's menu really closes. Windows notifications for: a task that took over 30 seconds finishing, a task waiting for your yes, the morning and evening summaries, the repo of the day, and overnight updates. Each can be switched off in Settings → Notifications (the tray too).
 - Fixes: a wrong model name now pauses only that model, not the whole provider; Remove in Settings also deletes a key set with `setx`; key and app-password boxes no longer make the browser offer to save them as passwords.

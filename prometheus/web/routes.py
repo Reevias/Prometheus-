@@ -390,8 +390,23 @@ def register_routes(app: FastAPI, services: Services) -> None:
 
     @app.get("/skills", response_class=HTMLResponse)
     def skills_page(request: Request):
+        from prometheus.agents import tools_agent
+
         return page(request, "skills.html", skills=services.skills.catalog(), shown=None, text="",
-                    user_folder=str(services.skills.user))
+                    user_folder=str(services.skills.user),
+                    own_tools=tools_agent.TOOLS.all() if tools_agent.TOOLS else [])
+
+    @app.post("/tools/{name}/remove", response_class=HTMLResponse)
+    def remove_tool(request: Request, name: str):
+        from prometheus.agents import tools_agent
+        from prometheus.own_tools import ToolError
+
+        try:
+            tools_agent.TOOLS.remove(name)
+        except ToolError:
+            pass
+        store.audit("user", "remove_tool", {"name": name})
+        return skills_page(request)
 
     @app.get("/skills/{name}/{ref}", response_class=HTMLResponse)
     def skill_reference(request: Request, name: str, ref: str):

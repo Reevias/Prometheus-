@@ -299,11 +299,14 @@ def run_windows_sandbox(code: str, folder: Path, network: bool = False, timeout:
 
 
 def run(code: str, base: Path, network: bool = False, use_windows_sandbox: bool = True,
-        files: list[Path] | None = None) -> tuple[RunResult, Path]:
+        files: list[Path] | None = None, extra: dict[str, str] | None = None) -> tuple[RunResult, Path]:
+    """extra: small text files to put next to the script (a tool's inputs.json)."""
     folder = new_folder(base)
     for f in files or []:
         shutil.copy2(f, folder / Path(f).name)
-    given = {Path(f).name for f in files or []}
+    for name, text in (extra or {}).items():
+        (folder / Path(name).name).write_text(text, encoding="utf-8")
+    given = {Path(f).name for f in files or []} | {Path(n).name for n in extra or {}}
     result = None
     if use_windows_sandbox and windows_sandbox_available():
         try:

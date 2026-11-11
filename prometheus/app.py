@@ -314,6 +314,12 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
     services.laptop = _lp
     services.browser = browser_agent.SESSION
     code_agent.SERVICES = services
+    from prometheus.agents import tools_agent
+    from prometheus.own_tools import OwnTools
+
+    tools_agent.TOOLS, tools_agent.SERVICES = OwnTools(data / "tools"), services
+    approvals.register("approve_tool", tools_agent.approve_handler)
+    orchestrator.extra_sections.append(("Own tools (use the tools agent with action run)", tools_agent.TOOLS.catalog))
     from prometheus.briefing import BriefingClock
 
     services.briefing = BriefingClock(services, notify=lambda text: services.notify("briefing", text))

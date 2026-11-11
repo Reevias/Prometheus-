@@ -51,6 +51,8 @@ Plans:
   and sorting photos into folders use the photos agent (find with query, or sort).
 - Finding a file by what is WRITTEN in it ("the file that mentions invoice 4521", "my notes about photosynthesis")
   uses the files agent with action search_text; finding by name, type or date uses action find.
+- If one of the "Own tools" fits the request, use the tools agent with action run. When the same kind of job keeps
+  coming back and no tool fits, the tools agent can make one (it waits for the owner's approval once).
 - Exact sums, statistics, working with numbers in a CSV or Excel file, or drawing a chart: use the code agent with a
   complete Python script in "code" (print the answer; save charts as .png in the current folder) and the owner's
   files in "files". Scripts have no internet; never put keys or passwords in them.
