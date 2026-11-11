@@ -52,6 +52,13 @@ class OpenRouterProvider:
         try:
             data = resp.json()
             text = data["choices"][0]["message"]["content"] or ""
+            if not text.strip() and data["choices"][0].get("finish_reason") == "length":
+                # a thinking model used all its room on thinking: once more with more room
+                body["max_tokens"] = min(max(max_tokens * 4, 16000), 32000)
+                again = self._post(body)
+                if again.status_code == 200:
+                    data = again.json()
+                    text = data["choices"][0]["message"]["content"] or ""
         except (ValueError, KeyError, IndexError, TypeError) as e:
             raise ProviderUnavailable("OpenRouter sent an unreadable reply.") from e
         usage = data.get("usage") or {}

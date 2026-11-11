@@ -387,7 +387,15 @@ class Orchestrator:
                          {"role": "user", "content": f"That reply is not valid: {e} Reply with corrected JSON only."}]
             reply = self.router.complete("plan", messages, system, json_schema=PLAN_SCHEMA, max_tokens=4000)
             label = f"{reply.provider} · {reply.model}"
-            plan = validate_plan(reply.text, self.registry)
+            try:
+                plan = validate_plan(reply.text, self.registry)
+            except PlanError as again:
+                try:
+                    self.store.audit("planner", "unreadable_plan", {"model": label, "error": str(again)[:300]})
+                except Exception:
+                    pass
+                raise PlanError(f"the AI that plans ({label}) answered twice in a way I couldn't use. Try again, "
+                                "or pick another Brain in Settings → AI.") from again
         plan.model = label
         return plan
 
@@ -562,7 +570,7 @@ class Orchestrator:
         try:
             plan = Plan(fast.steps, answer="") if fast is not None else self._plan(text, history, chat_id)
         except PlanError as e:
-            return self._finish(chat_id, task_id, "failed", f"I couldn't make a working plan for that: {e}")
+            return self._finish(chat_id, task_id, "failed", f"I couldn't work out the steps for that: {e}")
         except (ProviderUnavailable, BudgetExceeded) as e:
             return self._finish(chat_id, task_id, "paused", str(e))
         except Stopped as e:

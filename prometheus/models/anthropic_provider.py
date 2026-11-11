@@ -48,21 +48,27 @@ class AnthropicProvider:
         output_config: dict = {"effort": self.effort}
         if json_schema is not None:
             output_config["format"] = {"type": "json_schema", "schema": json_schema}
-        try:
-            extra = {"betas": [FALLBACK_BETA], "fallbacks": "default"} if model.startswith(FALLBACK_MODELS) else {}
-            resp = self._get_client().beta.messages.create(
-                model=model,
-                max_tokens=max_tokens,
-                system=system,
-                messages=messages,
-                thinking={"type": "adaptive"},
-                output_config=output_config,
-                **extra,
-            )
-        except Exception as e:  # network, auth, rate limit: the router tries the next provider
-            if isinstance(e, ProviderUnavailable):
-                raise
-            raise ProviderUnavailable(f"Claude error: {type(e).__name__}") from e
+        extra = {"betas": [FALLBACK_BETA], "fallbacks": "default"} if model.startswith(FALLBACK_MODELS) else {}
+        resp = None
+        for room in (max_tokens, min(max(max_tokens * 4, 16000), 32000)):
+            try:
+                resp = self._get_client().beta.messages.create(
+                    model=model,
+                    max_tokens=room,
+                    system=system,
+                    messages=messages,
+                    thinking={"type": "adaptive"},
+                    output_config=output_config,
+                    **extra,
+                )
+            except Exception as e:  # network, auth, rate limit: the router tries the next provider
+                if isinstance(e, ProviderUnavailable):
+                    raise
+                raise ProviderUnavailable(f"Claude error: {type(e).__name__}") from e
+            has_text = any(getattr(b, "type", "") == "text" and getattr(b, "text", "").strip() for b in resp.content)
+            if has_text or resp.stop_reason != "max_tokens":
+                break
+            # all the room went on thinking, none on the answer: once more with more room
         if resp.stop_reason == "refusal":
             raise ProviderUnavailable("Claude refused this request.")
         text = "".join(b.text for b in resp.content if getattr(b, "type", "") == "text")

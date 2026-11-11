@@ -82,6 +82,7 @@ class ModelRouter:
                  max_tokens: int = 4096) -> Reply:
         self.killswitch.check()
         errors: list[str] = []
+        empty: list[str] = []
         over_budget = False
         for entry in self.entries_for(purpose):
             name, model = split_entry(entry)
@@ -113,7 +114,18 @@ class ModelRouter:
             self._resting.pop(name, None)
             if not provider.is_local:
                 self.budget.record(reply.provider, reply.model, reply.usd, reply.tokens_in, reply.tokens_out)
+            if not (reply.text or "").strip():
+                # an empty answer (a thinking model that used all its room, a free model that timed out) is a
+                # failure: try the next AI rather than hand back nothing
+                empty.append(f"{reply.provider} · {reply.model}")
+                errors.append(f"{name}: sent back an empty answer")
+                continue
             return reply
+        if empty:
+            raise ProviderUnavailable(
+                f"The AI ({', '.join(empty)}) sent back an empty answer. Try again in a moment, or pick another Brain "
+                "in Settings → AI." + (f" Others: {'; '.join(e for e in errors if 'empty answer' not in e)}."
+                                       if len(errors) > len(empty) else ""))
         if over_budget:
             self.budget.ensure_can_spend()
             raise BudgetExceeded("Spending cap reached and no free model is available.")

@@ -2,11 +2,12 @@
 
 Every bug found and fixed, newest first, so the count is always exact. Add a line for each new one.
 
-**Total fixed: 40** (as of 11 November 2026)
+**Total fixed: 41** (as of 11 November 2026)
 
-## 11 November 2026: on the owner's laptop and phone (21)
+## 11 November 2026: on the owner's laptop and phone (22)
 | # | Bug | Fixed by |
 |---|---|---|
+| 41 | "The plan is not valid JSON… (char 0)": the planning AI sent back an empty answer (its thinking used up all the room) and the same AI was asked again | more room when thinking runs out; an empty answer moves on to the next AI; a plain message if all fail |
 | 40 | Laptop voice (Kokoro) wouldn't install on Python 3.14: its label says "up to 3.13" | installed with its old label ignored (it works on 3.14, tested by speaking) |
 | 39 | Photo text reading wouldn't install on Python 3.14 (rapidocr-onnxruntime stops at 3.12) | switched to rapidocr 3, tested reading a photo on 3.14 |
 | 38 | Phone app showed a blank screen when opened again | "Opening Prometheus" screen with Open and Change address buttons |

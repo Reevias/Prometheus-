@@ -148,3 +148,41 @@ def test_ollama_unavailable_when_not_running():
 
     http = httpx.Client(transport=httpx.MockTransport(handler))
     assert OllamaProvider("m", "http://127.0.0.1:11434", http=http).available() is False
+
+
+def test_an_empty_answer_moves_on_to_the_next_ai(tmp_path):
+    empty = FakeProvider([""], name="thinker", is_local=False)
+    good = FakeProvider(['{"steps": []}'], name="backup")
+    r = make_router([empty, good], {"plan": ["thinker", "backup"]}, Budget(Store(tmp_path / "m.db"), cap_usd=5.0))
+    assert r.complete("plan", [{"role": "user", "content": "x"}], "s").provider == "backup"
+
+
+def test_only_empty_answers_say_so_plainly(tmp_path):
+    empty = FakeProvider(["   "], name="thinker")
+    r = make_router([empty], {"plan": ["thinker"]}, Budget(Store(tmp_path / "m.db"), cap_usd=5.0))
+    with pytest.raises(ProviderUnavailable, match="empty answer.*another Brain"):
+        r.complete("plan", [{"role": "user", "content": "x"}], "s")
+
+
+def test_claude_gets_more_room_when_thinking_used_it_all(monkeypatch):
+    from types import SimpleNamespace
+
+    from prometheus.models.anthropic_provider import AnthropicProvider
+
+    calls = []
+
+    class Msgs:
+        def create(self, **kw):
+            calls.append(kw["max_tokens"])
+            if len(calls) == 1:
+                return SimpleNamespace(stop_reason="max_tokens", content=[SimpleNamespace(type="thinking", thinking="…")],
+                                       usage=SimpleNamespace(input_tokens=10, output_tokens=4000))
+            return SimpleNamespace(stop_reason="end_turn", content=[SimpleNamespace(type="text", text='{"steps": []}')],
+                                   usage=SimpleNamespace(input_tokens=10, output_tokens=200))
+
+    p = AnthropicProvider.__new__(AnthropicProvider)
+    p.name, p.model, p.effort, p.is_local = "anthropic", "claude-opus-5-5", "high", False
+    monkeypatch.setattr(p, "available", lambda: True, raising=False)
+    monkeypatch.setattr(p, "_get_client", lambda: SimpleNamespace(beta=SimpleNamespace(messages=Msgs())), raising=False)
+    reply = p.complete([{"role": "user", "content": "x"}], "s", json_schema={"type": "object"}, max_tokens=4000)
+    assert reply.text == '{"steps": []}' and calls == [4000, 16000]
