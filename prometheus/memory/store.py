@@ -181,6 +181,8 @@ class Store:
                 self._db.execute("UPDATE messages SET private = 1 WHERE role = 'assistant'")
             if "topic" not in {r["name"] for r in self._db.execute("PRAGMA table_info(messages)")}:
                 self._db.execute("ALTER TABLE messages ADD COLUMN topic TEXT NOT NULL DEFAULT ''")
+            if "chat_id" not in {r["name"] for r in self._db.execute("PRAGMA table_info(costs)")}:
+                self._db.execute("ALTER TABLE costs ADD COLUMN chat_id INTEGER NOT NULL DEFAULT 0")
             columns = {r["name"] for r in self._db.execute("PRAGMA table_info(memories)")}
             if "source" not in columns:  # databases made before v1.2
                 self._db.execute("ALTER TABLE memories ADD COLUMN source TEXT NOT NULL DEFAULT ''")
@@ -654,14 +656,31 @@ class Store:
         self._write("UPDATE approvals SET status = ? WHERE id = ?", (status, approval_id))
 
     # -- costs ------------------------------------------------------------
-    def add_cost(self, provider: str, model: str, usd: float, tokens_in: int, tokens_out: int) -> None:
+    def add_cost(self, provider: str, model: str, usd: float, tokens_in: int, tokens_out: int,
+                 chat_id: int = 0) -> None:
         self._write(
-            "INSERT INTO costs (provider, model, usd, tokens_in, tokens_out, created) VALUES (?, ?, ?, ?, ?, ?)",
-            (provider, model, usd, tokens_in, tokens_out, time.time()),
+            "INSERT INTO costs (provider, model, usd, tokens_in, tokens_out, created, chat_id) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (provider, model, usd, tokens_in, tokens_out, time.time(), int(chat_id or 0)),
         )
 
-    def total_cost(self) -> float:
-        return float(self._rows("SELECT COALESCE(SUM(usd), 0) AS s FROM costs")[0]["s"])
+    def total_cost(self, since: float = 0.0) -> float:
+        return float(self._rows("SELECT COALESCE(SUM(usd), 0) AS s FROM costs WHERE created >= ?", (since,))[0]["s"])
+
+    def cost_report(self, since: float) -> dict:
+        """What paid AI cost since a moment: by model, by day and by chat."""
+        by_model = [dict(r) for r in self._rows(
+            "SELECT provider, model, SUM(usd) AS usd, COUNT(*) AS calls, SUM(tokens_in) AS tin, "
+            "SUM(tokens_out) AS tout FROM costs WHERE created >= ? GROUP BY provider, model ORDER BY usd DESC",
+            (since,))]
+        by_day = [dict(r) for r in self._rows(
+            "SELECT date(created, 'unixepoch', 'localtime') AS day, SUM(usd) AS usd, COUNT(*) AS calls FROM costs "
+            "WHERE created >= ? GROUP BY day ORDER BY day", (since,))]
+        by_chat = [dict(r) for r in self._rows(
+            "SELECT c.chat_id, COALESCE(h.title, 'Background jobs') AS title, SUM(c.usd) AS usd, COUNT(*) AS calls "
+            "FROM costs c LEFT JOIN chats h ON h.id = c.chat_id WHERE c.created >= ? GROUP BY c.chat_id "
+            "ORDER BY usd DESC LIMIT 15", (since,))]
+        return {"by_model": by_model, "by_day": by_day, "by_chat": by_chat}
 
     # -- recall: find the right memory -----------------------------------------
     @staticmethod

@@ -291,6 +291,14 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
             Laptop().notify(text)
 
     services.notifier = _notify if __import__("sys").platform == "win32" else None
+
+    def _budget_warning(text: str) -> None:
+        services.notify("budget", text)
+        chat = services.briefing.chat() if services.briefing is not None else 0
+        if chat:
+            store.add_message(chat, "assistant", f"💸 {text}", "budget")
+
+    budget.on_warn = _budget_warning
     services.reminders = ReminderClock(services, notify=_notify)
     import sys as _sys
 

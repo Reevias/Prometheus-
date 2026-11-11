@@ -266,7 +266,7 @@
 
   <h3>General</h3>
   <form hx-post="/settings" hx-target="body" class="panel" style="display:grid;gap:10px">
-    <label>Spending cap for paid AI (USD) <input name="budget_usd" value="{{ s.budget_usd }}" inputmode="decimal"></label>
+    <label>Monthly limit for paid AI (USD) <input name="budget_usd" value="{{ s.budget_usd }}" inputmode="decimal"></label>
     <label>Most one task may spend (USD) <input name="task_budget_usd" value="{{ s.task_budget_usd }}" inputmode="decimal"></label>
     <label>Tries per step when something fails (1 to 6) <input name="step_tries" value="{{ s.step_tries }}" inputmode="numeric"></label>
     <label>GitHub repository Prometheus may read and update <input name="github_repo" value="{{ s.github_repo }}"></label>
@@ -302,6 +302,6 @@
     <button type="submit">Save key</button>
   </form>
   {% endfor %}
-  <p class="muted">Spent so far: ${{ "%.4f"|format(budget.spent) }} of ${{ "%.2f"|format(budget.cap) }}.</p>
+  <p class="muted">Spent this month: ${{ "%.4f"|format(budget.spent) }} of ${{ "%.2f"|format(budget.cap) }}. <a href="/costs">Details</a></p>
 </main>
 {% endblock %}

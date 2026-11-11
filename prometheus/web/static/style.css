@@ -197,3 +197,19 @@ canvas.orb { background: var(--orb-backdrop); border-radius: 50%; }
 
 /* keys and app passwords: hidden like a password, but not a password box (no "save password?") */
 input.secret { -webkit-text-security: disc; text-security: disc; font-family: inherit; }
+
+/* costs page */
+.figure { font-size: 1.6rem; font-variant-numeric: tabular-nums; }
+.meter { height: 8px; background: var(--raised); border-radius: 4px; overflow: hidden; margin: 8px 0; }
+.meter span { display: block; height: 100%; background: var(--ok); }
+.meter span.warn { background: var(--warn); }
+.meter span.bad { background: var(--bad); }
+.bars { display: flex; align-items: flex-end; gap: 2px; height: 120px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.bars .bar { flex: 1; height: 100%; display: flex; align-items: flex-end; }
+.bars .bar span { display: block; width: 100%; min-height: 1px; background: var(--text-3); border-radius: 2px 2px 0 0; }
+.bars .bar:last-child span { background: var(--signal); }
+.figure-row { display: flex; justify-content: space-between; font-size: .8rem; }
+.plain-table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.plain-table th, .plain-table td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+.plain-table th { font-weight: 500; color: var(--text-2); }
+.plain-table .num { text-align: right; }

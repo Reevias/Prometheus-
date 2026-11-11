@@ -405,6 +405,20 @@ def register_routes(app: FastAPI, services: Services) -> None:
         return page(request, "skills.html", skills=services.skills.catalog(), shown=f"{name} / {ref}", text=text,
                     user_folder=str(services.skills.user))
 
+    @app.get("/costs", response_class=HTMLResponse)
+    def costs(request: Request):
+        import time as _t
+
+        from prometheus.safety.budget import month_start
+
+        state = services.budget.state()
+        report = store.cost_report(month_start())
+        days = store.cost_report(_t.time() - 30 * 86400)["by_day"]
+        top = max((d["usd"] for d in days), default=0)
+        pct = round(100 * state.spent / state.cap) if state.cap else 0
+        return page(request, "costs.html", budget=state, report=report, days=days, top=top, pct=pct,
+                    all_time=store.total_cost())
+
     @app.get("/history", response_class=HTMLResponse)
     def history(request: Request):
         return page(request, "history.html", runs=services.journal.runs(), result="")

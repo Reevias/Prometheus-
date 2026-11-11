@@ -1,6 +1,7 @@
 # Changelog
 
 ## 1.6
+- Costs page (in the top bar): this month's spending on paid AI against your limit, a bar for each of the last 30 days, and a table by model (calls, tokens, cost) and by chat. The spending limit is now monthly (it starts again on the 1st); at 80% you get one notification and a note in the Daily briefing chat; at 100% paid models stop and free or local ones keep working.
 - Tray icon and notifications: an ember icon by the Windows clock (Open, Hide window, Quit). Closing the window now only hides it, so voice, reminders and night jobs keep working; Quit in the icon's menu really closes. Windows notifications for: a task that took over 30 seconds finishing, a task waiting for your yes, the morning and evening summaries, the repo of the day, and overnight updates. Each can be switched off in Settings → Notifications (the tray too).
 - Fixes: a wrong model name now pauses only that model, not the whole provider; Remove in Settings also deletes a key set with `setx`; key and app-password boxes no longer make the browser offer to save them as passwords.
 

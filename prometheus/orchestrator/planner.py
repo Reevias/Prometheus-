@@ -479,6 +479,9 @@ class Orchestrator:
         return nxt
 
     def run(self, chat_id: int, text: str) -> TaskOutcome:
+        from prometheus.safety.budget import for_chat
+
+        for_chat(chat_id)                         # costs from this task count for this chat
         history = self._history(chat_id)          # taken before this message is added
         user_msg = self.store.add_message(chat_id, "user", text)
         task_id = self.store.create_task(chat_id, text)

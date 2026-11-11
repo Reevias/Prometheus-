@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block body %}
+<main class="single">
+  <h2>What paid AI has cost</h2>
+  <div class="panel">
+    <p><strong class="figure">${{ "%.2f"|format(budget.spent) }}</strong> <span class="muted">of your ${{ "%.2f"|format(budget.cap) }} limit this month
+      ({{ pct }}%). You get a warning at 80%; at 100% paid models stop and free or local ones keep working.</span></p>
+    <div class="meter" role="img" aria-label="{{ pct }} percent of this month's limit used"><span style="width:{{ [pct, 100]|min }}%" class="{{ 'bad' if budget.stopped else 'warn' if budget.warn else '' }}"></span></div>
+    <p class="muted">All time: ${{ "%.2f"|format(all_time) }}. Local and free models cost nothing and aren't listed. <a href="/settings">Change the limit</a></p>
+  </div>
+
+  <h3>Last 30 days</h3>
+  {% if days %}<div class="bars" role="img" aria-label="Spending per day for the last 30 days">
+    {% for d in days %}<div class="bar" title="{{ d.day }}: ${{ '%.4f'|format(d.usd) }} ({{ d.calls }} calls)"><span style="height:{{ (d.usd / top * 100) if top else 0 }}%"></span></div>{% endfor %}
+  </div><p class="muted figure-row"><span>{{ days[0].day }}</span><span>today</span></p>
+  {% else %}<p class="muted">Nothing spent in the last 30 days.</p>{% endif %}
+
+  <h3>By model, this month</h3>
+  <table class="plain-table"><thead><tr><th>Model</th><th class="num">Calls</th><th class="num">Words in / out (tokens)</th><th class="num">Cost</th></tr></thead>
+  <tbody>{% for m in report.by_model %}<tr><td>{{ m.model }} <span class="muted">({{ m.provider }})</span></td><td class="num">{{ m.calls }}</td>
+    <td class="num">{{ "{:,}".format(m.tin or 0) }} / {{ "{:,}".format(m.tout or 0) }}</td><td class="num">${{ "%.4f"|format(m.usd) }}</td></tr>
+  {% else %}<tr><td colspan="4" class="muted">Nothing this month.</td></tr>{% endfor %}</tbody></table>
+
+  <h3>By chat, this month</h3>
+  <table class="plain-table"><tbody>{% for c in report.by_chat %}<tr><td>{% if c.chat_id %}<a href="/chats/{{ c.chat_id }}">{{ c.title }}</a>{% else %}{{ c.title }}{% endif %}</td>
+    <td class="num">{{ c.calls }} calls</td><td class="num">${{ "%.4f"|format(c.usd) }}</td></tr>
+  {% else %}<tr><td class="muted">Nothing this month.</td></tr>{% endfor %}</tbody></table>
+</main>
+{% endblock %}
