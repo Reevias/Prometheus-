@@ -513,9 +513,30 @@ def register_routes(app: FastAPI, services: Services) -> None:
                                                                     fromlist=["SPEECH"]).SPEECH.items()],
                     home=str(services.home), bad_places=bad_places,
                     budget=services.budget.state(), catalog_date=catalog_updated(),
-                    safety=_safety_results(),
+                    safety=_safety_results(), mcp_config=_mcp_config(),
                     file_index_status=(getattr(services.file_index, "status", "") or store.kv_get("file_index_status")
                                        or "Not read yet."), **extra)
+
+    def _mcp_config() -> str:
+        import json as _json
+        import sys as _sys
+
+        from prometheus.launcher import pythonw
+
+        exe = pythonw() if _sys.platform == "win32" else _sys.executable
+        return _json.dumps({"mcpServers": {"prometheus": {"command": exe, "args": ["-m", "prometheus.cli", "mcp"]}}},
+                           indent=2)
+
+    @app.post("/settings/mcp-token", response_class=HTMLResponse)
+    def new_mcp_token(request: Request):
+        from prometheus.config import set_secret
+        from prometheus.mcp_server import TOKEN_KEY
+
+        import secrets as _secrets
+
+        set_secret(TOKEN_KEY, _secrets.token_urlsafe(32))
+        store.audit("user", "mcp_token", {})
+        return settings_page(request, notice="Made a new key. The setup above didn't change; apps just need restarting.")
 
     def _safety_results() -> dict | None:
         import json as _json

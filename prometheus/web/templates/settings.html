@@ -173,6 +173,16 @@
     <button type="submit">Save</button>
   </form>
 
+  <h3>Use Prometheus from other AI apps</h3>
+  <div class="panel">
+    <p class="muted">Antigravity, Claude Desktop, Cursor and other apps that support MCP can search what Prometheus
+      remembers, find your files by name, and ask it questions. Anything that changes something waits for you on the
+      Approvals page. Text from your private files never leaves. Prometheus must be running.</p>
+    <p>Add this to the app's MCP settings (for example <code>mcp_config.json</code> in Antigravity):</p>
+    <pre class="diff">{{ mcp_config }}</pre>
+    <button hx-post="/settings/mcp-token" hx-target="body" hx-confirm="Apps using the old setup will stop working until you paste the new one. Continue?">Make a new key</button>
+  </div>
+
   <h3>Safety check</h3>
   <div class="panel">
     <p class="muted">Hides 10 known attacks (fake "system notes" in emails, web pages, files and error messages) in

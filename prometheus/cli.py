@@ -48,6 +48,7 @@ def _serve(args) -> int:
               "Turn on 'Allow other devices on my Wi-Fi' in Settings first.")
         return 2
     print(f"Prometheus is running at http://{'127.0.0.1' if host in LOCAL_HOSTS else host}:{port}  (Ctrl+C to stop)")
+    _note_port(port)
     uvicorn.run(create_app(build_services(settings)), host=host, port=port)
     return 0
 
@@ -66,6 +67,27 @@ def _app(args) -> int:
     from prometheus.desktop import run_desktop
 
     return run_desktop(settings)
+
+
+def _mcp(args) -> int:
+    from prometheus.mcp_server import stdio_bridge
+
+    return stdio_bridge(running_port())
+
+
+def _note_port(port: int) -> None:
+    try:
+        (data_dir() / "port").write_text(str(port))
+    except OSError:
+        pass
+
+
+def running_port() -> int:
+    """The port the running Prometheus listens on (the desktop window may pick a free one)."""
+    try:
+        return int((data_dir() / "port").read_text().strip())
+    except (OSError, ValueError):
+        return load_settings().port
 
 
 def _background(args) -> int:
@@ -90,6 +112,7 @@ def _background(args) -> int:
     if running_copy(settings.port):
         print("Prometheus is already running.")
         return 0
+    _note_port(settings.port)
     uvicorn.run(create_app(build_services(settings), background=True), host="127.0.0.1", port=settings.port,
                 log_level="warning")
     return 0
@@ -200,10 +223,11 @@ def main(argv: list[str] | None = None) -> int:
     p_auto = sub.add_parser("autostart", help="start Prometheus when Windows starts")
     p_auto.add_argument("state", choices=["on", "off"])
     sub.add_parser("shortcut", help="make desktop and Start-menu shortcuts that open this copy")
+    sub.add_parser("mcp", help="let another AI app (Antigravity, Claude Desktop) use Prometheus as a tool (stdio)")
     args = parser.parse_args(argv)
     return {"init": _init, "serve": _serve, "app": _app, "doctor": _doctor, "update": _update, "background": _background,
             "voice-setup": _voice_setup, "autostart": _autostart,
-            "shortcut": _shortcut}[args.command](args)
+            "shortcut": _shortcut, "mcp": _mcp}[args.command](args)
 
 
 if __name__ == "__main__":

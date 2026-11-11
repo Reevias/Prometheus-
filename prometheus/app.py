@@ -340,6 +340,12 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
     _ph.CURRENT = services.photos
     approvals.register("photo_sort", lambda payload: _ph.sort_handler(payload, policy, files))
     approvals.register("add_skill", lambda payload: RepoOfTheDay(services).add(payload))
+    from prometheus.mcp_server import action_handler
+    from prometheus.mcp_server import token as _mcp_token
+
+    _mcp_token()                                  # made once; the stdio bridge reads it from the key store
+
+    approvals.register("mcp_action", action_handler(services))
     return services
 
 

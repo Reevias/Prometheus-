@@ -26,8 +26,17 @@ class LocalServer:
         from prometheus.server import create_app
 
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.bind(("127.0.0.1", 0))          # bound once and handed to the server, so nothing else can take the port
+        try:
+            sock.bind(("127.0.0.1", self.settings.port))   # the usual port, so other apps can find Prometheus
+        except OSError:
+            sock.bind(("127.0.0.1", 0))      # taken: any free one (bound once, so nothing else can take it)
         port = sock.getsockname()[1]
+        try:
+            from prometheus.config import data_dir
+
+            (data_dir() / "port").write_text(str(port))
+        except OSError:
+            pass
         config = uvicorn.Config(create_app(build_services(self.settings)), host="127.0.0.1", port=port,
                                 log_level="warning")
         self._server = uvicorn.Server(config)

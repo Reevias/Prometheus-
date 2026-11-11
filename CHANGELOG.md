@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.8
+- Use Prometheus from other AI apps (MCP): Antigravity, Claude Desktop, Cursor and others can search what Prometheus remembers, look up facts about people, find your files by what's in them (names and folders only), and ask it questions. Anything that changes something goes to your Approvals page first. Text from your private files never leaves. The setup to paste is in Settings; the desktop app now keeps its usual port so other apps can find it.
+
 ## 1.7
 - Fixed: "what time is it" could be answered with your location. The AI was never told the date and time; it is now, with every request.
 - Instant answers, with no AI call: the time, date and day; opening apps and sites ("open Spotify", "youtube kholo"); timers, alarms and reminders ("timer for 10 minutes", "remind me at 6 to call mom"); volume ("volume 30", "volume up", "mute"), battery, and today's or tomorrow's weather. A few Hinglish phrases work too ("kitne baje hain", "aaj kya date hai"). Typed or spoken. Everything else goes to the AI as before; answers show "instant" as their source.

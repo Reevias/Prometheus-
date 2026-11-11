@@ -95,7 +95,8 @@ def create_app(services: Services, background: bool = False) -> FastAPI:
     @app.middleware("http")
     async def guard(request: Request, call_next):
         path = request.url.path
-        if path in OPEN_PATHS or path.startswith(("/static/", "/hooks/")):    # hooks check their own secret
+        if path in OPEN_PATHS or path.startswith(("/static/", "/hooks/")) or path == "/api/mcp":
+            # hooks and the tool server check their own secret
             return await call_next(request)
         csrf = sessions.get(request.cookies.get(SESSION_COOKIE))
         if csrf is None:
@@ -135,6 +136,31 @@ def create_app(services: Services, background: bool = False) -> FastAPI:
         resp.delete_cookie(SESSION_COOKIE)
         resp.delete_cookie(CSRF_COOKIE)
         return resp
+
+    @app.post("/api/mcp")
+    async def mcp_endpoint(request: Request):
+        """Prometheus as a tool for other AI apps. Only callers with the token (and only from this laptop)."""
+        from prometheus.mcp_server import PrometheusMCP, token
+
+        sent = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+        expected = token(create=False)
+        local = (request.client.host if request.client else "") in ("127.0.0.1", "::1", "testclient")
+        if not expected or not local or not hmac.compare_digest(sent.encode(), expected.encode()):
+            return Response(status_code=401)
+        try:
+            msg = json.loads((await request.body())[:200_000] or b"{}")
+        except ValueError:
+            return Response(status_code=400)
+        server = PrometheusMCP(services)
+        import asyncio
+
+        if isinstance(msg, list):
+            replies = [r for r in [await asyncio.to_thread(server.handle, m) for m in msg] if r]
+            return Response(json.dumps(replies), media_type="application/json") if replies else Response(status_code=202)
+        reply = await asyncio.to_thread(server.handle, msg)
+        if reply is None:
+            return Response(status_code=202)
+        return Response(json.dumps(reply), media_type="application/json")
 
     @app.post("/hooks/{token}")
     async def webhook(request: Request, token: str):
