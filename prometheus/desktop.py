@@ -71,6 +71,42 @@ class AttachedServer:
         pass
 
 
+def windows_identity(window=None, title: str = "") -> None:
+    """On Windows: show Prometheus, not Python, in the taskbar (its own app id and the Prometheus icon)."""
+    import sys
+
+    if sys.platform != "win32":
+        return
+    import ctypes
+
+    from prometheus.launcher import APP_ID, ICON
+
+    try:
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(APP_ID)
+    except Exception:
+        pass
+    if window is None:
+        return
+
+    def set_icon():
+        try:
+            user32 = ctypes.windll.user32
+            hwnd = user32.FindWindowW(None, title)
+            if not hwnd:
+                return
+            for which, size in ((1, 32), (0, 16)):            # ICON_BIG, ICON_SMALL
+                icon = user32.LoadImageW(None, str(ICON), 1, size, size, 0x10)   # IMAGE_ICON, LR_LOADFROMFILE
+                if icon:
+                    user32.SendMessageW(hwnd, 0x80, which, icon)                # WM_SETICON
+        except Exception:
+            pass
+
+    try:
+        window.events.shown += set_icon
+    except Exception:
+        pass
+
+
 def attach_tray(window, settings, pystray=None):
     """Icon by the clock. With it on, closing the window only hides it (voice and reminders keep working)."""
     if not getattr(settings, "tray", True):
@@ -108,9 +144,12 @@ def run_desktop(settings: Settings, webview=None, server=None) -> int:
         server = AttachedServer(settings.port) if running_copy(settings.port) else LocalServer(settings)
     try:
         port = server.start()
-        window = webview.create_window(f"Prometheus {version()}", f"http://127.0.0.1:{port}/", width=1220,
+        title = f"Prometheus {version()}"
+        windows_identity()                       # before the window exists, so the taskbar groups it as Prometheus
+        window = webview.create_window(title, f"http://127.0.0.1:{port}/", width=1220,
                                        height=780, min_size=(860, 560), background_color=BACKGROUND,
                                        text_select=True)  # pywebview blocks selecting and copying text unless asked
+        windows_identity(window, title)
         try:
             tray = attach_tray(window, settings) if window is not None else None
         except Exception:                       # the tray is a nicety: never let it stop the window

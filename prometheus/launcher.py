@@ -18,7 +18,8 @@ SHORTCUT_NAME = "Prometheus.lnk"
 SHORTCUT_PS = (
     "$s = (New-Object -ComObject WScript.Shell).CreateShortcut($env:PROM_LINK); "
     "$s.TargetPath = $env:PROM_TARGET; $s.Arguments = $env:PROM_ARGS; "
-    "$s.WorkingDirectory = $env:PROM_DIR; $s.Description = 'Prometheus, your AI brain'; $s.Save()"
+    "$s.WorkingDirectory = $env:PROM_DIR; $s.Description = 'Prometheus, your AI brain'; "
+    "if ($env:PROM_ICON) { $s.IconLocation = $env:PROM_ICON + ',0' }; $s.Save()"
 )
 
 
@@ -69,6 +70,10 @@ def shortcut_paths() -> list[Path]:
             appdata / "Microsoft" / "Windows" / "Start Menu" / "Programs" / SHORTCUT_NAME]
 
 
+ICON = Path(__file__).resolve().parent / "data" / "prometheus.ico"
+APP_ID = "Reevias.Prometheus"           # how Windows tells Prometheus apart from other Python programs
+
+
 def make_shortcuts(run=None, windows: bool | None = None) -> list[Path]:
     """Desktop and Start-menu shortcuts that always open THIS copy (replacing any older Prometheus shortcut)."""
     if not (os.name == "nt" if windows is None else windows):
@@ -78,7 +83,7 @@ def make_shortcuts(run=None, windows: bool | None = None) -> list[Path]:
     for link in shortcut_paths():
         link.parent.mkdir(parents=True, exist_ok=True)
         env = {**os.environ, "PROM_LINK": str(link), "PROM_TARGET": pythonw(), "PROM_DIR": str(CODE_DIR),
-               "PROM_ARGS": "-m prometheus.cli app"}
+               "PROM_ARGS": "-m prometheus.cli app", "PROM_ICON": str(ICON)}
         proc = run(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", SHORTCUT_PS], env=env,
                    capture_output=True, text=True, timeout=30)
         if proc.returncode == 0:
@@ -102,7 +107,7 @@ def set_autostart(on: bool, run=None, windows: bool | None = None) -> str:
     run = run or subprocess.run
     link.parent.mkdir(parents=True, exist_ok=True)
     env = {**os.environ, "PROM_LINK": str(link), "PROM_TARGET": pythonw(), "PROM_DIR": str(CODE_DIR),
-           "PROM_ARGS": "-m prometheus.cli background"}
+           "PROM_ARGS": "-m prometheus.cli background", "PROM_ICON": str(ICON)}
     proc = run(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", SHORTCUT_PS], env=env,
                capture_output=True, text=True, timeout=30)
     if proc.returncode != 0:

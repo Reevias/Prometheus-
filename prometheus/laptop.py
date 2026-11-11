@@ -419,7 +419,11 @@ $t = [Windows.UI.Notifications.ToastNotificationManager]::GetTemplateContent([Wi
 $x = $t.GetElementsByTagName('text')
 $x.Item(0).AppendChild($t.CreateTextNode('Prometheus')) > $null
 $x.Item(1).AppendChild($t.CreateTextNode($env:PROM_TEXT)) > $null
-$app = '{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\WindowsPowerShell\v1.0\powershell.exe'
+$app = 'Reevias.Prometheus'
+$key = 'HKCU:\Software\Classes\AppUserModelId\' + $app
+if (-not (Test-Path $key)) { New-Item -Path $key -Force > $null }
+Set-ItemProperty -Path $key -Name DisplayName -Value 'Prometheus'
+if ($env:PROM_ICON) { Set-ItemProperty -Path $key -Name IconUri -Value $env:PROM_ICON }
 [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier($app).Show([Windows.UI.Notifications.ToastNotification]::new($t))
 """
 
@@ -427,7 +431,8 @@ $app = '{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\WindowsPowerShell\v1.0\powershell
 def notify(self, text: str) -> None:
     """A Windows notification (with its sound). The text travels in an environment variable."""
     self._need_windows()
-    _ps(self, NOTIFY_SCRIPT, {"PROM_TEXT": str(text)[:300]})
+    icon = Path(__file__).resolve().parent / "web" / "static" / "icon.png"
+    _ps(self, NOTIFY_SCRIPT, {"PROM_TEXT": str(text)[:300], "PROM_ICON": str(icon)})
 
 
 CPU_SCRIPT = "(Get-CimInstance Win32_Processor | Measure-Object -Property LoadPercentage -Average).Average"

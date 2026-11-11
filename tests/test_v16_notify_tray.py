@@ -103,3 +103,31 @@ def test_closing_hides_to_the_tray_and_quit_really_quits():
     assert window.destroyed and tray.icon.stopped and closing() is True
     assert attach_tray(FakeWindow(), SimpleNamespace(tray=False), pystray=FakePystray) is None
     assert icon_image().size == (64, 64)
+
+
+def test_icon_files_and_shortcut_use_them():
+    from pathlib import Path
+
+    from prometheus import launcher
+
+    assert launcher.ICON.exists() and launcher.ICON.read_bytes()[:4] == b"\x00\x00\x01\x00"     # a real .ico
+    calls = []
+
+    class Done:
+        returncode = 0
+
+    def run(cmd, env=None, **kw):
+        calls.append(env)
+        return Done()
+
+    launcher.make_shortcuts(run=run, windows=True)
+    assert calls and all(c["PROM_ICON"].endswith("prometheus.ico") for c in calls)
+    assert "IconLocation" in launcher.SHORTCUT_PS
+    assert Path(launcher.__file__).with_name("web").joinpath("static", "favicon.png").exists()
+    assert icon_image(32).size == (32, 32)
+
+
+def test_pages_have_the_icon(app_client):
+    client, _ = app_client()
+    assert "/static/favicon.png" in client.get("/login").text
+    assert client.get("/static/icon.png").status_code == 200

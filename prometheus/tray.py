@@ -6,8 +6,16 @@ import threading
 
 
 def icon_image(size: int = 64):
-    """A small ember orb, drawn here so no image file is needed."""
+    """The Prometheus icon (web/static/icon.png), or a plain ember orb if the file is missing."""
+    from pathlib import Path
+
     from PIL import Image, ImageDraw
+
+    try:
+        return Image.open(Path(__file__).resolve().parent / "web" / "static" / "icon.png").convert("RGBA").resize(
+            (size, size), Image.LANCZOS)
+    except OSError:
+        pass
 
     img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
