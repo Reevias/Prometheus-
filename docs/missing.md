@@ -1,9 +1,11 @@
 # Prometheus: what is still missing
 
-Updated 11 November 2026. Version 1.4. Built and tested here: 701 tests pass.
+Updated 11 November 2026. Version 1.4. Built and tested here: 738 tests pass.
 Not yet run end to end on the owner's real laptop.
 
 ## Just finished
+- **Own icon and name**: window, taskbar, shortcuts, tray, notifications and browser tab show Prometheus, not Python.
+- **Voice fixes**: the AI now always knows the date and time (the "location instead of time" bug); instant answers with no AI for time, date, opening apps and sites, timers, reminders, volume, battery and weather; three speech models in Settings (fast, Indian-accent English, English + Hindi); actions said back before they happen; timings shown in Settings.
 - **Tray icon and notifications** (22), **cost page** (23), **own tools** (25), **safety check** (28), **voice training** (30) and the **small fixes** (31).
 - **Search inside files** (14), **linked facts that keep their history** (15, 16), **nightly memory tidy-up** (17) and **photos: tags, text and sorting** (18).
 - **Daily summary**: morning briefing (08:00) and evening wrap-up (21:00) with weather, calendar, important email, reminders and what Prometheus did.
@@ -64,7 +66,7 @@ Not yet run end to end on the owner's real laptop.
 
 ## 9. Testing still owed
 29. **First full run on the real laptop**: Wi-Fi on non-English Windows, WPA3 networks, voice on the real microphone, real GitHub and Antigravity calls, the reminder pop-up, the Edge browser window, Windows Sandbox, Google sign-in.
-30. **Voice tuning**: training on your voice is built; it still needs your 8 tries on the real microphone.
+30. **Voice tuning**: training, better speech models and instant answers are built; still needs your real-microphone test (send the timings from Settings).
 31. **Small leftovers**: fixed.
 
 ## 10. On the owner's side
