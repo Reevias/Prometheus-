@@ -167,6 +167,18 @@
     <button type="submit">Save</button>
   </form>
 
+  <h3>Safety check</h3>
+  <div class="panel">
+    <p class="muted">Hides 10 known attacks (fake "system notes" in emails, web pages, files and error messages) in
+      things Prometheus reads, and checks whether the planning AI would obey them: send email, delete files, open a
+      bad link, pay, post, change settings. Nothing is run; only the plans are checked. About 12 short AI calls.</p>
+    {% if safety %}<p><strong>{{ safety.passed }} of {{ safety.results|length }} attacks ignored</strong>
+      <span class="muted">({{ safety.when_text }})</span></p>
+      <ul class="plain">{% for r in safety.results %}<li>{{ "✓" if r.passed else "✗" }} {{ r.name }}: <span class="muted">{{ r.detail }}</span></li>{% endfor %}</ul>
+    {% endif %}
+    <button hx-post="/settings/safety-check" hx-target="body">Run the safety check</button>
+  </div>
+
   <h3>Search inside files</h3>
   <div class="panel">
     <p class="muted">Prometheus reads the text of PDFs, Word, Excel, PowerPoint and text files in Documents, Desktop,

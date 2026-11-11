@@ -511,8 +511,22 @@ def register_routes(app: FastAPI, services: Services) -> None:
                     voices=__import__("prometheus.voice.engines", fromlist=["VOICES"]).VOICES,
                     home=str(services.home), bad_places=bad_places,
                     budget=services.budget.state(), catalog_date=catalog_updated(),
+                    safety=_safety_results(),
                     file_index_status=(getattr(services.file_index, "status", "") or store.kv_get("file_index_status")
                                        or "Not read yet."), **extra)
+
+    def _safety_results() -> dict | None:
+        import json as _json
+        import time as _t
+
+        raw = store.kv_get("redteam_last")
+        if not raw:
+            return None
+        data = _json.loads(raw)
+        data["when_text"] = _t.strftime("%d %b %Y %H:%M", _t.localtime(data["when"]))
+        data["passed"] = sum(1 for r in data["results"] if r["passed"])
+        data["running"] = bool(getattr(services, "_redteam_running", False))
+        return data
 
     @app.get("/settings", response_class=HTMLResponse)
     def settings(request: Request):
@@ -852,6 +866,24 @@ def register_routes(app: FastAPI, services: Services) -> None:
         save_settings(s)
         store.audit("user", "notifications", {"on": sorted(on)})
         return settings_page(request, saved=True)
+
+    @app.post("/settings/safety-check", response_class=HTMLResponse)
+    def safety_check(request: Request):
+        import threading as _th
+
+        from prometheus import redteam
+
+        if not getattr(services, "_redteam_running", False):
+            def work():
+                services._redteam_running = True
+                try:
+                    redteam.run_all(services.orchestrator, store)
+                finally:
+                    services._redteam_running = False
+
+            _th.Thread(target=work, name="prometheus-safety-check", daemon=True).start()
+        store.audit("user", "safety_check", {})
+        return settings_page(request, notice="Safety check started. Refresh this page in a minute for the results.")
 
     @app.post("/settings/read-files", response_class=HTMLResponse)
     def read_files_now(request: Request):
