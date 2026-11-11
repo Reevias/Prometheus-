@@ -756,6 +756,8 @@ def register_routes(app: FastAPI, services: Services) -> None:
                     voice=services.voice.describe() if services.voice is not None else None,
                     vaults=[str(v) for v in __import__("prometheus.agents.obsidian", fromlist=["x"]).detect_vaults()],
                     voices=__import__("prometheus.voice.engines", fromlist=["VOICES"]).VOICES,
+                    eleven_voices=__import__("prometheus.voice.cloud", fromlist=["VOICES"]).VOICES,
+                    eleven_key=bool(have.get("ELEVENLABS_API_KEY")),
                     speech_models=[(k, v[2]) for k, v in __import__("prometheus.voice.engines",
                                                                     fromlist=["SPEECH"]).SPEECH.items()],
                     home=str(services.home), bad_places=bad_places,
@@ -871,6 +873,8 @@ def register_routes(app: FastAPI, services: Services) -> None:
             services.settings.disabled_providers.remove(info.id)
             save_settings(services.settings)
         apply_settings(services)
+        if name == "ELEVENLABS_API_KEY" and services.voice is not None:
+            services.voice.restart()               # listening again, now with the ElevenLabs voice
         store.audit("user", "key_saved", {"name": name})
         return settings_page(request, key_saved=KEY_NAMES[name])
 
@@ -1019,6 +1023,35 @@ def register_routes(app: FastAPI, services: Services) -> None:
             services.voice.stop()                  # restart listening with the new voice
             services.voice.start()
         store.audit("user", "voice_name", {"name": name})
+        return settings_page(request, saved=True)
+
+    @app.post("/settings/voice/engine", response_class=HTMLResponse)
+    def voice_engine(request: Request, engine: str = Form(...), eleven_voice: str = Form("")):
+        from prometheus.voice.cloud import VOICE_ID
+
+        if engine not in ("auto", "elevenlabs", "local"):
+            return settings_page(request, 400, voice_error="Unknown voice engine.")
+        eleven_voice = eleven_voice.strip()
+        if eleven_voice and not VOICE_ID.match(eleven_voice):
+            return settings_page(request, 400, voice_error="That doesn't look like an ElevenLabs voice ID.")
+        services.settings.voice_engine = engine
+        if eleven_voice:
+            services.settings.eleven_voice = eleven_voice
+        save_settings(services.settings)
+        if services.voice is not None:
+            services.voice.restart()
+        store.audit("user", "voice_engine", {"engine": engine})
+        return settings_page(request, saved=True)
+
+    @app.post("/settings/voice/clap", response_class=HTMLResponse)
+    def voice_clap(request: Request, clap: str = Form(""), barge_in: str = Form(""), sensitivity: float = Form(1.0)):
+        s = services.settings
+        s.voice_clap, s.voice_barge_in = bool(clap), bool(barge_in)
+        s.clap_sensitivity = max(0.3, min(3.0, float(sensitivity)))
+        save_settings(s)
+        if services.voice is not None:
+            services.voice.restart()
+        store.audit("user", "voice_clap", {"clap": s.voice_clap, "barge_in": s.voice_barge_in})
         return settings_page(request, saved=True)
 
     @app.post("/settings/voice/autostart", response_class=HTMLResponse)

@@ -1,6 +1,7 @@
 """The listening loop: wait for "Prometheus", take the command, run it, speak the answer."""
 from __future__ import annotations
 
+import re
 import threading
 import time
 from typing import Callable
@@ -9,6 +10,10 @@ from prometheus.voice.audio import Endpointer, NoiseFloor
 from prometheus.voice.text import speakable, strip_wake
 
 CARRY_ON = 0.7       # seconds of quiet after the name that mean "that was all, now ask for the command"
+FOLLOW_UP = 6.0      # after an answer: seconds to just keep talking, without the name again
+SESSION_IDLE = 15.0  # after a double clap: the conversation ends after this long with nobody talking
+GOODBYE = re.compile(r"^(?:ok(?:ay)?\s+)?(?:that'?s (?:all|it)|goodbye|bye|thank you,? that'?s (?:all|it)|stop listening|"
+                     r"nothing|no thanks?|never ?mind|go to sleep|dismissed)\b", re.I)
 STATES = ("off", "setup", "idle", "listening", "thinking", "speaking", "muted", "error")
 
 
@@ -29,7 +34,7 @@ class VoiceLoop:
     """
 
     def __init__(self, mic, spotter, transcriber, speaker, on_command: Callable[[str], str],
-                 log: Callable[[str], None] = lambda m: None):
+                 log: Callable[[str], None] = lambda m: None, clap=None, on_clap: Callable[[], str] | None = None):
         self.mic, self.spotter, self.transcriber, self.speaker = mic, spotter, transcriber, speaker
         self.on_command = on_command
         self.log = log
@@ -44,6 +49,11 @@ class VoiceLoop:
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self.noise = NoiseFloor()
+        self.clap = clap                 # ClapDetector, or None when the double clap is off
+        self.on_clap = on_clap           # -> the greeting and brief to speak
+        self.follow_up = 0.0             # seconds to keep talking after a "Prometheus" answer (0: single questions)
+        self.barge_in = True             # talking over an answer stops it
+        self._barged = b""               # what the owner said over the answer
 
     # -- control ---------------------------------------------------------------------
     def start(self) -> None:
@@ -79,6 +89,18 @@ class VoiceLoop:
             if self.muted or self._announcing:
                 continue                       # never listen to our own voice
             self.noise.update(frame)
+            if self.clap is not None and self.on_clap is not None and self.clap.feed(frame):
+                try:
+                    self.handle_clap()
+                except Exception as e:
+                    self.log(f"clap session failed: {type(e).__name__}: {e}")
+                finally:
+                    self.mic.flush()
+                    self.spotter.reset()
+                    self.clap.reset()
+                    if not self.muted:
+                        self.state = "idle"
+                continue
             wake_audio = self.spotter.feed(frame)
             if wake_audio is not None:
                 try:
@@ -145,6 +167,15 @@ class VoiceLoop:
                 self._say("Sorry sir, I didn't catch that.")
                 return
             command = strip_wake(again) or again
+        self._answer(command, t0)
+        if not (_reader.CURRENT is not None and _reader.CURRENT.state == "reading"):
+            self.converse(self.follow_up, after_wake=True)      # not while reading aloud: it would hear the reading
+        if reading is not None and reading.state == "paused" and not _was_reader_command(command):
+            reading.start()                    # another question answered: carry on reading
+
+    def _answer(self, command: str, t0: float | None = None) -> bool:
+        """Run one command and speak the answer. True when the owner talked over the answer."""
+        t0 = t0 if t0 is not None else time.monotonic()
         self.last_heard = command
         t_heard = time.monotonic()
         from prometheus.quick import is_question
@@ -159,14 +190,17 @@ class VoiceLoop:
         t_think = time.monotonic()
         answer = self.on_command(command)
         t_answer = time.monotonic()
+        cut_in = False
         if answer:
             self.state = "speaking"
-            self._say(answer, limit=320)
+            cut_in = self._say(answer, limit=320, barge=True)
         self.last_timing = {"hearing": round(t_heard - t0, 1), "thinking": round(t_answer - t_think, 1),
                             "speaking": round(time.monotonic() - t_answer, 1)}
         self.log(f"voice timing: {self.last_timing}")
-        if reading is not None and reading.state == "paused" and not _was_reader_command(command):
-            reading.start()                    # another question answered: carry on reading
+        self._quiz()
+        return cut_in
+
+    def _quiz(self) -> None:
         # a quiz question was asked: the owner's answer needs no "Hello Prometheus"
         turns = 0
         while self.followup is not None and self.followup() and turns < 40 and not self._stop.is_set():
@@ -185,6 +219,53 @@ class VoiceLoop:
                 self.state = "speaking"
                 self._say(answer, limit=400)
 
+    def handle_clap(self) -> None:
+        """Two claps: greet the owner, give the brief, then keep listening so they can just talk."""
+        self.state = "thinking"
+        self.log("double clap heard")
+        try:
+            brief = self.on_clap() or "Yes sir?"
+        except Exception as e:
+            self.log(f"brief failed: {type(e).__name__}: {e}")
+            brief = "Hello sir. What can I do for you?"
+        self.state = "speaking"
+        self._say(brief, limit=900, barge=True)
+        self.converse(SESSION_IDLE)
+
+    def converse(self, idle: float, after_wake: bool = False) -> None:
+        """Keep the conversation going without the name: each thing said is answered, until nobody talks for
+        `idle` seconds or the owner says "that's all". Talking over an answer counts as the next thing said."""
+        if idle <= 0:
+            self._barged = b""
+            return
+        turns = 0
+        while turns < 30 and not self._stop.is_set() and not self.muted:
+            turns += 1
+            self.state = "listening"
+            lead, self._barged = self._barged, b""
+            if lead:
+                verdict, audio = self._record(lead=lead, wait=CARRY_ON * 2)
+                verdict = "done"
+            else:
+                verdict, audio = self._record(wait=idle)
+            if verdict != "done":
+                if not after_wake:
+                    self._say("I'll be here, sir.")
+                return
+            said = self.transcriber.text(audio).strip()
+            said = strip_wake(said) or said
+            if not said or self.is_own_echo(said):
+                continue
+            if self.unclear() and getattr(self.transcriber, "command", False):
+                if after_wake:
+                    return                         # probably not meant for me: go back to waiting quietly
+                self._say("Sorry sir, I didn't catch that.")
+                continue
+            if GOODBYE.match(said):
+                self._say("Alright sir.")
+                return
+            self._answer(said)
+
     def announce(self, text: str) -> None:
         """Speak from another thread (a reminder, an alert, the briefing) with the microphone ignored, and with
         anything that sounds like the wake name taken out of text that came from outside."""
@@ -202,10 +283,38 @@ class VoiceLoop:
             with self._announce_lock:
                 self._announcing -= 1
 
-    def _say(self, text: str, limit: int | None = None) -> None:
-        line = speakable(text, limit=limit) if limit else text
+    def _say(self, text: str, limit: int | None = None, barge: bool = False) -> bool:
+        """Speak with the microphone ignored. With barge=True the owner can talk over it: it stops, and what they
+        said is kept for the next turn. Returns True when that happened."""
+        from prometheus.voice.text import scrub_wake
+
+        line = scrub_wake(speakable(text, limit=limit) if limit else text)
         self.last_said, self.last_said_at = line, time.monotonic()
-        self._speak_quietly(lambda: self.speaker.say(line))
+        if not (barge and self.barge_in and getattr(self.speaker, "interruptible", False)):
+            self._speak_quietly(lambda: self.speaker.say(line))
+            return False
+        from prometheus.voice.bargein import BargeIn
+
+        stop = threading.Event()
+        watch = BargeIn(self.mic, self.noise.level, stop, on_cut=self.speaker.stop)
+        watcher = threading.Thread(target=watch.run, name="prometheus-barge-in", daemon=True)
+        with self._announce_lock:
+            self._announcing += 1
+        try:
+            watcher.start()
+            self.speaker.say(line, stop=stop)
+        finally:
+            watch.done.set()
+            watcher.join(timeout=2)
+            with self._announce_lock:
+                self._announcing -= 1
+        if watch.cut:
+            self.log("the owner talked over the answer: stopped speaking")
+            self._barged = watch.audio()
+            return True
+        time.sleep(0.6)
+        self.mic.flush()
+        return False
 
     def is_own_echo(self, heard: str) -> bool:
         """True when what the mic picked up is just Prometheus's own last words coming back from the speakers."""

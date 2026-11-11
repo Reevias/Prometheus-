@@ -57,6 +57,11 @@ class Settings:
     voice_autostart: bool = False
     voice_name: str = "af_heart"
     voice_speech: str = "fast"                  # fast | accent | hindi: how commands are turned into words
+    voice_engine: str = "auto"                  # auto (ElevenLabs when its key is in) | elevenlabs | local
+    eleven_voice: str = "JBFqnCBsd6RMkjVDRZzb"  # the ElevenLabs voice (George)
+    voice_clap: bool = True                     # a double clap greets you, gives the brief and starts a conversation
+    clap_sensitivity: float = 1.0               # higher hears softer claps (0.3 to 3)
+    voice_barge_in: bool = True                 # talking over an answer stops it
     auto_update: bool = True
     auto_restart: bool = True              # after an update, restart by itself once nothing is running
     phone_target: str = ""                 # the phone's wireless-debugging address, e.g. 100.64.1.2:41234
@@ -161,6 +166,7 @@ KEY_NAMES = {
     "BACKUP_KEY": "Backup key (made from your recovery code)",
     "SYNC_TOKEN": "Cloud copy sync key",
     "VAPID_PRIVATE": "Phone notifications key",
+    "ELEVENLABS_API_KEY": "ElevenLabs (voice)",
 }
 MCP_SECRET = re.compile(r"^MCP_[A-Z0-9_]{1,40}$")   # one secret per connected app (a token, or NAME=value;…)
 SPACES_ALLOWED = {"EMAIL_PASSWORD"}             # app passwords are often shown in groups: "abcd efgh ijkl mnop"

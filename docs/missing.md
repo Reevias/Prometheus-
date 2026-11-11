@@ -1,9 +1,11 @@
 # Prometheus: what is still missing
 
-Updated 11 November 2026. Version 2.0. Built and tested here: 850 tests pass.
+Updated 11 November 2026. Version 2.3. Built and tested here: 872 tests pass.
 Not yet run end to end on the owner's real laptop.
 
 ## Just finished
+- **Chatbot-level voice**: ElevenLabs hearing (Scribe v2) and speaking (Flash), falling back to the laptop by itself; **double clap** to be greeted with a brief and talk without the name; **talk over it** to interrupt.
+- **Phone control** over wireless debugging, `prometheus doctor` version check, restart by itself after updates, and the second security review.
 - **Prometheus on the phone** (12): installable app, notifications, hold-to-talk, photos and files, bank SMS, phone photos (19), laptop jobs from the phone.
 - **Encrypted nightly backup to Google Drive** (recovery code, `prometheus restore`), **an always-on cloud copy** on Oracle's free machine that syncs with the laptop, **seeing the screen**, and **21 OpenRouter models to choose from** (Kimi K3, Qwen 3.8 2.4T, DeepSeek V4…).
 - **Prometheus as a tool for other AI apps** (26): Antigravity, Claude Desktop and Cursor can search its memory, find files by name and ask questions; actions wait on Approvals.
@@ -70,12 +72,20 @@ Not yet run end to end on the owner's real laptop.
 
 ## 9. Testing still owed
 29. **First full run on the real laptop**: Wi-Fi on non-English Windows, WPA3 networks, voice on the real microphone, real GitHub and Antigravity calls, the reminder pop-up, the Edge browser window, Windows Sandbox, Google sign-in.
-30. **Voice tuning**: training, better speech models and instant answers are built; still needs your real-microphone test (send the timings from Settings).
+30. **Voice tuning**: ElevenLabs, the double clap and interrupting are built; still needs your real-microphone test (try two claps from across the room, and talking over an answer on speakers; send the timings from Settings).
 31. **Small leftovers**: fixed.
+
+## 9b. From the "Build your first AI agent" guide
+Prometheus already has the guide's six building blocks (a model, instructions, knowledge, tools and MCP, triggers, guardrails) and its first build (the morning briefing, drafts that never send by themselves). Not built yet:
+- **Weekly report card**: how many jobs it did, how many you changed, how often it asked you, and the cost (only the cost exists).
+- **Practice test set**: 20 to 30 of your real requests re-run after every change, pass or fail.
+- **One "stop everything" switch**: pauses every schedule, watcher and connection at once.
+- **Ready-made jobs**: call or lecture notes into actions and a follow-up message; a weekly news digest; PDFs into a spreadsheet with gaps marked MISSING.
 
 ## 10. On the owner's side
 32. **Claude API key** in Settings: this is what makes answers really good.
 33. **GitHub token** for the own repository (fine-grained, one repo).
+33b. **ElevenLabs key** in Settings → Voice (the free plan covers only a few minutes a month; the cheapest paid plan is enough for daily use).
 34. **Backups** (File History or OneDrive) on before big file sorting.
 35. **2 or 3 exact tasks that went wrong**, to keep as permanent tests.
 36. **Ollama running** for private answers (file and note questions use the local model only).

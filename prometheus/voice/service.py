@@ -58,7 +58,8 @@ class VoiceService:
                 "missing": self.models.missing(), "packages": self.models.packages_missing(),
                 "heard": getattr(self.loop, "last_heard", "") if self.loop else "",
                 "timing": getattr(self.loop, "last_timing", {}) if self.loop else {},
-                "speech": self.models.speech}
+                "speech": self.models.speech, "engine": self.engine(),
+                "heard_by": getattr(getattr(self.loop, "transcriber", None), "last_engine", "") if self.loop else ""}
 
     # -- starting and stopping ------------------------------------------------------------
     def start_if_enabled(self) -> None:
@@ -84,12 +85,27 @@ class VoiceService:
                 from prometheus.voice.engines import KokoroSpeaker, Transcriber, WakeSpotter
                 from prometheus.voice.loop import VoiceLoop
 
+                s = self.services.settings
                 transcriber = Transcriber(self.models)
                 command_tr = (Transcriber(self.models, command=True)
                               if self.models.command_whisper != self.models.whisper else transcriber)
-                loop = VoiceLoop(Microphone(), WakeSpotter(self.models, transcriber), command_tr,
-                                 KokoroSpeaker(self.models, self.services.settings.voice_name), self.command,
-                                 log=lambda m: self.services.store.audit("voice", "note", {"text": m}))
+                speaker = KokoroSpeaker(self.models, s.voice_name)
+                key = self.eleven_key()
+                if key:
+                    # the chatbot-level voice; the local models stay ready as the fallback
+                    from prometheus.voice.cloud import ElevenHearing, ElevenSpeaker
+
+                    command_tr = ElevenHearing(key, fallback=command_tr)
+                    speaker = ElevenSpeaker(key, getattr(s, "eleven_voice", ""), fallback=speaker)
+                clap = None
+                if getattr(s, "voice_clap", True):
+                    from prometheus.voice.clap import ClapDetector
+
+                    clap = ClapDetector(getattr(s, "clap_sensitivity", 1.0))
+                loop = VoiceLoop(Microphone(), WakeSpotter(self.models, transcriber), command_tr, speaker,
+                                 self.command, log=lambda m: self.services.store.audit("voice", "note", {"text": m}),
+                                 clap=clap, on_clap=self.clap_brief)
+                loop.barge_in = getattr(s, "voice_barge_in", True)
                 loop.followup = self.quiz_running
                 loop.start()
                 self.loop = loop
@@ -99,6 +115,35 @@ class VoiceService:
                 return False
             self.loop, self.error = loop, ""
             return True
+
+    def eleven_key(self) -> str:
+        """The ElevenLabs key when that voice is chosen (auto: whenever the key is in)."""
+        engine = getattr(self.services.settings, "voice_engine", "auto")
+        if engine == "local":
+            return ""
+        from prometheus.voice.cloud import api_key
+
+        return api_key()
+
+    def engine(self) -> str:
+        if self.loop is not None:
+            return "elevenlabs" if type(self.loop.speaker).__name__ == "ElevenSpeaker" else "local"
+        return "elevenlabs" if self.eleven_key() else "local"
+
+    def clap_brief(self) -> str:
+        from prometheus.voice.brief import build
+
+        text = build(self.services)
+        try:
+            self.services.store.add_message(self.voice_chat(), "assistant", text, "voice brief", private=True)
+        except Exception:
+            pass
+        return text
+
+    def restart(self) -> None:
+        if self.loop is not None:
+            self.stop()
+            self.start()
 
     def stop(self) -> None:
         with self._lock:

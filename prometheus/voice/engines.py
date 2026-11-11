@@ -296,6 +296,8 @@ class KokoroSpeaker:
     """A natural local voice (Kokoro). Long answers are spoken sentence by sentence: the first one starts while
     the rest is still being made. "Yes sir" is made once at start, so it plays instantly."""
 
+    interruptible = True                 # say() takes stop= and stop() cuts it off (talking over it)
+
     def __init__(self, models: VoiceModels, voice: str = DEFAULT_VOICE):
         from kokoro_onnx import Kokoro
 

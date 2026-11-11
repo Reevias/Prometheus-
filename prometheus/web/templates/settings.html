@@ -105,9 +105,9 @@
   {% if voice_error %}<p class="error">{{ voice_error }}</p>{% endif %}
   {% if voice %}
   <div class="panel" style="display:grid;gap:10px">
-    <p class="muted" style="margin:0">Say <strong>“Prometheus”</strong> and then what you want. It answers out loud (a short version;
-    the full answer is in the Voice chat). Everything you say is turned into text on this laptop. Things that need your
-    approval still wait on the Approvals page, so someone else in the room can't do anything risky by talking.</p>
+    <p class="muted" style="margin:0">Say <strong>“Prometheus”</strong> and then what you want, or <strong>clap twice</strong> to be
+    greeted with a brief and just talk. It answers out loud (a short version; the full answer is in the Voice chat). Things
+    that need your approval still wait on the Approvals page, so someone else in the room can't do anything risky by talking.</p>
     {% if voice.packages %}<p class="error" style="margin:0">Voice needs extra packages: run <code>pip install -e ".[voice]"</code>, then restart Prometheus.</p>
     {% elif voice.missing %}
       <form hx-post="/settings/voice/setup" hx-target="body" class="row"><span class="muted">Not downloaded yet: {{ voice.missing|join(", ") }}.</span>
@@ -119,8 +119,41 @@
       Listen for “Prometheus”</label></form>
     <form hx-post="/settings/voice/autostart" hx-target="body"><label class="check"><input type="checkbox" name="on" value="1" {{ "checked" if s.voice_autostart }} onchange="this.form.requestSubmit()">
       Start with Windows, without a window, so it is always listening</label></form>
+    <div class="panel" style="display:grid;gap:8px">
+      <strong>Chatbot-level voice (ElevenLabs)</strong>
+      <p class="muted" style="margin:0">Much better at understanding you (accents, Hinglish, a noisy room) and a natural voice that
+      starts talking at once. Only what you say after “Prometheus” or a double clap is sent to ElevenLabs. Without the key, or
+      without internet, it uses the voice on this laptop instead. Make a key at <code>elevenlabs.io/app/settings/api-keys</code>.</p>
+      <p style="margin:0">Using now: <strong>{{ "ElevenLabs" if voice.engine == "elevenlabs" else "the laptop's own voice" }}</strong>
+        {% if voice.heard_by == "local" %}<span class="muted">(last command fell back to the laptop: check the key, credits or internet)</span>{% endif %}</p>
+      <form hx-post="/settings/keys" hx-target="body" class="row">
+        <span class="{{ 'status-done' if eleven_key else 'muted' }}">{{ "Key set ✓" if eleven_key else "No key yet" }}</span>
+        <input type="hidden" name="name" value="ELEVENLABS_API_KEY">
+        <input type="text" class="secret" spellcheck="false" data-lpignore="true" data-1p-ignore name="value" placeholder="Paste the ElevenLabs key" autocomplete="off" required>
+        <input type="password" name="password" placeholder="Your Prometheus password" autocomplete="current-password" required>
+        <button type="submit">Save key</button>
+      </form>
+      <form hx-post="/settings/voice/engine" hx-target="body" class="row">
+        <label>Use <select name="engine">
+          <option value="auto" {{ "selected" if s.voice_engine == "auto" }}>ElevenLabs when the key is set (recommended)</option>
+          <option value="local" {{ "selected" if s.voice_engine == "local" }}>Only the laptop's own voice (free, private)</option>
+        </select></label>
+        <label>Voice <select name="eleven_voice">
+          {% for vid, label in eleven_voices %}<option value="{{ vid }}" {{ "selected" if vid == s.eleven_voice }}>{{ label }}</option>{% endfor %}
+        </select></label>
+        <button type="submit">Save</button>
+      </form>
+    </div>
+    <form hx-post="/settings/voice/clap" hx-target="body" class="row">
+      <label class="check"><input type="checkbox" name="clap" value="1" {{ "checked" if s.voice_clap }}> Clap twice to start a conversation (greeting and brief)</label>
+      <label class="check"><input type="checkbox" name="barge_in" value="1" {{ "checked" if s.voice_barge_in }}> Talking over an answer stops it</label>
+      <label>Clap sensitivity <input type="range" name="sensitivity" min="0.3" max="3" step="0.1" value="{{ s.clap_sensitivity }}"></label>
+      <button type="submit">Save</button>
+    </form>
+    <p class="muted" style="margin:0">In a clap conversation you don't need the name: just talk. Say “that's all” to finish, or stay
+    quiet for 15 seconds.</p>
     <form hx-post="/settings/voice/name" hx-target="body" class="row">
-      <label>Voice <select name="name" onchange="this.form.requestSubmit()">
+      <label>Laptop voice <select name="name" onchange="this.form.requestSubmit()">
         {% for vid, label in voices %}<option value="{{ vid }}" {{ "selected" if vid == s.voice_name }}>{{ label }}</option>{% endfor %}
       </select></label>
     </form>
