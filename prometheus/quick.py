@@ -185,6 +185,17 @@ def understand(text: str, store=None, now: float | None = None) -> Quick | None:
                                       due=am.group(2))], action=True)
     if re.search(r"\bwhat(?:'s| is)? due\b|\bmy (?:assignments|deadlines)\b|\bany deadlines\b", low):
         return Quick(steps=[_step("assignments", "What's due", action="list")])
+    if re.search(r"\b(add|install|save|learn|get)\b.*\bthis (?:github )?(?:repo|repository|project)\b", low):
+        return Quick(steps=[_step("screen", "Add the repo on screen", action="add_repo")], action=True)
+    m = re.match(r"^(?:click|press|tap)\s+(?:on\s+)?(?:the\s+)?(.+?)(?:\s+on (?:my |the )?screen)?$", low)
+    if m and len(m.group(1).split()) <= 8:
+        return Quick(steps=[_step("screen", f"Click {m.group(1)}", action="click", target=m.group(1))], action=True)
+    if re.search(r"\bwhat(?:'s| is) on (?:my|the|this) screen\b|\blook at (?:my|the|this) screen\b|"
+                 r"\bwhat (?:is|does) this\b|\bexplain this\b|\bthis error\b|\bwhat am i (?:looking|pointing) at\b|"
+                 r"\b(?:on|in) (?:my|the) screen\b|\bwhat(?:'s| is) (?:this|that) (?:here|thing|button|icon|window)\b|"
+                 r"\bread (?:this|what's here)\b|\bhow do i (?:fix|use) this\b", low) and (
+            "screen" in low or (":" not in t and "\n" not in t and len(t.split()) <= 10)):   # "explain this: <text>" isn't
+        return Quick(steps=[_step("screen", "Look at the screen", action="look", question=t)])
     from prometheus import money
 
     if money.TELL.match(t):

@@ -1,6 +1,6 @@
 # Prometheus: what is still missing
 
-Updated 11 November 2026. Version 1.8. Built and tested here: 810 tests pass.
+Updated 11 November 2026. Version 2.0. Built and tested here: 836 tests pass.
 Not yet run end to end on the owner's real laptop.
 
 ## Just finished
@@ -28,7 +28,7 @@ Not yet run end to end on the owner's real laptop.
 3. **Daily summary**: done.
 
 ## 2. Senses and triggers
-4. **Seeing the screen**: understand a screenshot so it can click "the Download button" instead of exact positions.
+4. **Seeing the screen**: done (window in front, mouse pointer, clicks asked first, add repos from screen with a malware check).
 5. **Camera**: one photo when asked ("what am I holding?"), never always on.
 6. **Watchers**: done (battery, disk, CPU, folders).
 7. **Email and webhook triggers**: done.
@@ -93,6 +93,5 @@ Not yet run end to end on the owner's real laptop.
 
 ## Suggested order
 1. Phone link (12), then phone SMS for the money tracker and phone photos for the homework checker
-2. Seeing the screen (4)
-3. Sorting photos on the phone (19)
-4. Camera, gestures, images and video (5, 20, 21)
+2. Sorting photos on the phone (19)
+3. Camera, gestures, images and video (5, 20, 21)

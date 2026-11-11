@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.0
+- Seeing the screen: say "this", "here" or "my screen" ("what's this error?", "explain what's on my screen", "what am I pointing at?", "click the green Code button") and Prometheus takes one picture of only the window in front (the one behind its own window if you typed in Prometheus), marks your mouse pointer, and asks Claude. The picture is deleted right after. Clicks are found on screen and asked in the chat first; anything that could spend money goes to the Approvals page. Text on the screen is treated as data, never as orders.
+- "Add this repo to your skills": it reads which GitHub repository is on screen (from the window title, without AI when it can), asks in the chat to learn it as a skill (README and docs; nothing run), and puts "download the code and check it" on the Approvals page. The download goes to a quarantine folder and is checked by Microsoft Defender plus Prometheus's own malware checks (code that runs on install, download-and-run lines, hidden or encoded code, bundled programs, password/cookie/Discord/wallet stealing, webhooks, reverse shells, miners, start-with-Windows, turning off antivirus). Anything dangerous is deleted at once; the result is posted in the chat.
+
 ## 1.9
 - New pages in the menu: Study (decks with Quiz me and Export to Anki, make cards from a file, past quiz sheets), Money (this month by category against budgets, add spending, check email now, open the spending sheet, recent spending) and Exams and deadlines (what's due, add or tick off a deadline, each exam plan day by day with today highlighted).
 - Every finished quiz is saved as a PDF in Outputs: each question, your answer, the mark, the right answer, and a "to revise" list.

@@ -417,6 +417,10 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
 
     _ra.STORE = store
     approvals.register("standing_goal", _ra.goal_handler)
+    from prometheus.agents import screen_agent as _scr
+
+    _scr.SERVICES = services
+    approvals.register("clone_and_check", lambda payload: _scr.clone_and_check_handler(payload, data / "quarantine"))
 
     def _health_fix(payload: dict) -> str:
         if payload.get("fix") == "settings":

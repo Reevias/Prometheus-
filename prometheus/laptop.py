@@ -575,6 +575,65 @@ def dark_mode(self, mode: str) -> str:
     return f"Dark mode {mode}."
 
 
+WINDOW_SHOT_SCRIPT = r"""
+Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+Add-Type @"
+using System; using System.Runtime.InteropServices; using System.Text;
+public class WS {
+  [StructLayout(LayoutKind.Sequential)] public struct RECT { public int L, T, R, B; }
+  [StructLayout(LayoutKind.Sequential)] public struct PT { public int X, Y; }
+  [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
+  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+  [DllImport("user32.dll")] public static extern IntPtr GetWindow(IntPtr h, uint cmd);
+  [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h);
+  [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr h);
+  [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
+  [DllImport("user32.dll")] public static extern bool GetCursorPos(out PT p);
+  [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetWindowText(IntPtr h, StringBuilder s, int n);
+  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
+}
+"@
+[WS]::SetProcessDPIAware() | Out-Null
+function Title($h) { $sb = New-Object Text.StringBuilder 300; [WS]::GetWindowText($h, $sb, 300) | Out-Null; $sb.ToString() }
+$h = [WS]::GetForegroundWindow()
+# Prometheus's own window in front (the owner typed here): use the window just behind it
+$guard = 0
+while ($h -ne [IntPtr]::Zero -and $guard -lt 400) {
+  $t = Title $h; $r = New-Object WS+RECT; [WS]::GetWindowRect($h, [ref]$r) | Out-Null
+  if ([WS]::IsWindowVisible($h) -and -not [WS]::IsIconic($h) -and $t -and -not $t.StartsWith('Prometheus') -and
+      ($r.R - $r.L) -gt 200 -and ($r.B - $r.T) -gt 150 -and $t -ne 'Program Manager') { break }
+  $h = [WS]::GetWindow($h, 2); $guard++
+}
+if ($h -eq [IntPtr]::Zero) { 'nowindow'; exit }
+$r = New-Object WS+RECT; [WS]::GetWindowRect($h, [ref]$r) | Out-Null
+$v = [System.Windows.Forms.SystemInformation]::VirtualScreen
+$L = [Math]::Max($r.L, $v.Left); $T = [Math]::Max($r.T, $v.Top)
+$W = [Math]::Min($r.R, $v.Right) - $L; $H = [Math]::Min($r.B, $v.Bottom) - $T
+$bmp = New-Object System.Drawing.Bitmap $W, $H
+$g = [System.Drawing.Graphics]::FromImage($bmp); $g.CopyFromScreen($L, $T, 0, 0, $bmp.Size)
+New-Item -ItemType Directory -Force -Path $env:PROM_DIR | Out-Null
+$f = Join-Path $env:PROM_DIR ('look-' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '.png')
+$bmp.Save($f, [System.Drawing.Imaging.ImageFormat]::Png)
+$c = New-Object WS+PT; [WS]::GetCursorPos([ref]$c) | Out-Null
+$p = [uint32]0; [WS]::GetWindowThreadProcessId($h, [ref]$p) | Out-Null
+$proc = (Get-Process -Id $p -ErrorAction SilentlyContinue).ProcessName
+@{ path = $f; left = $L; top = $T; width = $W; height = $H; cx = $c.X; cy = $c.Y; title = (Title $h); app = $proc } | ConvertTo-Json -Compress
+"""
+
+
+def window_shot(self) -> dict:
+    """A picture of only the window in front (or, if that's Prometheus itself, the one behind it), with where the
+    mouse pointer is. Saved in a private folder in Prometheus's data, not in Pictures."""
+    self._need_windows()
+    from prometheus.config import data_dir
+
+    out = _ps(self, WINDOW_SHOT_SCRIPT, {"PROM_DIR": str(data_dir() / "screen")}, timeout=30)
+    last = out.splitlines()[-1].strip() if out.strip() else ""
+    if last == "nowindow" or not last.startswith("{"):
+        raise LaptopError("I couldn't find a window to look at.")
+    return json.loads(last)
+
+
 def screenshot(self) -> str:
     self._need_windows()
     folder = Path.home() / "Pictures" / "Prometheus"
@@ -700,5 +759,5 @@ def do_not_disturb(self, on: bool) -> str:
 
 for _f in (app_open, app_close, window, apps_running, volume, mute, brightness, dark_mode, screenshot, type_text,
            press_keys, click, power, install_app, store_open, find_package, notify, cpu_load, do_not_disturb,
-           health_info, open_settings_page):
+           health_info, open_settings_page, window_shot):
     setattr(Laptop, _f.__name__, _f)
