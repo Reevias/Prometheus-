@@ -400,6 +400,9 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
     _ea.EXAMS, _ea.SERVICES = _exams.Exams(store, router, settings), services
     orchestrator.interceptors.append(_ea.EXAMS.answer_checkin)
     approvals.register("exam_calendar", _ea.calendar_handler)
+    from prometheus.agents import lecture_agent as _la
+
+    _la.SERVICES = services
 
     def _health_fix(payload: dict) -> str:
         if payload.get("fix") == "settings":
