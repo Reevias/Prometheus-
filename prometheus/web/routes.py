@@ -436,6 +436,7 @@ def register_routes(app: FastAPI, services: Services) -> None:
         return page(request, "settings.html", status_code, s=s, providers=rows, other_keys=other_keys,
                     allowed_rules=allowed_rules, mcp=mcp, webhook_url=webhook_url, email_help=help_for(s.email_address),
                     email_key_set=bool(have.get("EMAIL_PASSWORD")), calendar_set=bool(have.get("CALENDAR_LINKS")),
+                    google_client=bool(have.get("GOOGLE_CLIENT")), google_on=bool(have.get("GOOGLE_TOKEN")),
                     heads=head_choices(services.router), head=s.head_model,
                     voice=services.voice.describe() if services.voice is not None else None,
                     vaults=[str(v) for v in __import__("prometheus.agents.obsidian", fromlist=["x"]).detect_vaults()],
@@ -829,6 +830,54 @@ def register_routes(app: FastAPI, services: Services) -> None:
         services.settings.watch_folders = [w for w in services.settings.watch_folders if w.get("path") != path]
         save_settings(services.settings)
         return settings_page(request, saved=True)
+
+    google_pending: dict = {}
+
+    @app.post("/settings/google", response_class=HTMLResponse)
+    def save_google(request: Request, client_id: str = Form(...), client_secret: str = Form(...), password: str = Form("")):
+        denied = _key_gate(request, password)
+        if denied is not None:
+            return denied
+        cid, csecret = client_id.strip(), client_secret.strip()
+        if not re.fullmatch(r"[\w.-]+\.apps\.googleusercontent\.com", cid) or not re.fullmatch(r"[\w-]{10,100}", csecret):
+            return settings_page(request, 400, conn_error="That doesn't look like a Google Desktop client ID and secret.")
+        set_secret("GOOGLE_CLIENT", f"{cid}|{csecret}")
+        store.audit("user", "google_client", {})
+        return settings_page(request, saved=True)
+
+    @app.post("/google/start")
+    def google_start(request: Request):
+        import webbrowser
+
+        from prometheus.connectors.google import GoogleError, start_sign_in
+
+        host = request.url.hostname if request.url.hostname in ("127.0.0.1", "localhost") else "127.0.0.1"
+        try:
+            url, pending = start_sign_in(f"http://{host}:{request.url.port or services.settings.port}/google/callback")
+        except GoogleError as e:
+            return Response(str(e), status_code=400)
+        google_pending.clear()
+        google_pending.update(pending)
+        webbrowser.open(url)
+        return Response("Google sign-in opened in your browser.", status_code=200)
+
+    @app.get("/google/callback", response_class=HTMLResponse)
+    def google_callback(request: Request, state: str = "", code: str = "", error: str = ""):
+        import hmac as _hmac
+
+        from prometheus.connectors.google import GoogleError, finish_sign_in
+
+        expected = google_pending.get("state", "")
+        if error or not code or not expected or not _hmac.compare_digest(state, expected) \
+                or time.time() - google_pending.get("made", 0) > 600:
+            return HTMLResponse("<p>That Google sign-in didn't work. Try again from Prometheus Settings.</p>", 400)
+        try:
+            finish_sign_in(code, dict(google_pending))
+        except GoogleError as e:
+            return HTMLResponse(f"<p>{e}</p>", 400)
+        google_pending.clear()
+        store.audit("user", "google_connected", {})
+        return HTMLResponse("<p>Google is connected. You can close this tab and go back to Prometheus.</p>")
 
     @app.post("/settings/free", response_class=HTMLResponse)
     def set_free(request: Request, on: str = Form("")):

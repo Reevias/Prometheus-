@@ -20,6 +20,9 @@ def test_every_route_requires_login(app_client):
         path = getattr(route, "path", "")
         if path in ("/login",) or path.startswith("/static"):
             continue
+        if path == "/google/callback":  # Google sends the owner back here; without the one-time state it refuses
+            assert client.get("/google/callback?code=x&state=y").status_code == 400
+            continue
         if path == "/hooks/{token}":    # open on purpose for other apps; a wrong secret gets "not found"
             assert client.post("/hooks/wrong", json={}).status_code == 404
             continue

@@ -189,6 +189,9 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
     from prometheus.agents.email_agent import send_email_handler
 
     approvals.register("send_email", send_email_handler)
+    from prometheus.agents.google_agent import event_handler
+
+    approvals.register("google_event", event_handler)
     from prometheus.agents import apps_agent
     from prometheus.connectors.manager import ConnectionManager
 

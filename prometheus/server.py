@@ -15,7 +15,7 @@ from prometheus.auth import LoginLimiter, Sessions, verify_password
 
 SESSION_COOKIE = "prom_session"
 CSRF_COOKIE = "csrf_token"
-OPEN_PATHS = ("/login", "/healthz")
+OPEN_PATHS = ("/login", "/healthz", "/google/callback")
 APP_ID = "prometheus"
 
 

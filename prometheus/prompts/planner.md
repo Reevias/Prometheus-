@@ -44,6 +44,8 @@ Plans:
 - Email ("any new mail?", "did the bank email me?", "email Ravi that…") uses the email agent: unread, search,
   read, send. The calendar ("what's on tomorrow?", "am I free Friday?") uses the calendar agent: agenda, search.
   Anything in another connected app (listed under Connected apps) uses the apps agent.
+  Adding or moving a calendar event, and Google Drive files, use the google agent (add_event with title and when,
+  move_event, events, drive_search, drive_read). If Google isn't connected, the calendar agent can still read events.
 - "My briefing", "what's my day like", "evening wrap-up" use the briefing agent (kind = morning or evening).
 - To switch or show which AI model is used, use the settings agent.
 - To explain how to do something from a guide, use the guide agent with the skill name and the question.

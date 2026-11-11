@@ -1,6 +1,7 @@
 # Changelog
 
 ## 1.4
+- Google Calendar and Drive: sign in with your own Google "Desktop app" client (steps in Settings; PKCE, only a refresh token is kept). See events, add or move them (asked in the chat first), search Drive and read Docs, Sheets, Slides, text and PDFs.
 - Excel and slides: budgets, marks and timetables become .xlsx files (each Markdown table a sheet with a bold frozen header, real numbers, a Total row with formulas, and a bar chart); revision notes and presentations become .pptx decks (title slide, one slide per heading, nested bullets, speaker notes, long slides continued). They show in Outputs.
 - New-email alerts: every 5 minutes Prometheus checks for new mail from the senders you chose and tells you at once (spoken, notification, alerts chat), each email once.
 - Webhook: a secret address other apps can call to make Prometheus speak up; GitHub test runs and pushes are understood ("Tests failed on Reevias/Prometheus- (main)"). A wrong address gets "not found"; Settings can make a new one.

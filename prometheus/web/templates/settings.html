@@ -112,6 +112,26 @@
       <button type="submit">Save</button>
     </form>
 
+    <strong>Google Calendar and Drive</strong>
+    {% if google_on %}<p class="status-done" style="margin:0">Google is connected: calendar events (adding or moving asks you first) and Drive (read only).</p>{% endif %}
+    <details {{ "open" if not google_client }}><summary class="muted">One-time setup (about 10 minutes)</summary>
+      <ol class="muted">
+        <li>Open <code>console.cloud.google.com</code> and make a new project called Prometheus.</li>
+        <li>APIs &amp; Services → Library: turn on <strong>Google Calendar API</strong> and <strong>Google Drive API</strong>.</li>
+        <li>OAuth consent screen: External, app name Prometheus, your email; under Test users add your own Gmail.</li>
+        <li>Credentials → Create credentials → OAuth client ID → Application type <strong>Desktop app</strong>.</li>
+        <li>Copy the Client ID and Client secret into the boxes below, then press Sign in with Google.</li>
+      </ol>
+    </details>
+    <form class="row" hx-post="/settings/google" hx-target="body" style="flex-wrap:wrap">
+      <input type="text" name="client_id" placeholder="{{ 'Client saved ✓ (paste to replace)' if google_client else 'Client ID (…apps.googleusercontent.com)' }}" required>
+      <input type="password" name="client_secret" placeholder="Client secret" autocomplete="off" required style="max-width:220px">
+      <input type="password" name="password" placeholder="Your Prometheus password" autocomplete="current-password" required style="max-width:220px">
+      <button type="submit">Save</button>
+    </form>
+    {% if google_client %}<button type="button" class="primary" hx-post="/google/start" hx-swap="none"
+      hx-on::after-request="alert(event.detail.xhr.responseText)">{{ "Sign in again" if google_on else "Sign in with Google" }}</button>{% endif %}
+
     <strong>Other apps (MCP)</strong>
     <p class="muted" style="margin:0">Connect any app that has an MCP server (Notion, Slack, Spotify, GitHub, Home Assistant…). Give it a
     name, then either the command that starts it (e.g. <code>npx -y @notionhq/notion-mcp-server</code>) or its https address, and its

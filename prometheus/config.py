@@ -123,6 +123,8 @@ KEY_NAMES = {
     "GITHUB_TOKEN": "GitHub",
     "EMAIL_PASSWORD": "Email app password",
     "CALENDAR_LINKS": "Calendar links",
+    "GOOGLE_CLIENT": "Google client (ID|secret)",
+    "GOOGLE_TOKEN": "Google sign-in",
 }
 MCP_SECRET = re.compile(r"^MCP_[A-Z0-9_]{1,40}$")   # one secret per connected app (a token, or NAME=value;…)
 SPACES_ALLOWED = {"EMAIL_PASSWORD"}             # app passwords are often shown in groups: "abcd efgh ijkl mnop"
