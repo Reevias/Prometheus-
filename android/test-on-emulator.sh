@@ -51,8 +51,11 @@ grep -q 'https://example.com/' "$OUT/ui.xml" || fail "the link didn't fill in th
 tap_text "Open Prometheus"; sleep 10; shot 4-opened
 crashed && fail "the app crashed when opening the address"
 
-# 5. reopening goes straight to the saved address
+# 5. reopening from the icon goes back to Prometheus (not the home screen, not the address screen)
 adb shell input keyevent KEYCODE_HOME; sleep 1
-adb shell am start -W -n com.reevias.prometheus/.MainActivity; sleep 8; shot 5-reopened
+adb shell monkey -p com.reevias.prometheus -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1; sleep 8; shot 5-reopened
 crashed && fail "the app crashed when reopened"
+top=$(adb shell dumpsys activity activities | grep -m1 -E "topResumedActivity|mResumedActivity")
+echo "on top: $top"
+echo "$top" | grep -qiE "launcher|nexuslauncher" && fail "opening the app again went to the home screen"
 echo "Android app test passed"
