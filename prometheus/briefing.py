@@ -234,7 +234,51 @@ class BriefingClock:
         sent += self.study_nudge(now, today)
         sent += self.money_check(now)
         sent += self.health_check(now)
+        sent += self.exam_posts(now, today)
         return sent
+
+    def exam_posts(self, now: float, today: str) -> list[str]:
+        """Each day: today's revision topics at the study time, and the check-in in the evening."""
+        import json as _json
+
+        from prometheus.agents import exams_agent
+
+        ex = exams_agent.EXAMS
+        if ex is None:
+            return []
+        s, store, out = self.services.settings, self.services.store, []
+        for key, at in (("exam_post", getattr(s, "exam_study_time", "17:00")),
+                        ("exam_ask", getattr(s, "exam_checkin_time", "21:30"))):
+            try:
+                due = _at(now, at)
+            except (ValueError, AttributeError):
+                continue
+            if not (due <= now < due + 3 * 3600) or store.kv_get(key) == today:
+                continue
+            store.kv_set(key, today)
+            chat = self.study_chat()
+            if key == "exam_post":
+                text = ex.today_text()
+                if text:
+                    store.add_message(chat, "assistant", "📚 Today's revision:\n" + text, "exams")
+                    if self.notify is not None:
+                        try:
+                            self.notify("Today's revision: " + text.splitlines()[0][:150])
+                        except Exception:
+                            pass
+                    out.append("exam_post")
+            else:
+                q = ex.checkin_question()
+                if q:
+                    store.add_message(chat, "assistant", q[0], "exams")
+                    store.kv_set("exam_checkin", _json.dumps({"chat": chat, "days": q[1], "asked": now}))
+                    if self.notify is not None:
+                        try:
+                            self.notify("Did you finish today's revision? Answer in the Study chat.")
+                        except Exception:
+                            pass
+                    out.append("exam_ask")
+        return out
 
     def health_check(self, now: float) -> list[str]:
         """Once a week (Sunday 19:00 by default): the laptop health check."""

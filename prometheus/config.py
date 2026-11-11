@@ -64,6 +64,9 @@ class Settings:
     notify_briefing: bool = True
     notify_repo: bool = True
     notify_updates: bool = True
+    exam_study_time: str = "17:00"         # daily study block and "today's topics" post
+    exam_block_minutes: int = 120
+    exam_checkin_time: str = "21:30"       # "did you finish today's topics?"
     health_day: int = 6                    # 0 = Monday … 6 = Sunday; -1 for never
     health_time: str = "19:00"
     focus_dnd: bool = True                 # Windows Do Not Disturb during focus

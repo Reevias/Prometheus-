@@ -394,6 +394,12 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
     from prometheus.agents import health_agent as _ha
 
     _ha.SERVICES = services
+    from prometheus import exams as _exams
+    from prometheus.agents import exams_agent as _ea
+
+    _ea.EXAMS, _ea.SERVICES = _exams.Exams(store, router, settings), services
+    orchestrator.interceptors.append(_ea.EXAMS.answer_checkin)
+    approvals.register("exam_calendar", _ea.calendar_handler)
 
     def _health_fix(payload: dict) -> str:
         if payload.get("fix") == "settings":
