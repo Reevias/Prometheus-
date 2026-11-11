@@ -312,7 +312,9 @@ Trade-offs: monthly cost; personal files would leave the laptop, so the file/pho
 - Build it here in the cloud session, test with fake files, push to GitHub; the user pulls and runs on Windows.
 - Phone in a browser at home (password) → later Tailscale for anywhere → later the real Android app.
 
-## 17a. Gaps against the "6 pillars" guide (owner's PDF, 2026-11-11)
+## 17a. Step by step (owner, 2026-11-11): one step at a time. Step 1, the planning loop, is done.
+
+## 17a-2. Gaps against the "6 pillars" guide (owner's PDF, 2026-11-11)
 
 Planning loop: no observe → reflect → retry, no goal check, no long-running background goals, no loop limit.
 Perception: no screen or camera vision; no watchers (folder, battery, CPU, disk), email or webhook triggers.
@@ -325,20 +327,20 @@ Governance: no code sandbox (needed with code running). Next: the planning loop.
 | Area | Missing |
 |---|---|
 | **Quality** | No test set of everyday tasks yet (owner to send 2 or 3 bad examples); the Claude key is not added yet, so answers still run on random OpenRouter models; the Haiku request shape and a real Antigravity or GitHub call are unconfirmed |
-| **Planning** | The planner makes one plan and runs it: no loop that looks at a result and adapts (for example open an app, check it opened, then continue); steps run one at a time |
+| **Planning** | Built (v1.4): each step gets up to 3 tries (another way each time, never the same try twice), a goal check after actions (app window open, files there, note saved, reminder saved), a per-task paid-AI limit ($0.20) and a 12-step limit. Not yet: long background goals |
 | **Seeing the screen** | No screenshot understanding or computer-use loop, so clicking works only by exact coordinates |
 | **Laptop: files** | Built in v1.4: Files agent (find/list/info/copy/move/rename/recycle/make_folder) over the user folder plus extra drives or folders from Settings. Not yet: content search inside files, watching folders |
 | **Laptop: browser** | No browser automation (forms, logins, downloads, reading the page you have open) |
 | **Laptop: testing** | None of the Windows commands has run on a real laptop; Wi-Fi status parsing assumes English Windows; no WPA3-only networks |
 | **Memory** | No links between memories (graph), no replace-old-fact handling (Mem0/Zep style), no scheduled tidy-up (gbrain "dream cycle"). Built: running chat summaries; chats split by topic and linked across chats (v1.4); chunked documents with word + meaning search (v1.4; meaning search needs `ollama pull nomic-embed-text`) |
-| **Output** | No PDF, Word, Excel or slide generation (the owner wants PDFs with links for roadmaps); no image or video generation (needs a cloud GPU) |
+| **Output** | Built: PDF (clickable links) and Word. Not yet: Excel, slides, image or video generation (needs a cloud GPU) |
 | **Photos** | Photo content tagging (SigLIP) and OCR (EasyOCR) from the v1.1 plan are not built |
 | **Interaction** | Voice built in v1.4 (wake word, local speech-to-text, spoken replies; tested on synthesized speech only, not a real microphone yet). No hand gestures |
 | **Phone** | No phone access (browser on Wi-Fi, Tailscale, Android app), no notifications |
-| **Autonomy** | No scheduler or proactive tasks (reminders, daily summary, watching something); background jobs do not survive a restart |
+| **Autonomy** | Built: reminders and alarms, nightly jobs (learning, repo of the day, update). Not yet: standing goals, watchers, daily summary |
 | **Connectors** | Gmail, Calendar, Drive, Notion not connected (owner: later); Hermes agent not set up; Gemini Argon works only as an ordinary free provider |
 | **Self-editing** | AI-written tools can be proposed and approved but are not run (needs a real sandbox) |
-| **Packaging** | No start with Windows, no tray icon; no cost dashboard per model. Built (v1.4): `scripts/install-windows.ps1`, desktop and Start-menu shortcut, `prometheus update`, old-copy warning in `prometheus doctor` |
+| **Packaging** | Built: installer, shortcuts, start with Windows (background mode), nightly self-update. Not yet: tray icon, cost dashboard |
 | **Security testing** | No automatic prompt-injection test run (garak, from the owner's stars, could probe the local model); offensive tools in the stars (evilginx2, sliver, cameradar, maigret, Deep-Live-Cam) are deliberately not part of Prometheus |
 
 ## 17c. Reference projects for holding context (researched 2026-11-10)

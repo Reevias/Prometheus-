@@ -108,6 +108,12 @@ class Obsidian(Agent):
     def __init__(self, vault: Path | None = None):
         self._vault = vault
 
+    def verify(self, goal: str, inputs: dict, result: StepResult, ctx: AgentContext) -> str:
+        if str(inputs.get("action", "")).lower() != "create":
+            return ""
+        paths = result.data.get("paths") or []
+        return "" if all(Path(p).exists() for p in paths) else "The new note isn't in the vault."
+
     def _get_vault(self, ctx: AgentContext) -> Vault:
         folder = self._vault or (Path(load_settings().obsidian_vault) if load_settings().obsidian_vault else None)
         if folder is None:

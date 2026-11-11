@@ -1,6 +1,8 @@
 """Laptop control: a fixed list of actions (Wi-Fi, Bluetooth, location, battery). No free command line."""
 from __future__ import annotations
 
+import re
+import time
 import webbrowser
 from pathlib import Path
 
@@ -19,7 +21,8 @@ ACTIONS = {"wifi_status", "wifi_list", "wifi_connect", "wifi_disconnect", "bluet
            "install_app", "store_open"}
 READ = {"wifi_status", "wifi_list", "bluetooth_status", "location", "battery", "apps_running"}
 CHANGE = ACTIONS - READ
-SMALL = {"click", "press_keys"}          # asked in the chat; installs, power and Wi-Fi stay on the Approvals page
+SMALL = {"click", "press_keys"}
+VERIFY_TRIES, VERIFY_WAIT = 4, 1.5        # look for the new window for about 6 seconds          # asked in the chat; installs, power and Wi-Fi stay on the Approvals page
 
 
 def needs_approval(action: str, params: dict) -> str:
@@ -127,6 +130,24 @@ class SystemAgent(Agent):
                               secret_label="Wi-Fi password")
         return StepResult("waiting_approval",
                           f"'{ssid}' needs a password I don't have. Type it on the Approvals page and I'll connect.")
+
+    def verify(self, goal: str, inputs: dict, result: StepResult, ctx: AgentContext) -> str:
+        """After opening an app: is its window really open? (A website fallback can't be checked.)"""
+        if str(inputs.get("action", "")).lower() != "app_open" or result.data.get("url"):
+            return ""
+        name = str(inputs.get("target") or "").lower().removesuffix(".exe")
+        if not name:
+            return ""
+        for _ in range(VERIFY_TRIES):
+            try:
+                windows = self.laptop.apps_running()
+            except LaptopError:
+                return ""                         # can't look: don't fail the task over it
+            words = [w for w in re.findall(r"[a-z0-9]+", name) if len(w) > 2] or [name]
+            if any(all(w in f"{a.get('name', '')} {a.get('title', '')}".lower() for w in words) for a in windows):
+                return ""
+            time.sleep(VERIFY_WAIT)
+        return f"Windows said {inputs.get('target')} opened, but no window for it appeared."
 
     def _app_open(self, ctx: AgentContext, name: str) -> StepResult:
         """Open the installed app; if it isn't installed, its website (for well-known apps), else point to the Store."""

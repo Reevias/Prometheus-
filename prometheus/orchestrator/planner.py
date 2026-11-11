@@ -58,6 +58,21 @@ PLAN_SCHEMA = {
 }
 
 
+REPAIR_SCHEMA = {
+    "type": "object",
+    "properties": {"action": {"type": "string", "enum": ["retry", "give_up"]}, "agent": {"type": "string"},
+                   "goal": {"type": "string"}, "why": {"type": "string"},
+                   "inputs": {"type": "array", "items": {"type": "object", "properties": {
+                       "key": {"type": "string"}, "value": {"type": "string"}}, "required": ["key", "value"],
+                       "additionalProperties": False}}},
+    "required": ["action", "agent", "goal", "why", "inputs"],
+    "additionalProperties": False,
+}
+STEP_TRIES = 3            # tries per step, counting the first one (owner's choice)
+TASK_BUDGET = 0.20        # USD of paid AI one task may use (owner's choice)
+MAX_TASK_STEPS = 12       # steps one task may run, counting retries
+
+
 class PlanError(Exception):
     pass
 
@@ -173,6 +188,7 @@ class Orchestrator:
         self.make_context = make_context
         self.killswitch = killswitch
         self.prompts_dir = Path(prompts_dir) if prompts_dir else PACKAGE_PROMPTS
+        self.step_tries, self.task_budget, self.max_steps = STEP_TRIES, TASK_BUDGET, MAX_TASK_STEPS
         self.skills = skills
 
     def _style(self) -> str:
@@ -315,6 +331,87 @@ class Orchestrator:
         self.store.add_message(chat_id, "assistant", answer, model, private, topic=topic)
         return TaskOutcome(task_id, status, answer)
 
+    # -- the planning loop: run, check, try another way ------------------------------------
+    def _spent(self) -> float:
+        budget = getattr(self.router, "budget", None)
+        try:
+            return float(budget.state().spent) if budget is not None else 0.0
+        except Exception:
+            return 0.0
+
+    def _run_step(self, task_id: int, st: dict, results: dict, private: set, label: str = ""):
+        sid = self.store.add_step(task_id, st["agent"], label + st["goal"], st["inputs"])
+        agent_cls = self.registry.get(st["agent"])
+        try:
+            if agent_cls is None:
+                raise PlanError(f"Unknown agent {st['agent']}")
+            if agent_cls.private_outputs:
+                private.add(st["id"])
+            inputs = resolve_inputs(st["inputs"], results, frozenset(private),
+                                    getattr(agent_cls, "accepts_private", True))
+            agent = agent_cls()
+            ctx = self.make_context(task_id, sid)
+            skill = self.skills.get(st.get("skill", "")) if self.skills and st.get("skill") else None
+            ctx.skill = skill.body if skill else ""
+            if ctx.skills is None:
+                ctx.skills = self.skills
+            res = agent.run(st["goal"], inputs, ctx)
+        except (ProviderUnavailable, BudgetExceeded) as e:
+            self.store.finish_step(sid, "paused", str(e))
+            raise
+        except Stopped:
+            self.store.finish_step(sid, "stopped", "Stopped by the kill switch.")
+            raise
+        except Exception as e:  # one broken step never crashes the task
+            res = StepResult("failed", f"{type(e).__name__}: {e}")
+        self.store.finish_step(sid, res.status, res.summary, res.data)
+        return res, agent_cls
+
+    def _verify(self, st: dict, res: StepResult, agent_cls, task_id: int) -> str:
+        """For actions: check the goal is really there. Returns why not ('' = fine or can't tell)."""
+        verify = getattr(agent_cls, "verify", None)
+        if verify is None:
+            return ""
+        try:
+            ctx = self.make_context(task_id, 0)
+            return verify(agent_cls(), st["goal"], st["inputs"], res, ctx) or ""
+        except Exception:
+            return ""                              # a check that can't run never fails the task
+
+    def _repair(self, text: str, st: dict, tries: list, agent_cls) -> dict | None:
+        """Ask the lead AI for ONE different way to reach the same goal, or None to stop."""
+        agents = "\n".join(f"- {name}: {cls.description}" for name, cls in self.registry.items())
+        lines = []
+        for a, r in tries:
+            hidden = getattr(self.registry.get(a["agent"]), "private_outputs", False)
+            why = "(details from the owner's files are hidden)" if hidden else r.summary[:500]
+            lines.append(f"- {a['agent']} with goal '{a['goal']}' and inputs {json.dumps(a['inputs'])[:400]}: "
+                         f"failed: {why}")
+        prompt = (f"Request: {text}\n\nStep {st['id']} has to: {st['goal']}\nWhat was tried:\n"
+                  + untrusted("\n".join(lines), "failed tries")
+                  + "\n\nPropose ONE different step that reaches the same goal another way (another agent, other "
+                    "inputs, a broader search, the website instead of the app…). Never repeat a try that failed. "
+                    "If it can't be done or needs the owner, set action to give_up. Reply in JSON.")
+        try:
+            reply = self.router.complete("plan", [{"role": "user", "content": prompt}],
+                                         f"You fix failed steps.\n\nAgents:\n{agents}\n\n{UNTRUSTED_RULE}",
+                                         json_schema=REPAIR_SCHEMA, max_tokens=800)
+            data = json.loads(reply.text)
+        except (ProviderUnavailable, BudgetExceeded, ValueError):
+            return None
+        if str(data.get("action")) != "retry":
+            return None
+        try:
+            plan = validate_plan(json.dumps({"answer": "", "remember": [], "steps": [{
+                "id": 1, "agent": data.get("agent", ""), "goal": str(data.get("goal") or st["goal"]),
+                "skill": "", "inputs": data.get("inputs") or [], "depends_on": []}]}), self.registry)
+        except PlanError:
+            return None
+        nxt = plan.steps[0]
+        if any(nxt["agent"] == a["agent"] and nxt["inputs"] == a["inputs"] for a, _ in tries):
+            return None                            # the same thing again: stop instead of looping
+        return nxt
+
     def run(self, chat_id: int, text: str) -> TaskOutcome:
         history = self._history(chat_id)          # taken before this message is added
         user_msg = self.store.add_message(chat_id, "user", text)
@@ -343,6 +440,8 @@ class Orchestrator:
         bad: set[int] = set()
         private: set[int] = set()
         try:
+            spent_at_start = self._spent()
+            executed = 0
             for st in plan.steps:
                 self.killswitch.check()
                 if any(d in bad for d in st["depends_on"]):
@@ -350,30 +449,34 @@ class Orchestrator:
                     self.store.finish_step(sid, "skipped", "Skipped because an earlier step failed.")
                     bad.add(st["id"])
                     continue
-                sid = self.store.add_step(task_id, st["agent"], st["goal"], st["inputs"])
-                try:
-                    agent_cls = self.registry[st["agent"]]
-                    if agent_cls.private_outputs:
-                        private.add(st["id"])
-                    inputs = resolve_inputs(st["inputs"], results, frozenset(private),
-                                            getattr(agent_cls, "accepts_private", True))
-                    agent = agent_cls()
-                    ctx = self.make_context(task_id, sid)
-                    skill = self.skills.get(st.get("skill", "")) if self.skills and st.get("skill") else None
-                    ctx.skill = skill.body if skill else ""
-                    if ctx.skills is None:
-                        ctx.skills = self.skills
-                    res = agent.run(st["goal"], inputs, ctx)
-                except (ProviderUnavailable, BudgetExceeded) as e:
-                    self.store.finish_step(sid, "paused", str(e))
-                    raise
-                except Stopped:
-                    self.store.finish_step(sid, "stopped", "Stopped by the kill switch.")
-                    raise
-                except Exception as e:  # one broken step never crashes the task
-                    res = StepResult("failed", f"{type(e).__name__}: {e}")
-                self.store.finish_step(sid, res.status, res.summary, res.data)
+                attempt, tries = st, []
+                while True:
+                    if executed >= self.max_steps:
+                        res = StepResult("failed", f"Stopped: this task reached the limit of {self.max_steps} steps.")
+                        break
+                    if self._spent() - spent_at_start >= self.task_budget:
+                        res = StepResult("failed", f"Stopped: this task reached its ${self.task_budget:.2f} spending "
+                                                   "limit. Ask again if you want me to keep going.")
+                        break
+                    executed += 1
+                    res, agent_cls = self._run_step(task_id, attempt, results, private,
+                                                    label=f"Try {len(tries) + 1}: " if tries else "")
+                    if res.status == "done":
+                        check = self._verify(attempt, res, agent_cls, task_id)
+                        if check:                          # it said done, but the goal isn't there
+                            res = StepResult("failed", check, res.data)
+                    if res.status != "failed" or len(tries) + 1 >= self.step_tries:
+                        break
+                    tries.append((attempt, res))
+                    nxt = self._repair(text, st, tries, agent_cls)
+                    if nxt is None:
+                        break
+                    attempt = {**nxt, "id": st["id"], "depends_on": st["depends_on"]}
                 results[st["id"]] = res
+                if tries:
+                    note = "; ".join(f"{a['agent']} ({a['goal'][:60]}): failed" for a, _ in tries)
+                    self.store.add_agent_note(task_id, "planner", f"Retried step {st['id']}: {note}. "
+                                                                  f"Final: {res.status}.")
                 if res.status == "failed":
                     bad.add(st["id"])
         except (ProviderUnavailable, BudgetExceeded) as e:

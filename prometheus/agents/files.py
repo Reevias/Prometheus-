@@ -303,7 +303,15 @@ class Files(Agent):
             text += "\nSkipped:\n" + "\n".join(f"- {p}" for p in problems[:50])
         if done:
             text += "\nYou can undo this on the History page."
-        return StepResult("done" if done or not problems else "failed", text)
+        made = [d.split(" → ", 1)[1] for d in done if " → " in d]
+        return StepResult("done" if done or not problems else "failed", text, {"made": made})
+
+    def verify(self, goal: str, inputs: dict, result: StepResult, ctx: AgentContext) -> str:
+        """After a change: are the new or moved files really there?"""
+        made = result.data.get("made") or []
+        missing = [m for m in made if not Path(m).exists()]
+        return f"Said it was done, but these aren't there: {', '.join(Path(m).name for m in missing[:5])}." \
+            if missing else ""
 
     def _copy(self, inputs: dict, ctx: AgentContext) -> StepResult:
         return self._copy_or_move(inputs, ctx, move=False)

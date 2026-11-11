@@ -138,6 +138,8 @@
   <h3>General</h3>
   <form hx-post="/settings" hx-target="body" class="panel" style="display:grid;gap:10px">
     <label>Spending cap for paid AI (USD) <input name="budget_usd" value="{{ s.budget_usd }}" inputmode="decimal"></label>
+    <label>Most one task may spend (USD) <input name="task_budget_usd" value="{{ s.task_budget_usd }}" inputmode="decimal"></label>
+    <label>Tries per step when something fails (1 to 6) <input name="step_tries" value="{{ s.step_tries }}" inputmode="numeric"></label>
     <label>GitHub repository Prometheus may read and update <input name="github_repo" value="{{ s.github_repo }}"></label>
     <label class="check"><input type="checkbox" name="allow_lan" value="1" {{ "checked" if s.allow_lan }}> Allow other devices on my Wi-Fi (needs restart, keep a strong password)</label>
     <label class="check"><input type="checkbox" name="auto_update" value="1" {{ "checked" if s.auto_update }}

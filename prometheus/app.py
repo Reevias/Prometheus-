@@ -96,6 +96,8 @@ def apply_settings(services: "Services") -> None:
 
     s, router = services.settings, services.router
     services.budget.cap_usd = s.budget_usd
+    services.orchestrator.step_tries = max(1, min(int(s.step_tries), 6))
+    services.orchestrator.task_budget = max(0.01, min(float(s.task_budget_usd), 10.0))
     router.head = s.head_model
     services.policy.extra_roots = usable_extra_folders(s, services.home)
     for name, model in (("openrouter", s.openrouter_model), ("anthropic", s.anthropic_model),
@@ -193,6 +195,8 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
                             skills=skills)
 
     orchestrator = Orchestrator(store, router, REGISTRY, make_context, killswitch, prompts.folder, skills=skills)
+    orchestrator.step_tries = max(1, min(int(settings.step_tries), 6))
+    orchestrator.task_budget = max(0.01, min(float(settings.task_budget_usd), 10.0))
     services = Services(settings, home, store, policy, journal, files, permissions, approvals, budget, killswitch,
                         router, orchestrator, patcher, prompts, skills)
     services.archive = archive

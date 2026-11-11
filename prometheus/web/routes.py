@@ -428,17 +428,26 @@ def register_routes(app: FastAPI, services: Services) -> None:
     @app.post("/settings", response_class=HTMLResponse)
     def save(request: Request, budget_usd: str = Form(...), ollama_model: str = Form(""),
              anthropic_model: str = Form(""), allow_lan: str = Form(""), openrouter_model: str = Form(""),
-             openrouter_fast_model: str = Form(""), github_repo: str = Form("")):
+             openrouter_fast_model: str = Form(""), github_repo: str = Form(""), step_tries: str = Form(""),
+             task_budget_usd: str = Form("")):
         try:
             budget = float(budget_usd)
             if not 0 <= budget <= 1000:
                 raise ValueError
         except ValueError:
             return settings_page(request, 400, error="The spending cap must be a number between 0 and 1000.")
+        try:
+            tries = int(step_tries) if step_tries.strip() else services.settings.step_tries
+            task_cap = float(task_budget_usd) if task_budget_usd.strip() else services.settings.task_budget_usd
+            if not (1 <= tries <= 6 and 0.01 <= task_cap <= 10):
+                raise ValueError
+        except ValueError:
+            return settings_page(request, 400, error="Tries must be 1 to 6, and the task limit between $0.01 and $10.")
         github_repo = github_repo.strip() or services.settings.github_repo
         if not REPO_NAME.fullmatch(github_repo):
             return settings_page(request, 400, error="The GitHub repository must look like owner/name.")
-        new = replace(services.settings, github_repo=github_repo, budget_usd=budget,
+        new = replace(services.settings, github_repo=github_repo, budget_usd=budget, step_tries=tries,
+                      task_budget_usd=task_cap,
                       ollama_model=ollama_model.strip()[:100] or services.settings.ollama_model,
                       anthropic_model=anthropic_model.strip()[:100] or services.settings.anthropic_model, allow_lan=bool(allow_lan),
                       openrouter_model=openrouter_model.strip()[:150] or services.settings.openrouter_model,

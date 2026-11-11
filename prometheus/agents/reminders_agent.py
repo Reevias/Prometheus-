@@ -17,6 +17,12 @@ class Reminders(Agent):
     tools = {"system_read"}
     required_inputs = ("action",)
 
+    def verify(self, goal: str, inputs: dict, result: StepResult, ctx: AgentContext) -> str:
+        rid = result.data.get("id")
+        if rid is None:
+            return ""
+        return "" if any(r["id"] == rid for r in ctx.store.reminders()) else "The reminder wasn't saved."
+
     def run(self, goal: str, inputs: dict, ctx: AgentContext) -> StepResult:
         ctx.use(self.name, "system_read")
         action = str(inputs.get("action") or "").strip().lower()
