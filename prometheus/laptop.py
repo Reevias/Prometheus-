@@ -631,6 +631,48 @@ Set-ItemProperty -Path $p -Name 'ToastEnabled' -Value $v -Type DWord
 """
 
 
+HEALTH_SCRIPT = r"""
+$o = @{}
+try { $o.startup = @(Get-CimInstance Win32_StartupCommand | Select-Object -ExpandProperty Name) } catch { $o.startup = @() }
+try {
+  $f = Join-Path $env:TEMP 'prom-battery.xml'
+  powercfg /batteryreport /xml /output $f | Out-Null
+  [xml]$x = Get-Content $f; Remove-Item $f -ErrorAction SilentlyContinue
+  $b = $x.BatteryReport.Batteries.Battery
+  $o.design = [int64]$b.DesignCapacity; $o.full = [int64]$b.FullChargeCapacity; $o.cycles = [int]$b.CycleCount
+} catch { }
+try {
+  $s = (New-Object -ComObject Microsoft.Update.Session).CreateUpdateSearcher()
+  $o.updates = $s.Search("IsInstalled=0 and IsHidden=0").Updates.Count
+} catch { $o.updates = -1 }
+$o.onedrive = [bool](Get-Process OneDrive -ErrorAction SilentlyContinue)
+try { $o.fh = (Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\FileHistory' -ErrorAction Stop).ProtectedUpToTime } catch { }
+$o | ConvertTo-Json -Compress
+"""
+SETTINGS_PAGES = {"startup": "ms-settings:startupapps", "updates": "ms-settings:windowsupdate",
+                  "storage": "ms-settings:storagesense", "backup": "ms-settings:backup",
+                  "battery": "ms-settings:batterysaver"}
+
+
+def health_info(self) -> dict:
+    """Read-only facts for the weekly health check: startup apps, battery wear, waiting updates, backups."""
+    self._need_windows()
+    out = _ps(self, HEALTH_SCRIPT, timeout=180)
+    try:
+        return json.loads(out.splitlines()[-1]) if out else {}
+    except (ValueError, IndexError):
+        return {}
+
+
+def open_settings_page(self, page: str) -> str:
+    """Open one of a few Windows Settings pages (a fixed list)."""
+    self._need_windows()
+    if page not in SETTINGS_PAGES:
+        raise LaptopError("That Settings page isn't on the list.")
+    os.startfile(SETTINGS_PAGES[page])          # an ms-settings: link from the fixed list above
+    return f"Opened Windows Settings ({page})."
+
+
 def do_not_disturb(self, on: bool) -> str:
     """Windows notification banners off (on=True) or back on. Prometheus's own notifications are held separately."""
     self._need_windows()
@@ -639,5 +681,6 @@ def do_not_disturb(self, on: bool) -> str:
 
 
 for _f in (app_open, app_close, window, apps_running, volume, mute, brightness, dark_mode, screenshot, type_text,
-           press_keys, click, power, install_app, store_open, find_package, notify, cpu_load, do_not_disturb):
+           press_keys, click, power, install_app, store_open, find_package, notify, cpu_load, do_not_disturb,
+           health_info, open_settings_page):
     setattr(Laptop, _f.__name__, _f)

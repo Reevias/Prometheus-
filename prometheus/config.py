@@ -64,6 +64,8 @@ class Settings:
     notify_briefing: bool = True
     notify_repo: bool = True
     notify_updates: bool = True
+    health_day: int = 6                    # 0 = Monday … 6 = Sunday; -1 for never
+    health_time: str = "19:00"
     focus_dnd: bool = True                 # Windows Do Not Disturb during focus
     focus_apps: list = field(default_factory=lambda: ["WhatsApp", "Discord", "Telegram", "Instagram", "Steam"])
     focus_pomodoro: bool = True

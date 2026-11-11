@@ -153,6 +153,9 @@ def understand(text: str, store=None, now: float | None = None) -> Quick | None:
         until = re.search(r"\b(?:until|till)\b", low)
         return Quick(steps=[_step("focus", "Start focus", action="start",
                                   length=("until " + rest) if until and rest else rest)], action=True)
+    if re.search(r"\b(check|how is|how's)\b.*\b(laptop|computer|pc)(?:'s)? health\b|\bhealth check\b|"
+                 r"\bis my (?:laptop|pc|computer) (?:ok|okay|fine|healthy)\b", low):
+        return Quick(steps=[_step("health", "Laptop health check")])
     from prometheus import money
 
     if money.TELL.match(t):

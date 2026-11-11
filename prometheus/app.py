@@ -390,6 +390,20 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
     from prometheus.agents import focus_agent as _fa
 
     services.focus = _fa.FOCUS = _focus.Focus(services, laptop=_lp)
+    from prometheus import health as _health
+    from prometheus.agents import health_agent as _ha
+
+    _ha.SERVICES = services
+
+    def _health_fix(payload: dict) -> str:
+        if payload.get("fix") == "settings":
+            if services.laptop is None:
+                return "That only works on Windows."
+            return services.laptop.open_settings_page(str(payload.get("page", "")))
+        return "Unknown fix."
+
+    approvals.register("health_fix", _health_fix)
+    approvals.register("health_clean", lambda payload: _health.clear_temp())
     return services
 
 

@@ -233,7 +233,30 @@ class BriefingClock:
                 sent.append(kind)
         sent += self.study_nudge(now, today)
         sent += self.money_check(now)
+        sent += self.health_check(now)
         return sent
+
+    def health_check(self, now: float) -> list[str]:
+        """Once a week (Sunday 19:00 by default): the laptop health check."""
+        s, store = self.services.settings, self.services.store
+        day = int(getattr(s, "health_day", 6))
+        if day < 0 or time.localtime(now).tm_wday != day:
+            return []
+        try:
+            at = _at(now, getattr(s, "health_time", "19:00") or "19:00")
+        except ValueError:
+            return []
+        if not (at <= now < at + 3 * 3600) or now - float(store.kv_get("health_last", 0) or 0) < 5 * 86400:
+            return []
+        from prometheus import health
+
+        report = health.post(self.services, getattr(self.services, "laptop", None), now)
+        if self.notify is not None:
+            try:
+                self.notify(report.splitlines()[0])
+            except Exception:
+                pass
+        return ["health"]
 
     def money_check(self, now: float) -> list[str]:
         """Every half hour: new bank and UPI alerts from the email, the spending sheet, and budget warnings."""
