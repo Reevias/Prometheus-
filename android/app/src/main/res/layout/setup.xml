@@ -13,5 +13,6 @@
     <TextView android:id="@+id/problem" android:layout_width="match_parent" android:layout_height="wrap_content"
         android:textColor="#FF7070" android:layout_marginTop="8dp" />
     <Button android:id="@+id/open" android:layout_width="match_parent" android:layout_height="wrap_content"
-        android:layout_marginTop="16dp" android:text="Open Prometheus" />
+        android:layout_marginTop="16dp" android:text="Open Prometheus" android:textAllCaps="false"
+        android:backgroundTint="#D92D43" android:textColor="#FFFFFF" />
 </LinearLayout>

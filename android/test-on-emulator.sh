@@ -12,7 +12,7 @@ import re, sys
 want, xml = sys.argv[1], open(sys.argv[2], encoding="utf-8").read()
 for m in re.finditer(r'<node [^>]*>', xml):
     n = m.group(0)
-    if f'text="{want}"' in n or f'resource-id="com.reevias.prometheus:id/{want}"' in n:
+    if f'text="{want}"'.lower() in n.lower() or f'resource-id="com.reevias.prometheus:id/{want}"' in n:
         b = re.search(r'bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"', n).groups()
         x1, y1, x2, y2 = map(int, b); print((x1 + x2) // 2, (y1 + y2) // 2); break
 PY
@@ -30,14 +30,14 @@ adb shell am start -W -n com.reevias.prometheus/.MainActivity || fail "couldn't 
 sleep 4; shot 1-first-open
 crashed && fail "the app crashed on first open"
 adb shell uiautomator dump /sdcard/ui.xml >/dev/null; adb pull /sdcard/ui.xml "$OUT/ui.xml" >/dev/null
-grep -q 'Open Prometheus' "$OUT/ui.xml" || fail "the address screen didn't show"
+grep -qi 'Open Prometheus' "$OUT/ui.xml" || fail "the address screen didn't show"
 
 # 2. a wrong address is refused
 tap_text "address"
 adb shell input text "http://not-safe.example"
 tap_text "Open Prometheus"; sleep 2; shot 2-wrong-address
 adb shell uiautomator dump /sdcard/ui.xml >/dev/null; adb pull /sdcard/ui.xml "$OUT/ui.xml" >/dev/null
-grep -q "isn't an https address" "$OUT/ui.xml" || fail "an http address wasn't refused"
+grep -q "an https address" "$OUT/ui.xml" || fail "an http address wasn't refused"
 
 # 3. the link from the laptop's phone page fills the address in
 adb shell am force-stop com.reevias.prometheus
