@@ -9,20 +9,31 @@ steps, agents do the steps and share one memory, and you get one answer. Every f
 
 Design: [`docs/spec.md`](docs/spec.md) · Roadmap: [`docs/guide.md`](docs/guide.md)
 
-## What it can do (v1)
+## What it can do
 
-| Agent | Does |
-|---|---|
-| Files | Finds files anywhere you allow (your user folder plus drives you add in Settings) and copies, moves, renames or recycles them; every change can be undone |
-| File Sorter | Sorts a folder into Images/Year/Month, Documents, Music, Videos, Archives, Installers, Code, Duplicates |
-| Documents | Reads PDFs, Word and text files **on your laptop** and summarises the ones that match |
-| Research | Searches the web and writes a summary with sources (falls back to Wikipedia if search fails) |
-| Wikipedia | Looks up facts, people, places, history and science on Wikipedia, with the article as the source. Free, no key |
-| Repo Scout | Finds GitHub projects for a need; clones only after you approve, and never runs them |
-| Guide | Explains how to do something from one of Prometheus's skills (how-to guides) |
-| Opener | Plays a YouTube video (and can summarise it from its captions), opens a GitHub repo, a website, or a file in its normal app. Never runs programs |
+**Everyday:** chat or talk ("Hello Prometheus…"), instant answers (time, opening apps, timers, volume, weather),
+reminders and standing goals, a morning briefing and evening wrap-up, focus mode, "undo that".
 
-Try: *"sort my Downloads folder and summarise any PDFs about taxes"*.
+**Your stuff:** finds, sorts and undoably moves files; searches inside your documents; reads PDFs, Word, Excel and
+slides; writes Word, PDF, Excel and PowerPoint files; your photos tagged and sorted; Obsidian notes; clipboard and
+screenshot memory; email (Gmail in one click), Google Calendar and Drive; a money tracker from bank emails and SMS.
+
+**Study:** flashcards and quizzes from your notes (chat or voice, spaced review, Anki export, quiz PDFs), an exam
+countdown planner, lecture recordings to notes and slides, read-aloud with "explain that again", a homework checker
+that gives hints (never answers), an assignment tracker.
+
+**Computer and phone:** sees your screen ("what's this error?", "click the blue button"), uses websites in its own
+browser, controls Wi-Fi, apps and settings; controls your Android phone (apps, screen, settings, alarms, WhatsApp,
+calls); runs Python safely in a sandbox; can learn GitHub repos as skills (checked for malware first).
+
+**Always with you:** an installable phone app with notifications, an always-on cloud copy that syncs with the
+laptop, encrypted nightly backups to Google Drive, and use from other AI apps (Antigravity, Claude Desktop) over MCP.
+
+**Brains:** Claude, 21 models on OpenRouter (Kimi K3, Qwen 3.8 2.4T, DeepSeek V4, GPT-6.1, Gemini 4…), free models,
+or a private model on the laptop. Your files only ever go to the local model unless you say otherwise.
+
+**Safety:** small actions asked in the chat, big ones on the Approvals page, paying always approved, every file
+change undoable, a built-in prompt-injection safety check, a spending limit.
 
 ## Install (Windows, PowerShell)
 
@@ -40,6 +51,17 @@ repository is ever made public, this one line does both steps:
 It downloads Prometheus to `%USERPROFILE%\Prometheus-`, installs it with the newest Python you have, asks you to
 choose a password (first time only, at least 10 characters) and puts a **Prometheus** shortcut on your desktop
 and in the Start menu.
+
+## On your phone
+
+Prometheus installs on your phone as an app from the browser (no Play Store), with notifications, hold-to-talk
+and sending photos:
+
+1. Set up the always-on **cloud copy** once (free Oracle Cloud machine): [`docs/cloud-setup.md`](docs/cloud-setup.md).
+2. Install **Tailscale** on the phone and sign in.
+3. On the laptop open ☰ → **Get it on your phone** and scan the QR code, then **Add to home screen**.
+
+Everything else (notifications, bank SMS, letting Prometheus control the phone): [`docs/phone-setup.md`](docs/phone-setup.md).
 
 ## Run
 

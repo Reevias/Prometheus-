@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block body %}
+<main class="single page">
+  <div class="page-head"><h2>Get Prometheus on your phone</h2></div>
+  {% if address %}
+  <section class="panel" style="display:grid;gap:12px;justify-items:center;text-align:center">
+    <p style="margin:0">Scan this with your phone's camera (with Tailscale on), sign in, then <strong>Add to home screen</strong>.</p>
+    <img src="data:image/png;base64,{{ qr }}" width="240" height="240" alt="QR code for {{ address }}" style="background:#fff;padding:12px;border-radius:12px">
+    <code>{{ address }}</code>
+  </section>
+  {% else %}
+  <p class="empty muted">Set up the cloud copy first (Settings → Cloud copy, guide in <code>docs/cloud-setup.md</code>): the phone
+    always talks to it, so it works when this laptop is off. Its address then appears here as a QR code.</p>
+  {% endif %}
+  <section class="panel">
+    <h3 style="margin-top:0">Steps</h3>
+    <ol>
+      <li>Install <strong>Tailscale</strong> on the phone (Play Store / App Store) and sign in with the same account as the cloud copy.</li>
+      <li>Scan the code above (or type the address in Chrome) and sign in with your Prometheus password.</li>
+      <li>Chrome menu ⋮ → <strong>Add to home screen</strong> → Install. (iPhone: Safari → Share → Add to Home Screen.)</li>
+      <li>Open it from the new icon → ☰ → <strong>Turn on phone notifications</strong>.</li>
+      <li>Optional: bank SMS into the money tracker (MacroDroid) and letting Prometheus control the phone (wireless
+        debugging): Settings → Phone control, and <code>docs/phone-setup.md</code>.</li>
+    </ol>
+  </section>
+</main>
+{% endblock %}

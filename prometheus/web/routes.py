@@ -648,6 +648,25 @@ def register_routes(app: FastAPI, services: Services) -> None:
                     store.cancel_reminder(r["id"])
         return plans_page(request, notice=f"Marked {rows[0]['title']} as done." if rows else "")
 
+    @app.get("/phone", response_class=HTMLResponse)
+    def phone_page(request: Request):
+        import base64 as _b64
+        import io as _io
+
+        s = services.settings
+        address = (s.cloud_url or "").rstrip("/")
+        if not address and getattr(s, "role", "laptop") == "cloud":
+            address = str(request.base_url).rstrip("/")
+        qr = ""
+        if address:
+            import qrcode
+
+            img = qrcode.make(address, box_size=8, border=1)
+            buf = _io.BytesIO()
+            img.save(buf, format="PNG")
+            qr = _b64.b64encode(buf.getvalue()).decode()
+        return page(request, "phone.html", address=address, qr=qr)
+
     @app.get("/costs", response_class=HTMLResponse)
     def costs(request: Request):
         import time as _t

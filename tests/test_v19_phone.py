@@ -78,3 +78,13 @@ def test_cloud_hands_laptop_jobs_over(app_client):
     research = Plan([{"id": 1, "agent": "research", "goal": "r", "inputs": {}, "depends_on": []}])
     assert services.orchestrator.before_steps(chat, "research solar", research) == ""      # the cloud does that
     services.settings.role = "laptop"
+
+
+def test_phone_download_page(app_client):
+    client, services = app_client()
+    login(client)
+    assert "Set up the cloud copy first" in client.get("/phone").text
+    services.settings.cloud_url = "https://prometheus-cloud.tail1234.ts.net"
+    page = client.get("/phone").text
+    assert "data:image/png;base64," in page and "prometheus-cloud.tail1234.ts.net" in page
+    assert 'href="/phone"' in client.get("/settings").text
