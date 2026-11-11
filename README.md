@@ -64,6 +64,12 @@ Either way it gets Git and Python if they're missing, downloads Prometheus to `%
 to choose a password (first time only, at least 10 characters) and puts **Prometheus**, with its own icon, on your
 desktop and in the Start menu. Run it again any time to update.
 
+**Remove it** (your memory, chats, settings and keys are kept for the next install):
+
+```powershell
+irm https://raw.githubusercontent.com/Reevias/Prometheus-/main/scripts/uninstall-windows.ps1 | iex
+```
+
 ## On your phone
 
 **Android:** download [Prometheus.apk](https://github.com/Reevias/Prometheus-/releases/latest/download/Prometheus.apk)
