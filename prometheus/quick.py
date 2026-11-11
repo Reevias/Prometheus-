@@ -173,6 +173,18 @@ def understand(text: str, store=None, now: float | None = None) -> Quick | None:
         rest = m.group(1)
         path = re.search(r"([A-Za-z]:\\[^\s]+|[\w./\\-]+\.(?:jpg|jpeg|png|webp|heic))", t)
         return Quick(steps=[_step("homework", "Check my homework", path=path.group(1) if path else "latest")])
+    from prometheus.assignments import TELL as ASSIGN_TELL
+
+    am = ASSIGN_TELL.match(t)
+    if am and re.search(r"\b(assignment|homework|project|report|essay|lab|practical|worksheet|presentation|"
+                        r"submission|quiz|test|record|file)\b", am.group(1), re.I):
+        from prometheus.assignments import parse_due
+
+        if parse_due(am.group(2), now) is not None:
+            return Quick(steps=[_step("assignments", f"Track {am.group(1)}", action="add", title=am.group(1),
+                                      due=am.group(2))], action=True)
+    if re.search(r"\bwhat(?:'s| is)? due\b|\bmy (?:assignments|deadlines)\b|\bany deadlines\b", low):
+        return Quick(steps=[_step("assignments", "What's due", action="list")])
     from prometheus import money
 
     if money.TELL.match(t):

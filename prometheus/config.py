@@ -67,6 +67,7 @@ class Settings:
     exam_study_time: str = "17:00"         # daily study block and "today's topics" post
     exam_block_minutes: int = 120
     exam_checkin_time: str = "21:30"       # "did you finish today's topics?"
+    assignment_senders: list = field(default_factory=list)   # college/school addresses or domains to read
     read_speed: float = 1.0                # read-aloud speed (0.7 to 1.5)
     health_day: int = 6                    # 0 = Monday … 6 = Sunday; -1 for never
     health_time: str = "19:00"

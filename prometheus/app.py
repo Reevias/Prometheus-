@@ -406,6 +406,11 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
     from prometheus.voice import reader as _reader
 
     _reader.CURRENT = _reader.Reader(services)
+    from prometheus import assignments as _assign
+    from prometheus.agents import assignments_agent as _aa
+
+    _aa.TRACKER, _aa.SERVICES = _assign.Assignments(store, settings), services
+    approvals.register("assignment_calendar", _aa.calendar_handler)
 
     def _health_fix(payload: dict) -> str:
         if payload.get("fix") == "settings":

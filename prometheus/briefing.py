@@ -135,6 +135,14 @@ def _done_today(services) -> list[str]:
         spent = ""
     if spent:
         lines.append(f"money: {spent}")
+    try:
+        from prometheus.agents import assignments_agent
+
+        soon = assignments_agent.TRACKER.soon_line(3) if assignments_agent.TRACKER else ""
+    except Exception:
+        soon = ""
+    if soon:
+        lines.append(f"due soon: {soon}")
     if any(a.kind == "add_skill" for a in store.big_approvals()):
         lines.append("a repo of the day is waiting on the Approvals page")
     return lines
@@ -235,7 +243,47 @@ class BriefingClock:
         sent += self.money_check(now)
         sent += self.health_check(now)
         sent += self.exam_posts(now, today)
+        sent += self.assignment_check(now)
         return sent
+
+    def assignment_check(self, now: float) -> list[str]:
+        """Every half hour: new deadlines in emails from the chosen college/school senders."""
+        from prometheus import assignments as assign_mod
+        from prometheus.agents import assignments_agent
+
+        s, store, tr = self.services.settings, self.services.store, assignments_agent.TRACKER
+        senders = list(getattr(s, "assignment_senders", []) or [])
+        if tr is None or not senders or not s.email_address:
+            return []
+        if now - float(store.kv_get("assign_scanned", 0) or 0) < assign_mod.SCAN_EVERY:
+            return []
+        from prometheus.agents.email_agent import mailbox
+
+        try:
+            added = tr.scan_email(mailbox(), senders)
+        except Exception:
+            store.kv_set("assign_scanned", now)
+            return []
+        if not added:
+            return []
+        rows = [r for r in tr.upcoming(400) if r["id"] in added]
+        text = "New deadlines from your email:\n" + "\n".join(
+            f"- {r['title']}: {assign_mod._when(r['due'])}" for r in rows) + \
+            "\nI'll remind you two days before each and on the day."
+        store.add_message(tr.chat(), "assistant", text, "assignments", private=True)
+        from prometheus.config import get_secret
+
+        if get_secret("GOOGLE_TOKEN"):
+            for r in rows:
+                self.services.approvals.ask("assignment_calendar", f"Put '{r['title']}' on your Google Calendar",
+                                            {"id": r["id"]}, (f"assignment:{r['id']}", "assignment:any"),
+                                            chat_id=tr.chat(), broad_label="Always put assignments on my calendar")
+        if self.notify is not None:
+            try:
+                self.notify(f"{len(rows)} new deadline(s): " + rows[0]["title"])
+            except Exception:
+                pass
+        return ["assignments"]
 
     def exam_posts(self, now: float, today: str) -> list[str]:
         """Each day: today's revision topics at the study time, and the check-in in the evening."""

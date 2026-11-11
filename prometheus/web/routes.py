@@ -951,6 +951,13 @@ def register_routes(app: FastAPI, services: Services) -> None:
 
         return [c for c, _ in CATEGORIES] + ["Transfers", "Other"]
 
+    @app.post("/settings/assignments", response_class=HTMLResponse)
+    def save_assignments(request: Request, senders: str = Form("")):
+        services.settings.assignment_senders = [x.strip()[:80] for x in senders.split(",") if x.strip()][:20]
+        save_settings(services.settings)
+        store.audit("user", "assignment_settings", {"senders": len(services.settings.assignment_senders)})
+        return settings_page(request, saved=True)
+
     @app.post("/settings/focus", response_class=HTMLResponse)
     def save_focus(request: Request, dnd: str = Form(""), apps: str = Form(""), pomodoro: str = Form(""),
                    work: str = Form("25"), rest: str = Form("5")):

@@ -1,9 +1,11 @@
 # Prometheus: what is still missing
 
-Updated 11 November 2026. Version 1.7. Built and tested here: 738 tests pass.
+Updated 11 November 2026. Version 1.8. Built and tested here: 810 tests pass.
 Not yet run end to end on the owner's real laptop.
 
 ## Just finished
+- **Prometheus as a tool for other AI apps** (26): Antigravity, Claude Desktop and Cursor can search its memory, find files by name and ask questions; actions wait on Approvals.
+- **"Undo that"**, **study coach** (flashcards, chat and voice quizzes, spaced review, Anki export), **money tracker** (bank/UPI emails, budgets), **clipboard and screenshot memory**, **focus mode** (any length), **weekly laptop health check**, **exam countdown planner**, **lecture to notes**, **read-aloud**, **homework checker** and **assignment tracker**.
 - **Own icon and name**: window, taskbar, shortcuts, tray, notifications and browser tab show Prometheus, not Python.
 - **Voice fixes**: the AI now always knows the date and time (the "location instead of time" bug); instant answers with no AI for time, date, opening apps and sites, timers, reminders, volume, battery and weather; three speech models in Settings (fast, Indian-accent English, English + Hindi); actions said back before they happen; timings shown in Settings.
 - **Tray icon and notifications** (22), **cost page** (23), **own tools** (25), **safety check** (28), **voice training** (30) and the **small fixes** (31).
@@ -58,7 +60,7 @@ Not yet run end to end on the owner's real laptop.
 ## 7. Other agents
 24. **Hermes agent** on the desktop PC.
 25. **Self-edit level 2**: done (own tools, approved once by their code).
-26. **Antigravity calling Prometheus** the other way round (Prometheus as a tool server).
+26. **Antigravity calling Prometheus**: done (MCP tool server).
 
 ## 8. Safety still to add
 27. **Code sandbox**: done.
@@ -77,16 +79,20 @@ Not yet run end to end on the owner's real laptop.
 36. **Ollama running** for private answers (file and note questions use the local model only).
 
 ## 11. Suggested new features
-37. **Study coach**: makes quizzes and flashcards from your notes and PDFs, then reminds you to review them on a spaced schedule (harder cards come back sooner). Scores show in the evening wrap-up.
-38. **Money tracker**: reads bank and UPI emails ("Rs 450 debited at Swiggy"), adds each payment to one Excel sheet by category, and shows the day's and month's spending in the evening wrap-up. Stays on the laptop.
-39. **Clipboard and screenshot memory**: remembers what you copied and the text in your screenshots, so "what was that link I copied this morning?" works. Passwords and card numbers are never kept.
-40. **Focus mode**: "focus for 50 minutes": mutes alerts, closes or blocks distracting sites in its browser, holds non-urgent notifications, then gives a short summary of what came in.
-41. **Weekly laptop health check**: every Sunday, disk space, big old files, startup apps slowing the laptop, Windows updates waiting, battery health, with one-click fixes asked first.
+37. **Study coach**: done.
+38. **Money tracker**: done (phone SMS comes with the phone link).
+39. **Clipboard and screenshot memory**: done.
+40. **Focus mode**: done.
+41. **Weekly laptop health check**: done.
+42. **Exam countdown planner**: done.
+43. **Lecture to notes**: done.
+44. **Read-aloud mode**: done.
+45. **Homework checker**: done.
+46. **Assignment tracker**: done (college emails and what you say; portal websites can come later).
+47. **"Undo that"**: done.
 
 ## Suggested order
-1. Phone on Wi-Fi (12)
+1. Phone link (12), then phone SMS for the money tracker and phone photos for the homework checker
 2. Seeing the screen (4)
 3. Sorting photos on the phone (19)
-4. Study coach and money tracker (37, 38)
-5. Focus mode, laptop health check, clipboard memory (39 to 41)
-6. Camera, gestures, images and video (5, 20, 21)
+4. Camera, gestures, images and video (5, 20, 21)
