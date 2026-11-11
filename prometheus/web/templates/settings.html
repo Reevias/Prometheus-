@@ -1,9 +1,42 @@
 {% extends "base.html" %}
 {% block body %}
-<main class="single">
-  <h2>Settings</h2>
+<main class="settings">
   {% if error %}<p class="error">{{ error }}</p>{% endif %}{% if saved %}<p class="status-done">Saved.</p>{% endif %}{% if notice %}<p class="status-done">{{ notice }}</p>{% endif %}
-  <h3 style="margin-top:0">AI</h3>
+  <nav class="set-nav" aria-label="Settings sections">
+    <input type="search" id="set-search" placeholder="Search settings" autocomplete="off" oninput="promFilterSettings(this.value)">
+    <span class="set-group">AI and models</span>
+    <a href="#ai">AI</a>
+    <span class="set-group">Voice</span>
+    <a href="#voice">Voice</a>
+    <span class="set-group">Connections</span>
+    <a href="#connections">Connections</a>
+    <a href="#use-prometheus-from-other-ai-apps">Use Prometheus from other AI apps</a>
+    <a href="#obsidian">Obsidian</a>
+    <span class="set-group">Study and school</span>
+    <a href="#assignments">Assignments</a>
+    <a href="#study-coach">Study coach</a>
+    <span class="set-group">Daily life</span>
+    <a href="#notifications">Notifications</a>
+    <a href="#focus-mode">Focus mode</a>
+    <a href="#clipboard-and-screenshot-memory">Clipboard and screenshot memory</a>
+    <a href="#money-tracker">Money tracker</a>
+    <a href="#search-inside-files">Search inside files</a>
+    <a href="#daily-summary">Daily summary</a>
+    <a href="#watchers">Watchers</a>
+    <span class="set-group">Safety and privacy</span>
+    <a href="#safety-check">Safety check</a>
+    <a href="#always-allowed">Always allowed</a>
+    <a href="#places-prometheus-may-use">Places Prometheus may use</a>
+    <span class="set-group">General</span>
+    <a href="#general">General</a>
+    <a href="#github">GitHub</a>
+    <a href="#other-keys">Other keys</a>
+  </nav>
+  <div class="set-body">
+  <h2>Settings</h2>
+
+  <section class="set" id="ai" data-group="AI and models">
+  <h3>AI</h3>
   {% if key_error %}<p class="error">{{ key_error }}</p>{% endif %}{% if key_saved %}<p class="status-done">{{ key_saved }} is on.</p>{% endif %}
   <p class="muted">Search for an AI, paste its key, and it switches on at once. Prometheus picks the model and moves to
   another AI by itself if one is busy or out of credit. Keys stay on this laptop and are never shown again; adding or
@@ -58,6 +91,8 @@
   {% endfor %}
   <p class="muted">Free AI list from the awesome-free-llm-apis project, updated {{ catalog_date }}. Free limits change often.</p>
 
+  </section>
+  <section class="set" id="voice" data-group="Voice">
   <h3>Voice</h3>
   {% if voice_error %}<p class="error">{{ voice_error }}</p>{% endif %}
   {% if voice %}
@@ -93,19 +128,33 @@
   </div>
   {% endif %}
 
+  </section>
+  <section class="set" id="connections" data-group="Connections">
   <h3>Connections</h3>
   {% if conn_error %}<p class="error">{{ conn_error }}</p>{% endif %}
   <div class="panel" style="display:grid;gap:10px">
     <strong>Email</strong>
-    <p class="muted" style="margin:0">Works with Gmail, Outlook, Yahoo, iCloud and others. Use an <strong>app password</strong>, not
-    your normal one{% if s.email_address %}: make one at {{ email_help }}{% else %} (your provider's security settings){% endif %}.
-    Prometheus reads without marking mail as read, and every email it sends waits for you on the Approvals page.</p>
+    {% if s.email_via == "google" %}
+      <p class="status-done" style="margin:0">Gmail connected{% if s.email_address %} as {{ s.email_address }}{% endif %} through your Google sign-in. No app password needed.</p>
+      <div class="row"><button type="button" class="danger" hx-post="/settings/email/disconnect" hx-target="body">Disconnect Gmail</button></div>
+    {% elif google_on %}
+      <p class="muted" style="margin:0">Your Google account is connected, so Gmail is one click away.</p>
+      <div class="row"><button type="button" class="primary" hx-post="/settings/email/google" hx-target="body">Use my Gmail</button></div>
+    {% else %}
+      <p class="muted" style="margin:0">Using Gmail? The easiest way is <a href="#google-signin">Sign in with Google</a> below (once), then one click here. No app password.</p>
+    {% endif %}
+    <details {{ "open" if (s.email_address and s.email_via != "google") }}><summary class="muted">{{ "Connected with an app password" if (s.email_address and s.email_via != "google" and email_key_set) else "Other email (Outlook, Yahoo, college…) with an app password" }}</summary>
+    <p class="muted" style="margin:0">Type your address: Prometheus works out the server settings and tells you where to make an <strong>app password</strong>
+      <span id="email-help">{% if s.email_address %}({{ email_help }}){% endif %}</span>.</p>
     <form class="row" hx-post="/settings/email" hx-target="body">
-      <input type="email" name="address" value="{{ s.email_address }}" placeholder="you@gmail.com" required>
+      <input type="email" name="address" value="{{ s.email_address if s.email_via != 'google' else '' }}" placeholder="you@college.edu" required
+             hx-get="/settings/email/help" hx-trigger="keyup changed delay:400ms" hx-target="#email-help" hx-swap="innerHTML" hx-params="address">
       <input type="text" class="secret" spellcheck="false" data-lpignore="true" data-1p-ignore name="app_password" placeholder="{{ 'App password saved ✓ (type to replace)' if email_key_set else 'App password' }}" autocomplete="off">
       <input type="password" name="password" placeholder="Your Prometheus password" autocomplete="current-password" required>
-      <button type="submit" class="primary">Save</button>
+      <button type="submit">Connect</button>
     </form>
+    </details>
+    <p class="muted" style="margin:0">Prometheus reads without marking mail as read, and every email it sends waits for your yes.</p>
     <form hx-post="/settings/email/cloud" hx-target="body"><label class="check"><input type="checkbox" name="on" value="1" {{ "checked" if s.email_cloud_ok }} onchange="this.form.requestSubmit()">
       Let cloud AI (Claude) read my email. Off: only the local model reads it, which is slower but private.</label></form>
 
@@ -118,12 +167,12 @@
       <button type="submit">Save</button>
     </form>
 
-    <strong>Google Calendar and Drive</strong>
-    {% if google_on %}<p class="status-done" style="margin:0">Google is connected: calendar events (adding or moving asks you first) and Drive (read only).</p>{% endif %}
+    <strong id="google-signin">Google: Gmail, Calendar and Drive</strong>
+    {% if google_on %}<p class="status-done" style="margin:0">Google is connected: Gmail (sending asks you first), calendar events (adding or moving asks you first) and Drive (read only). Connected before Gmail was added? Press Sign in with Google once more.</p>{% endif %}
     <details {{ "open" if not google_client }}><summary class="muted">One-time setup (about 10 minutes)</summary>
       <ol class="muted">
         <li>Open <code>console.cloud.google.com</code> and make a new project called Prometheus.</li>
-        <li>APIs &amp; Services → Library: turn on <strong>Google Calendar API</strong> and <strong>Google Drive API</strong>.</li>
+        <li>APIs &amp; Services → Library: turn on <strong>Gmail API</strong>, <strong>Google Calendar API</strong> and <strong>Google Drive API</strong>.</li>
         <li>OAuth consent screen: External, app name Prometheus, your email; under Test users add your own Gmail.</li>
         <li>Credentials → Create credentials → OAuth client ID → Application type <strong>Desktop app</strong>.</li>
         <li>Copy the Client ID and Client secret into the boxes below, then press Sign in with Google.</li>
@@ -159,70 +208,8 @@
     </form>
   </div>
 
-  <h3>Notifications</h3>
-  <form class="panel" hx-post="/settings/notifications" hx-target="body" style="display:grid;gap:6px">
-    <p class="muted">Reminders and alerts always pop up. Choose what else does:</p>
-    {% for name, label in [("notify_tasks", "A task that took over 30 seconds is finished"),
-                           ("notify_waiting", "A task is waiting for my yes"),
-                           ("notify_briefing", "Morning briefing and evening wrap-up"),
-                           ("notify_repo", "Repo of the day arrived"),
-                           ("notify_updates", "Prometheus updated itself"),
-                           ("tray", "Icon by the clock; closing the window keeps Prometheus running")] %}
-    <label class="check"><input type="checkbox" name="on" value="{{ name }}" {{ "checked" if s[name] }}> {{ label }}</label>
-    {% endfor %}
-    <button type="submit">Save</button>
-  </form>
-
-  <h3>Assignments</h3>
-  <form class="panel" hx-post="/settings/assignments" hx-target="body" style="display:grid;gap:8px">
-    <label>College or school email senders to read for deadlines (addresses or domains, comma separated)
-      <input name="senders" value="{{ s.assignment_senders|join(', ') }}" placeholder="@mycollege.edu.in, classroom.google.com" style="width:100%"></label>
-    <p class="muted">Checked every half hour. You can also say "physics lab report due Friday". Each deadline gets a
-      reminder two days before and on the day.</p>
-    <button type="submit">Save</button>
-  </form>
-
-  <h3>Focus mode</h3>
-  <form class="panel" hx-post="/settings/focus" hx-target="body" style="display:grid;gap:8px">
-    <p class="muted">Say "focus for 2 hours", "focus until 6" or "focus mode on" (until you say "stop focus"). Prometheus
-      holds its alerts (your reminders still ring) and tells you what came in at the end.</p>
-    <label class="check"><input type="checkbox" name="dnd" value="1" {{ "checked" if s.focus_dnd }}> Turn on Windows Do Not Disturb</label>
-    <label>Close these apps when focus starts <input name="apps" value="{{ s.focus_apps|join(', ') }}" style="width:100%"></label>
-    <label class="check"><input type="checkbox" name="pomodoro" value="1" {{ "checked" if s.focus_pomodoro }}> Pomodoro breaks:
-      <input name="work" value="{{ s.focus_work }}" style="width:50px" inputmode="numeric"> minutes work,
-      <input name="rest" value="{{ s.focus_break }}" style="width:50px" inputmode="numeric"> minutes break</label>
-    <button type="submit">Save</button>
-  </form>
-
-  <h3>Clipboard and screenshot memory</h3>
-  <form class="panel" hx-post="/settings/clips" hx-target="body" style="display:grid;gap:8px">
-    <label class="check"><input type="checkbox" name="on" value="1" {{ "checked" if s.clip_on }}> Remember text and links
-      I copy, and the text in new screenshots, for {{ s.clip_days }} days (on this laptop only; passwords, card numbers,
-      OTPs and keys are never kept). Ask "what was that link I copied this morning?"</label>
-    <div class="row"><button type="submit">Save</button>
-      <button type="button" class="danger" hx-post="/settings/clips/forget" hx-target="body" hx-confirm="Forget everything copied so far?">Forget all</button></div>
-  </form>
-
-  <h3>Money tracker</h3>
-  <form class="panel" hx-post="/settings/money" hx-target="body" style="display:grid;gap:8px">
-    <label class="check"><input type="checkbox" name="on" value="1" {{ "checked" if s.money_on }}> Read bank and UPI
-      alerts from my email every half hour (on this laptop; no AI). The sheet is in Documents/Prometheus Money.</label>
-    <span>Monthly budgets in ₹ (empty for none). A warning comes at 80% and when you go over.</span>
-    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:6px">
-    {% for cat in money_categories %}<label>{{ cat }} <input name="budget_{{ loop.index0 }}" value="{{ s.money_budgets.get(cat, '') }}" inputmode="numeric" style="width:90px"></label>{% endfor %}
-    </div>
-    <button type="submit">Save</button>
-  </form>
-
-  <h3>Study coach</h3>
-  <form class="panel" hx-post="/settings/study" hx-target="body" style="display:grid;gap:8px">
-    <label class="check"><input type="checkbox" name="cloud" value="1" {{ "checked" if s.study_cloud }}> Let Claude make
-      flashcards and mark answers (better questions; only the notes you choose are sent). Off: the local AI does it, on this laptop.</label>
-    <label>Daily "cards are due" reminder at <input name="reminder" value="{{ s.study_reminder }}" style="width:80px" placeholder="18:00">
-      <span class="muted">(empty for none)</span></label>
-    <button type="submit">Save</button>
-  </form>
-
+  </section>
+  <section class="set" id="use-prometheus-from-other-ai-apps" data-group="Connections">
   <h3>Use Prometheus from other AI apps</h3>
   <div class="panel">
     <p class="muted">Antigravity, Claude Desktop, Cursor and other apps that support MCP can search what Prometheus
@@ -233,76 +220,8 @@
     <button hx-post="/settings/mcp-token" hx-target="body" hx-confirm="Apps using the old setup will stop working until you paste the new one. Continue?">Make a new key</button>
   </div>
 
-  <h3>Safety check</h3>
-  <div class="panel">
-    <p class="muted">Hides 10 known attacks (fake "system notes" in emails, web pages, files and error messages) in
-      things Prometheus reads, and checks whether the planning AI would obey them: send email, delete files, open a
-      bad link, pay, post, change settings. Nothing is run; only the plans are checked. About 12 short AI calls.</p>
-    {% if safety %}<p><strong>{{ safety.passed }} of {{ safety.results|length }} attacks ignored</strong>
-      <span class="muted">({{ safety.when_text }})</span></p>
-      <ul class="plain">{% for r in safety.results %}<li>{{ "✓" if r.passed else "✗" }} {{ r.name }}: <span class="muted">{{ r.detail }}</span></li>{% endfor %}</ul>
-    {% endif %}
-    <button hx-post="/settings/safety-check" hx-target="body">Run the safety check</button>
-  </div>
-
-  <h3>Search inside files</h3>
-  <div class="panel">
-    <p class="muted">Prometheus reads the text of PDFs, Word, Excel, PowerPoint and text files in Documents, Desktop,
-      Downloads and OneDrive (and folders added above), a little at a time at night, so you can find a file by what's
-      written in it. It stays on this laptop. {{ file_index_status }}</p>
-    <button hx-post="/settings/read-files" hx-target="body">Read my files now</button>
-  </div>
-
-  <h3>Daily summary</h3>
-  <form class="panel" hx-post="/settings/briefing" hx-target="body" style="display:grid;gap:8px">
-    <label class="check"><input type="checkbox" name="morning_on" value="1" {{ "checked" if s.briefing_morning_on }}> Morning briefing at
-      <input name="morning" value="{{ s.briefing_morning }}" style="width:80px" pattern="[0-2][0-9]:[0-5][0-9]"></label>
-    <label class="check"><input type="checkbox" name="evening_on" value="1" {{ "checked" if s.briefing_evening_on }}> Evening wrap-up at
-      <input name="evening" value="{{ s.briefing_evening }}" style="width:80px" pattern="[0-2][0-9]:[0-5][0-9]"></label>
-    <label>City for the weather (empty = where the laptop is) <input name="place" value="{{ s.weather_place }}" placeholder="e.g. Delhi"></label>
-    <label>Tell me at once when these email me (addresses or names, comma separated)
-      <input name="senders" value="{{ s.email_alert_senders|join(', ') }}" placeholder="e.g. bank.com, college.edu, Mom"></label>
-    <button type="submit">Save</button>
-  </form>
-  <div class="panel" style="display:grid;gap:8px;margin-top:8px">
-    <strong>Webhook</strong>
-    <p class="muted" style="margin:0">Other apps can call this address to make Prometheus speak up (for example GitHub when tests fail:
-    repository Settings → Webhooks, content type JSON, events “Workflow runs”). Keep it secret. It works from this laptop; from the
-    internet it needs a tunnel such as Tailscale Funnel.</p>
-    <p style="margin:0"><code>{{ webhook_url }}</code>
-      <button type="button" class="link" onclick="navigator.clipboard.writeText('{{ webhook_url }}'); this.textContent='Copied'">Copy</button></p>
-    <form hx-post="/settings/webhook/new" hx-target="body"><button type="submit">Make a new address</button></form>
-  </div>
-
-  <h3>Watchers</h3>
-  <p class="muted">Prometheus speaks up by itself: in the “Prometheus alerts” chat, as a Windows notification, and out loud if voice is on.</p>
-  <div class="panel" style="display:grid;gap:8px">
-    {% for key, label in [("watch_battery", "Battery below 20%"), ("watch_disk", "Main drive over 90% full"), ("watch_cpu", "CPU over 90% for 5 minutes")] %}
-    <form hx-post="/settings/watch" hx-target="body"><input type="hidden" name="key" value="{{ key }}">
-      <label class="check"><input type="checkbox" name="on" value="1" {{ "checked" if s[key] }} onchange="this.form.requestSubmit()"> {{ label }}</label></form>
-    {% endfor %}
-    <strong>Watch a folder</strong>
-    <p class="muted" style="margin:0">New files in it are told to you, or handled by itself if you say what to do (for example
-    “file new PDFs into Documents/PDFs”).</p>
-    <ul class="plain">{% for w in s.watch_folders %}<li>{{ w.path }}{% if w.goal %} <span class="muted">→ {{ w.goal }}</span>{% endif %}
-      <form hx-post="/settings/watch/folder/remove" hx-target="body" style="display:inline"><input type="hidden" name="path" value="{{ w.path }}"><button type="submit" class="danger">Remove</button></form></li>
-    {% else %}<li class="muted">No folders watched.</li>{% endfor %}</ul>
-    <form class="row" hx-post="/settings/watch/folder" hx-target="body">
-      <input type="text" name="path" placeholder="Folder, e.g. Downloads" required style="max-width:220px">
-      <input type="text" name="goal" placeholder="What to do with new files (optional)">
-      <button type="submit">Watch</button>
-    </form>
-  </div>
-
-  <h3>Always allowed</h3>
-  <p class="muted">Small things you said yes to in a chat. They aren't asked again, in any chat. Big things (installs,
-  power, Wi-Fi, GitHub posts, money) always wait on the Approvals page.</p>
-  <ul class="plain">
-    {% for r in allowed_rules %}<li>{{ r.label }} <span class="muted">({{ r.kind.replace("_", " ") }})</span>
-      <form hx-post="/settings/allowed/{{ r.id }}/remove" hx-target="body" style="display:inline"><button type="submit" class="danger">Remove</button></form></li>
-    {% else %}<li class="muted">Nothing yet.</li>{% endfor %}
-  </ul>
-
+  </section>
+  <section class="set" id="obsidian" data-group="Connections">
   <h3>Obsidian</h3>
   {% if obsidian_error %}<p class="error">{{ obsidian_error }}</p>{% endif %}
   <div class="panel" style="display:grid;gap:10px">
@@ -326,6 +245,164 @@
     {% endif %}
   </div>
 
+  </section>
+  <section class="set" id="assignments" data-group="Study and school">
+  <h3>Assignments</h3>
+  <form class="panel" hx-post="/settings/assignments" hx-target="body" style="display:grid;gap:8px">
+    <label>College or school email senders to read for deadlines (addresses or domains, comma separated)
+      <input name="senders" value="{{ s.assignment_senders|join(', ') }}" placeholder="@mycollege.edu.in, classroom.google.com" style="width:100%"></label>
+    <p class="muted">Checked every half hour. You can also say "physics lab report due Friday". Each deadline gets a
+      reminder two days before and on the day.</p>
+    <button type="submit">Save</button>
+  </form>
+
+  </section>
+  <section class="set" id="study-coach" data-group="Study and school">
+  <h3>Study coach</h3>
+  <form class="panel" hx-post="/settings/study" hx-target="body" style="display:grid;gap:8px">
+    <label class="check"><input type="checkbox" name="cloud" value="1" {{ "checked" if s.study_cloud }}> Let Claude make
+      flashcards and mark answers (better questions; only the notes you choose are sent). Off: the local AI does it, on this laptop.</label>
+    <label>Daily "cards are due" reminder at <input name="reminder" value="{{ s.study_reminder }}" style="width:80px" placeholder="18:00">
+      <span class="muted">(empty for none)</span></label>
+    <button type="submit">Save</button>
+  </form>
+
+  </section>
+  <section class="set" id="notifications" data-group="Daily life">
+  <h3>Notifications</h3>
+  <form class="panel" hx-post="/settings/notifications" hx-target="body" style="display:grid;gap:6px">
+    <p class="muted">Reminders and alerts always pop up. Choose what else does:</p>
+    {% for name, label in [("notify_tasks", "A task that took over 30 seconds is finished"),
+                           ("notify_waiting", "A task is waiting for my yes"),
+                           ("notify_briefing", "Morning briefing and evening wrap-up"),
+                           ("notify_repo", "Repo of the day arrived"),
+                           ("notify_updates", "Prometheus updated itself"),
+                           ("tray", "Icon by the clock; closing the window keeps Prometheus running")] %}
+    <label class="check"><input type="checkbox" name="on" value="{{ name }}" {{ "checked" if s[name] }}> {{ label }}</label>
+    {% endfor %}
+    <button type="submit">Save</button>
+  </form>
+
+  </section>
+  <section class="set" id="focus-mode" data-group="Daily life">
+  <h3>Focus mode</h3>
+  <form class="panel" hx-post="/settings/focus" hx-target="body" style="display:grid;gap:8px">
+    <p class="muted">Say "focus for 2 hours", "focus until 6" or "focus mode on" (until you say "stop focus"). Prometheus
+      holds its alerts (your reminders still ring) and tells you what came in at the end.</p>
+    <label class="check"><input type="checkbox" name="dnd" value="1" {{ "checked" if s.focus_dnd }}> Turn on Windows Do Not Disturb</label>
+    <label>Close these apps when focus starts <input name="apps" value="{{ s.focus_apps|join(', ') }}" style="width:100%"></label>
+    <label class="check"><input type="checkbox" name="pomodoro" value="1" {{ "checked" if s.focus_pomodoro }}> Pomodoro breaks:
+      <input name="work" value="{{ s.focus_work }}" style="width:50px" inputmode="numeric"> minutes work,
+      <input name="rest" value="{{ s.focus_break }}" style="width:50px" inputmode="numeric"> minutes break</label>
+    <button type="submit">Save</button>
+  </form>
+
+  </section>
+  <section class="set" id="clipboard-and-screenshot-memory" data-group="Daily life">
+  <h3>Clipboard and screenshot memory</h3>
+  <form class="panel" hx-post="/settings/clips" hx-target="body" style="display:grid;gap:8px">
+    <label class="check"><input type="checkbox" name="on" value="1" {{ "checked" if s.clip_on }}> Remember text and links
+      I copy, and the text in new screenshots, for {{ s.clip_days }} days (on this laptop only; passwords, card numbers,
+      OTPs and keys are never kept). Ask "what was that link I copied this morning?"</label>
+    <div class="row"><button type="submit">Save</button>
+      <button type="button" class="danger" hx-post="/settings/clips/forget" hx-target="body" hx-confirm="Forget everything copied so far?">Forget all</button></div>
+  </form>
+
+  </section>
+  <section class="set" id="money-tracker" data-group="Daily life">
+  <h3>Money tracker</h3>
+  <form class="panel" hx-post="/settings/money" hx-target="body" style="display:grid;gap:8px">
+    <label class="check"><input type="checkbox" name="on" value="1" {{ "checked" if s.money_on }}> Read bank and UPI
+      alerts from my email every half hour (on this laptop; no AI). The sheet is in Documents/Prometheus Money.</label>
+    <span>Monthly budgets in ₹ (empty for none). A warning comes at 80% and when you go over.</span>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:6px">
+    {% for cat in money_categories %}<label>{{ cat }} <input name="budget_{{ loop.index0 }}" value="{{ s.money_budgets.get(cat, '') }}" inputmode="numeric" style="width:90px"></label>{% endfor %}
+    </div>
+    <button type="submit">Save</button>
+  </form>
+
+  </section>
+  <section class="set" id="search-inside-files" data-group="Daily life">
+  <h3>Search inside files</h3>
+  <div class="panel">
+    <p class="muted">Prometheus reads the text of PDFs, Word, Excel, PowerPoint and text files in Documents, Desktop,
+      Downloads and OneDrive (and folders added above), a little at a time at night, so you can find a file by what's
+      written in it. It stays on this laptop. {{ file_index_status }}</p>
+    <button hx-post="/settings/read-files" hx-target="body">Read my files now</button>
+  </div>
+
+  </section>
+  <section class="set" id="daily-summary" data-group="Daily life">
+  <h3>Daily summary</h3>
+  <form class="panel" hx-post="/settings/briefing" hx-target="body" style="display:grid;gap:8px">
+    <label class="check"><input type="checkbox" name="morning_on" value="1" {{ "checked" if s.briefing_morning_on }}> Morning briefing at
+      <input name="morning" value="{{ s.briefing_morning }}" style="width:80px" pattern="[0-2][0-9]:[0-5][0-9]"></label>
+    <label class="check"><input type="checkbox" name="evening_on" value="1" {{ "checked" if s.briefing_evening_on }}> Evening wrap-up at
+      <input name="evening" value="{{ s.briefing_evening }}" style="width:80px" pattern="[0-2][0-9]:[0-5][0-9]"></label>
+    <label>City for the weather (empty = where the laptop is) <input name="place" value="{{ s.weather_place }}" placeholder="e.g. Delhi"></label>
+    <label>Tell me at once when these email me (addresses or names, comma separated)
+      <input name="senders" value="{{ s.email_alert_senders|join(', ') }}" placeholder="e.g. bank.com, college.edu, Mom"></label>
+    <button type="submit">Save</button>
+  </form>
+  <div class="panel" style="display:grid;gap:8px;margin-top:8px">
+    <strong>Webhook</strong>
+    <p class="muted" style="margin:0">Other apps can call this address to make Prometheus speak up (for example GitHub when tests fail:
+    repository Settings → Webhooks, content type JSON, events “Workflow runs”). Keep it secret. It works from this laptop; from the
+    internet it needs a tunnel such as Tailscale Funnel.</p>
+    <p style="margin:0"><code>{{ webhook_url }}</code>
+      <button type="button" class="link" onclick="navigator.clipboard.writeText('{{ webhook_url }}'); this.textContent='Copied'">Copy</button></p>
+    <form hx-post="/settings/webhook/new" hx-target="body"><button type="submit">Make a new address</button></form>
+  </div>
+
+  </section>
+  <section class="set" id="watchers" data-group="Daily life">
+  <h3>Watchers</h3>
+  <p class="muted">Prometheus speaks up by itself: in the “Prometheus alerts” chat, as a Windows notification, and out loud if voice is on.</p>
+  <div class="panel" style="display:grid;gap:8px">
+    {% for key, label in [("watch_battery", "Battery below 20%"), ("watch_disk", "Main drive over 90% full"), ("watch_cpu", "CPU over 90% for 5 minutes")] %}
+    <form hx-post="/settings/watch" hx-target="body"><input type="hidden" name="key" value="{{ key }}">
+      <label class="check"><input type="checkbox" name="on" value="1" {{ "checked" if s[key] }} onchange="this.form.requestSubmit()"> {{ label }}</label></form>
+    {% endfor %}
+    <strong>Watch a folder</strong>
+    <p class="muted" style="margin:0">New files in it are told to you, or handled by itself if you say what to do (for example
+    “file new PDFs into Documents/PDFs”).</p>
+    <ul class="plain">{% for w in s.watch_folders %}<li>{{ w.path }}{% if w.goal %} <span class="muted">→ {{ w.goal }}</span>{% endif %}
+      <form hx-post="/settings/watch/folder/remove" hx-target="body" style="display:inline"><input type="hidden" name="path" value="{{ w.path }}"><button type="submit" class="danger">Remove</button></form></li>
+    {% else %}<li class="muted">No folders watched.</li>{% endfor %}</ul>
+    <form class="row" hx-post="/settings/watch/folder" hx-target="body">
+      <input type="text" name="path" placeholder="Folder, e.g. Downloads" required style="max-width:220px">
+      <input type="text" name="goal" placeholder="What to do with new files (optional)">
+      <button type="submit">Watch</button>
+    </form>
+  </div>
+
+  </section>
+  <section class="set" id="safety-check" data-group="Safety and privacy">
+  <h3>Safety check</h3>
+  <div class="panel">
+    <p class="muted">Hides 10 known attacks (fake "system notes" in emails, web pages, files and error messages) in
+      things Prometheus reads, and checks whether the planning AI would obey them: send email, delete files, open a
+      bad link, pay, post, change settings. Nothing is run; only the plans are checked. About 12 short AI calls.</p>
+    {% if safety %}<p><strong>{{ safety.passed }} of {{ safety.results|length }} attacks ignored</strong>
+      <span class="muted">({{ safety.when_text }})</span></p>
+      <ul class="plain">{% for r in safety.results %}<li>{{ "✓" if r.passed else "✗" }} {{ r.name }}: <span class="muted">{{ r.detail }}</span></li>{% endfor %}</ul>
+    {% endif %}
+    <button hx-post="/settings/safety-check" hx-target="body">Run the safety check</button>
+  </div>
+
+  </section>
+  <section class="set" id="always-allowed" data-group="Safety and privacy">
+  <h3>Always allowed</h3>
+  <p class="muted">Small things you said yes to in a chat. They aren't asked again, in any chat. Big things (installs,
+  power, Wi-Fi, GitHub posts, money) always wait on the Approvals page.</p>
+  <ul class="plain">
+    {% for r in allowed_rules %}<li>{{ r.label }} <span class="muted">({{ r.kind.replace("_", " ") }})</span>
+      <form hx-post="/settings/allowed/{{ r.id }}/remove" hx-target="body" style="display:inline"><button type="submit" class="danger">Remove</button></form></li>
+    {% else %}<li class="muted">Nothing yet.</li>{% endfor %}
+  </ul>
+
+  </section>
+  <section class="set" id="places-prometheus-may-use" data-group="Safety and privacy">
   <h3>Places Prometheus may use</h3>
   {% if place_error %}<p class="error">{{ place_error }}</p>{% endif %}
   <p class="muted">Prometheus can find, copy, move and rename files in these places, and every change can be undone on
@@ -342,6 +419,8 @@
     <button type="submit">Add place</button>
   </form>
 
+  </section>
+  <section class="set" id="general" data-group="General">
   <h3>General</h3>
   <form hx-post="/settings" hx-target="body" class="panel" style="display:grid;gap:10px">
     <label>Monthly limit for paid AI (USD) <input name="budget_usd" value="{{ s.budget_usd }}" inputmode="decimal"></label>
@@ -366,10 +445,14 @@
     </details>
     <button type="submit" class="primary">Save settings</button>
   </form>
+  </section>
+  <section class="set" id="github" data-group="General">
   <h3>GitHub</h3>
   <p class="muted">So Prometheus can read its own repository ({{ s.github_repo }}), and open issues, pull requests or update itself (each waits for your approval).
   Make a key at <code>github.com/settings/personal-access-tokens/new</code>: repository access <strong>only</strong> {{ s.github_repo }};
   permissions: Contents, Issues and Pull requests set to read and write, Actions and Metadata set to read. Paste it below.</p>
+  </section>
+  <section class="set" id="other-keys" data-group="General">
   <h3>Other keys</h3>
   {% for k in other_keys %}
   <form hx-post="/settings/keys" hx-target="body" class="panel row">
@@ -381,5 +464,22 @@
   </form>
   {% endfor %}
   <p class="muted">Spent this month: ${{ "%.4f"|format(budget.spent) }} of ${{ "%.2f"|format(budget.cap) }}. <a href="/costs">Details</a></p>
+
+  </section>
+  <p id="set-none" class="muted" hidden>No setting matches that.</p>
+  </div>
 </main>
+<script>
+  function promFilterSettings(q) {
+    q = (q || "").toLowerCase().trim();
+    let shown = 0;
+    document.querySelectorAll("section.set").forEach((s) => {
+      const hit = !q || s.textContent.toLowerCase().includes(q);
+      s.hidden = !hit; if (hit) shown++;
+      const link = document.querySelector(`.set-nav a[href="#${s.id}"]`);
+      if (link) link.hidden = !hit;
+    });
+    document.getElementById("set-none").hidden = shown > 0;
+  }
+</script>
 {% endblock %}

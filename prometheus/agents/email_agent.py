@@ -12,6 +12,10 @@ def mailbox() -> Mailbox:
     if MAILBOX_FACTORY is not None:
         return MAILBOX_FACTORY()
     s = load_settings()
+    if getattr(s, "email_via", "") == "google":
+        from prometheus.connectors.gmail import GmailBox
+
+        return GmailBox()
     return Mailbox(s.email_address, get_secret("EMAIL_PASSWORD") or "", s.email_imap_host, s.email_smtp_host)
 
 

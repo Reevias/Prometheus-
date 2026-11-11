@@ -41,7 +41,11 @@ def register_routes(app: FastAPI, services: Services) -> None:
     store = services.store
 
     def page(request: Request, name: str, status_code: int = 200, **ctx):
-        base = {"csrf": getattr(request.state, "csrf", ""), "stopped": services.killswitch.is_set,
+        try:
+            pending = len(store.big_approvals())
+        except Exception:
+            pending = 0
+        base = {"csrf": getattr(request.state, "csrf", ""), "stopped": services.killswitch.is_set, "pending": pending,
                 "nav": "/" if request.url.path.startswith("/chats") else
                        ("/skills" if request.url.path.startswith("/skills") else request.url.path)}
         return templates.TemplateResponse(request, name, {**base, **ctx}, status_code=status_code)
@@ -863,10 +867,60 @@ def register_routes(app: FastAPI, services: Services) -> None:
                 set_secret("EMAIL_PASSWORD", app_password)
             except ValueError as e:
                 return settings_page(request, 400, conn_error=str(e))
-        services.settings.email_address = address
+        services.settings.email_address, services.settings.email_via = address, ""
         save_settings(services.settings)
         store.audit("user", "email_connected", {"domain": address.rsplit("@", 1)[-1]})
-        return settings_page(request, saved=True)
+        from prometheus.agents.email_agent import mailbox
+        from prometheus.connectors.email_box import EmailError
+
+        try:                                   # try it now, so a wrong password shows up here, not later
+            mailbox().search(unread=True, days=3, limit=1)
+        except EmailError as e:
+            return settings_page(request, conn_error=f"Saved, but the test didn't work: {e}")
+        except Exception as e:
+            return settings_page(request, conn_error=f"Saved, but I couldn't reach your email ({type(e).__name__}).")
+        return settings_page(request, notice=f"Email connected ✓ ({address}). Try asking \"any new mail?\"")
+
+    @app.get("/settings/email/help", response_class=HTMLResponse)
+    def email_help(address: str = ""):
+        from html import escape
+
+        from prometheus.connectors.email_box import ADDRESS, help_for, hosts_for
+
+        address = address.strip()
+        if not ADDRESS.fullmatch(address):
+            return HTMLResponse("")
+        domain = address.rsplit("@", 1)[-1].lower()
+        if domain in ("gmail.com", "googlemail.com"):
+            return HTMLResponse("— it's Gmail: <a href=\"#google-signin\">Sign in with Google</a> is easier (no app password).")
+        imap, _ = hosts_for(address)
+        return HTMLResponse(escape(f"— make one at {help_for(address)}. Server: {imap}."))
+
+    @app.post("/settings/email/google", response_class=HTMLResponse)
+    def email_google(request: Request):
+        from prometheus.config import get_secret
+        from prometheus.connectors.email_box import EmailError
+        from prometheus.connectors.gmail import GmailBox
+
+        if not get_secret("GOOGLE_TOKEN"):
+            return settings_page(request, 400, conn_error="Sign in with Google first (below).")
+        try:
+            address = GmailBox().address
+        except EmailError as e:
+            return settings_page(request, 400, conn_error=str(e))
+        except Exception as e:
+            return settings_page(request, 400, conn_error=f"Couldn't reach Gmail ({type(e).__name__}).")
+        services.settings.email_address, services.settings.email_via = address, "google"
+        save_settings(services.settings)
+        store.audit("user", "email_connected", {"via": "google"})
+        return settings_page(request, notice=f"Gmail connected ✓ ({address}). Try asking \"any new mail?\"")
+
+    @app.post("/settings/email/disconnect", response_class=HTMLResponse)
+    def email_disconnect(request: Request):
+        services.settings.email_address, services.settings.email_via = "", ""
+        save_settings(services.settings)
+        store.audit("user", "email_disconnected", {})
+        return settings_page(request, notice="Email disconnected.")
 
     @app.post("/settings/email/cloud", response_class=HTMLResponse)
     def email_cloud(request: Request, on: str = Form("")):

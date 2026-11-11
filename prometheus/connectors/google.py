@@ -20,7 +20,8 @@ AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 TOKEN_URL = "https://oauth2.googleapis.com/token"
 CAL = "https://www.googleapis.com/calendar/v3/calendars/primary/events"
 DRIVE = "https://www.googleapis.com/drive/v3/files"
-SCOPES = "https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/drive.readonly"
+SCOPES = ("https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/drive.readonly "
+          "https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.send")
 READ_CHARS = 20_000
 EXPORTS = {"application/vnd.google-apps.document": "text/plain",
            "application/vnd.google-apps.spreadsheet": "text/csv",

@@ -88,6 +88,7 @@ class Settings:
     task_budget_usd: float = 0.20               # paid AI one task may use                    # suggest one trending GitHub repository a day for the skill library
     obsidian_vault: str = ""
     email_address: str = ""
+    email_via: str = ""                         # "google" = Gmail through Google sign-in; "" = app password
     email_imap_host: str = ""                   # "" = worked out from the address
     email_smtp_host: str = ""
     email_cloud_ok: bool = False
