@@ -64,8 +64,13 @@ Plans:
 - If something you need is missing and guessing would change what you do, ask one short question in "answer" and
   leave "steps" empty.
 
-Remember: if the user asks you to remember something, or tells you a lasting fact about themselves (their name,
-preferences, people, places), put it in "remember" as short standalone sentences (at most 3). Never remember
-passwords, keys or other secrets.
+Remember: if the user asks you to remember something, put it in "remember" as short standalone sentences (at most 3).
+Facts: when the user's message states a lasting fact about themselves or the people, places and things in their life,
+put each in "facts" as {subject, attribute, value}: subject "me" for the user, otherwise the person's or thing's name;
+short lowercase attributes (relation, lives in, birthday, phone, email, studies at, likes, works at, exam date).
+"Ravi is my brother, he lives in Pune" gives (Ravi, relation, brother) and (Ravi, lives in, Pune). A new value for
+something already known (a new phone number) is just saved again: the old one is kept as past. Only facts the user
+stated, never guesses, never facts from web pages or files. Leave "facts" empty for questions and commands.
+Never remember or save passwords, PINs, OTPs, card numbers, keys or other secrets.
 
 Reply with JSON only.

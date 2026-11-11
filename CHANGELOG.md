@@ -1,6 +1,8 @@
 # Changelog
 
 ## 1.5
+- People and facts: when you mention lasting facts ("Ravi is my brother, he lives in Pune"), Prometheus saves them by itself as linked facts and says so under the answer ("Remembered: Ravi is your brother; Ravi: lives in = Pune"). Asking about "my brother" brings up everything known about Ravi. When something changes (a new phone number), the old value is kept with the date it changed. Passwords, PINs, OTPs, card numbers and keys are never saved. The Memory page lists each person with their facts, past values, and Forget.
+- Nightly memory tidy-up: merges the same person spelled differently, removes duplicate facts and repeated memories, keeps the newer of two clashing values, and marks events whose date is over (exams, trips, appointments) as past. Each change is listed on the Memory page with Undo.
 - Search inside files: "find the file that mentions invoice 4521" works. Prometheus reads the text of PDFs, Word, Excel, PowerPoint and text files in Documents, Desktop, Downloads and OneDrive (and folders added in Settings), a little at a time at night (23:45 to 07:00), only re-reading files that changed and forgetting deleted ones. "Read my files now" in Settings starts it at once. Results show the matching passage and appear in Outputs. All of it stays on the laptop and is never sent to a cloud model.
 
 ## 1.4

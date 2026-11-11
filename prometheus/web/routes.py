@@ -326,7 +326,33 @@ def register_routes(app: FastAPI, services: Services) -> None:
                     lessons=current_rules(lessons_text), lessons_history=lessons_history, lesson=lesson,
                     task_lessons=store.lessons(30),
                     documents=store.documents(), topics=store.topics(),
-                    folder=str(archive.folder) if archive else "")
+                    folder=str(archive.folder) if archive else "", **facts_view())
+
+    def facts_view() -> dict:
+        import time as _t
+
+        facts = services.orchestrator.facts
+        people = []
+        for subject in facts.subjects():
+            rows = [dict(vars(f), since=_t.strftime("%d %b %Y", _t.localtime(f.created)),
+                         ended=_t.strftime("%d %b %Y", _t.localtime(f.until or 0))) for f in facts.about(subject)]
+            rows = [type("F", (), r) for r in rows]
+            people.append({"name": "You" if subject == "me" else subject,
+                           "now": [f for f in rows if f.until is None],
+                           "past": [f for f in rows if f.until is not None]})
+        return {"people": people, "fact_changes": facts.changes()}
+
+    @app.post("/memory/facts/{fact_id}/forget", response_class=HTMLResponse)
+    def forget_fact(request: Request, fact_id: int):
+        services.orchestrator.facts.forget(fact_id)
+        store.audit("user", "forget_fact", {"id": fact_id})
+        return memory_page(request)
+
+    @app.post("/memory/facts/changes/{change_id}/undo", response_class=HTMLResponse)
+    def undo_fact_change(request: Request, change_id: int):
+        services.orchestrator.facts.undo_change(change_id)
+        store.audit("user", "undo_fact_change", {"id": change_id})
+        return memory_page(request)
 
     @app.get("/memory/topic", response_class=HTMLResponse)
     def memory_topic(request: Request, t: str = ""):

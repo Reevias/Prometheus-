@@ -39,6 +39,13 @@ class DailyJobs:
             done.append(f"Learned: {lesson}" if lesson else "Nothing new to learn.")
         except Exception as e:               # no model available tonight: the ratings wait for tomorrow
             done.append(f"Learning skipped: {type(e).__name__}")
+        orchestrator = getattr(self.services, "orchestrator", None)
+        if orchestrator is not None and getattr(orchestrator, "facts", None) is not None:
+            try:
+                tidied = orchestrator.facts.tidy()
+                done.append(f"Memory tidy-up: {len(tidied)} changes." if tidied else "Memory is tidy.")
+            except Exception as e:
+                done.append(f"Memory tidy-up skipped: {type(e).__name__}")
         if getattr(s, "repo_of_day", True):
             try:
                 from prometheus.repo_of_day import RepoOfTheDay

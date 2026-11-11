@@ -21,6 +21,21 @@
     <input type="text" name="text" placeholder="Something to remember" required>
     <button type="submit">Remember</button>
   </form>
+  <h3>People and facts</h3>
+  <p class="muted">Saved by themselves when you mention them in a chat. When something changes, the old value is kept
+    with its date. Each night duplicates are merged and events whose date is over are marked as past.</p>
+  {% for p in people %}<details class="panel" {{ "open" if loop.index <= 3 }}><summary><strong>{{ p.name }}</strong>
+    <span class="muted">({{ p.now|length }} fact{{ "s" if p.now|length != 1 }})</span></summary>
+    <ul class="plain">{% for f in p.now %}<li>{{ f.attribute }}: {{ f.value }}
+      <span class="muted">since {{ f.since }}</span>
+      <button type="button" class="danger" hx-post="/memory/facts/{{ f.id }}/forget" hx-target="body">Forget</button></li>{% endfor %}
+      {% for f in p.past %}<li class="muted">{{ f.attribute }}: {{ f.value }} (until {{ f.ended }})
+      <button type="button" class="danger" hx-post="/memory/facts/{{ f.id }}/forget" hx-target="body">Forget</button></li>{% endfor %}
+    </ul></details>
+  {% else %}<p class="muted">No facts yet. Tell Prometheus about yourself or the people in your life.</p>{% endfor %}
+  {% if fact_changes %}<h4>Last tidy-up</h4><ul class="plain">{% for c in fact_changes %}<li>{{ c.text }}
+    <button type="button" hx-post="/memory/facts/changes/{{ c.id }}/undo" hx-target="body">Undo</button></li>{% endfor %}</ul>{% endif %}
+
   <h3>Topics</h3>
   <p class="muted">Every chat is split by topic, and chats about the same topic are linked.{% if folder %} All chats are also saved as files in {{ folder }}.{% endif %}</p>
   <ul class="plain">

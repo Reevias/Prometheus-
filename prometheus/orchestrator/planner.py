@@ -26,6 +26,7 @@ NAME_UNTIL = 2             # the planner may improve a chat's name during its fi
 HISTORY_CHARS = 1500
 SUMMARY_EVERY = 10
 MAX_REMEMBER = 3
+MAX_FACTS = 6
 ASKED_TO_REMEMBER = re.compile(r"\b(remember|don'?t forget|do not forget|keep in mind|note that|save this|from now on)\b", re.I)
 SECRETISH = re.compile(r"(sk-[A-Za-z0-9_-]{6,}|ghp_|github_pat_|xox[bp]-|AKIA[0-9A-Z]{8,}|pass(word|phrase)|passwd|secret|"
                        r"api[ _-]?key|token\b|\bpin\b|\b[A-Za-z0-9+/_-]{32,}\b)", re.I)
@@ -35,6 +36,12 @@ PLAN_SCHEMA = {
     "type": "object",
     "properties": {"answer": {"type": "string"}, "topic": {"type": "string"}, "title": {"type": "string"},
                    "remember": {"type": "array", "items": {"type": "string"}},
+                   "facts": {"type": "array", "items": {
+                       "type": "object",
+                       "properties": {"subject": {"type": "string"}, "attribute": {"type": "string"},
+                                      "value": {"type": "string"}},
+                       "required": ["subject", "attribute", "value"],
+                       "additionalProperties": False}},
                    "steps": {"type": "array", "items": {
         "type": "object",
         "properties": {
@@ -53,7 +60,7 @@ PLAN_SCHEMA = {
         "required": ["id", "agent", "goal", "skill", "inputs", "depends_on"],
         "additionalProperties": False,
     }}},
-    "required": ["answer", "topic", "title", "remember", "steps"],
+    "required": ["answer", "topic", "title", "remember", "facts", "steps"],
     "additionalProperties": False,
 }
 
@@ -82,6 +89,7 @@ class Plan:
     steps: list[dict]
     answer: str = ""                                   # a direct reply (no tools needed)
     remember: list[str] = field(default_factory=list)  # facts the user asked to remember
+    facts: list[dict] = field(default_factory=list)     # (subject, attribute, value) facts from this message
     model: str = ""                                    # which model wrote the plan or answer
     topic: str = ""                                    # what the request is about, e.g. "weather"
     title: str = ""                                    # a short name for the chat
@@ -127,6 +135,8 @@ def validate_plan(raw: str, registry: dict) -> Plan:
         remember = [str(r) for r in (data.get("remember") or []) if isinstance(r, (str, int, float))]
         topic = str(data.get("topic") or "")
         title = str(data.get("title") or "")
+        facts = [{k: str(f.get(k) or "") for k in ("subject", "attribute", "value")}
+                 for f in (data.get("facts") or []) if isinstance(f, dict)][:MAX_FACTS]
     except (ValueError, AttributeError, TypeError) as e:
         raise PlanError(f"The plan is not valid JSON with a 'steps' list ({e}).") from e
     if not isinstance(steps, list) or len(steps) > MAX_STEPS:
@@ -156,7 +166,7 @@ def validate_plan(raw: str, registry: dict) -> Plan:
                       "skill": str(s.get("skill") or "").strip(),
                       "inputs": inputs, "depends_on": list(deps)})
         seen.add(sid)
-    return Plan(clean, answer=answer, remember=remember, topic=topic, title=title)
+    return Plan(clean, answer=answer, remember=remember, topic=topic, title=title, facts=facts)
 
 
 def resolve_inputs(inputs: dict, results: dict[int, StepResult], private_steps: frozenset[int] = frozenset(),
@@ -191,6 +201,10 @@ class Orchestrator:
         self.step_tries, self.task_budget, self.max_steps = STEP_TRIES, TASK_BUDGET, MAX_TASK_STEPS
         self.extra_catalog = None          # callable: tools of connected apps, for the planner
         self.skills = skills
+        from prometheus.memory.facts import Facts
+
+        self.facts = Facts(store)
+        self._remembered: dict[int, list[str]] = {}
 
     def _style(self) -> str:
         """The writing rules plus what the owner has taught Prometheus by rating answers."""
@@ -260,6 +274,19 @@ class Orchestrator:
                 known.add(fact.lower())
                 saved += 1
 
+    def _save_facts(self, chat_id: int, task_id: int, facts: list[dict]) -> None:
+        """Lasting facts from the owner's message are saved by themselves and listed under the answer."""
+        title = dict(self.store.chats()).get(chat_id, "chat")
+        noted = []
+        for f in facts[:MAX_FACTS]:
+            if SECRETISH.search(f"{f['attribute']} {f['value']}"):
+                continue
+            fid, said = self.facts.save(f["subject"], f["attribute"], f["value"], source=f"chat: {title}")
+            if fid:
+                noted.append(said)
+        if noted:
+            self._remembered[task_id] = noted
+
     def _earlier_chats(self, text: str, chat_id: int | None) -> str:
         """The few parts of earlier chats that match this request. Parts already in the recent history are skipped;
         parts holding private file details are never sent (this goes to the planning model)."""
@@ -303,6 +330,10 @@ class Orchestrator:
         remembered = list(dict.fromkeys(relevant + newest))
         memories = "\n".join(f"- {m[:400]}" for m in remembered) or "(none)"
         content = f"Things to remember about the user:\n{memories}\n\n"
+        known_facts = self.facts.relevant(text)
+        if known_facts:
+            content += "Known facts (people, places and things in the owner's life):\n" + "\n".join(
+                f"- {f}" for f in known_facts) + "\n\n"
         # Passages from web pages read before (never private files: this goes to the planning model).
         content += self._earlier_chats(text, chat_id)
         lessons = self.store.relevant_lessons(text)
@@ -339,6 +370,10 @@ class Orchestrator:
 
     def _finish(self, chat_id: int, task_id: int, status: str, answer: str, model: str = "",
                 private: bool = False, topic: str = "") -> TaskOutcome:
+        noted = self._remembered.pop(task_id, [])
+        if noted:
+            answer = (answer.rstrip() + "\n\n_Remembered: " + "; ".join(noted)
+                      + ". (Wrong? Forget it on the Memory page.)_")
         self.store.set_task_status(task_id, status, answer)
         self.store.add_message(chat_id, "assistant", answer, model, private, topic=topic)
         return TaskOutcome(task_id, status, answer)
@@ -458,6 +493,7 @@ class Orchestrator:
             return self._finish(chat_id, task_id, "stopped", str(e))
 
         self._remember(chat_id, plan.remember, text)
+        self._save_facts(chat_id, task_id, plan.facts)
         from prometheus.memory.archive import normalize_topic
 
         topic = normalize_topic(plan.topic, [t["topic"] for t in self.store.topics(KNOWN_TOPICS)])
