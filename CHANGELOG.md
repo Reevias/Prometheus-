@@ -1,6 +1,8 @@
 # Changelog
 
 ## 2.3
+- Phone app: the keyboard no longer hides the Open button (the screen moves up), and the keyboard's Go key opens Prometheus too. Tested on an Android 14 emulator on every change.
+- "Add assignment maths homework due Friday" now saves "maths homework", not "Add assignment maths homework". The browser explains in plain words when Edge is missing.
 - Fixed: buttons saying {"detail":"Not Found"}, a squeezed Settings page and keys that looked unsaved. After an update from outside (running the installer again), the open Prometheus kept running the old code with the new pages. Now it notices new code within a minute and restarts by itself when nothing is running, and the installer closes a running Prometheus first.
 - Fixed: buttons that reload the whole page could stop working (a script ran twice and crashed). Errors now show a short message at the bottom instead of replacing the window; a whole page is never squeezed into a small box. Every button on every page was clicked through in a test.
 - Saving the ElevenLabs key says right next to the box whether it worked (and why not), and the voice restarts in the background instead of holding the page.

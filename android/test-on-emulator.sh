@@ -35,7 +35,7 @@ grep -qi 'Open Prometheus' "$OUT/ui.xml" || fail "the address screen didn't show
 # 2. a wrong address is refused
 tap_text "address"
 adb shell input text "http://not-safe.example"
-tap_text "Open Prometheus"; sleep 2; shot 2-wrong-address
+adb shell input keyevent KEYCODE_ENTER; sleep 2; shot 2-wrong-address      # the keyboard's Go key
 adb shell uiautomator dump /sdcard/ui.xml >/dev/null; adb pull /sdcard/ui.xml "$OUT/ui.xml" >/dev/null
 grep -q "an https address" "$OUT/ui.xml" || fail "an http address wasn't refused"
 
@@ -47,7 +47,7 @@ sleep 4; shot 3-link-fills-address
 adb shell uiautomator dump /sdcard/ui.xml >/dev/null; adb pull /sdcard/ui.xml "$OUT/ui.xml" >/dev/null
 grep -q 'https://example.com/' "$OUT/ui.xml" || fail "the link didn't fill in the address"
 
-# 4. open it: Chrome (or the browser) shows the page full screen
+# 4. open it: Chrome (or the browser) shows the page full screen (the button, with no keyboard up)
 tap_text "Open Prometheus"; sleep 10; shot 4-opened
 crashed && fail "the app crashed when opening the address"
 

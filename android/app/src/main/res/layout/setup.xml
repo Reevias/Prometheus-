@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:layout_width="match_parent" android:layout_height="match_parent"
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="match_parent" android:fillViewport="true">
+<LinearLayout
+    android:layout_width="match_parent" android:layout_height="wrap_content"
     android:orientation="vertical" android:padding="24dp" android:gravity="center_vertical">
     <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
         android:text="Prometheus" android:textSize="28sp" android:textColor="#FFFFFF" />
@@ -9,10 +11,11 @@
         android:text="Type your Prometheus cloud copy's address. It's on the laptop: open Prometheus, ☰ menu, Get it on your phone. Tailscale must be on on this phone." />
     <EditText android:id="@+id/address" android:layout_width="match_parent" android:layout_height="wrap_content"
         android:layout_marginTop="16dp" android:hint="https://your-cloud.your-tailnet.ts.net"
-        android:inputType="textUri" android:textColor="#FFFFFF" android:textColorHint="#707070" />
+        android:inputType="textUri" android:imeOptions="actionGo" android:textColor="#FFFFFF" android:textColorHint="#707070" />
     <TextView android:id="@+id/problem" android:layout_width="match_parent" android:layout_height="wrap_content"
         android:textColor="#FF7070" android:layout_marginTop="8dp" />
     <Button android:id="@+id/open" android:layout_width="match_parent" android:layout_height="wrap_content"
         android:layout_marginTop="16dp" android:text="Open Prometheus" android:textAllCaps="false"
         android:backgroundTint="#D92D43" android:textColor="#FFFFFF" />
 </LinearLayout>
+</ScrollView>

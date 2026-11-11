@@ -70,7 +70,12 @@ class BrowserSession:
                         self._page = self._ctx.pages[0] if self._ctx.pages else self._ctx.new_page()
                     reply.put(fn(self._page))
                 except Exception as e:     # a page that misbehaves never kills the worker
-                    reply.put(BrowserError(f"{type(e).__name__}: {str(e).splitlines()[0][:200]}"))
+                    first = str(e).splitlines()[0] if str(e) else type(e).__name__
+                    if self._ctx is None and ("is not found" in first or "Executable doesn't exist" in first):
+                        reply.put(BrowserError("I couldn't open my browser window: Microsoft Edge isn't installed (or "
+                                               "Playwright isn't set up). Run the installer again to fix it."))
+                    else:
+                        reply.put(BrowserError(f"The web page had a problem: {first[:200]}"))
             if self._ctx is not None:
                 self._ctx.close()
 

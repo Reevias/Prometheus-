@@ -20,7 +20,7 @@ DATE_BIT = (r"(?:\d{4}-\d{1,2}-\d{1,2}|\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?|\d{1,2
             + r"))")
 TIME_BIT = r"(?:\s*(?:at|by|before)?\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm)|\d{1,2}:\d{2}|midnight|noon))?"
 WHEN = re.compile(DATE_BIT + TIME_BIT, re.I)
-TELL = re.compile(r"^(?:my\s+|the\s+|i have (?:a|an|my)\s+)?(.+?)\s+(?:is\s+)?(?:due|deadline is|has to be submitted|"
+TELL = re.compile(r"^(?:(?:add|track|new|save)\s+(?:an?\s+|my\s+)?(?:assignment|deadline|homework)\s*:?\s+)?(?:my\s+|the\s+|i have (?:a|an|my)\s+)?(.+?)\s+(?:is\s+)?(?:due|deadline is|has to be submitted|"
                   r"to submit)\s+(?:on\s+|by\s+|before\s+)?(.+)$", re.I)
 
 

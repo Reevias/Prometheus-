@@ -55,7 +55,7 @@ public class MainActivity extends Activity {
         TextView problem = findViewById(R.id.problem);
         Button button = findViewById(R.id.open);
         if (address != null) box.setText(address);
-        button.setOnClickListener(v -> {
+        Runnable go = () -> {
             String ok = clean(box.getText().toString());
             if (ok == null) {
                 problem.setText("That isn't an https address. It looks like https://something.ts.net");
@@ -63,7 +63,10 @@ public class MainActivity extends Activity {
             }
             prefs.edit().putString(KEY, ok).apply();
             open(ok);
-        });
+        };
+        button.setOnClickListener(v -> go.run());
+        // the keyboard's Go/✓ key opens it too (the keyboard can cover the button on small phones)
+        box.setOnEditorActionListener((v, actionId, event) -> { go.run(); return true; });
     }
 
     private void open(String address) {
