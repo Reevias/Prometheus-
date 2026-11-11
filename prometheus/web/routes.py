@@ -1029,6 +1029,35 @@ def register_routes(app: FastAPI, services: Services) -> None:
         store.audit("user", "voice_name", {"name": name})
         return settings_page(request, saved=True)
 
+    @app.get("/voice/preview")
+    def voice_preview(engine: str = "eleven", voice: str = ""):
+        """A short sample of a voice, to hear it before choosing it. Errors come back as plain text to show."""
+        from prometheus.config import data_dir
+
+        try:
+            if engine == "eleven":
+                from prometheus.voice.cloud import api_key, preview_mp3
+
+                key = api_key()
+                if not key:
+                    return Response("Save your ElevenLabs key first (just above), then try again.", status_code=409,
+                                    media_type="text/plain")
+                return Response(preview_mp3(key, voice, data_dir() / "voice" / "previews"), media_type="audio/mpeg",
+                                headers={"Cache-Control": "private, max-age=86400"})
+            from prometheus.voice.cloud import PREVIEW_TEXT
+            from prometheus.voice.engines import VoiceModels, kokoro_preview_wav
+
+            models = services.voice.models if services.voice is not None else VoiceModels(data_dir() / "voice")
+            return Response(kokoro_preview_wav(models, voice, PREVIEW_TEXT), media_type="audio/wav",
+                            headers={"Cache-Control": "private, max-age=86400"})
+        except Exception as e:
+            from prometheus.voice.engines import VoiceNotReady
+
+            if isinstance(e, (ValueError, PermissionError, VoiceNotReady)):
+                return Response(str(e), status_code=400, media_type="text/plain")
+            return Response(f"Couldn't make the sample ({type(e).__name__}). Check the internet and try again.",
+                            status_code=502, media_type="text/plain")
+
     @app.post("/settings/voice/engine", response_class=HTMLResponse)
     def voice_engine(request: Request, engine: str = Form(...), eleven_voice: str = Form("")):
         from prometheus.voice.cloud import VOICE_ID

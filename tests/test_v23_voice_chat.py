@@ -290,3 +290,32 @@ def test_newest_models_first_older_ones_when_refused():
 
     mouth = ElevenSpeaker("k", output=FakeOut, http=httpx.Client(transport=httpx.MockTransport(tts)))
     assert mouth.say("Hello.") is True and mouth.model == "eleven_flash_v2_5"
+
+
+def test_hear_a_voice_before_choosing_it(app_client, monkeypatch, tmp_path):
+    from tests.conftest import login
+
+    client, services = app_client()
+    login(client)
+    r = client.get("/voice/preview?engine=eleven&voice=JBFqnCBsd6RMkjVDRZzb")
+    assert r.status_code == 409 and "ElevenLabs key" in r.text          # no key yet: says what to do
+    r = client.get("/voice/preview?engine=laptop&voice=af_heart")
+    assert r.status_code == 400 and "Set up voice" in r.text              # laptop voice not downloaded yet
+    from prometheus.voice import cloud
+
+    monkeypatch.setattr(cloud, "api_key", lambda: "k")
+    calls = []
+
+    def handler(request):
+        calls.append(request)
+        return httpx.Response(200, content=b"ID3" + b"\x00" * 2000)
+
+    real = httpx.Client
+    monkeypatch.setattr(cloud.httpx, "Client", lambda **kw: real(transport=httpx.MockTransport(handler)))
+    r = client.get("/voice/preview?engine=eleven&voice=JBFqnCBsd6RMkjVDRZzb")
+    assert r.status_code == 200 and r.headers["content-type"] == "audio/mpeg" and r.content.startswith(b"ID3")
+    client.get("/voice/preview?engine=eleven&voice=JBFqnCBsd6RMkjVDRZzb")
+    assert len(calls) == 1                                                 # kept: trying it again is free
+    assert client.get("/voice/preview?engine=eleven&voice=../../x").status_code == 400
+    page = client.get("/settings").text
+    assert "Hear it" in page and "promHear" in page

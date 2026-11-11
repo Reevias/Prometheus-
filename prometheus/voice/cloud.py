@@ -13,6 +13,7 @@ import io
 import re
 import threading
 import wave
+from pathlib import Path
 
 import httpx
 
@@ -253,3 +254,31 @@ class ElevenSpeaker:
                 self.fallback.stop()
             except Exception:
                 pass
+
+
+PREVIEW_TEXT = "Good evening sir. I'm Prometheus. This is how I sound when I read you the morning brief."
+
+
+def preview_mp3(key: str, voice: str, folder: Path, http: httpx.Client | None = None) -> bytes:
+    """A short sample of an ElevenLabs voice (made once, then kept, so trying it again costs nothing)."""
+    if not VOICE_ID.match(voice or ""):
+        raise ValueError("Unknown voice.")
+    folder.mkdir(parents=True, exist_ok=True)
+    cached = folder / f"eleven-{voice}.mp3"
+    if cached.exists() and cached.stat().st_size > 1000:
+        return cached.read_bytes()
+    http = http or httpx.Client(timeout=httpx.Timeout(20.0, connect=5.0))
+    last = None
+    for model in TTS_MODELS:
+        r = http.post(f"{API}/v1/text-to-speech/{voice}", params={"output_format": "mp3_44100_64"},
+                      headers={"xi-api-key": key, "accept": "audio/mpeg"},
+                      json={"text": PREVIEW_TEXT, "model_id": model})
+        if r.status_code in MODEL_REFUSED and model != TTS_MODELS[-1]:
+            last = r
+            continue
+        if r.status_code == 401:
+            raise PermissionError("ElevenLabs didn't accept the key. Paste it again in Settings → Voice.")
+        r.raise_for_status()
+        cached.write_bytes(r.content)
+        return r.content
+    raise RuntimeError(f"ElevenLabs refused ({getattr(last, 'status_code', '?')}).")

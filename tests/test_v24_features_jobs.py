@@ -196,3 +196,16 @@ def test_saving_the_elevenlabs_key_answers_next_to_the_box(app_client):
                                               "password": "nope"}, headers={"X-CSRF-Token": csrf})
     voice = bad.text.split('id="voice"', 1)[-1].split('id="connections"', 1)[0]
     assert "Wrong password" in voice or "password" in voice.lower()
+
+
+def test_saved_message_never_lands_in_the_two_column_grid(app_client):
+    import re
+
+    client, services = app_client()
+    csrf = login(client)
+    page = client.post("/settings/voice/engine", data={"engine": "auto", "eleven_voice": ""},
+                       headers={"X-CSRF-Token": csrf}).text
+    main = page.split('<main class="settings">', 1)[1]
+    # the first thing in the grid must be the menu: a message before it pushed the settings into the narrow column
+    assert re.match(r"\s*<nav class=\"set-nav\"", main), main[:200]
+    assert "Saved." in main.split('<div class="set-body">', 1)[1]

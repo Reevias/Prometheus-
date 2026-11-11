@@ -1,7 +1,6 @@
 {% extends "base.html" %}
 {% block body %}
 <main class="settings">
-  {% if error %}<p class="error">{{ error }}</p>{% endif %}{% if saved %}<p class="status-done">Saved.</p>{% endif %}{% if notice %}<p class="status-done">{{ notice }}</p>{% endif %}
   <nav class="set-nav" aria-label="Settings sections">
     <input type="search" id="set-search" placeholder="Search settings" autocomplete="off" oninput="promFilterSettings(this.value)">
     <span class="set-group">Everyday</span>
@@ -38,6 +37,7 @@
   </nav>
   <div class="set-body">
   <h2>Settings</h2>
+  {% if error %}<p class="error set-msg" role="alert">{{ error }}</p>{% endif %}{% if saved %}<p class="status-done set-msg" role="status">Saved.</p>{% endif %}{% if notice %}<p class="status-done set-msg" role="status">{{ notice }}</p>{% endif %}
 
   <section class="set" id="features" data-group="Everyday">
   <h3>Features on and off</h3>
@@ -162,9 +162,10 @@
           <option value="auto" {{ "selected" if s.voice_engine == "auto" }}>ElevenLabs when the key is set (recommended)</option>
           <option value="local" {{ "selected" if s.voice_engine == "local" }}>Only the laptop's own voice (free, private)</option>
         </select></label>
-        <label>Voice <select name="eleven_voice">
+        <label>Voice <select name="eleven_voice" id="eleven-voice">
           {% for vid, label in eleven_voices %}<option value="{{ vid }}" {{ "selected" if vid == s.eleven_voice }}>{{ label }}</option>{% endfor %}
         </select></label>
+        <button type="button" onclick="promHear('eleven', document.getElementById('eleven-voice').value, this)">▶ Hear it</button>
         <button type="submit">Save</button>
       </form>
     </div>
@@ -177,9 +178,10 @@
     <p class="muted" style="margin:0">In a clap conversation you don't need the name: just talk. Say “that's all” to finish, or stay
     quiet for 15 seconds.</p>
     <form hx-post="/settings/voice/name" hx-target="body" class="row">
-      <label>Laptop voice <select name="name" onchange="this.form.requestSubmit()">
+      <label>Laptop voice <select name="name" id="laptop-voice" onchange="this.form.requestSubmit()">
         {% for vid, label in voices %}<option value="{{ vid }}" {{ "selected" if vid == s.voice_name }}>{{ label }}</option>{% endfor %}
       </select></label>
+      <button type="button" onclick="promHear('laptop', document.getElementById('laptop-voice').value, this)">▶ Hear it</button>
     </form>
     <p class="muted" style="margin:0">Start every command with <strong>“Hello Prometheus”</strong>. It answers “Yes sir.” as soon as it has
     your command, so you know it heard you; “Yes sir?” means it heard its name and is waiting for the command.</p>
@@ -611,6 +613,22 @@
   </div>
 </main>
 <script>
+  // play a short sample of a voice before choosing it
+  var promSample = null;
+  async function promHear(engine, voice, btn) {
+    if (promSample) { promSample.pause(); promSample = null; }
+    const was = btn.textContent; btn.disabled = true; btn.textContent = "Making the sample…";
+    try {
+      const r = await fetch(`/voice/preview?engine=${engine}&voice=${encodeURIComponent(voice)}`);
+      if (!r.ok) { const why = await r.text(); (window.promToast || alert)(why.slice(0, 300)); return; }
+      const url = URL.createObjectURL(await r.blob());
+      promSample = new Audio(url); btn.textContent = "Playing…";
+      promSample.onended = () => { btn.textContent = was; btn.disabled = false; };
+      await promSample.play();
+      return;
+    } catch (e) { (window.promToast || alert)("Couldn't play the sample: " + e.message); }
+    finally { if (btn.textContent !== "Playing…") { btn.textContent = was; btn.disabled = false; } }
+  }
   function promAdvanced(force) {
     const on = force !== undefined ? force : !document.body.classList.contains("show-adv");
     document.body.classList.toggle("show-adv", on);

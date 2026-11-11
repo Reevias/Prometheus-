@@ -392,3 +392,33 @@ class PiperSpeaker:
         sd.play(tone, RATE)
         sd.wait()
 
+
+
+def kokoro_preview_wav(models: VoiceModels, voice: str, text: str) -> bytes:
+    """A short sample of a laptop voice as a WAV file (made once, then kept)."""
+    import io as _io
+    import wave as _wave
+
+    if voice not in dict(VOICES):
+        raise ValueError("Unknown voice.")
+    folder = models.folder / "previews"
+    cached = folder / f"kokoro-{voice}.wav"
+    if cached.exists() and cached.stat().st_size > 1000:
+        return cached.read_bytes()
+    if models.packages_missing() or not (models.kokoro.exists() and models.kokoro_voices.exists()):
+        raise VoiceNotReady("The laptop voice isn't set up yet: press 'Set up voice' first.")
+    from kokoro_onnx import Kokoro
+    import numpy as np
+
+    tts = Kokoro(str(models.kokoro), str(models.kokoro_voices))
+    audio, rate = tts.create(text, voice=voice, speed=1.0, lang="en-gb" if voice.startswith("b") else "en-us")
+    pcm = (np.clip(audio, -1, 1) * 32767).astype(np.int16).tobytes()
+    out = _io.BytesIO()
+    with _wave.open(out, "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(rate)
+        w.writeframes(pcm)
+    folder.mkdir(parents=True, exist_ok=True)
+    cached.write_bytes(out.getvalue())
+    return out.getvalue()
