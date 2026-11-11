@@ -161,7 +161,7 @@ class ReminderClock:
         loop = getattr(voice, "loop", None)
         if loop is not None and not loop.muted:
             try:
-                loop.speaker.say(f"Reminder, sir: {r['text']}")
+                (loop.announce if hasattr(loop, "announce") else loop.speaker.say)(f"Reminder, sir: {r['text']}")
             except Exception:
                 pass
         nxt = next_time(r["due"], r["repeat"])

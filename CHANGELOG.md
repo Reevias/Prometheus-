@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.9
+- Security review fixes:
+  - other AI apps' questions run read-only (nothing is changed, moved or remembered; actions still go to Approvals);
+  - browser clicks are judged by the real button (full name, ids, whether it submits a form), so "Place ord" or a disguised checkout button waits for approval;
+  - renaming can't create runnable files (.ps1, .url…);
+  - the code sandbox blocks loading system libraries directly;
+  - names of new files in watched folders are treated as data, not instructions;
+  - Prometheus ignores the microphone while it speaks reminders, alerts and briefings, and the wake name is taken out of outside text it reads aloud;
+  - email alerts, deadlines and bank alerts check the real sending address, not the display name;
+  - email approvals show the whole email (over 10,000 characters is refused);
+  - an app's key can't overwrite Prometheus's own tool-server key;
+  - study and exam results are marked private;
+  - opening apps refuses anything that turns out to be a terminal, PowerShell or Python;
+  - typing text into a window and saving a standing goal are asked in the chat first.
+- Gmail with one click through your Google sign-in (no app password; sending still asks you). Other email: type your address and Prometheus works out the server and where to make the app password, and tests the connection when you save.
+- Menu: a ☰ button opens a sidebar with every page (Approvals shows how many are waiting), New chat and Log out.
+- Settings is split into sections (AI, Voice, Connections, Study and school, Daily life, Safety and privacy) with a list and a search box.
+
 ## 1.8
 - Assignment tracker: deadlines are read every half hour from the college or school email senders you list in Settings → Assignments, and from what you say ("physics lab report due Saturday 5pm"). Each gets a reminder two days before and on the morning it's due, can go on the Google Calendar (asked in the chat, with "Always"), and shows in the evening wrap-up. "What's due this week?" lists them; "lab report done" clears its reminders.
 - Homework checker: "check my homework" takes your newest photo (or the one you name), and Claude reads your handwriting and maths step by step: each step gets ✓ or ✗ with the kind of mistake, then a hint for the first one. It never gives the answer. Only that photo is sent to Claude, as you agreed. If you name your notes, the local AI points to the rule in them that the step should follow, and the notes stay on the laptop.

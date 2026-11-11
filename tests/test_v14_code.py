@@ -68,3 +68,18 @@ def test_agent_shows_the_script_and_runs_after_yes(make_ctx, monkeypatch, tmp_pa
     out = ctx.approvals.resolve(ask.id, approved=True)
     assert "needs the internet" in out
     assert any(a.kind == "code_network" for a in ctx.store.asks_for_chat(ctx.chat_id()))
+
+
+@pytest.mark.parametrize("code", [
+    "import ctypes\nctypes.CDLL(None).system(b'id')",
+    "import ctypes\nctypes.CDLL('libc.so.6')",
+    "import ctypes.util, ctypes\nctypes.CDLL(ctypes.util.find_library('c') or 'libc.so.6')",
+])
+def test_raw_system_libraries_are_blocked(tmp_path, code):
+    r = run(code, tmp_path)
+    assert not r.ok and "isn't allowed" in r.output
+
+
+def test_ctypes_itself_still_imports(tmp_path):
+    r = run("import ctypes\nprint(ctypes.sizeof(ctypes.c_int))", tmp_path)
+    assert r.ok and r.output.strip() == "4"

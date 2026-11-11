@@ -41,7 +41,8 @@ NET_EVENTS = {"socket.connect", "socket.bind", "socket.getaddrinfo", "socket.get
               "socket.sendto", "socket.sendmsg", "urllib.Request", "http.client.connect", "ftplib.connect",
               "smtplib.connect", "imaplib.open", "poplib.connect", "telnetlib.Telnet.open", "webbrowser.open"}
 PROC_PREFIXES = ("subprocess.", "os.system", "os.exec", "os.spawn", "os.posix_spawn", "os.fork", "os.forkpty",
-                 "os.startfile", "os.kill", "os.killpg", "_winapi.", "pty.spawn", "os.add_dll_directory")
+                 "os.startfile", "os.kill", "os.killpg", "_winapi.", "pty.spawn")
+CTYPES_OK = [False]           # one dlopen(None) is allowed: the one `import ctypes` itself makes
 CHANGE_EVENTS = {"os.remove", "os.rename", "os.rmdir", "os.mkdir", "os.chmod", "os.chown", "os.link", "os.symlink",
                  "os.truncate", "os.utime", "shutil.rmtree", "shutil.copyfile", "shutil.copymode", "shutil.copystat",
                  "shutil.move", "shutil.chown", "os.removexattr", "os.setxattr"}
@@ -66,8 +67,21 @@ def hook(event, args):
         return
     if event.startswith(PROC_PREFIXES):
         _no("starting other programs isn't allowed.")
+    if event == "import" and args and args[0] == "ctypes":
+        CTYPES_OK[0] = True
+        return
     if event == "ctypes.dlopen":
-        if args and args[0] is not None and not _inside(args[0], READ_ROOTS):
+        name = args[0] if args else None
+        if name is None:
+            if CTYPES_OK[0]:
+                CTYPES_OK[0] = False          # ctypes' own start-up; any later dlopen(None) is a script's
+                return
+            _no("loading the system's own libraries isn't allowed.")
+        if not os.path.isabs(os.fsdecode(name)) or not _inside(name, READ_ROOTS):
+            _no("loading DLLs isn't allowed.")   # "kernel32" or "libc.so.6" would bypass every other rule
+        return
+    if event == "os.add_dll_directory":
+        if not args or not _inside(args[0], READ_ROOTS):
             _no("loading DLLs isn't allowed.")
         return
     if event == "open":

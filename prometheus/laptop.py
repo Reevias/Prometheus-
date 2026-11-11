@@ -245,7 +245,12 @@ class Laptop:
 APP = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 ._()+-]{0,59}$")
 PACKAGE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{1,79}$")
 TERMINALS = {"powershell", "powershell_ise", "pwsh", "cmd", "conhost", "windowsterminal", "wt", "wsl", "wslhost",
-             "bash", "mintty", "alacritty", "regedit", "mmc", "taskmgr", "openconsole"}
+             "bash", "mintty", "alacritty", "regedit", "mmc", "taskmgr", "openconsole",
+             # programming prompts: typed text would run as code
+             "python", "pythonw", "py", "ipython", "node", "ruby", "perl", "ubuntu", "debian", "kali", "git-bash"}
+# words that mark a terminal or admin tool anywhere in an app's name ("Windows Power" matching PowerShell)
+NEVER_IN_NAME = ("terminal", "powershell", "command prompt", "registry", "python", "bash", "ubuntu", "debian", "kali",
+                 "wsl", "console", "cmd.exe", "node.js")
 NEVER_OPEN = TERMINALS | {"windows terminal", "windows powershell", "command prompt", "terminal", "registry editor",
                           "task manager", "microsoft management console", "services",
                           # script runners and admin tools: harmless-looking names that can run or change anything
@@ -286,13 +291,22 @@ LIST_SCRIPT = ("Get-Process | Where-Object { $_.MainWindowTitle } | Select-Objec
                "@{n='Name';e={$_.ProcessName}}, MainWindowTitle | ConvertTo-Json -Compress")
 OPEN_SCRIPT = r"""
 $n = $env:PROM_APP
+$exact = $env:PROM_NEVER -split '\|'; $words = $env:PROM_NEVER_IN -split '\|'
+function Blocked($name) {
+  $l = ([string]$name).ToLower(); $b = [IO.Path]::GetFileNameWithoutExtension($l)
+  if ($exact -contains $l -or $exact -contains $b) { return $true }
+  foreach ($w in $words) { if ($w -and $l.Contains($w)) { return $true } }
+  return $false
+}
 $app = Get-StartApps | Where-Object { $_.Name -eq $n } | Select-Object -First 1
 if (-not $app) { $app = Get-StartApps | Where-Object { $_.Name -like "*$n*" } | Select-Object -First 1 }
-if ($app) { Start-Process ('shell:AppsFolder\' + $app.AppID); 'opened ' + $app.Name }
+if ($app -and ((Blocked $app.Name) -or (Blocked $app.AppID))) { 'blocked ' + $app.Name }
+elseif ($app) { Start-Process ('shell:AppsFolder\' + $app.AppID); 'opened ' + $app.Name }
 else {
   $c = Get-Command $n -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
   if (-not $c) { $c = Get-Command ($n + '.exe') -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1 }
-  if ($c) { Start-Process -FilePath $c.Source; 'opened ' + $c.Name } else { 'notfound' }
+  if ($c -and (Blocked $c.Name)) { 'blocked ' + $c.Name }
+  elseif ($c) { Start-Process -FilePath $c.Source; 'opened ' + $c.Name } else { 'notfound' }
 }
 """
 STORE_SCRIPT = r"""
@@ -381,7 +395,8 @@ def _app_name(name) -> str:
 
 def _blocked(name: str) -> bool:
     low = name.lower()
-    return low in NEVER_OPEN or low.removesuffix(".exe") in NEVER_OPEN
+    return (low in NEVER_OPEN or low.removesuffix(".exe") in NEVER_OPEN
+            or any(w in low for w in NEVER_IN_NAME))
 
 
 def _ps(self, script: str, env: dict | None = None, timeout: int = 30) -> str:
@@ -406,8 +421,11 @@ def app_open(self, name: str) -> str:
     name = _app_name(name)
     if _blocked(name):
         raise LaptopError(f"Prometheus never opens {name}: terminals and admin tools are off limits.")
-    out = _ps(self, OPEN_SCRIPT, {"PROM_APP": name})
+    out = _ps(self, OPEN_SCRIPT, {"PROM_APP": name, "PROM_NEVER": "|".join(sorted(NEVER_OPEN)),
+                                  "PROM_NEVER_IN": "|".join(NEVER_IN_NAME)})
     last = out.splitlines()[-1].strip() if out.strip() else ""
+    if last.startswith("blocked "):
+        raise LaptopError(f"Prometheus never opens {last[8:]}: terminals and admin tools are off limits.")
     if last == "notfound":
         raise AppNotInstalled(f"{name} isn't installed on this laptop.")
     return last or f"Asked Windows to open {name}."

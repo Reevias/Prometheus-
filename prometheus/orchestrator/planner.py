@@ -80,6 +80,24 @@ TASK_BUDGET = 0.20        # USD of paid AI one task may use (owner's choice)
 MAX_TASK_STEPS = 12       # steps one task may run, counting retries
 
 
+# What a read-only request (another AI app's "ask") may do: these agents, only these actions (None = all).
+READ_ONLY_STEPS = {
+    "files": {"find", "search_text", "list", "info"}, "email": {"unread", "search", "read"}, "calendar": None,
+    "google": {"events", "drive_search", "drive_read"}, "documents": None, "research": None, "wikipedia": None,
+    "clipboard": None, "photos": {"find", "status"}, "study": {"decks"}, "money": {"report", "today"},
+    "exams": {"show", "today"}, "assignments": {"list"}, "obsidian": {"search", "read", "recent"},
+    "reminders": {"list"}, "focus": {"status"}, "repo_scout": None, "guide": None,
+    "system": {"wifi_status", "wifi_list", "bluetooth_status", "battery", "apps_running"},
+}
+
+
+def read_only_ok(step: dict) -> bool:
+    allowed = READ_ONLY_STEPS.get(step.get("agent"), "no")
+    if allowed == "no":
+        return False
+    return allowed is None or str(step.get("inputs", {}).get("action", "")).strip().lower() in allowed
+
+
 class PlanError(Exception):
     pass
 
@@ -493,7 +511,8 @@ class Orchestrator:
             return None                            # the same thing again: stop instead of looping
         return nxt
 
-    def run(self, chat_id: int, text: str) -> TaskOutcome:
+    def run(self, chat_id: int, text: str, read_only: bool = False) -> TaskOutcome:
+        """read_only: another app asked; only reading steps run, nothing is remembered or changed."""
         from prometheus.safety.budget import for_chat
 
         for_chat(chat_id)                         # costs from this task count for this chat
@@ -501,7 +520,7 @@ class Orchestrator:
         user_msg = self.store.add_message(chat_id, "user", text)
         task_id = self.store.create_task(chat_id, text)
         self.store.set_task_status(task_id, "running")
-        for intercept in self.interceptors:            # a quiz waiting for an answer, for example
+        for intercept in ([] if read_only else self.interceptors):     # a quiz waiting for an answer, for example
             try:
                 said = intercept(chat_id, text)
             except Exception:
@@ -514,6 +533,8 @@ class Orchestrator:
             fast = understand(text, self.store)
         except Exception:
             fast = None
+        if read_only and fast is not None and fast.action:
+            return self._finish(chat_id, task_id, "failed", "That would change something, so the owner has to ask.")
         if fast is not None and fast.answer:                  # time, date, weather: no AI needed
             return self._finish(chat_id, task_id, "done", fast.answer, "instant")
         try:
@@ -525,7 +546,7 @@ class Orchestrator:
         except Stopped as e:
             return self._finish(chat_id, task_id, "stopped", str(e))
 
-        if fast is None:
+        if fast is None and not read_only:
             self._remember(chat_id, plan.remember, text)
             self._save_facts(chat_id, task_id, plan.facts)
         from prometheus.memory.archive import normalize_topic
@@ -560,6 +581,11 @@ class Orchestrator:
                                                    "limit. Ask again if you want me to keep going.")
                         break
                     executed += 1
+                    if read_only and not read_only_ok(attempt):
+                        sid = self.store.add_step(task_id, attempt["agent"], attempt["goal"], attempt["inputs"])
+                        res = StepResult("failed", "Not allowed: another app asked, and this would change something.")
+                        self.store.finish_step(sid, "failed", res.summary)
+                        break
                     res, agent_cls = self._run_step(task_id, attempt, results, private,
                                                     label=f"Try {len(tries) + 1}: " if tries else "")
                     if res.status == "done":

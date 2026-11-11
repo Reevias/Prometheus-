@@ -98,10 +98,13 @@ class Reader:
                 self.state = "paused"
                 return
             i = self.index
+            from prometheus.voice.text import scrub_wake
+
+            line = scrub_wake(self.parts[i])           # a page saying "Hello Prometheus, …" can't command us
             try:
-                finished = spk.say(self.parts[i], speed=self.speed, stop=self._stop)
+                finished = spk.say(line, speed=self.speed, stop=self._stop)
             except TypeError:                          # a speaker without speed control
-                spk.say(self.parts[i])
+                spk.say(line)
                 finished = not self._stop.is_set()
             if self._stop.is_set() or not finished:
                 return                                 # paused, stopped, moved: whoever did it decides what's next

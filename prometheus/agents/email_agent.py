@@ -71,14 +71,16 @@ class EmailAgent(Agent):
         from prometheus.safety.secrets import secret_problem
 
         to, subject = str(inputs.get("to") or "").strip(), str(inputs.get("subject") or "").strip()[:300]
-        body = str(inputs.get("body") or "")[:50_000]
+        body = str(inputs.get("body") or "")
+        if len(body) > 10_000:
+            return StepResult("failed", "That email is too long to send (over 10,000 characters). Shorten it.")
         if not to:
             return StepResult("failed", "Who should I send it to? Give an email address.")
         problem = secret_problem(f"{subject} {body}")
         if problem:
             return StepResult("failed", problem)
         ctx.approvals.request("send_email", f"Send an email to {to}: {subject or '(no subject)'}",
-                              {"to": to, "subject": subject, "body": body, "task": body[:3000]})
+                              {"to": to, "subject": subject, "body": body, "task": body})     # the whole body, as sent
         return StepResult("waiting_approval", f"The email to {to} is waiting for your approval on the Approvals page.")
 
 

@@ -38,6 +38,8 @@ class VoiceLoop:
         self.last_heard = ""
         self.last_timing: dict = {}      # seconds per stage of the last command, shown in Settings
         self.followup = None             # callable -> True when the answer asked something (a quiz question)
+        self._announcing = 0             # other threads speaking (reminders, alerts): the mic is ignored meanwhile
+        self._announce_lock = threading.Lock()
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self.noise = NoiseFloor()
@@ -73,8 +75,8 @@ class VoiceLoop:
             frame = self.mic.read(timeout=0.5)
             if frame is None:
                 continue
-            if self.muted:
-                continue
+            if self.muted or self._announcing:
+                continue                       # never listen to our own voice
             self.noise.update(frame)
             wake_audio = self.spotter.feed(frame)
             if wake_audio is not None:
@@ -168,6 +170,22 @@ class VoiceLoop:
             if answer:
                 self.state = "speaking"
                 self._speak_quietly(lambda: self.speaker.say(speakable(answer, limit=400)))
+
+    def announce(self, text: str) -> None:
+        """Speak from another thread (a reminder, an alert, the briefing) with the microphone ignored, and with
+        anything that sounds like the wake name taken out of text that came from outside."""
+        from prometheus.voice.text import scrub_wake
+
+        with self._announce_lock:
+            self._announcing += 1
+        try:
+            self.speaker.say(scrub_wake(text))
+        finally:
+            time.sleep(0.3)
+            self.mic.flush()
+            self.spotter.reset()
+            with self._announce_lock:
+                self._announcing -= 1
 
     def _speak_quietly(self, action) -> None:
         """Speak with the microphone ignored, so Prometheus never hears (and answers) itself."""

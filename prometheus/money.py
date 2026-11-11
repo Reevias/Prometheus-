@@ -131,7 +131,10 @@ class Money:
             except Exception:
                 continue
             for msg in found:
-                if msg["id"] in seen_ids or not BANKISH.search(msg.get("from", "") + " " + msg.get("subject", "")):
+                import email.utils
+
+                sender = email.utils.parseaddr(msg.get("from", ""))[1].lower()
+                if msg["id"] in seen_ids or not BANKISH.search(sender.split("@")[-1]):   # the real sending domain
                     continue
                 seen_ids.add(msg["id"])
                 got = parse_alert(msg.get("subject", ""), msg.get("snippet", ""))

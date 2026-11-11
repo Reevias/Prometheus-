@@ -102,13 +102,14 @@ class Services:
         thread.start()
         return thread
 
-    def start_task(self, chat_id: int, text: str) -> threading.Thread:
-        """Run a task in the background so the browser can keep polling."""
+    def start_task(self, chat_id: int, text: str, read_only: bool = False) -> threading.Thread:
+        """Run a task in the background so the browser can keep polling. read_only: only reading steps run."""
         def work():
             started, outcome = time.monotonic(), None
             try:
                 self.running[chat_id] = True
-                outcome = self.orchestrator.run(chat_id, text)
+                outcome = (self.orchestrator.run(chat_id, text, read_only=True) if read_only
+                           else self.orchestrator.run(chat_id, text))
             finally:
                 self.running.pop(chat_id, None)
             if outcome is not None:
@@ -411,6 +412,10 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
 
     _aa.TRACKER, _aa.SERVICES = _assign.Assignments(store, settings), services
     approvals.register("assignment_calendar", _aa.calendar_handler)
+    from prometheus.agents import reminders_agent as _ra
+
+    _ra.STORE = store
+    approvals.register("standing_goal", _ra.goal_handler)
 
     def _health_fix(payload: dict) -> str:
         if payload.get("fix") == "settings":

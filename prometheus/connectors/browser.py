@@ -20,11 +20,17 @@ class BrowserError(Exception):
     pass
 
 
-def kind_of_click(label: str) -> str:
-    """'pay' (Approvals page), 'send' (asked in the chat) or 'plain' (just do it)."""
-    if RISKY.search(label or ""):
+def kind_of_click(label: str, info: dict | None = None) -> str:
+    """'pay' (Approvals page), 'send' (asked in the chat) or 'plain' (just do it). With `info` (what the element
+    really is), its real name, ids and classes count too, and anything that submits a form is at least 'send'."""
+    words = " ".join([label or ""] + ([str(info.get("name", "")), str(info.get("extra", "")),
+                                       str(info.get("href", ""))] if info else []))
+    if RISKY.search(words) or re.search(r"(pay|buy|order|checkout|purchase|cart)", words.replace("-", " "), re.I):
         return "pay"
-    if SENDS.search(label or ""):
+    if SENDS.search(words):
+        return "send"
+    if info and (info.get("type") == "submit" or (info.get("tag") == "button" and info.get("form")
+                                                  and info.get("type") != "button")):
         return "send"
     return "plain"
 
@@ -128,16 +134,43 @@ class BrowserSession:
             return f"Typed into '{label}'."
         return self.run(fill)
 
-    def click(self, label: str) -> str:
+    @staticmethod
+    def _locate(page, label: str, exact: bool):
+        for role in ("button", "link"):
+            loc = page.get_by_role(role, name=label, exact=exact)
+            if loc.count():
+                return loc.first, role
+        loc = page.get_by_text(label, exact=exact)
+        return (loc.first, "text") if loc.count() else (None, "")
+
+    def inspect(self, label: str) -> dict:
+        """What pressing `label` would really press: its full name, kind and whether it submits a form.
+        The click rules are decided on this, never on the words the AI typed ("Place ord" is "Place order")."""
+        def look(page):
+            loc, role = self._locate(page, label, exact=True)
+            if loc is None:
+                loc, role = self._locate(page, label, exact=False)
+            if loc is None:
+                raise BrowserError(f"There's nothing called '{label}' to click on this page.")
+            info = loc.evaluate("e => ({name: (e.innerText || e.value || e.getAttribute('aria-label') || '').trim(), "
+                                "tag: e.tagName.toLowerCase(), type: (e.getAttribute('type') || '').toLowerCase(), "
+                                "form: !!e.closest('form'), href: e.getAttribute('href') || '', "
+                                "extra: [e.id, e.className, e.getAttribute('name'), e.getAttribute('data-testid'), "
+                                "e.getAttribute('title')].filter(Boolean).join(' ')})")
+            info["role"] = role
+            return info
+        return self.run(look)
+
+    def click(self, label: str, exact: bool = False) -> str:
         def press(page):
-            for finder in (lambda: page.get_by_role("button", name=label), lambda: page.get_by_role("link", name=label),
-                           lambda: page.get_by_text(label, exact=False)):
-                loc = finder()
-                if loc.count():
-                    loc.first.click(timeout=10000)
-                    page.wait_for_load_state("domcontentloaded", timeout=15000)
-                    return f"Clicked '{label}'. Now on: {page.title()}"
-            raise BrowserError(f"There's nothing called '{label}' to click on this page.")
+            loc, _ = self._locate(page, label, exact=True)
+            if loc is None and not exact:
+                loc, _ = self._locate(page, label, exact=False)
+            if loc is None:
+                raise BrowserError(f"There's nothing called '{label}' to click on this page.")
+            loc.click(timeout=10000)
+            page.wait_for_load_state("domcontentloaded", timeout=15000)
+            return f"Clicked '{label}'. Now on: {page.title()}"
         return self.run(press)
 
     def fill_password(self, secret: str) -> str:

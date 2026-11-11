@@ -218,7 +218,8 @@ class BriefingClock:
         focusing = getattr(getattr(self.services, "focus", None), "active", lambda: False)()
         if loop is not None and not loop.muted and not focusing:
             try:
-                loop.speaker.say(("Good evening, sir. " if kind == "evening" else "Good morning, sir. ") + short)
+                (loop.announce if hasattr(loop, "announce") else loop.speaker.say)(
+                    ("Good evening, sir. " if kind == "evening" else "Good morning, sir. ") + short)
             except Exception:
                 pass
         return text

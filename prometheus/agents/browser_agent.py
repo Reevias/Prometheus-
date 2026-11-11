@@ -46,7 +46,9 @@ class BrowserAgent(Agent):
                 return StepResult("done", SESSION.type(str(inputs.get("field") or ""), str(inputs.get("text") or "")))
             if action == "click":
                 label = str(inputs.get("label") or inputs.get("text") or "").strip()
-                kind = kind_of_click(label)
+                info = SESSION.inspect(label)              # the real element, not the AI's words
+                label = info.get("name") or label
+                kind = kind_of_click(label, info)
                 if kind == "pay":
                     ctx.approvals.request("browser_click", f"In the browser, press '{label}' (this can spend money)",
                                           {"label": label})
@@ -55,7 +57,7 @@ class BrowserAgent(Agent):
                 if kind == "send":
                     return ctx.ask("browser_click", f"In the browser, press '{label}'", {"label": label},
                                    exact=f"click:{label.lower()}", waiting=f"Press '{label}'? Answer below in the chat.")
-                return StepResult("done", SESSION.click(label))
+                return StepResult("done", SESSION.click(label, exact=True))
             if action == "login":
                 ctx.approvals.request("browser_password", "The browser page needs your password",
                                       {"site": str(inputs.get("site") or "")}, secret_label="Password for this site")
@@ -68,7 +70,7 @@ class BrowserAgent(Agent):
 
 def click_handler(payload: dict) -> str:
     try:
-        return SESSION.click(str(payload.get("label", "")))
+        return SESSION.click(str(payload.get("label", "")), exact=True)
     except BrowserError as e:
         raise RuntimeError(str(e)) from e
 

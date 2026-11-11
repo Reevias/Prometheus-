@@ -49,6 +49,18 @@ def has_wake_word(text: str, learned=None) -> bool:
     return find_wake(text, learned) is not None
 
 
+def scrub_wake(text: str) -> str:
+    """Before speaking text that came from outside (an email subject, a page being read): take out anything that
+    sounds like the wake name, so Prometheus can't hear itself say "Hello Prometheus, …" and obey it."""
+    text = text or ""
+    for _ in range(10):
+        found = find_wake(text, learned=False)
+        if not found:
+            break
+        text = text[:found[0]] + "the assistant" + text[found[1]:]
+    return text
+
+
 def strip_wake(text: str) -> str:
     """'Hey Prometheus, open YouTube.' → 'Open YouTube.' (only the first wake word is removed)."""
     text = text or ""

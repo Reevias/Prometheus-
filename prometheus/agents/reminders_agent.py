@@ -37,13 +37,14 @@ class Reminders(Agent):
                 when = parse_when(str(inputs.get("when") or goal))
             except WhenError as e:
                 return StepResult("failed", str(e))
-            rid = ctx.store.add_reminder(chat_id, task, when.due, when.repeat, kind="goal")
-            from prometheus import undo
-
-            undo.record(ctx.store, "reminder", f"the standing goal '{task}'", {"id": rid})
+            # A standing goal runs later as if the owner typed it, so it is asked in the chat first.
             again = {"daily": " and every day after", "weekdays": " and every weekday after", "weekly": " and every week after"}
-            return StepResult("done", f"Standing goal saved: '{task}' {describe(when.due)}{again.get(when.repeat, '')}. "
-                                      "I'll run it by myself and post the result here.", {"id": rid, "due": when.due})
+            res = ctx.ask("standing_goal", f"Do this by myself {describe(when.due)}{again.get(when.repeat, '')}: “{task}”",
+                          {"chat_id": chat_id, "task": task, "due": when.due, "repeat": when.repeat},
+                          exact=f"goal:{task.lower()}:{when.repeat}",
+                          waiting=f"Save the standing goal “{task}” {describe(when.due)}"
+                                  f"{again.get(when.repeat, '')}? Answer below.")
+            return res
         if action == "set":
             text = " ".join(str(inputs.get("text") or "Alarm").split())[:MAX_TEXT] or "Alarm"
             try:
@@ -76,3 +77,15 @@ class Reminders(Agent):
                 ctx.store.cancel_reminder(r["id"])
             return StepResult("done", "Cancelled: " + ", ".join(r["text"] for r in match) + ".")
         return StepResult("failed", f"'{action}' isn't a reminder action. I can: set, list, cancel.")
+
+
+STORE = None        # set by the app, for goal_handler
+
+
+def goal_handler(payload: dict) -> str:
+    from prometheus import undo
+
+    rid = STORE.add_reminder(int(payload["chat_id"]), str(payload["task"]), float(payload["due"]),
+                             str(payload.get("repeat", "")), kind="goal")
+    undo.record(STORE, "reminder", f"the standing goal '{payload['task']}'", {"id": rid})
+    return f"Standing goal saved: '{payload['task']}' {describe(float(payload['due']))}. I'll run it by myself."

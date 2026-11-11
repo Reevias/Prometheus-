@@ -10,11 +10,21 @@ import prometheus.watchers as watchers_mod
 from tests.conftest import login
 
 
+def yes(ctx):
+    import prometheus.agents.reminders_agent as ra
+
+    ra.STORE = ctx.store
+    ctx.approvals.register("standing_goal", ra.goal_handler)
+    ask = [a for a in ctx.store.asks_for_chat(ctx.chat_id()) if a.kind == "standing_goal"][-1]
+    return ctx.approvals.resolve(ask.id, approved=True)
+
+
 def test_standing_goal_runs_the_task_on_schedule(make_ctx):
     ctx = make_ctx()
     res = Reminders().run("x", {"action": "goal", "text": "sort my Downloads folder", "when": "every night at 11pm"},
                           ctx)
-    assert res.status == "done" and "Standing goal saved" in res.summary and "every day" in res.summary
+    assert res.status == "waiting_approval" and not ctx.store.reminders()        # asked in the chat first
+    assert "Standing goal saved" in yes(ctx)
     goal = ctx.store.reminders()[0]
     assert goal["kind"] == "goal" and goal["repeat"] == "daily"
     started = []
@@ -30,6 +40,7 @@ def test_standing_goal_runs_the_task_on_schedule(make_ctx):
 def test_goal_waits_if_that_chat_is_busy(make_ctx):
     ctx = make_ctx()
     Reminders().run("x", {"action": "goal", "text": "tidy", "when": "in 1 minute"}, ctx)
+    yes(ctx)
     goal = ctx.store.reminders()[0]
     services = SimpleNamespace(store=ctx.store, voice=None, running={goal["chat_id"]: True},
                                start_task=lambda c, t: (_ for _ in ()).throw(AssertionError("must wait")))

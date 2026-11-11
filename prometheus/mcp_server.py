@@ -106,7 +106,7 @@ class PrometheusMCP:
         chat = self.chat()
         store = self.services.store
         before = len(store.messages(chat))
-        thread = self.services.start_task(chat, f"[asked by {self.caller}] {question}")
+        thread = self.services.start_task(chat, f"[asked by {self.caller}] {question}", read_only=True)
         thread.join(timeout=ANSWER_WAIT)
         if thread.is_alive():
             return "Prometheus is still working on it; the answer will be in its 'Other apps' chat."

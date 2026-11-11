@@ -99,8 +99,12 @@ def test_these_wait_for_approval(action, params):
     assert needs_approval(action, params)
 
 
+def test_typing_is_asked_first():
+    assert needs_approval("type_text", {"text": "hi"})
+
+
 @pytest.mark.parametrize("action,params", [
-    ("app_open", {"target": "notepad"}), ("app_close", {"target": "notepad"}), ("type_text", {"text": "hi"}),
+    ("app_open", {"target": "notepad"}), ("app_close", {"target": "notepad"}),
     ("press_keys", {"keys": "ctrl+c"}), ("volume", {"level": 30}), ("brightness", {"level": 50}),
     ("dark_mode", {"mode": "on"}), ("screenshot", {}), ("power", {"mode": "lock"}), ("wifi_status", {}),
     ("window", {"target": "Notepad", "mode": "minimize"}), ("apps_running", {})])

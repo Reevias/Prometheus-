@@ -21,6 +21,15 @@ NEW_FILES_SHOWN = 20
 EMAIL_EVERY = 5                 # ticks (minutes) between mail checks
 
 
+def _sender_matches(address: str, wanted: str) -> bool:
+    """'ravi@x.com' matches only that address; '@college.edu' or 'college.edu' matches that domain."""
+    wanted = wanted.strip().lower()
+    if "@" in wanted and not wanted.startswith("@"):
+        return address == wanted
+    domain = wanted.lstrip("@")
+    return address.endswith("@" + domain) or address.endswith("." + domain)
+
+
 class Watchers:
     def __init__(self, services, laptop=None, notify=None, clock=time.time):
         self.services, self.laptop, self.notify, self.clock = services, laptop, notify, clock
@@ -54,7 +63,7 @@ class Watchers:
         focusing = getattr(getattr(self.services, "focus", None), "active", lambda: False)()
         if loop is not None and not loop.muted and not focusing:
             try:
-                loop.speaker.say(f"Sir, {text[0].lower() + text[1:]}")
+                (loop.announce if hasattr(loop, "announce") else loop.speaker.say)(f"Sir, {text[0].lower() + text[1:]}")
             except Exception:
                 pass
         return True
@@ -119,7 +128,9 @@ class Watchers:
             if goal and chat not in self.services.running:
                 self.services.store.add_message(chat, "assistant", f"New in {folder.name}: {', '.join(new[:5])}. "
                                                                    f"Doing your goal: {goal}", "watcher")
-                self.services.start_task(chat, f"{goal}\nThe new files: {paths}")
+                from prometheus.agents.base import untrusted
+
+                self.services.start_task(chat, f"{goal}\n" + untrusted("\n".join(paths), "names of the new files"))
             elif not goal:
                 self.said.discard(f"folder:{key}")
                 self.alert(f"folder:{key}", f"New in {folder.name}: {', '.join(new[:5])}"
@@ -140,7 +151,10 @@ class Watchers:
         seen = set(store.kv_get("email_alert_seen", []))
         told = []
         for m in unread:
-            if m["id"] in seen or not any(w in m["from"].lower() for w in wanted):
+            import email.utils
+
+            address = email.utils.parseaddr(m["from"])[1].lower()
+            if m["id"] in seen or not address or not any(_sender_matches(address, w) for w in wanted):
                 continue
             seen.add(m["id"])
             sender = m["from"].split("<")[0].strip().strip('"') or m["from"]

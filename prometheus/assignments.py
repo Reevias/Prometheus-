@@ -148,6 +148,12 @@ class Assignments:
             except Exception:
                 continue
             for msg in found:
+                import email.utils
+
+                from prometheus.watchers import _sender_matches
+
+                if not _sender_matches(email.utils.parseaddr(msg.get("from", ""))[1].lower(), sender):
+                    continue                                  # a display name pretending to be the college
                 text = f"{msg.get('subject', '')}. {msg.get('snippet', '')}"
                 if not DUE_WORDS.search(text):
                     continue

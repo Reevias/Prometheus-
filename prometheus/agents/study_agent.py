@@ -20,6 +20,7 @@ class StudyAgent(Agent):
                    "are their answers.")
     tools = {"read_files", "call_model"}
     accepts_private = True
+    private_outputs = True        # cards and quizzes come from the owner's notes
     required_inputs = ("action",)
 
     def run(self, goal: str, inputs: dict, ctx: AgentContext) -> StepResult:

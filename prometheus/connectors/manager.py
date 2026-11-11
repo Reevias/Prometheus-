@@ -10,8 +10,12 @@ from prometheus.connectors.mcp_client import Connection, HttpServer, MCPError, S
 NAME = re.compile(r"^[A-Za-z][A-Za-z0-9 _-]{0,30}$")
 
 
+RESERVED = {"MCP_SERVER_TOKEN"}          # Prometheus's own key for apps that call IT
+
+
 def secret_name(server: str) -> str:
-    return "MCP_" + re.sub(r"[^A-Z0-9]+", "_", server.upper()).strip("_")[:40]
+    name = "MCP_" + re.sub(r"[^A-Z0-9]+", "_", server.upper()).strip("_")[:40]
+    return name + "_APP" if name in RESERVED else name
 
 
 def parse_env(text: str) -> dict:

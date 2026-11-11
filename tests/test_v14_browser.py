@@ -80,3 +80,16 @@ def test_open_refuses_local_addresses(make_ctx, monkeypatch):
     monkeypatch.setattr(ba, "SESSION", object())
     res = ba.BrowserAgent().run("x", {"action": "open", "url": "http://127.0.0.1:8000/settings"}, make_ctx())
     assert res.status == "failed"
+
+
+def test_partial_labels_and_disguised_buttons_still_count_as_paying(session, make_ctx):
+    session.run(lambda page: page.set_content(
+        "<form><button>Place order</button></form><button id='checkout-btn'>Continue</button>"
+        "<form><input name=q><button type=submit>Go on</button></form>"))
+    ctx = make_ctx()
+    agent = ba.BrowserAgent()
+    assert agent.run("x", {"action": "click", "label": "Place ord"}, ctx).status == "waiting_approval"
+    assert agent.run("x", {"action": "click", "label": "Continue"}, ctx).status == "waiting_approval"   # id says checkout
+    res = agent.run("x", {"action": "click", "label": "Go on"}, ctx)
+    assert res.status == "waiting_approval"                                                       # submits a form
+    assert any(a.kind == "browser_click" and "Place order" in a.summary for a in ctx.store.big_approvals())

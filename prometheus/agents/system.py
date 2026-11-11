@@ -21,7 +21,7 @@ ACTIONS = {"wifi_status", "wifi_list", "wifi_connect", "wifi_disconnect", "bluet
            "install_app", "store_open"}
 READ = {"wifi_status", "wifi_list", "bluetooth_status", "location", "battery", "apps_running"}
 CHANGE = ACTIONS - READ
-SMALL = {"click", "press_keys"}
+SMALL = {"click", "press_keys", "type_text"}
 VERIFY_TRIES, VERIFY_WAIT = 4, 1.5        # look for the new window for about 6 seconds          # asked in the chat; installs, power and Wi-Fi stay on the Approvals page
 
 
@@ -31,6 +31,8 @@ def needs_approval(action: str, params: dict) -> str:
         return "Pressing Enter can send or submit something."
     if action == "click":
         return "A click could press Send or Buy; Prometheus can't tell what is under the pointer."
+    if action == "type_text":
+        return "Typing goes into whatever window is in front."
     if action == "power" and str(params.get("mode", "")).lower() in ASK_POWER:
         return "This changes the power state of the laptop."
     if action == "install_app":
@@ -244,9 +246,12 @@ class SystemAgent(Agent):
                                       "bluetooth_on", "bluetooth_off", "location", "battery", "apps_running"}:
                 why = needs_approval(action, inputs)
                 if why and action in SMALL:            # a click or Enter: asked right in the chat
-                    shown = {k: str(inputs.get(k, ""))[:200] for k in ("keys", "x", "y") if inputs.get(k) not in (None, "")}
-                    exact = f"{action}:{shown.get('keys') or (shown.get('x', '') + ',' + shown.get('y', ''))}"
-                    return ctx.ask("laptop_action", f"{action.replace('_', ' ')}: {why}", {"action": action, **shown},
+                    shown = {k: str(inputs.get(k, ""))[:200] for k in ("keys", "x", "y", "text")
+                             if inputs.get(k) not in (None, "")}
+                    exact = f"{action}:{shown.get('keys') or shown.get('text') or (shown.get('x', '') + ',' + shown.get('y', ''))}"
+                    label = f"type “{shown.get('text', '')[:120]}”: {why}" if action == "type_text" else \
+                        f"{action.replace('_', ' ')}: {why}"
+                    return ctx.ask("laptop_action", label, {"action": action, **shown},
                                    exact=exact.lower(), broad=action if action == "press_keys" else "",
                                    broad_label="Pressing Enter in any window" if action == "press_keys" else "",
                                    waiting=f"{why} Allow it below in the chat?")

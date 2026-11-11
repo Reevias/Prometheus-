@@ -369,6 +369,9 @@ class Files(Agent):
     def _rename(self, inputs: dict, ctx: AgentContext) -> StepResult:
         src = resolve_place(str(inputs.get("path") or ""), ctx.home)
         new_name = str(inputs.get("new_name") or "").strip()
+        if Path(new_name).suffix.lower() in RUNNABLE or new_name.lower().endswith(tuple(RUNNABLE)):
+            return StepResult("failed", f"Prometheus never makes {Path(new_name).suffix} files: Windows runs them when "
+                                        "opened.")
         root = self._root(ctx.policy.check_read(src), ctx)
         done, problems = self._run_changes(ctx, root, [(src.name, lambda run: ctx.files.rename(run, src, new_name,
                                                                                                  root))], "renamed")

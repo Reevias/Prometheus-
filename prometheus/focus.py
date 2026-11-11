@@ -151,7 +151,7 @@ class Focus:
         say = self.say
         if say is None:
             loop = getattr(getattr(self.services, "voice", None), "loop", None)
-            say = loop.speaker.say if loop is not None and not loop.muted else None
+            say = (getattr(loop, "announce", None) or loop.speaker.say) if loop is not None and not loop.muted else None
         if say is not None:
             try:
                 say(line)
