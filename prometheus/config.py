@@ -60,7 +60,12 @@ class Settings:
     repo_of_day: bool = True
     step_tries: int = 3                         # tries per task step, counting the first (planning loop)
     task_budget_usd: float = 0.20               # paid AI one task may use                    # suggest one trending GitHub repository a day for the skill library
-    obsidian_vault: str = ""                    # the connected Obsidian vault folder ("" = not connected)                    # install new versions from GitHub by itself                # the speaking voice (Kokoro voice id)               # start Prometheus (and listening) when Windows starts
+    obsidian_vault: str = ""
+    email_address: str = ""
+    email_imap_host: str = ""                   # "" = worked out from the address
+    email_smtp_host: str = ""
+    email_cloud_ok: bool = False
+    mcp_servers: list[dict] = field(default_factory=list)   # [{name, kind: command|url, target, enabled}]                # let cloud AI read email (off: only the local model)                    # the connected Obsidian vault folder ("" = not connected)                    # install new versions from GitHub by itself                # the speaking voice (Kokoro voice id)               # start Prometheus (and listening) when Windows starts
     head_model: str = ""                        # the lead AI chosen by hand, e.g. "anthropic:claude-haiku-5-5" ("" = auto)
     extra_folders: list[str] = field(default_factory=list)   # drives or folders outside the user folder it may use
     memory_folder: str = ""                     # where every chat is saved as files ("" = <home>/Prometheus memory)
@@ -105,11 +110,16 @@ KEY_NAMES = {
     "ANTHROPIC_API_KEY": "Claude (Anthropic)",
     "GEMINI_API_KEY": "Gemini (Argon)",
     "GITHUB_TOKEN": "GitHub",
+    "EMAIL_PASSWORD": "Email app password",
+    "CALENDAR_LINKS": "Calendar links",
 }
+MCP_SECRET = re.compile(r"^MCP_[A-Z0-9_]{1,40}$")   # one secret per connected app (a token, or NAME=value;…)
+SPACES_ALLOWED = {"EMAIL_PASSWORD"}             # app passwords are often shown in groups: "abcd efgh ijkl mnop"
+LINK_LIST = {"CALENDAR_LINKS"}                  # several https links joined by |
 for _p in load_catalog():
     KEY_NAMES.setdefault(_p.key_name, _p.name)
 _SECRETS_LOCK = threading.RLock()
-_KEY_VALUE = re.compile(r"^[\x21-\x7e]{4,500}$")   # plain printable characters only, no spaces or line breaks
+_KEY_VALUE = re.compile(r"^[\x21-\x7e]{4,2000}$")   # plain printable characters only, no spaces or line breaks
 
 
 def _read_env_file() -> dict[str, str]:
@@ -158,7 +168,11 @@ def get_secret(name: str) -> str | None:
 
 def set_secret(name: str, value: str) -> None:
     value = value.strip()
-    if name not in KEY_NAMES:
+    if name in SPACES_ALLOWED:
+        value = "".join(value.split())
+    if name in LINK_LIST:
+        value = "|".join(u.strip() for u in value.replace(",", "|").replace("\n", "|").split("|") if u.strip())
+    if name not in KEY_NAMES and not MCP_SECRET.fullmatch(name):
         raise ValueError(f"Unknown key name: {name}")
     if not _KEY_VALUE.match(value):
         raise ValueError("That doesn't look like a valid key.")

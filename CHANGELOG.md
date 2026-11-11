@@ -1,6 +1,7 @@
 # Changelog
 
 ## 1.4
+- Connections: email from any provider with an app password (check unread, search, read without marking as read; sending waits for approval; private to the local model unless allowed), calendars through their secret iCal link (today, tomorrow, the week, search; repeating events), and any other app with an MCP server (command or web address; read-only tools run, changes are asked in the chat and can be always allowed per app). All in Settings → Connections, behind your password.
 - Opening an app that isn't installed: its website opens with an Install button in the chat; with no website it offers to install; if it can't be found, the Microsoft Store opens on a search for it.
 - docs/Prometheus-missing.pdf: everything still missing, grouped, with the suggested order.
 - Planning loop: when a step fails, Prometheus tries another way (up to 3 tries, never the same try twice, e.g. the website when the app isn't installed); after actions it checks the goal is really reached (the app's window opened, the files are there, the note or reminder was saved) before saying done; each task stops at $0.20 of paid AI or 12 steps. Limits are in Settings. Details from personal files never go into the retry request.

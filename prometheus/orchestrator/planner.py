@@ -189,6 +189,7 @@ class Orchestrator:
         self.killswitch = killswitch
         self.prompts_dir = Path(prompts_dir) if prompts_dir else PACKAGE_PROMPTS
         self.step_tries, self.task_budget, self.max_steps = STEP_TRIES, TASK_BUDGET, MAX_TASK_STEPS
+        self.extra_catalog = None          # callable: tools of connected apps, for the planner
         self.skills = skills
 
     def _style(self) -> str:
@@ -281,6 +282,14 @@ class Orchestrator:
         if catalog:
             system += ("\n\nSkills (how-to guides). For each step set \"skill\" to the name of the one guide that "
                        f"fits, or \"\" if none does:\n{catalog}")
+        if self.extra_catalog is not None:
+            try:
+                connected = self.extra_catalog()
+            except Exception:
+                connected = ""
+            if connected:
+                system += ("\n\nConnected apps (use the apps agent: action call, app, tool, arguments as a JSON "
+                           "object):\n" + connected)
         known = [t["topic"] for t in self.store.topics(KNOWN_TOPICS)]
         system += ("\n\nTopic: set \"topic\" to 1 to 3 lowercase words naming what this request is about (for example "
                    "weather, taxes, python learning). Reuse one of these earlier topics when it fits: "

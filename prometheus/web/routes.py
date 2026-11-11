@@ -412,8 +412,18 @@ def register_routes(app: FastAPI, services: Services) -> None:
         bad_places = {f: extra_root_problem(f, services.home) for f in s.extra_folders}
         bad_places = {f: why for f, why in bad_places.items() if why}
         allowed_rules = store.allow_rules()
+        from prometheus.agents import apps_agent
+        from prometheus.connectors.email_box import help_for
+
+        mcp = []
+        manager = apps_agent.MANAGER
+        for e in (manager.entries() if manager else []):
+            live = manager.live.get(e["name"]) if manager else None
+            err = manager.errors.get(e["name"], "") if manager else ""
+            mcp.append({**e, "ok": live is not None, "status": (f"{len(live.tools)} tools" if live else err)})
         return page(request, "settings.html", status_code, s=s, providers=rows, other_keys=other_keys,
-                    allowed_rules=allowed_rules,
+                    allowed_rules=allowed_rules, mcp=mcp, email_help=help_for(s.email_address),
+                    email_key_set=bool(have.get("EMAIL_PASSWORD")), calendar_set=bool(have.get("CALENDAR_LINKS")),
                     heads=head_choices(services.router), head=s.head_model,
                     voice=services.voice.describe() if services.voice is not None else None,
                     vaults=[str(v) for v in __import__("prometheus.agents.obsidian", fromlist=["x"]).detect_vaults()],
@@ -649,6 +659,104 @@ def register_routes(app: FastAPI, services: Services) -> None:
         services.settings.obsidian_vault = ""
         save_settings(services.settings)
         store.audit("user", "obsidian_disconnected", {})
+        return settings_page(request, saved=True)
+
+    @app.post("/settings/email", response_class=HTMLResponse)
+    def save_email(request: Request, address: str = Form(...), app_password: str = Form(""), password: str = Form("")):
+        from prometheus.connectors.email_box import ADDRESS
+
+        denied = _key_gate(request, password)
+        if denied is not None:
+            return denied
+        address = address.strip()
+        if not ADDRESS.fullmatch(address):
+            return settings_page(request, 400, conn_error="That isn't an email address.")
+        if app_password.strip():
+            try:
+                set_secret("EMAIL_PASSWORD", app_password)
+            except ValueError as e:
+                return settings_page(request, 400, conn_error=str(e))
+        services.settings.email_address = address
+        save_settings(services.settings)
+        store.audit("user", "email_connected", {"domain": address.rsplit("@", 1)[-1]})
+        return settings_page(request, saved=True)
+
+    @app.post("/settings/email/cloud", response_class=HTMLResponse)
+    def email_cloud(request: Request, on: str = Form("")):
+        services.settings.email_cloud_ok = bool(on)
+        save_settings(services.settings)
+        apply_settings(services)
+        store.audit("user", "email_cloud", {"on": bool(on)})
+        return settings_page(request, saved=True)
+
+    @app.post("/settings/calendar", response_class=HTMLResponse)
+    def save_calendar(request: Request, links: str = Form(...), password: str = Form("")):
+        denied = _key_gate(request, password)
+        if denied is not None:
+            return denied
+        urls = [u.strip() for u in links.replace(",", "\n").split() if u.strip()]
+        if not urls or not all(u.startswith(("https://", "webcal://")) for u in urls):
+            return settings_page(request, 400, conn_error="Calendar links start with https:// (or webcal://).")
+        set_secret("CALENDAR_LINKS", "|".join(urls[:5]))
+        store.audit("user", "calendar_connected", {"links": len(urls[:5])})
+        return settings_page(request, saved=True)
+
+    @app.post("/settings/apps", response_class=HTMLResponse)
+    def add_app(request: Request, name: str = Form(...), target: str = Form(...), secret: str = Form(""),
+                password: str = Form("")):
+        from prometheus.connectors.manager import NAME, secret_name
+
+        denied = _key_gate(request, password)
+        if denied is not None:
+            return denied
+        name, target = name.strip(), target.strip()[:500]
+        if not NAME.fullmatch(name):
+            return settings_page(request, 400, conn_error="Use a short name with letters, numbers, spaces or -.")
+        kind = "url" if target.startswith(("https://", "http://")) else "command"
+        s = services.settings
+        s.mcp_servers = [e for e in s.mcp_servers if e.get("name", "").lower() != name.lower()]
+        s.mcp_servers.append({"name": name, "kind": kind, "target": target, "enabled": True})
+        if secret.strip():
+            try:
+                set_secret(secret_name(name), secret.strip())
+            except ValueError as e:
+                return settings_page(request, 400, conn_error=str(e))
+        save_settings(s)
+        from prometheus.agents import apps_agent
+
+        apps_agent.MANAGER.drop(name)
+        try:
+            apps_agent.MANAGER.get(name)                 # start it now, so mistakes show at once
+        except Exception:
+            pass
+        store.audit("user", "app_connected", {"name": name, "kind": kind})
+        return settings_page(request, saved=True)
+
+    @app.post("/settings/apps/{name}/toggle", response_class=HTMLResponse)
+    def toggle_app(request: Request, name: str):
+        from prometheus.agents import apps_agent
+
+        for e in services.settings.mcp_servers:
+            if e.get("name") == name:
+                e["enabled"] = not e.get("enabled")
+                if not e["enabled"]:
+                    apps_agent.MANAGER.drop(name)
+        save_settings(services.settings)
+        return settings_page(request, saved=True)
+
+    @app.post("/settings/apps/{name}/remove", response_class=HTMLResponse)
+    def remove_app(request: Request, name: str):
+        from prometheus.agents import apps_agent
+        from prometheus.connectors.manager import secret_name
+
+        services.settings.mcp_servers = [e for e in services.settings.mcp_servers if e.get("name") != name]
+        save_settings(services.settings)
+        apps_agent.MANAGER.drop(name)
+        try:
+            delete_secret(secret_name(name))
+        except OSError:
+            pass
+        store.audit("user", "app_removed", {"name": name})
         return settings_page(request, saved=True)
 
     @app.post("/settings/free", response_class=HTMLResponse)

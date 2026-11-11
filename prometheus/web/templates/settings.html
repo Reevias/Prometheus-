@@ -87,6 +87,52 @@
   </div>
   {% endif %}
 
+  <h3>Connections</h3>
+  {% if conn_error %}<p class="error">{{ conn_error }}</p>{% endif %}
+  <div class="panel" style="display:grid;gap:10px">
+    <strong>Email</strong>
+    <p class="muted" style="margin:0">Works with Gmail, Outlook, Yahoo, iCloud and others. Use an <strong>app password</strong>, not
+    your normal one{% if s.email_address %}: make one at {{ email_help }}{% else %} (your provider's security settings){% endif %}.
+    Prometheus reads without marking mail as read, and every email it sends waits for you on the Approvals page.</p>
+    <form class="row" hx-post="/settings/email" hx-target="body">
+      <input type="email" name="address" value="{{ s.email_address }}" placeholder="you@gmail.com" required>
+      <input type="password" name="app_password" placeholder="{{ 'App password saved ✓ (type to replace)' if email_key_set else 'App password' }}" autocomplete="off">
+      <input type="password" name="password" placeholder="Your Prometheus password" autocomplete="current-password" required>
+      <button type="submit" class="primary">Save</button>
+    </form>
+    <form hx-post="/settings/email/cloud" hx-target="body"><label class="check"><input type="checkbox" name="on" value="1" {{ "checked" if s.email_cloud_ok }} onchange="this.form.requestSubmit()">
+      Let cloud AI (Claude) read my email. Off: only the local model reads it, which is slower but private.</label></form>
+
+    <strong>Calendar</strong>
+    <p class="muted" style="margin:0">Paste your calendar's secret iCal link. Google: Calendar settings → your calendar → “Secret address in iCal
+    format”. Outlook: Settings → Calendar → Shared calendars → Publish → ICS. Several links: one per line. Read only.</p>
+    <form class="row" hx-post="/settings/calendar" hx-target="body">
+      <input type="password" name="links" placeholder="{{ 'Calendar connected ✓ (paste to replace)' if calendar_set else 'https://calendar.google.com/calendar/ical/…/basic.ics' }}" autocomplete="off" required>
+      <input type="password" name="password" placeholder="Your Prometheus password" autocomplete="current-password" required>
+      <button type="submit">Save</button>
+    </form>
+
+    <strong>Other apps (MCP)</strong>
+    <p class="muted" style="margin:0">Connect any app that has an MCP server (Notion, Slack, Spotify, GitHub, Home Assistant…). Give it a
+    name, then either the command that starts it (e.g. <code>npx -y @notionhq/notion-mcp-server</code>) or its https address, and its
+    key if it needs one (for a command: <code>NAME=value</code>, several separated by <code>;</code>). Tools that change something
+    are asked in the chat first.</p>
+    <ul class="plain">
+      {% for a in mcp %}<li><strong>{{ a.name }}</strong> <span class="muted">({{ "web" if a.kind == "url" else "command" }}: {{ a.target }})</span>
+        {% if a.status %}<span class="{{ 'status-done' if a.ok else 'error' }}">{{ a.status }}</span>{% endif %}
+        <form hx-post="/settings/apps/{{ a.name }}/toggle" hx-target="body" style="display:inline"><button type="submit">{{ "Switch off" if a.enabled else "Switch on" }}</button></form>
+        <form hx-post="/settings/apps/{{ a.name }}/remove" hx-target="body" style="display:inline"><button type="submit" class="danger">Remove</button></form></li>
+      {% else %}<li class="muted">No apps connected yet.</li>{% endfor %}
+    </ul>
+    <form class="row" hx-post="/settings/apps" hx-target="body" style="flex-wrap:wrap">
+      <input type="text" name="name" placeholder="Name, e.g. Notion" required style="max-width:160px">
+      <input type="text" name="target" placeholder="Command or https address" required>
+      <input type="password" name="secret" placeholder="Key (optional)" autocomplete="off" style="max-width:200px">
+      <input type="password" name="password" placeholder="Your Prometheus password" autocomplete="current-password" required style="max-width:220px">
+      <button type="submit">Connect</button>
+    </form>
+  </div>
+
   <h3>Always allowed</h3>
   <p class="muted">Small things you said yes to in a chat. They aren't asked again, in any chat. Big things (installs,
   power, Wi-Fi, GitHub posts, money) always wait on the Approvals page.</p>

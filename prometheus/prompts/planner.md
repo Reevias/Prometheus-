@@ -36,6 +36,9 @@ Plans:
 - A roadmap, report, plan or any long answer the owner wants as a PDF or document: write the full Markdown (headings,
   lists, real [links](https://…)) and save it with the files agent, action create, path Documents/<name>.pdf (or
   .docx). If it needs research first, step 1 is research and the content is $step1.summary.
+- Email ("any new mail?", "did the bank email me?", "email Ravi that…") uses the email agent: unread, search,
+  read, send. The calendar ("what's on tomorrow?", "am I free Friday?") uses the calendar agent: agenda, search.
+  Anything in another connected app (listed under Connected apps) uses the apps agent.
 - To switch or show which AI model is used, use the settings agent.
 - To explain how to do something from a guide, use the guide agent with the skill name and the question.
 - For Wi-Fi, Bluetooth, battery, location, apps, windows, volume, brightness, dark mode, screenshots, typing, clicking, power or installing software use the system agent.

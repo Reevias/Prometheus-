@@ -96,6 +96,9 @@ def apply_settings(services: "Services") -> None:
 
     s, router = services.settings, services.router
     services.budget.cap_usd = s.budget_usd
+    from prometheus.agents.email_agent import EmailAgent
+
+    EmailAgent.private_outputs = not s.email_cloud_ok
     services.orchestrator.step_tries = max(1, min(int(s.step_tries), 6))
     services.orchestrator.task_budget = max(0.01, min(float(s.task_budget_usd), 10.0))
     router.head = s.head_model
@@ -180,6 +183,14 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
     approvals.register("github_action", lambda payload: github_action_handler(payload, GitHubAgent()))
     approvals.register("laptop_action", lambda payload: laptop_action_handler(payload, Laptop()))
     # installing an app the owner tried to open: asked right in the chat, and only for that one package
+    from prometheus.agents.email_agent import send_email_handler
+
+    approvals.register("send_email", send_email_handler)
+    from prometheus.agents import apps_agent
+    from prometheus.connectors.manager import ConnectionManager
+
+    apps_agent.MANAGER = ConnectionManager(settings)
+    approvals.register("mcp_call", apps_agent.mcp_call_handler)
     approvals.register("install_app_chat", lambda payload: laptop_action_handler(payload, Laptop()))
     approvals.register("wifi_password", lambda payload, secret: wifi_password_handler(payload, secret, Laptop()),
                        needs_secret=True)
@@ -197,6 +208,7 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
                             skills=skills)
 
     orchestrator = Orchestrator(store, router, REGISTRY, make_context, killswitch, prompts.folder, skills=skills)
+    orchestrator.extra_catalog = apps_agent.MANAGER.catalog_text
     orchestrator.step_tries = max(1, min(int(settings.step_tries), 6))
     orchestrator.task_budget = max(0.01, min(float(settings.task_budget_usd), 10.0))
     services = Services(settings, home, store, policy, journal, files, permissions, approvals, budget, killswitch,
