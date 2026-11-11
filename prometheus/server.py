@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import html
 import hmac
+import json
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Form, Request
@@ -29,6 +30,27 @@ def _login_page(message: str = "") -> str:
             "<label>Password <input type='password' name='password' autofocus required></label>"
             "<button type='submit'>Log in</button></form>"
             "<script src='/static/orb.js'></script></body></html>")
+
+
+def describe_hook(github_event: str, data: dict) -> tuple[str, str]:
+    """A short sentence from a webhook: GitHub test runs and pushes are understood, anything else shown as text."""
+    data = data if isinstance(data, dict) else {"text": str(data)}
+    repo = str((data.get("repository") or {}).get("full_name", "")) if isinstance(data.get("repository"), dict) else ""
+    if github_event == "workflow_run":
+        run = data.get("workflow_run") or {}
+        if data.get("action") != "completed":
+            return "GitHub", f"{run.get('name', 'A check')} started on {repo}."
+        verdict = {"success": "passed", "failure": "failed", "cancelled": "was cancelled"}.get(run.get("conclusion"),
+                                                                                            run.get("conclusion", "ended"))
+        return "GitHub", f"{run.get('name', 'Tests')} {verdict} on {repo} ({run.get('head_branch', '')})."
+    if github_event == "push":
+        return "GitHub", f"New push to {repo}: {str((data.get('head_commit') or {}).get('message', ''))[:120]}"
+    if github_event:
+        return "GitHub", f"{github_event.replace('_', ' ')} on {repo}."
+    for key in ("text", "message", "title", "content"):
+        if data.get(key):
+            return str(data.get("source") or "Webhook")[:40], str(data[key])
+    return "Webhook", json.dumps(data)[:300]
 
 
 def create_app(services: Services, background: bool = False) -> FastAPI:
@@ -63,7 +85,7 @@ def create_app(services: Services, background: bool = False) -> FastAPI:
     @app.middleware("http")
     async def guard(request: Request, call_next):
         path = request.url.path
-        if path in OPEN_PATHS or path.startswith("/static/"):
+        if path in OPEN_PATHS or path.startswith(("/static/", "/hooks/")):    # hooks check their own secret
             return await call_next(request)
         csrf = sessions.get(request.cookies.get(SESSION_COOKIE))
         if csrf is None:
@@ -103,6 +125,23 @@ def create_app(services: Services, background: bool = False) -> FastAPI:
         resp.delete_cookie(SESSION_COOKIE)
         resp.delete_cookie(CSRF_COOKIE)
         return resp
+
+    @app.post("/hooks/{token}")
+    async def webhook(request: Request, token: str):
+        """Other apps call this to make Prometheus speak up. The token in the address is the password."""
+        expected = services.settings.webhook_token
+        if not expected or not hmac.compare_digest(token.encode(), expected.encode()):
+            return Response(status_code=404)
+        body = (await request.body())[:65536]
+        try:
+            data = json.loads(body or b"{}")
+        except ValueError:
+            data = {"text": body.decode("utf-8", errors="replace")}
+        source, text = describe_hook(request.headers.get("X-GitHub-Event", ""), data)
+        if services.watchers is not None:
+            services.watchers.webhook(source, text)
+        services.store.audit("webhook", "received", {"source": source})
+        return JSONResponse({"ok": True})
 
     @app.get("/healthz")
     def healthz():

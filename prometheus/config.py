@@ -72,6 +72,7 @@ class Settings:
     briefing_evening: str = "21:00"
     weather_place: str = ""                     # city for the weather ("" = the laptop's location)
     email_alert_senders: list[str] = field(default_factory=list)   # tell me at once when these email me
+    webhook_token: str = ""                     # the secret part of the webhook address (made on first use)
     watch_battery: bool = True                  # say so when the battery drops below 20%
     watch_disk: bool = True                     # say so when the main drive is over 90% full
     watch_cpu: bool = False                     # say so when the CPU is over 90% for 5 minutes

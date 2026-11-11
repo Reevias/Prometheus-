@@ -1,6 +1,8 @@
 # Changelog
 
 ## 1.4
+- New-email alerts: every 5 minutes Prometheus checks for new mail from the senders you chose and tells you at once (spoken, notification, alerts chat), each email once.
+- Webhook: a secret address other apps can call to make Prometheus speak up; GitHub test runs and pushes are understood ("Tests failed on Reevias/Prometheus- (main)"). A wrong address gets "not found"; Settings can make a new one.
 - Daily summary: a morning briefing (08:00) and an evening wrap-up (21:00) with the weather (Open-Meteo, no key), the calendar, important email (chosen senders first, newsletters skipped), reminders and goals, and, in the evening, what Prometheus did. Made on the laptop without an AI call; posted in the "Daily briefing" chat, shown as a notification and spoken. "Give me my briefing" works any time. Times and the weather city are in Settings.
 - Standing goals: "every night at 11 tidy my Downloads" runs the task by itself on schedule and posts the result in that chat (waits if the chat is busy); listed under Coming up with a goal tag.
 - Watchers: battery below 20% and disk over 90% (on), CPU over 90% for 5 minutes (off), and watched folders whose new files are told to you or handled by a goal ("file new PDFs into Documents/PDFs"). Alerts go to the "Prometheus alerts" chat, a Windows notification and the voice; each is said once until things change.

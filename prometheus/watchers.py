@@ -18,6 +18,7 @@ DISK_FULL = 0.90
 CPU_BUSY, CPU_MINUTES = 90, 5
 ALERTS_CHAT = "Prometheus alerts"
 NEW_FILES_SHOWN = 20
+EMAIL_EVERY = 5                 # ticks (minutes) between mail checks
 
 
 class Watchers:
@@ -26,6 +27,7 @@ class Watchers:
         self.said: set[str] = set()
         self.cpu_high = 0
         self.seen: dict[str, set[str]] = {}
+        self.ticks = 0
         self._stop = threading.Event()
 
     # -- telling the owner ----------------------------------------------------------------
@@ -122,8 +124,39 @@ class Watchers:
                 self.alert(f"folder:{key}", f"New in {folder.name}: {', '.join(new[:5])}"
                                             + (f" and {len(new) - 5} more" if len(new) > 5 else "") + ".")
 
+    def check_email(self) -> list[str]:
+        """New mail from the senders the owner chose: told at once, each email once."""
+        from prometheus.agents.email_agent import mailbox
+
+        s, store = self.services.settings, self.services.store
+        wanted = [w.lower() for w in getattr(s, "email_alert_senders", None) or [] if w.strip()]
+        if not wanted or not getattr(s, "email_address", ""):
+            return []
+        try:
+            unread = mailbox().search(unread=True, limit=20)
+        except Exception:
+            return []
+        seen = set(store.kv_get("email_alert_seen", []))
+        told = []
+        for m in unread:
+            if m["id"] in seen or not any(w in m["from"].lower() for w in wanted):
+                continue
+            seen.add(m["id"])
+            sender = m["from"].split("<")[0].strip().strip('"') or m["from"]
+            if self.alert(f"mail:{m['id']}", f"New email from {sender}: {m['subject']}"):
+                told.append(m["id"])
+        store.kv_set("email_alert_seen", sorted(seen)[-300:])
+        return told
+
+    def webhook(self, source: str, text: str) -> None:
+        """Something outside called Prometheus's webhook address: say it (its text is shown, never obeyed)."""
+        self.alert(f"hook:{time.time()}", f"{source}: {' '.join(text.split())[:300]}")
+
     def tick(self) -> None:
         s = self.services.settings
+        self.ticks += 1
+        if self.ticks % EMAIL_EVERY == 1 or EMAIL_EVERY == 1:
+            self.check_email()
         if s.watch_battery and self.laptop is not None:
             self.check_battery()
         if s.watch_disk:

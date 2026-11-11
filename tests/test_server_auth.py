@@ -20,6 +20,9 @@ def test_every_route_requires_login(app_client):
         path = getattr(route, "path", "")
         if path in ("/login",) or path.startswith("/static"):
             continue
+        if path == "/hooks/{token}":    # open on purpose for other apps; a wrong secret gets "not found"
+            assert client.post("/hooks/wrong", json={}).status_code == 404
+            continue
         if path == "/healthz":          # open on purpose, so a second window finds the running copy
             assert client.get(path).json() == {"app": "prometheus"}
             continue

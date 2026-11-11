@@ -418,6 +418,12 @@ def register_routes(app: FastAPI, services: Services) -> None:
         bad_places = {f: extra_root_problem(f, services.home) for f in s.extra_folders}
         bad_places = {f: why for f, why in bad_places.items() if why}
         allowed_rules = store.allow_rules()
+        if not s.webhook_token:
+            import secrets as _secrets
+
+            s.webhook_token = _secrets.token_urlsafe(24)
+            save_settings(s)
+        webhook_url = f"http://127.0.0.1:{s.port}/hooks/{s.webhook_token}"
         from prometheus.agents import apps_agent
         from prometheus.connectors.email_box import help_for
 
@@ -428,7 +434,7 @@ def register_routes(app: FastAPI, services: Services) -> None:
             err = manager.errors.get(e["name"], "") if manager else ""
             mcp.append({**e, "ok": live is not None, "status": (f"{len(live.tools)} tools" if live else err)})
         return page(request, "settings.html", status_code, s=s, providers=rows, other_keys=other_keys,
-                    allowed_rules=allowed_rules, mcp=mcp, email_help=help_for(s.email_address),
+                    allowed_rules=allowed_rules, mcp=mcp, webhook_url=webhook_url, email_help=help_for(s.email_address),
                     email_key_set=bool(have.get("EMAIL_PASSWORD")), calendar_set=bool(have.get("CALENDAR_LINKS")),
                     heads=head_choices(services.router), head=s.head_model,
                     voice=services.voice.describe() if services.voice is not None else None,
@@ -779,6 +785,15 @@ def register_routes(app: FastAPI, services: Services) -> None:
         s.email_alert_senders = [x.strip()[:80] for x in senders.split(",") if x.strip()][:30]
         save_settings(s)
         store.audit("user", "briefing", {"morning": s.briefing_morning, "evening": s.briefing_evening})
+        return settings_page(request, saved=True)
+
+    @app.post("/settings/webhook/new", response_class=HTMLResponse)
+    def new_webhook(request: Request):
+        import secrets as _secrets
+
+        services.settings.webhook_token = _secrets.token_urlsafe(24)
+        save_settings(services.settings)
+        store.audit("user", "webhook_new", {})
         return settings_page(request, saved=True)
 
     @app.post("/settings/watch", response_class=HTMLResponse)
