@@ -46,7 +46,7 @@ def test_the_planner_gets_one_chance_to_fix_a_missing_input(make_ctx):
     ctx0 = make_ctx(providers=[cloud], routes={"plan": ["cloud"], "combine": ["cloud"]})
     orch = Orchestrator(ctx0.store, ctx0.router, {"opener": Open},
                         lambda t, s: dataclasses.replace(ctx0, task_id=t, step_id=s), ctx0.killswitch)
-    out = orch.run(ctx0.store.create_chat("c"), "open youtube")
+    out = orch.run(ctx0.store.create_chat("c"), "put youtube on for me")
     assert out.status == "done" and opened == ["https://www.youtube.com/"]
     assert "target" in cloud.calls[1]["messages"][-1]["content"]
 

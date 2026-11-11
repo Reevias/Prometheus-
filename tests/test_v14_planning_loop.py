@@ -84,7 +84,7 @@ def test_failed_step_is_retried_another_way(make_ctx):
     AppOpener.calls = []
     orch, ctx0, _ = build(make_ctx, [plan("app"), repair("site", "https://open.spotify.com/"), "Opened Spotify."])
     chat = ctx0.store.create_chat("c")
-    out = orch.run(chat, "open spotify")
+    out = orch.run(chat, "get spotify going so I can listen")
     assert out.status == "done"
     assert statuses(ctx0.store, out.task_id) == [("app", "failed"), ("site", "done")]
     assert ctx0.store.steps(out.task_id)[1].goal.startswith("Try 2:")
@@ -99,7 +99,7 @@ def test_said_done_but_goal_missing_counts_as_failed(make_ctx):
 def test_stops_after_three_tries_and_never_repeats(make_ctx):
     AppOpener.calls = []
     orch, ctx0, _ = build(make_ctx, [plan("app"), repair("app", "Spotify")])       # suggests the same thing again
-    out = orch.run(ctx0.store.create_chat("c"), "open spotify")
+    out = orch.run(ctx0.store.create_chat("c"), "get spotify going so I can listen")
     assert AppOpener.calls == ["Spotify"]                                        # the repeat was refused
     orch, ctx0, _ = build(make_ctx, [plan("liar"), repair("liar", "a"), repair("liar", "b"), repair("liar", "c")])
     out = orch.run(ctx0.store.create_chat("c"), "make it")
@@ -108,7 +108,7 @@ def test_stops_after_three_tries_and_never_repeats(make_ctx):
 
 def test_give_up_stops_at_once(make_ctx):
     orch, ctx0, _ = build(make_ctx, [plan("app"), repair("", "", action="give_up"), "Spotify isn't installed."])
-    out = orch.run(ctx0.store.create_chat("c"), "open spotify")
+    out = orch.run(ctx0.store.create_chat("c"), "get spotify going so I can listen")
     assert statuses(ctx0.store, out.task_id) == [("app", "failed")]
 
 
@@ -153,12 +153,12 @@ def test_a_fix_that_worked_becomes_a_lesson_used_next_time(make_ctx):
     prompts = []
     orch, ctx0, prompts = build(make_ctx, [plan("app"), repair("site", "https://open.spotify.com/"), "ok",
                                            plan("site", "https://open.spotify.com/"), "ok"], prompts)
-    orch.run(ctx0.store.create_chat("c"), "open spotify")
+    orch.run(ctx0.store.create_chat("c"), "get spotify going so I can listen")
     lessons = ctx0.store.lessons()
     assert len(lessons) == 1 and lessons[0]["worked"] == 1
     assert "app[target=Spotify]" in lessons[0]["text"] and "site[target=https://open.spotify.com/] worked" in lessons[0]["text"]
-    orch.run(ctx0.store.create_chat("c2"), "open spotify please")
-    next_plan_prompt = [p for p in prompts if "Request: open spotify please" in p][0]
+    orch.run(ctx0.store.create_chat("c2"), "get spotify going so I can listen please")
+    next_plan_prompt = [p for p in prompts if "Request: get spotify going so I can listen please" in p][0]
     assert "Lessons from earlier tasks" in next_plan_prompt and "open.spotify.com" in next_plan_prompt
 
 

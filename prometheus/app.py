@@ -323,6 +323,10 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
     from prometheus.briefing import BriefingClock
 
     services.briefing = BriefingClock(services, notify=lambda text: services.notify("briefing", text))
+    from prometheus import briefing as _briefing
+    from prometheus import quick as _quick
+
+    _quick.WEATHER = lambda day: _briefing.weather(services, day_offset=day)
     from prometheus.agents import briefing_agent
 
     briefing_agent.SERVICES = services

@@ -337,7 +337,9 @@ class Orchestrator:
         newest = [m.text for m in self.store.memories()[-3:]]
         remembered = list(dict.fromkeys(relevant + newest))
         memories = "\n".join(f"- {m[:400]}" for m in remembered) or "(none)"
-        content = f"Things to remember about the user:\n{memories}\n\n"
+        from prometheus.quick import now_line
+
+        content = f"{now_line()}\n\nThings to remember about the user:\n{memories}\n\n"
         known_facts = self.facts.relevant(text)
         if known_facts:
             content += "Known facts (people, places and things in the owner's life):\n" + "\n".join(
@@ -494,8 +496,16 @@ class Orchestrator:
         user_msg = self.store.add_message(chat_id, "user", text)
         task_id = self.store.create_task(chat_id, text)
         self.store.set_task_status(task_id, "running")
+        from prometheus.quick import understand
+
         try:
-            plan = self._plan(text, history, chat_id)
+            fast = understand(text, self.store)
+        except Exception:
+            fast = None
+        if fast is not None and fast.answer:                  # time, date, weather: no AI needed
+            return self._finish(chat_id, task_id, "done", fast.answer, "instant")
+        try:
+            plan = Plan(fast.steps, answer="") if fast is not None else self._plan(text, history, chat_id)
         except PlanError as e:
             return self._finish(chat_id, task_id, "failed", f"I couldn't make a working plan for that: {e}")
         except (ProviderUnavailable, BudgetExceeded) as e:
@@ -503,8 +513,9 @@ class Orchestrator:
         except Stopped as e:
             return self._finish(chat_id, task_id, "stopped", str(e))
 
-        self._remember(chat_id, plan.remember, text)
-        self._save_facts(chat_id, task_id, plan.facts)
+        if fast is None:
+            self._remember(chat_id, plan.remember, text)
+            self._save_facts(chat_id, task_id, plan.facts)
         from prometheus.memory.archive import normalize_topic
 
         topic = normalize_topic(plan.topic, [t["topic"] for t in self.store.topics(KNOWN_TOPICS)])
@@ -563,6 +574,11 @@ class Orchestrator:
         except Stopped as e:
             return self._finish(chat_id, task_id, "stopped", str(e))
 
+        if fast is not None:                                  # an instant command: say what the step said
+            steps = self.store.steps(task_id)
+            answer = "\n".join(s.result for s in steps if s.result) or "Done."
+            status = "failed" if bad else "done"
+            return self._finish(chat_id, task_id, status, answer, "instant", private=bool(private))
         written_by = ""
         report = "\n\n".join(
             f"Step {s.id} ({s.agent}, {s.status}):\n" + untrusted(s.result, s.agent) for s in self.store.steps(task_id))

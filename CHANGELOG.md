@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.7
+- Fixed: "what time is it" could be answered with your location. The AI was never told the date and time; it is now, with every request.
+- Instant answers, with no AI call: the time, date and day; opening apps and sites ("open Spotify", "youtube kholo"); timers, alarms and reminders ("timer for 10 minutes", "remind me at 6 to call mom"); volume ("volume 30", "volume up", "mute"), battery, and today's or tomorrow's weather. A few Hinglish phrases work too ("kitne baje hain", "aaj kya date hai"). Typed or spoken. Everything else goes to the AI as before; answers show "instant" as their source.
+
 ## 1.6
 - Its own icon and name: an ember-orb icon for the window, the taskbar (Prometheus now shows as itself, not Python), the desktop and Start-menu shortcuts, the tray, the browser tab, and notifications (which now say Prometheus instead of Windows PowerShell). Run `prometheus shortcut` (or the installer) once to give the shortcuts the new icon.
 - Train the wake phrase (Settings → Voice): say "Hello Prometheus" 8 times. Prometheus learns how its speech-to-text hears your voice (for example "Hello, permit us") and accepts those spellings, but only right after a greeting, so ordinary talk stays quiet. It also learns how loud and how long you speak, so a soft or slow "Hello Prometheus" still counts. It tells you how many of the 8 it would have caught before and after. "Forget training" undoes it.
