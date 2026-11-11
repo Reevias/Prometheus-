@@ -33,7 +33,9 @@ def parse_date(text: str, today: date) -> date | None:
             pass
     for fmt in ("%d %B", "%d %b", "%B %d", "%b %d", "%d/%m"):
         try:
-            d = datetime.strptime(re.sub(r"(\d+)(st|nd|rd|th)", r"\1", t.replace(",", "")), fmt).date()
+            # a year is added for parsing (newer Python refuses dates without one); 2000 allows 29 Feb
+            d = datetime.strptime(re.sub(r"(\d+)(st|nd|rd|th)", r"\1", t.replace(",", "")) + " 2000",
+                                  fmt + " %Y").date()
             d = d.replace(year=today.year)
             return d if d >= today else d.replace(year=today.year + 1)
         except ValueError:

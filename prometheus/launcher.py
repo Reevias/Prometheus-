@@ -218,6 +218,10 @@ def update(code_dir: Path = CODE_DIR, run=None) -> str:
         except Exception:
             pass
     target = str(code_dir) + (f"[{','.join(extras)}]" if extras else "")
+    if sys.version_info < (3, 14):
+        # the new code needs Python 3.14+; pip would refuse. The code itself still runs until the installer moves it.
+        return ("Downloaded the newest version. It needs Python 3.14: run the installer once (it moves Prometheus over "
+                "by itself), then restart.\n" + (pull.stdout or "")[-300:])
     pip = run([sys.executable, "-m", "pip", "install", "--quiet", "-e", target], capture_output=True, text=True,
               timeout=900)
     if pip.returncode != 0:

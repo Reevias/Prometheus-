@@ -22,7 +22,7 @@ function Get-Tool($Name, $WingetId) {
     if (-not (Get-Command $Name -ErrorAction SilentlyContinue)) { throw "$Name was installed but isn't found yet. Close this window, open a new one and run the line again." }
 }
 Get-Tool git "Git.Git"
-Get-Tool py "Python.Python.3.12"
+Get-Tool py "Python.Python.3.14"
 
 # A Prometheus that is open keeps running the old code (its buttons would say "Not Found"): close it first.
 $Running = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
@@ -33,14 +33,21 @@ if ($Running) {
     Start-Sleep -Seconds 2
 }
 
-# Newest installed Python that is 3.12 or later.
+# Python 3.14 (every part of Prometheus, voice and photos included, has a Windows build for it). 3.15 works too,
+# except voice and photo reading: one part they need (onnxruntime) isn't made for 3.15 yet.
+function Test-Py($v) { try { & py "-$v" -c "import sys" 2>$null } catch { return $false }; return ($LASTEXITCODE -eq 0) }
 $Py = $null
-foreach ($v in "3.14", "3.13", "3.12") {
-    # A missing version writes to stderr; in Windows PowerShell 5.1 with "Stop" that would end the script, so catch it.
-    try { & py "-$v" -c "import sys" 2>$null } catch { continue }
-    if ($LASTEXITCODE -eq 0) { $Py = $v; break }
+if (Test-Py "3.14") { $Py = "3.14" }
+else {
+    if (Get-Command winget -ErrorAction SilentlyContinue) {
+        Write-Host "Installing Python 3.14 (one time)..."
+        winget install --id Python.Python.3.14 -e --silent --accept-package-agreements --accept-source-agreements | Out-Null
+        Refresh-Path
+    }
+    if (Test-Py "3.14") { $Py = "3.14" }
+    elseif (Test-Py "3.15") { $Py = "3.15"; Write-Host "Using Python 3.15: voice and photo reading need Python 3.14 for now." -ForegroundColor Yellow }
 }
-if (-not $Py) { throw "Prometheus needs Python 3.12 or newer. Install it from https://www.python.org/downloads/" }
+if (-not $Py) { throw "Prometheus needs Python 3.14. Install it from https://www.python.org/downloads/ (or: py install 3.14), then run this again." }
 Write-Host "Using Python $Py"
 
 if (Test-Path (Join-Path $Dir ".git")) {
@@ -52,7 +59,13 @@ if (Test-Path (Join-Path $Dir ".git")) {
 }
 
 $Venv = Join-Path $Dir ".venv"
-if (-not (Test-Path (Join-Path $Venv "Scripts\python.exe"))) { & py "-$Py" -m venv $Venv }
+$VenvPy = Join-Path $Venv "Scripts\python.exe"
+if (Test-Path $VenvPy) {
+    # a Prometheus set up with an older Python (3.12, 3.13) is moved to the new one; your data is not touched
+    $Have = (& $VenvPy -c "import sys; print(f'{sys.version_info[0]}.{sys.version_info[1]}')" 2>$null)
+    if ($Have -ne $Py) { Write-Host "Moving Prometheus from Python $Have to Python $Py..."; Remove-Item -Recurse -Force $Venv }
+}
+if (-not (Test-Path $VenvPy)) { & py "-$Py" -m venv $Venv }
 $Python = Join-Path $Venv "Scripts\python.exe"
 & $Python -m pip install --quiet --upgrade pip
 & $Python -m pip install --quiet -e "$Dir[desktop]"
@@ -65,7 +78,7 @@ if (-not (Get-Command adb -ErrorAction SilentlyContinue)) { winget install --id 
 # Voice (say "Prometheus"): optional, so a failed voice install never stops Prometheus itself.
 & $Python -m pip install --quiet -e "$Dir[desktop,browser,voice]"
 $VoiceOk = ($LASTEXITCODE -eq 0)
-if (-not $VoiceOk) { Write-Host "Voice packages could not be installed on Python $Py. Prometheus works without voice; Python 3.12 or 3.13 usually fixes this." }
+if (-not $VoiceOk) { Write-Host "Voice packages could not be installed on Python $Py. Prometheus works without voice; Python 3.14 fixes this." }
 
 $Settings = Join-Path $env:LOCALAPPDATA "Prometheus\settings.json"
 $HasPassword = (Test-Path $Settings) -and ((Get-Content $Settings -Raw) -match '"password_hash":\s*"[^"]+"')

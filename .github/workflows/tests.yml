@@ -16,12 +16,13 @@ jobs:
       fail-fast: false
       matrix:
         os: [windows-latest, ubuntu-latest]
-        python: ["3.12", "3.13", "3.14"]
+        python: ["3.14", "3.15"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
+          allow-prereleases: true
           cache: pip
       - name: Install
         run: pip install -e ".[dev]"

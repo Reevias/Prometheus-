@@ -3,7 +3,7 @@
 <p align="center">
   <a href="https://github.com/Reevias/Prometheus-/releases/latest"><img alt="Latest version" src="https://img.shields.io/github/v/release/Reevias/Prometheus-?label=version&color=e8874a"></a>
   <a href="https://github.com/Reevias/Prometheus-/actions/workflows/tests.yml"><img alt="Tests" src="https://github.com/Reevias/Prometheus-/actions/workflows/tests.yml/badge.svg"></a>
-  <img alt="Python 3.12+" src="https://img.shields.io/badge/python-3.12%2B-3776ab">
+  <img alt="Python 3.14+" src="https://img.shields.io/badge/python-3.14%2B-3776ab">
   <img alt="Windows and Android" src="https://img.shields.io/badge/runs%20on-Windows%20%7C%20Android-555">
   <a href="LICENSE"><img alt="MIT licence" src="https://img.shields.io/badge/licence-MIT-2ea44f"></a>
 </p>
@@ -157,7 +157,7 @@ Your data lives in `%LOCALAPPDATA%\Prometheus` (memory, undo history, prompts, s
 ## For developers
 
 ```bash
-uv venv -p 3.12 .venv && uv pip install -e ".[dev]"
+uv venv -p 3.14 .venv && uv pip install -e ".[dev]"
 .venv/bin/pytest -q
 ```
 

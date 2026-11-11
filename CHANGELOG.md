@@ -1,6 +1,7 @@
 # Changelog
 
 ## 2.3
+- Prometheus now runs on **Python 3.14 or newer** (tested on 3.14 and 3.15). Running the installer once moves an existing Prometheus from Python 3.12 or 3.13 to 3.14 by itself (your memory and settings stay); after that the old Python can be uninstalled. On 3.15 everything works except voice and photo reading, which need 3.14 until one part (onnxruntime) supports 3.15.
 - Phone app: the keyboard no longer hides the Open button (the screen moves up), and the keyboard's Go key opens Prometheus too. Tested on an Android 14 emulator on every change.
 - "Add assignment maths homework due Friday" now saves "maths homework", not "Add assignment maths homework". The browser explains in plain words when Edge is missing.
 - Fixed: buttons saying {"detail":"Not Found"}, a squeezed Settings page and keys that looked unsaved. After an update from outside (running the installer again), the open Prometheus kept running the old code with the new pages. Now it notices new code within a minute and restarts by itself when nothing is running, and the installer closes a running Prometheus first.

@@ -243,6 +243,10 @@ def _doctor(args) -> int:
     if warning:
         print(f"WARNING:     {warning}")
     print(f"Python:      {sys.version.split()[0]}")
+    if sys.version_info < (3, 14):
+        print("             ! Prometheus now uses Python 3.14 or newer. Run the installer once to move it over")
+        print("               (irm https://raw.githubusercontent.com/Reevias/Prometheus-/main/scripts/install-windows.ps1 | iex);")
+        print("               after that the old Python can be uninstalled.")
     print(f"Data folder: {data_dir()}")
     print(f"Password:    {'set' if settings.password_hash else 'not set (run prometheus init)'}")
     budget = Budget(Store(data_dir() / "memory.db"), settings.budget_usd)
