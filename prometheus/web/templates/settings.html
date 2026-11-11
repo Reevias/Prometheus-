@@ -48,6 +48,14 @@
     keep simple questions cheap. If the one you pick is down, Prometheus only falls back to free or local AIs, never to a
     paid one. Research summaries and file reading are not affected.</p>
   </div>
+  <form class="panel" hx-post="/settings/research-brain" hx-target="body" style="display:grid;gap:6px">
+    <strong>Research brain</strong>
+    <span class="muted">Writes research reports and summaries of web pages (never your private files). Kimi needs an
+      OpenRouter key below; if it's down or out of credit, Prometheus falls back to the others.</span>
+    <select name="brain" onchange="this.form.requestSubmit()">
+      {% for bid, label in research_brains %}<option value="{{ bid }}" {{ "selected" if bid == s.research_brain }}>{{ label }}</option>{% endfor %}
+    </select>
+  </form>
   <form class="row" hx-post="/settings/free" hx-target="body">
     <label class="check"><input type="checkbox" name="on" value="1" {{ "checked" if s.free_no_key }} onchange="this.form.requestSubmit()">
       Also use free AIs that need no key (they may keep what you send them; never used for your files)</label>

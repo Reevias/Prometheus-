@@ -58,6 +58,7 @@ class Settings:
     voice_name: str = "af_heart"
     voice_speech: str = "fast"                  # fast | accent | hindi: how commands are turned into words
     auto_update: bool = True
+    research_brain: str = "auto"           # auto, or a model from the list in models/router.py
     code_windows_sandbox: bool = True
     notify_tasks: bool = True              # a task that took over 30 seconds finished
     notify_waiting: bool = True            # a task waits for a yes

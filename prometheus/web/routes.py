@@ -696,6 +696,7 @@ def register_routes(app: FastAPI, services: Services) -> None:
                     home=str(services.home), bad_places=bad_places,
                     budget=services.budget.state(), catalog_date=catalog_updated(),
                     safety=_safety_results(), mcp_config=_mcp_config(), money_categories=_money_categories(),
+                    research_brains=list(__import__("prometheus.models.router", fromlist=["x"]).RESEARCH_LABELS.items()),
                     file_index_status=(getattr(services.file_index, "status", "") or store.kv_get("file_index_status")
                                        or "Not read yet."), **extra)
 
@@ -1211,6 +1212,18 @@ def register_routes(app: FastAPI, services: Services) -> None:
         services.settings.money_budgets = budgets
         save_settings(services.settings)
         store.audit("user", "money_settings", {"budgets": len(budgets)})
+        return settings_page(request, saved=True)
+
+    @app.post("/settings/research-brain", response_class=HTMLResponse)
+    def research_brain(request: Request, brain: str = Form(...)):
+        from prometheus.models.router import RESEARCH_BRAINS
+
+        if brain not in RESEARCH_BRAINS:
+            return settings_page(request, 400, error="Unknown research brain.")
+        services.settings.research_brain = brain
+        save_settings(services.settings)
+        apply_settings(services)
+        store.audit("user", "research_brain", {"brain": brain})
         return settings_page(request, saved=True)
 
     @app.post("/settings/study", response_class=HTMLResponse)

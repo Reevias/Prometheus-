@@ -143,6 +143,8 @@ def head_choices(router: "ModelRouter") -> list[tuple[str, str]]:
             out.append((entry, f"On this laptop: {model or 'local model'} (free, private, slower)"))
         elif name == "openrouter":
             out.append((entry, f"OpenRouter: {model or 'default'}"))
+            out += [(f"openrouter:{m['id']}", f"OpenRouter: {m['name']} ({m['maker']}, ${m['price']} per M tokens)")
+                    for m in openrouter_models() if f"openrouter:{m['id']}" != entry]
         else:
             info = getattr(p, "info", None)
             label = info.name if info else name
@@ -158,6 +160,26 @@ def provider_on(info, settings: Settings) -> bool:
     return not info.keyless or settings.free_no_key or info.id in settings.enabled_providers
 
 
+# Which AI writes research reports (Settings → AI → Research brain). Kimi runs on Moonshot's servers via OpenRouter.
+def openrouter_models() -> list[dict]:
+    """A hand-picked list of strong models on OpenRouter (prometheus/data/openrouter_models.json)."""
+    import json as _json
+    from pathlib import Path as _Path
+
+    try:
+        return _json.loads((_Path(__file__).resolve().parent.parent / "data" / "openrouter_models.json")
+                           .read_text(encoding="utf-8"))["models"]
+    except (OSError, ValueError, KeyError):
+        return []
+
+
+RESEARCH_BRAINS = {"auto": "", "claude": "anthropic"}
+RESEARCH_LABELS = {"auto": "Automatic (as before: the cheapest good model)", "claude": "Claude"}
+for _m in openrouter_models():
+    RESEARCH_BRAINS[_m["id"]] = f"openrouter:{_m['id']}"
+    RESEARCH_LABELS[_m["id"]] = f"{_m['name']} ({_m['maker']}; {_m['about']}; ${_m['price']} per M tokens)"
+
+
 def build_routes(settings: Settings) -> dict[str, list[str]]:
     """The user's routes, plus every free provider that is on: ones with a key first, no-key ones after them,
     the local model last. Never added to the private route."""
@@ -167,6 +189,11 @@ def build_routes(settings: Settings) -> dict[str, list[str]]:
     if settings.openrouter_fast_model and "research" in routes:
         routes["research"] = [f"openrouter:{settings.openrouter_fast_model}" if e == "openrouter" else e
                               for e in routes["research"]]
+    brain = getattr(settings, "research_brain", "auto")
+    if brain in RESEARCH_BRAINS and RESEARCH_BRAINS[brain] and "research" in routes:
+        first = RESEARCH_BRAINS[brain]
+        # the chosen research brain goes first; the old route stays behind it as the fallback
+        routes["research"] = [first] + [e for e in routes["research"] if e != first]
     on = [p for p in load_catalog() if provider_on(p, settings)]
     keyed = [p for p in on if not p.keyless and get_secret(p.key_name)]
     keyless = [p for p in on if p.keyless]
