@@ -1,15 +1,28 @@
-# Prometheus
+<p align="center"><img src="docs/banner.png" alt="Prometheus: your personal AI assistant" width="100%"></p>
 
-[![Tests](https://github.com/Reevias/Prometheus-/actions/workflows/tests.yml/badge.svg)](https://github.com/Reevias/Prometheus-/actions/workflows/tests.yml)
+<p align="center">
+  <a href="https://github.com/Reevias/Prometheus-/releases/latest"><img alt="Latest version" src="https://img.shields.io/github/v/release/Reevias/Prometheus-?label=version&color=e8874a"></a>
+  <a href="https://github.com/Reevias/Prometheus-/actions/workflows/tests.yml"><img alt="Tests" src="https://github.com/Reevias/Prometheus-/actions/workflows/tests.yml/badge.svg"></a>
+  <img alt="Python 3.12+" src="https://img.shields.io/badge/python-3.12%2B-3776ab">
+  <img alt="Windows and Android" src="https://img.shields.io/badge/runs%20on-Windows%20%7C%20Android-555">
+  <a href="LICENSE"><img alt="MIT licence" src="https://img.shields.io/badge/licence-MIT-2ea44f"></a>
+</p>
 
-![Prometheus login screen](docs/login-orb.png)
+<p align="center">
+  <a href="https://github.com/Reevias/Prometheus-/releases/latest/download/Prometheus-Setup.exe"><img alt="Download for Windows" src="https://img.shields.io/badge/Download%20for-Windows-d92d43?style=for-the-badge&logo=windows&logoColor=white"></a>
+  <a href="https://github.com/Reevias/Prometheus-/releases/latest/download/Prometheus.apk"><img alt="Download for Android" src="https://img.shields.io/badge/Download%20for-Android-d92d43?style=for-the-badge&logo=android&logoColor=white"></a>
+</p>
 
-Your personal AI brain. It runs on your own laptop, in a browser tab. You type a task, a lead AI splits it into
-steps, agents do the steps and share one memory, and you get one answer. Every file change can be undone.
+<p align="center">Or in PowerShell: <code>irm https://raw.githubusercontent.com/Reevias/Prometheus-/main/scripts/install-windows.ps1 | iex</code><br>
+<sub>by <a href="https://github.com/Reevias">Reevias</a></sub></p>
 
-Design: [`docs/spec.md`](docs/spec.md) · Roadmap: [`docs/guide.md`](docs/guide.md)
+| | | |
+|---|---|---|
+| 🎙️ **Voice**<br>Say "Prometheus" or clap twice. Natural voice, understands Hinglish, you can interrupt it. | 📚 **Study**<br>Flashcards and quizzes from your notes, exam planner, lecture notes, homework hints. | 💸 **Money**<br>Spending from bank emails and SMS, budgets with warnings. |
+| 📁 **Files**<br>Finds, sorts and reads your files; writes Word, PDF, Excel and slides. Every change undoable. | 🖥️ **Your laptop**<br>Sees your screen, opens apps, uses websites, runs code safely. | 📱 **Your phone**<br>An app with notifications, plus control of your Android phone. |
+| ☀️ **Every day**<br>Morning brief, reminders, focus mode, a weekly report card. | ☁️ **Always on**<br>A cloud copy that works while the laptop is off, encrypted backups. | 🛡️ **Safe**<br>Asks before anything big, never pays without you, one switch stops everything. |
 
-## What it can do
+## Everything it does
 
 **Everyday:** chat or talk ("Hello Prometheus…"), instant answers (time, opening apps, timers, volume, weather),
 reminders and standing goals, a morning briefing and evening wrap-up, focus mode, "undo that".
