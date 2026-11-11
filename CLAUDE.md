@@ -15,7 +15,7 @@ phone app. The owner is a student: use plain words.
 - Tests: `/home/user/venv314/bin/python -m pytest -q` (Python 3.14, the version Prometheus needs; all must pass).
 - Changing `prometheus/prompts/planner.md`: add the old hash to `KNOWN_OLD["planner"]` in `prometheus/selfedit/prompts.py`.
 - A new secret: add it to `KEY_NAMES` in `prometheus/config.py`.
-- Keep `CHANGELOG.md` and `docs/missing.md` up to date.
+- Keep `CHANGELOG.md`, `docs/missing.md` and `docs/bugs.md` (one line per bug fixed, update the total) up to date.
 
 ## Status (11 Nov 2026)
 Done: history checked (no secrets; only the first commit's author email, kept because rewriting would break
