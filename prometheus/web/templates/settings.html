@@ -173,6 +173,15 @@
     <button type="submit">Save</button>
   </form>
 
+  <h3>Clipboard and screenshot memory</h3>
+  <form class="panel" hx-post="/settings/clips" hx-target="body" style="display:grid;gap:8px">
+    <label class="check"><input type="checkbox" name="on" value="1" {{ "checked" if s.clip_on }}> Remember text and links
+      I copy, and the text in new screenshots, for {{ s.clip_days }} days (on this laptop only; passwords, card numbers,
+      OTPs and keys are never kept). Ask "what was that link I copied this morning?"</label>
+    <div class="row"><button type="submit">Save</button>
+      <button type="button" class="danger" hx-post="/settings/clips/forget" hx-target="body" hx-confirm="Forget everything copied so far?">Forget all</button></div>
+  </form>
+
   <h3>Money tracker</h3>
   <form class="panel" hx-post="/settings/money" hx-target="body" style="display:grid;gap:8px">
     <label class="check"><input type="checkbox" name="on" value="1" {{ "checked" if s.money_on }}> Read bank and UPI

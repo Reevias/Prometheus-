@@ -64,6 +64,8 @@ class Settings:
     notify_briefing: bool = True
     notify_repo: bool = True
     notify_updates: bool = True
+    clip_on: bool = True                   # remember copied text and screenshot text (7 days, never secrets)
+    clip_days: int = 7
     money_on: bool = True                  # read bank and UPI alerts from the connected email
     money_budgets: dict = field(default_factory=dict)   # category -> monthly budget in rupees
     study_cloud: bool = False              # let Claude make cards and mark answers (better; notes are sent)

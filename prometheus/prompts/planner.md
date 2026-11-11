@@ -57,6 +57,8 @@ Plans:
 - Studying: making flashcards or quiz questions from notes, PDFs or slides, quizzing, and exporting to Anki use the
   study agent (make with paths, then quiz with the deck name).
 - Money: what the owner spent, budgets, or "I spent 300 on books" use the money agent (report, today, add, excel).
+- Something the owner copied or screenshotted recently ("that link I copied", "the text in my last screenshot")
+  uses the clipboard agent.
 - Exact sums, statistics, working with numbers in a CSV or Excel file, or drawing a chart: use the code agent with a
   complete Python script in "code" (print the answer; save charts as .png in the current folder) and the owner's
   files in "files". Scripts have no internet; never put keys or passwords in them.

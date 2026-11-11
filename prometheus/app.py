@@ -62,6 +62,7 @@ class Services:
     watchers: object = None
     briefing: object = None
     file_index: object = None
+    clips: object = None
     photos: object = None
     laptop: object = None
     browser: object = None
@@ -364,6 +365,24 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
     from prometheus.agents import money_agent as _ma
 
     _ma.MONEY = _money.Money(store, settings)
+    import sys as _sys2
+
+    from prometheus import clipboard as _clip
+
+    def _ocr(path):
+        return _ocr.looker.text(path)
+
+    _ocr.looker = None
+    try:
+        from prometheus.photos import Looker as _Looker
+
+        _ocr.looker = _Looker()
+    except Exception:
+        pass
+    services.clips = _clip.ClipMemory(store, home, settings,
+                                      reader=_clip.windows_clipboard_text if _sys2.platform == "win32" else None,
+                                      ocr=_ocr if _ocr.looker is not None else None)
+    _clip.CURRENT = services.clips
     return services
 
 

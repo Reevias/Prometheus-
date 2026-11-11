@@ -929,6 +929,20 @@ def register_routes(app: FastAPI, services: Services) -> None:
 
         return [c for c, _ in CATEGORIES] + ["Transfers", "Other"]
 
+    @app.post("/settings/clips", response_class=HTMLResponse)
+    def save_clips(request: Request, on: str = Form("")):
+        services.settings.clip_on = bool(on)
+        save_settings(services.settings)
+        store.audit("user", "clip_settings", {"on": bool(on)})
+        return settings_page(request, saved=True)
+
+    @app.post("/settings/clips/forget", response_class=HTMLResponse)
+    def forget_clips(request: Request):
+        if services.clips is not None:
+            store._write("DELETE FROM clips")
+        store.audit("user", "clips_forget", {})
+        return settings_page(request, notice="Forgot everything copied so far.")
+
     @app.post("/settings/money", response_class=HTMLResponse)
     async def save_money(request: Request):
         form = await request.form()

@@ -137,6 +137,13 @@ def understand(text: str, store=None, now: float | None = None) -> Quick | None:
             said = ""
         if said:
             return Quick(answer=("Tomorrow: " if tomorrow else "Today: ") + said + ".")
+    m = re.search(r"\b(?:what|which) (?:was |is )?(?:that |the )?(link|url|text|thing|number|address)s? (?:that )?i "
+                  r"(?:just )?(?:copied|copy)\b(.*)|\bmy (?:last|recent) (?:copied|clipboard)\b(.*)|"
+                  r"\bwhat did i (?:copy|screenshot)\b(.*)", low)
+    if m:
+        kind = "link" if m.group(1) in ("link", "url") else ""
+        rest = next((g for g in m.groups()[1:] if g), "")
+        return Quick(steps=[_step("clipboard", "What was copied", kind=kind, when=rest.strip())])
     from prometheus import money
 
     if money.TELL.match(t):

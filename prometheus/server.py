@@ -70,7 +70,11 @@ def create_app(services: Services, background: bool = False) -> FastAPI:
             services.file_index.start()
         if services.photos is not None:
             services.photos.start()
+        if services.clips is not None:
+            services.clips.start()
         yield
+        if services.clips is not None:
+            services.clips.stop()
         if services.file_index is not None:
             services.file_index.stop()
         if services.photos is not None:
