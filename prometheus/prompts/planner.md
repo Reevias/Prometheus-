@@ -63,6 +63,7 @@ Plans:
 - "Check my laptop", "why is my laptop slow", disk space or battery wear use the health agent.
 - An exam date with a syllabus ("my physics exam is on 20 March, here is the syllabus") uses the exams agent (plan).
 - A recorded class or lecture (audio or video) to turn into notes uses the lecture agent with its path (find the file first if needed).
+- "Read this chapter to me" / reading a PDF or notes out loud uses the reader agent (read with path and pages).
 - Exact sums, statistics, working with numbers in a CSV or Excel file, or drawing a chart: use the code agent with a
   complete Python script in "code" (print the answer; save charts as .png in the current folder) and the owner's
   files in "files". Scripts have no internet; never put keys or passwords in them.

@@ -403,6 +403,9 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
     from prometheus.agents import lecture_agent as _la
 
     _la.SERVICES = services
+    from prometheus.voice import reader as _reader
+
+    _reader.CURRENT = _reader.Reader(services)
 
     def _health_fix(payload: dict) -> str:
         if payload.get("fix") == "settings":

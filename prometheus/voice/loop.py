@@ -12,6 +12,12 @@ CARRY_ON = 0.7       # seconds of quiet after the name that mean "that was all, 
 STATES = ("off", "setup", "idle", "listening", "thinking", "speaking", "muted", "error")
 
 
+def _was_reader_command(command: str) -> bool:
+    from prometheus.quick import READER_COMMAND
+
+    return bool(READER_COMMAND.search(command or ""))
+
+
 class VoiceLoop:
     """Runs in its own thread. Every part is passed in, so it can be tested without a microphone.
 
@@ -102,6 +108,11 @@ class VoiceLoop:
         the name on its own gets "Yes sir?" and then the command. Either way "Yes sir." confirms it was heard."""
         self.state = "listening"
         t0 = time.monotonic()
+        from prometheus.voice import reader as _reader
+
+        reading = _reader.CURRENT if (_reader.CURRENT is not None and _reader.CURRENT.state == "reading") else None
+        if reading is not None:
+            reading.pause()                    # quiet while the owner speaks
         heard = getattr(self.spotter, "last_text", None)
         phrase_done = getattr(self.spotter, "phrase_done", False)
         command = strip_wake(heard) if heard and phrase_done else ""
@@ -140,6 +151,8 @@ class VoiceLoop:
         self.last_timing = {"hearing": round(t_heard - t0, 1), "thinking": round(t_answer - t_think, 1),
                             "speaking": round(time.monotonic() - t_answer, 1)}
         self.log(f"voice timing: {self.last_timing}")
+        if reading is not None and reading.state == "paused" and not _was_reader_command(command):
+            reading.start()                    # another question answered: carry on reading
         # a quiz question was asked: the owner's answer needs no "Hello Prometheus"
         turns = 0
         while self.followup is not None and self.followup() and turns < 40 and not self._stop.is_set():

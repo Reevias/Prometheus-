@@ -44,6 +44,18 @@ QUESTION = re.compile(r"^(what|whats|what's|when|where|which|who|whom|whose|why|
                       re.I)
 
 
+READER_COMMAND = re.compile(r"^\W*(?:please\s+)?(pause|stop reading|stop|continue|resume|carry on|go on|keep reading|"
+                            r"go back|back|repeat that|read (?:that )?again|skip|next|explain (?:that|this)(?: part)?"
+                            r"(?: again)?|what does that mean|read faster|faster|read slower|slower|slow down)"
+                            r"(?:\s+(?:please|now|reading|it|sir))*\W*$",
+                            re.I)
+READER_ACTION = {"pause": "pause", "stop reading": "stop", "stop": "stop", "continue": "continue", "resume": "continue",
+                 "carry on": "continue", "go on": "continue", "keep reading": "continue", "go back": "back",
+                 "back": "back", "repeat that": "back", "read again": "back", "read that again": "back",
+                 "skip": "skip", "next": "skip", "read faster": "faster", "faster": "faster", "read slower": "slower",
+                 "slower": "slower", "slow down": "slower", "what does that mean": "explain"}
+
+
 @dataclass
 class Quick:
     answer: str = ""                                  # said straight away (no steps)
@@ -171,6 +183,15 @@ def understand(text: str, store=None, now: float | None = None) -> Quick | None:
     if m:
         deck = next((g for g in m.groups() if g), "").strip()
         return Quick(steps=[_step("study", f"Quiz {deck or 'everything due'}", action="quiz", deck=deck)])
+    from prometheus.voice import reader as _reader
+
+    if _reader.CURRENT is not None and _reader.CURRENT.active():
+        m = READER_COMMAND.match(low)
+        if m and len(low.split()) <= 6:
+            word = m.group(1).lower()
+            act = "explain" if word.startswith("explain") else READER_ACTION.get(word, "")
+            if act:
+                return Quick(steps=[_step("reader", f"Reading: {act}", action=act)])
     if re.fullmatch(r"(undo|undo that|undo it|undo the last (?:thing|action|step)|reverse that|take that back|"
                     r"wapas karo|undo karo)", low):
         return Quick(steps=[_step("undo", "Undo the last action", action="undo")], action=True)

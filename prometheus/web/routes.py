@@ -173,6 +173,28 @@ def register_routes(app: FastAPI, services: Services) -> None:
         services.prompts.set("learned", HEADER + "(Reset by the owner.)\n", "Reset by the owner")
         return memory_page(request, lesson="Cleared what Prometheus learned. Older versions can still be restored.")
 
+    @app.get("/reader/panel", response_class=HTMLResponse)
+    def reader_panel(request: Request):
+        from prometheus.voice import reader as _reader
+
+        r = _reader.CURRENT
+        return page(request, "reader_panel.html", r=r.status() if r is not None else None)
+
+    @app.post("/reader/{action}", response_class=HTMLResponse)
+    def reader_action(request: Request, action: str):
+        import threading as _th
+
+        from prometheus.voice import reader as _reader
+
+        r = _reader.CURRENT
+        if r is not None:
+            act = {"pause": r.pause, "continue": r.resume, "back": lambda: r.move(-1), "skip": lambda: r.move(1),
+                   "slower": lambda: r.set_speed(False), "faster": lambda: r.set_speed(True), "stop": r.stop,
+                   "explain": lambda: _th.Thread(target=r.explain, daemon=True).start()}.get(action)
+            if act is not None:
+                act()
+        return reader_panel(request)
+
     @app.get("/browser/control", response_class=HTMLResponse)
     def browser_control(request: Request):
         b = services.browser

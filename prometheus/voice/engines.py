@@ -301,10 +301,10 @@ class KokoroSpeaker:
         self._ack = self._make("Yes sir.")
         self._ask = self._make("Yes sir?")
 
-    def _make(self, text: str):
+    def _make(self, text: str, speed: float = 1.0):
         import numpy as np
 
-        audio, rate = self._tts.create(text, voice=self.voice, speed=1.0, lang=self._lang)
+        audio, rate = self._tts.create(text, voice=self.voice, speed=speed, lang=self._lang)
         return (np.clip(audio, -1, 1) * 32767).astype(np.int16), rate
 
     @staticmethod
@@ -313,6 +313,16 @@ class KokoroSpeaker:
 
         sd.play(clip[0], clip[1])
         sd.wait()
+
+    @staticmethod
+    def stop() -> None:
+        """Stop whatever is playing right now (used to pause reading aloud)."""
+        try:
+            import sounddevice as sd
+
+            sd.stop()
+        except Exception:
+            pass
 
     def ack(self) -> None:
         self._play(self._ack)
@@ -323,23 +333,29 @@ class KokoroSpeaker:
     def chime(self) -> None:
         self.ask()
 
-    def say(self, text: str) -> None:
+    def say(self, text: str, speed: float = 1.0, stop: threading.Event | None = None) -> bool:
+        """Speak; returns False if `stop` was set before the end (reading aloud was paused)."""
         import queue
         import re
 
         parts = [p for p in re.split(r"(?<=[.!?])\s+", text.strip()) if p]
         if not parts:
-            return
+            return True
         ready: queue.Queue = queue.Queue()
 
         def make_all():
             for p in parts:
-                ready.put(self._make(p))
+                if stop is not None and stop.is_set():
+                    break
+                ready.put(self._make(p, speed))
             ready.put(None)
 
         threading.Thread(target=make_all, daemon=True).start()
         while (clip := ready.get()) is not None:
+            if stop is not None and stop.is_set():
+                return False
             self._play(clip)
+        return not (stop is not None and stop.is_set())
 
 
 class PiperSpeaker:

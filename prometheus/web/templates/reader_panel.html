@@ -1,0 +1,12 @@
+{% if r and r.state != "off" %}<div class="reader panel">
+  <div class="row" style="justify-content:space-between;gap:8px">
+    <strong>Reading: {{ r.title }}</strong><span class="muted">{{ r.index + 1 }} / {{ r.total }} · {{ r.speed }}×{% if r.state != "reading" %} · {{ r.state }}{% endif %}</span>
+  </div>
+  {% if r.before %}<p class="muted reader-side">{{ r.before }}</p>{% endif %}
+  <p class="reader-now">{{ r.now }}</p>
+  {% if r.after %}<p class="muted reader-side">{{ r.after }}</p>{% endif %}
+  <div class="row" style="gap:6px;flex-wrap:wrap">
+    {% for act, label in [("back", "Back"), ("pause", "Pause") if r.state == "reading" else ("continue", "Continue"), ("skip", "Skip"), ("explain", "Explain this"), ("slower", "Slower"), ("faster", "Faster"), ("stop", "Stop")] %}
+    <button type="button" hx-post="/reader/{{ act }}" hx-target="#reader" hx-swap="innerHTML">{{ label }}</button>{% endfor %}
+  </div>
+</div>{% endif %}
