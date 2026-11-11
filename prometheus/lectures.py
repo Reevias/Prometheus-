@@ -116,7 +116,7 @@ class LectureJob:
         try:
             text = self.transcriber(self.path, data_dir() / "voice", progress=lambda m: store.kv_set("lecture_progress", m))
         except ImportError:
-            self.say('Lecture notes need the voice parts. Run:  pip install -e ".[voice]"')
+            self.say('Lecture notes need the voice parts. To fix it, run the installer again (irm https://raw.githubusercontent.com/Reevias/Prometheus-/main/scripts/install-windows.ps1 | iex)')
             return made
         except Exception as e:
             self.say(f"I couldn't turn {self.path.name} into text ({type(e).__name__}). Is it an audio or video file?")

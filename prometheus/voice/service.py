@@ -73,7 +73,7 @@ class VoiceService:
             self.models.speech = getattr(self.services.settings, "voice_speech", self.models.speech)
             packages = self.models.packages_missing()
             if packages:
-                self.error = 'Voice needs extra packages. Run:  pip install -e ".[voice]"'
+                self.error = 'Voice needs extra packages. To fix it, run the installer again (irm https://raw.githubusercontent.com/Reevias/Prometheus-/main/scripts/install-windows.ps1 | iex)'
                 return False
             if self.models.missing():
                 if not self.downloading:                 # e.g. the new voice after an update: fetch it by itself

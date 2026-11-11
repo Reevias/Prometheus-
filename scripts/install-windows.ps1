@@ -78,6 +78,8 @@ if (-not (Get-Command adb -ErrorAction SilentlyContinue)) { winget install --id 
 # Voice (say "Prometheus"): optional, so a failed voice install never stops Prometheus itself.
 & $Python -m pip install --quiet -e "$Dir[desktop,browser,voice]"
 $VoiceOk = ($LASTEXITCODE -eq 0)
+# the laptop voice: its label still says "up to Python 3.13", but it works on 3.14 (its parts are installed above)
+if ($VoiceOk) { & $Python -m pip install --quiet --no-deps --ignore-requires-python "kokoro-onnx>=0.4"; $VoiceOk = ($LASTEXITCODE -eq 0) }
 if (-not $VoiceOk) { Write-Host "Voice packages could not be installed on Python $Py. Prometheus works without voice; Python 3.14 fixes this." }
 
 $Settings = Join-Path $env:LOCALAPPDATA "Prometheus\settings.json"

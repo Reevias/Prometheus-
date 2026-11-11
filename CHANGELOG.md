@@ -1,6 +1,7 @@
 # Changelog
 
 ## 2.3
+- Fixed on Python 3.14: photo text reading (now rapidocr 3) and the laptop voice (Kokoro, whose label still says "up to 3.13" but works on 3.14) install properly. GitHub now installs every add-on on Windows with Python 3.14 on each change.
 - Fixed: Settings squeezed into a narrow column after pressing any Save, the safety check or a voice button (the "Saved." message took the menu's place in the layout). Messages now appear as a short notice at the bottom. The click-through test now also checks the layout after every button.
 - ▶ Hear it next to each voice: a short sample before you choose (made once and kept, so trying it again is free).
 - The "Voice problem" pill opens Settings → Voice and says what's wrong when you hover over it.

@@ -68,7 +68,10 @@ class Looker:
             labels = np.array(list(text.embed([d for _, _, d in KINDS])))
             self._labels = labels / np.linalg.norm(labels, axis=1, keepdims=True)
         if self._ocr is None:
-            from rapidocr_onnxruntime import RapidOCR
+            try:
+                from rapidocr import RapidOCR          # rapidocr 3: works on Python 3.14
+            except ImportError:
+                from rapidocr_onnxruntime import RapidOCR   # the older package (Python up to 3.12)
 
             self._ocr = RapidOCR()
 
@@ -90,8 +93,12 @@ class Looker:
     def text(self, path: Path) -> str:
         with self._lock:
             self._load()
-            result, _ = self._ocr(str(path))
-        words = " ".join(r[1] for r in (result or []) if r and len(r) > 1)
+            result = self._ocr(str(path))
+        if hasattr(result, "txts"):                      # rapidocr 3 returns an object with the found texts
+            words = " ".join(t for t in (result.txts or ()) if t)
+        else:                                            # the older package returns (rows, timings)
+            rows = result[0] if isinstance(result, tuple) else result
+            words = " ".join(r[1] for r in (rows or []) if r and len(r) > 1)
         return STUCK.sub(" ", words)
 
 
@@ -150,7 +157,7 @@ class PhotoIndex(FileIndex):
         try:
             return super().run(budget_seconds, only_at_night)
         except ImportError:
-            self.status = 'Photo reading needs one extra part. Run:  pip install -e ".[photos]"'
+            self.status = 'Photo reading needs one extra part. To fix it, run the installer again (irm https://raw.githubusercontent.com/Reevias/Prometheus-/main/scripts/install-windows.ps1 | iex)'
             self.store.kv_set(self.KV, self.status)
             return {"read": 0, "missing": True}
 

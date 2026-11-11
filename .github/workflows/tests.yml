@@ -28,3 +28,23 @@ jobs:
         run: pip install -e ".[dev]"
       - name: Run tests
         run: python -m pytest -q
+
+  extras:
+    # every add-on really installs on Windows with Python 3.14 (voice, photos, browser, desktop window)
+    name: Windows add-ons, Python 3.14
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - name: Install everything, as the installer does
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[desktop,browser,photos,voice]"
+          if ($LASTEXITCODE -ne 0) { throw "an add-on didn't install" }
+          python -m pip install --no-deps --ignore-requires-python "kokoro-onnx>=0.4"
+          if ($LASTEXITCODE -ne 0) { throw "the laptop voice didn't install" }
+      - name: Every add-on loads
+        run: python -c "import webview, pystray, playwright, fastembed, rapidocr, vosk, faster_whisper, kokoro_onnx, sounddevice, numpy, onnxruntime; print('all add-ons load')"

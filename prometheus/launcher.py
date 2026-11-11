@@ -226,4 +226,7 @@ def update(code_dir: Path = CODE_DIR, run=None) -> str:
               timeout=900)
     if pip.returncode != 0:
         raise RuntimeError("Downloaded the new code but installing its packages failed: " + (pip.stderr or "")[-300:])
+    if "voice" in extras:          # the laptop voice, added by itself (its label says <3.14; it works on 3.14)
+        run([sys.executable, "-m", "pip", "install", "--quiet", "--no-deps", "--ignore-requires-python",
+             "kokoro-onnx>=0.4"], capture_output=True, text=True, timeout=600)
     return "Updated to the newest version. Restart Prometheus to use it.\n" + (pull.stdout or "")[-300:]

@@ -2,11 +2,13 @@
 
 Every bug found and fixed, newest first, so the count is always exact. Add a line for each new one.
 
-**Total fixed: 38** (as of 11 November 2026)
+**Total fixed: 40** (as of 11 November 2026)
 
-## 11 November 2026: on the owner's laptop and phone (19)
+## 11 November 2026: on the owner's laptop and phone (21)
 | # | Bug | Fixed by |
 |---|---|---|
+| 40 | Laptop voice (Kokoro) wouldn't install on Python 3.14: its label says "up to 3.13" | installed with its old label ignored (it works on 3.14, tested by speaking) |
+| 39 | Photo text reading wouldn't install on Python 3.14 (rapidocr-onnxruntime stops at 3.12) | switched to rapidocr 3, tested reading a photo on 3.14 |
 | 38 | Phone app showed a blank screen when opened again | "Opening Prometheus" screen with Open and Change address buttons |
 | 37 | Phone app closed when opened again from its icon | the app's screen no longer clears the Prometheus page |
 | 36 | On the phone, the keyboard hid the Open button | the screen moves up; the keyboard's Go key opens too |

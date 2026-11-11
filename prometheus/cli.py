@@ -160,7 +160,7 @@ def _voice_setup(args) -> int:
     models = VoiceModels(_data() / "voice")
     missing = models.packages_missing()
     if missing:
-        print('Voice needs extra packages first. Run:  pip install -e ".[voice]"')
+        print('Voice needs extra packages first. To fix it, run the installer again (irm https://raw.githubusercontent.com/Reevias/Prometheus-/main/scripts/install-windows.ps1 | iex)')
         return 2
     try:
         models.download(progress=print)

@@ -130,7 +130,7 @@
     <p class="muted" style="margin:0">Say <strong>“Prometheus”</strong> and then what you want, or <strong>clap twice</strong> to be
     greeted with a brief and just talk. It answers out loud (a short version; the full answer is in the Voice chat). Things
     that need your approval still wait on the Approvals page, so someone else in the room can't do anything risky by talking.</p>
-    {% if voice.packages %}<p class="error" style="margin:0">Voice needs extra packages: run <code>pip install -e ".[voice]"</code>, then restart Prometheus.</p>
+    {% if voice.packages %}<p class="error" style="margin:0">Voice needs extra packages. Run the installer again (it adds them), then open Prometheus:<br><code>irm https://raw.githubusercontent.com/Reevias/Prometheus-/main/scripts/install-windows.ps1 | iex</code></p>
     {% elif voice.missing %}
       <form hx-post="/settings/voice/setup" hx-target="body" class="row"><span class="muted">Not downloaded yet: {{ voice.missing|join(", ") }}.</span>
         <button type="submit" class="primary">Set up voice (about 250 MB)</button></form>

@@ -58,4 +58,4 @@ def test_missing_models_say_how_to_get_them(make_ctx):
         text = tags
 
     index = photos.PhotoIndex(ctx.store, ctx.policy, looker=NoModels(), pause=0)
-    assert index.run().get("missing") and "[photos]" in index.status
+    assert index.run().get("missing") and "installer" in index.status
