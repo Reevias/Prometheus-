@@ -447,6 +447,12 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
     from prometheus.sync import SyncClock
 
     services.sync = SyncClock(services)
+
+    def _ok_synced_goal(payload: dict) -> str:
+        store._write("UPDATE reminders SET state = 'waiting' WHERE id = ? AND state = 'needs_ok'", (int(payload["id"]),))
+        return "OK: this laptop will run that standing goal on schedule."
+
+    approvals.register("synced_goal", _ok_synced_goal)
     from prometheus import phone as _phone
 
     services.laptop_jobs = _phone.LaptopJobs(services)
@@ -455,13 +461,13 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
     _pa.SERVICES = services
     approvals.register("phone_action", _pa.action_handler)
 
-    def _to_laptop(chat_id: int, text: str, plan) -> str:
+    def _to_laptop(chat_id: int, text: str, plan, read_only: bool = False) -> str:
         """On the cloud copy: a request that needs the laptop (its screen, files or apps) waits for the laptop."""
         if getattr(settings, "role", "laptop") != "cloud":
             return ""
         if not any(st["agent"] in _phone.LAPTOP_AGENTS for st in plan.steps):
             return ""
-        _phone.queue_for_laptop(store, dict(store.chats()).get(chat_id, _phone.PHONE_CHAT), text)
+        _phone.queue_for_laptop(store, dict(store.chats()).get(chat_id, _phone.PHONE_CHAT), text, read_only=read_only)
         from prometheus.sync import laptop_away
 
         return ("Sent to your laptop: it's on, so it'll do it in a moment and the answer will appear here."
@@ -473,6 +479,7 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
     from prometheus.agents import screen_agent as _scr
 
     _scr.SERVICES = services
+    approvals.register("screen_click", _scr.screen_click_handler)
     approvals.register("clone_and_check", lambda payload: _scr.clone_and_check_handler(payload, data / "quarantine"))
 
     def _health_fix(payload: dict) -> str:

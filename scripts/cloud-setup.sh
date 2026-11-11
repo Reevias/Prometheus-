@@ -14,9 +14,11 @@ sudo apt-get install -y -qq git python3 python3-venv python3-pip curl adb >/dev/
 echo "== 2/6 Prometheus's code"
 if [ ! -d "$DIR/.git" ]; then
   read -r -s -p "GitHub token with read access to $REPO (fine-grained, Contents: read): " GH; echo
-  git clone -q "https://x-access-token:${GH}@github.com/${REPO}.git" "$DIR"
-  git -C "$DIR" remote set-url origin "https://x-access-token:${GH}@github.com/${REPO}.git"
+  CRED="$HOME/.prometheus-git-credentials"
+  ( umask 077; printf 'https://x-access-token:%s@github.com\n' "$GH" > "$CRED" )   # readable by you only
   unset GH
+  git -c credential.helper="store --file=$CRED" clone -q "https://github.com/${REPO}.git" "$DIR"
+  git -C "$DIR" config credential.helper "store --file=$CRED"
 else
   git -C "$DIR" pull -q --ff-only
 fi

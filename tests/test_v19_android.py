@@ -63,8 +63,10 @@ def test_free_actions(adb, make_ctx):
     assert agent.run("x", {"action": "open_app", "app": "Spotify"}, ctx).status == "done"
     assert "monkey -p com.spotify.music" in shells(adb)[-1]
     assert agent.run("x", {"action": "open_app", "app": "termux"}, ctx).status == "failed"     # never terminals
-    agent.run("x", {"action": "setting", "what": "wifi", "value": "off"}, ctx)
-    assert shells(adb)[-1] == "cmd wifi set-wifi-enabled disabled"
+    agent.run("x", {"action": "setting", "what": "wifi", "value": "on"}, ctx)
+    assert shells(adb)[-1] == "cmd wifi set-wifi-enabled enabled"
+    off = agent.run("x", {"action": "setting", "what": "wifi", "value": "off"}, ctx)
+    assert off.status == "waiting_approval"                       # it could cut the link to the phone
     agent.run("x", {"action": "alarm", "time": "6:45 pm", "label": "Gym; rm"}, ctx)
     assert "HOUR 18" in shells(adb)[-1] and "MINUTES 45" in shells(adb)[-1] and ";" not in shells(adb)[-1]
     assert agent.run("x", {"action": "setting", "what": "volume", "value": "99"}, ctx).status == "failed"

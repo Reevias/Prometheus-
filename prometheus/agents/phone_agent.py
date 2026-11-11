@@ -19,8 +19,8 @@ FIND_SCHEMA = {"type": "object", "properties": {"found": {"type": "boolean"}, "x
                                                 "y": {"type": "integer"}, "label": {"type": "string"},
                                                 "answer": {"type": "string"}},
                "required": ["found", "x", "y", "label", "answer"], "additionalProperties": False}
-FREE = {"open_app", "open_url", "look", "notifications", "battery", "setting", "alarm", "timer", "key", "swipe"}
-ASKED = {"tap", "type"}
+FREE = {"open_app", "look", "notifications", "battery", "setting", "alarm", "timer", "key"}
+ASKED = {"tap", "type", "swipe", "open_url (unknown sites)", "wifi/data off", "enter", "message", "call"}
 
 
 def phone() -> Phone:
@@ -65,7 +65,17 @@ class PhoneAgent(Agent):
                 url = str(inputs.get("url") or "").strip()
                 if not url.startswith(("https://", "http://")):
                     url = "https://" + url
-                return StepResult("done", p.open_url(url))
+                from urllib.parse import urlsplit
+
+                from prometheus.sites import AUTO_HOSTS
+
+                host = (urlsplit(url).hostname or "").lower()
+                if host in AUTO_HOSTS and host not in ("wa.me", "api.whatsapp.com"):
+                    return StepResult("done", p.open_url(url))
+                return ctx.ask("phone_action", f"Open {url[:200]} on your phone", {"action": "open_url", "url": url},
+                               exact=f"phone:url:{url[:300]}", broad=f"phone:site:{host}",
+                               broad_label=f"Always open {host} on my phone",
+                               waiting=f"Open {host} on your phone? Answer below.")
             if action == "battery":
                 return StepResult("done", p.battery())
             if action == "notifications":
@@ -75,7 +85,14 @@ class PhoneAgent(Agent):
                 lines = [f"- {i['app'].split('.')[-1]}: {i.get('title', '')} {i.get('text', '')}".strip() for i in items]
                 return StepResult("done", untrusted("\n".join(lines), "phone notifications"))
             if action == "setting":
-                return StepResult("done", p.setting(str(inputs.get("what") or ""), str(inputs.get("value") or "")))
+                what, value = str(inputs.get("what") or "").lower(), str(inputs.get("value") or "").lower()
+                if what in ("wifi", "data", "mobile data") and value in ("off", "false", "0", "disable", "no"):
+                    # turning these off can cut Prometheus's own link to the phone
+                    return ctx.ask("phone_action", f"Turn {what} off on your phone (Prometheus may lose the phone "
+                                   "until it's back on)", {"action": "setting", "what": what, "value": "off"},
+                                   exact=f"phone:setting:{what}:off:{ctx.task_id}",
+                                   waiting=f"Turn {what} off on your phone? Answer below.")
+                return StepResult("done", p.setting(what, value))
             if action == "alarm":
                 m = re.search(r"(\d{1,2})(?::(\d{2}))?\s*(am|pm)?", str(inputs.get("time") or ""), re.I)
                 if not m:
@@ -100,7 +117,11 @@ class PhoneAgent(Agent):
                                    waiting="Press Enter on your phone? Answer below.")
                 return StepResult("done", p.key(key))
             if action == "swipe":
-                return StepResult("done", p.swipe(str(inputs.get("direction") or "up").lower()))
+                direction = str(inputs.get("direction") or "up").lower()
+                return ctx.ask("phone_action", f"Swipe {direction} on your phone", {"action": "swipe",
+                                                                                    "direction": direction},
+                               exact=f"phone:swipe:{direction}:{ctx.task_id}",
+                               waiting=f"Swipe {direction} on your phone? Answer below.")
             if action == "look":
                 return self._look(ctx, p, str(inputs.get("question") or goal))
             if action == "tap":
@@ -146,7 +167,7 @@ class PhoneAgent(Agent):
     def _look(self, ctx, p: Phone, question: str) -> StepResult:
         data, _ = self._vision(ctx, p.screenshot(), f"The owner asks about their phone screen: {question}\n"
                                                     "Answer in 'answer'; set found false and x, y 0.")
-        return StepResult("done", data.get("answer", ""))
+        return StepResult("done", untrusted(data.get("answer", ""), "what's on the phone screen"))
 
     def _tap(self, ctx, p: Phone, target: str) -> StepResult:
         from prometheus.connectors.browser import kind_of_click
@@ -183,6 +204,12 @@ def action_handler(payload: dict) -> str:
                              str(payload.get("who", "")))
         if a == "call":
             return p.call(str(payload["to"]))
+        if a == "open_url":
+            return p.open_url(str(payload["url"]))
+        if a == "swipe":
+            return p.swipe(str(payload.get("direction", "up")))
+        if a == "setting":
+            return p.setting(str(payload["what"]), str(payload["value"]))
     except PhoneError as e:
         raise RuntimeError(str(e)) from e
     raise RuntimeError("Unknown phone action.")

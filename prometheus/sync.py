@@ -18,6 +18,7 @@ import threading
 import time
 
 TOKEN_KEY = "SYNC_TOKEN"
+PRIVATE_NOTE = "(made from your private files on the laptop: open it there to read it)"
 EVERY = 600
 AWAY = 900
 LIMIT = 5000
@@ -36,7 +37,8 @@ def export(store, since: float) -> dict:
     have = _tables(store)
     chats = {r["id"]: (r["title"], r["created"]) for r in store._rows("SELECT id, title, created FROM chats")}
     out = {"chats": [{"title": t, "created": c} for t, c in chats.values()],
-           "messages": [{"chat": list(chats.get(r["chat_id"], ("", 0))), "role": r["role"], "text": r["text"],
+           "messages": [{"chat": list(chats.get(r["chat_id"], ("", 0))), "role": r["role"],
+                         "text": PRIVATE_NOTE if r["private"] else r["text"],
                          "created": r["created"], "model": r["model"], "private": r["private"], "topic": r["topic"]}
                         for r in store._rows("SELECT * FROM messages WHERE created > ? ORDER BY id LIMIT ?",
                                              (since, LIMIT)) if r["chat_id"] in chats],
@@ -59,8 +61,10 @@ def export(store, since: float) -> dict:
     return out
 
 
-def merge(store, data: dict) -> dict:
-    """Add what this side doesn't have yet. Returns counts of what was new."""
+def merge(store, data: dict, trust_goals: bool = True) -> dict:
+    """Add what this side doesn't have yet. Returns counts of what was new.
+    trust_goals=False (the laptop taking the cloud's changes): standing goals arrive as 'needs_ok' and only run
+    after the owner says yes here, so a compromised cloud machine can't make the laptop run commands."""
     from prometheus.memory.facts import Facts
     from prometheus.study import Study
 
@@ -151,14 +155,17 @@ def merge(store, data: dict) -> dict:
         key = (r["text"], round(r["created"], 3))
         if key not in mine:
             cid = chat_id(r["chat"]) or 0
+            state = r["state"]
+            if r.get("kind") == "goal" and not trust_goals and state == "waiting":
+                state = "needs_ok"
             store._write("INSERT INTO reminders (chat_id, text, due, repeat, state, created, kind) VALUES "
-                         "(?, ?, ?, ?, ?, ?, ?)", (cid, r["text"], r["due"], r["repeat"], r["state"], r["created"],
+                         "(?, ?, ?, ?, ?, ?, ?)", (cid, r["text"], r["due"], r["repeat"], state, r["created"],
                                                    r.get("kind", "reminder")))
             n["reminders"] += 1
         else:
             m = mine[key]
             # it rang (or was cancelled) on the other side: the same here, so it doesn't ring twice
-            if r["state"] != "waiting" and m["state"] == "waiting":
+            if r["state"] != "waiting" and m["state"] in ("waiting", "needs_ok"):
                 store._write("UPDATE reminders SET state = ? WHERE id = ?", (r["state"], m["id"]))
             elif r["state"] == "waiting" and m["state"] == "waiting" and r["due"] > m["due"]:
                 store._write("UPDATE reminders SET due = ? WHERE id = ?", (r["due"], m["id"]))
@@ -216,12 +223,26 @@ class SyncClock:
             self.status = f"The cloud copy refused the sync ({resp.status_code}): check the sync key."
             store.kv_set("sync_status", self.status)
             return self.status
-        got = merge(store, resp.json().get("data", {}))
+        got = merge(store, resp.json().get("data", {}), trust_goals=False)
+        self.ask_about_new_goals()
         store.kv_set("sync_since", started - 5)
         new = sum(got.values())
         self.status = time.strftime("Synced %H:%M", time.localtime(self.clock())) + (f" ({new} new here)" if new else "")
         store.kv_set("sync_status", self.status)
         return self.status
+
+    def ask_about_new_goals(self) -> None:
+        """Goals that came from the cloud copy: ask in their chat before the laptop runs them."""
+        approvals = getattr(self.services, "approvals", None)
+        if approvals is None:
+            return
+        for r in self.services.store._rows("SELECT * FROM reminders WHERE state = 'needs_ok' AND kind = 'goal'"):
+            if self.services.store.kv_get(f"goal_asked:{r['id']}"):
+                continue
+            self.services.store.kv_set(f"goal_asked:{r['id']}", "1")
+            approvals.ask("synced_goal", f"Let this laptop run the standing goal made on your cloud copy: "
+                                         f"“{r['text'][:200]}”", {"id": r["id"]}, (f"synced_goal:{r['id']}", ""),
+                          chat_id=r["chat_id"])
 
     def loop(self) -> None:
         while not self._stop.wait(EVERY):

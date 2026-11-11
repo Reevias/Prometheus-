@@ -19,6 +19,12 @@ CREATE TABLE IF NOT EXISTS push_subs (endpoint TEXT PRIMARY KEY, data TEXT NOT N
 CREATE TABLE IF NOT EXISTS laptop_queue (id INTEGER PRIMARY KEY, chat_title TEXT NOT NULL, text TEXT NOT NULL,
     created REAL NOT NULL, taken REAL);
 """
+
+
+def _migrate(store) -> None:
+    cols = {r["name"] for r in store._rows("PRAGMA table_info(laptop_queue)")}
+    if "read_only" not in cols:
+        store._write("ALTER TABLE laptop_queue ADD COLUMN read_only INTEGER NOT NULL DEFAULT 1")
 VAPID_KEY = "VAPID_PRIVATE"
 UPLOADS = "Prometheus uploads"
 MAX_UPLOAD = 40 * 1024 * 1024
@@ -35,6 +41,7 @@ def ready(store) -> None:
     with store._lock:
         store._db.executescript(SCHEMA)
         store._db.commit()
+    _migrate(store)
 
 
 # -- web push ---------------------------------------------------------------------------------
@@ -128,22 +135,26 @@ def what_to_do(path: Path, note: str = "") -> str:
 def sms_to_money(money, sender: str, text: str, when: float | None = None) -> str:
     from prometheus.money import BANKISH, parse_alert
 
-    if not BANKISH.search(sender or "") and not re.search(r"\b(a/c|acct|upi|debited|credited)\b", text, re.I):
+    # Indian bank SMS come from short sender ids like "VM-HDFCBK" or "AX-ICICIT", never from a phone number
+    if not (BANKISH.search(sender or "") and re.fullmatch(r"[A-Z]{2}-[A-Z0-9]{3,9}|[A-Z0-9]{3,9}", (sender or "").upper())):
         return "Not a bank message."
     got = parse_alert("", text)
     if not got:
         return "No amount found."
-    ref = f"sms:{sender}:{hash(text) & 0xffffffff:x}"
+    import hashlib
+
+    ref = f"sms:{sender}:{hashlib.sha256(text.encode()).hexdigest()[:16]}"
     if money.add(got["amount"], got["merchant"], got["kind"], "sms", ref, when, said="upi" if got.get("upi") else ""):
         return f"Added ₹{got['amount']:,.0f} ({got['merchant']})."
     return "Already added."
 
 
 # -- requests that need the laptop --------------------------------------------------------------------
-def queue_for_laptop(store, chat_title: str, text: str) -> int:
+def queue_for_laptop(store, chat_title: str, text: str, read_only: bool = False) -> int:
+    """read_only: it came from another AI app, so the laptop may only read for it, never change anything."""
     ready(store)
-    return store._write("INSERT INTO laptop_queue (chat_title, text, created) VALUES (?, ?, ?)",
-                        (chat_title, text[:4000], time.time()))
+    return store._write("INSERT INTO laptop_queue (chat_title, text, created, read_only) VALUES (?, ?, ?, ?)",
+                        (chat_title, text[:4000], time.time(), int(read_only)))
 
 
 def take_jobs(store) -> list[dict]:
@@ -185,7 +196,7 @@ class LaptopJobs:
         for job in jobs:
             chat = next((c for c, t in store.chats() if t == job["chat_title"]), None) or store.create_chat(
                 job["chat_title"])
-            threads.append(self.services.start_task(chat, job["text"]))
+            threads.append(self.services.start_task(chat, job["text"], read_only=bool(job.get("read_only", 1))))
         for t in threads:
             t.join(timeout=300)
         if self.services.sync is not None:

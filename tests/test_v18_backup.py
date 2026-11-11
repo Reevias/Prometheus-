@@ -56,7 +56,7 @@ def test_backup_to_drive_and_restore(app_client, tmp_path):
     g._access, g._until = "t", 9e18
     said = backup.run(services, google=g)
     assert "encrypted" in said and "removed 2 old" in said
-    assert b"Ravi" not in uploads["data"] and uploads["data"].startswith(backup.MAGIC)
+    assert b"Ravi" not in uploads["data"] and uploads["data"].startswith(backup.MAGIC2)
     pbak = tmp_path / "latest.pbak"
     pbak.write_bytes(uploads["data"])
     new_data, new_home = tmp_path / "newdata", tmp_path / "newhome"

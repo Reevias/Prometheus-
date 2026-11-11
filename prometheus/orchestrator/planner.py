@@ -531,7 +531,8 @@ class Orchestrator:
         from prometheus.quick import understand
 
         try:
-            fast = understand(text, self.store)
+            # instant phrases are for the owner's own words only, never for text that carries outside content
+            fast = None if "<untrusted" in text else understand(text, self.store)
         except Exception:
             fast = None
         if read_only and fast is not None and fast.action:
@@ -561,7 +562,7 @@ class Orchestrator:
 
         if self.before_steps is not None:
             try:
-                handed = self.before_steps(chat_id, text, plan)
+                handed = self.before_steps(chat_id, text, plan, read_only)
             except Exception:
                 handed = ""
             if handed:

@@ -60,11 +60,12 @@ def test_click_finds_the_button_and_asks_first(screen, make_ctx):
     assert res.status == "waiting_approval"
     ask = ctx.store.asks_for_chat(ctx.chat_id())[0]
     scale = 1568 / 2000
-    assert ask.payload["x"] == str(int(100 + 400 / scale)) and ask.payload["y"] == str(int(50 + 200 / scale))
+    assert ask.payload["x"] == int(100 + 400 / scale) and ask.payload["y"] == int(50 + 200 / scale)
+    assert ask.kind == "screen_click" and ask.payload["title"].startswith("GitHub")
     fresh(screen)
     ctx.router = Router({"found": True, "x": 10, "y": 10, "label": "Place order"})
     pay = sa.ScreenAgent().run("x", {"action": "click", "target": "place order"}, ctx)
-    assert pay.status == "waiting_approval" and any(a.kind == "laptop_action" for a in ctx.store.big_approvals())
+    assert pay.status == "waiting_approval" and any(a.kind == "screen_click" for a in ctx.store.big_approvals())
 
 
 def test_add_this_repo_from_the_title_without_ai(screen, make_ctx):

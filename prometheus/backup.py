@@ -25,6 +25,7 @@ import zipfile
 from pathlib import Path
 
 MAGIC = b"PROMBAK1"
+MAGIC2 = b"PROMBAK2"                       # each file has its own key (HKDF from the main key and a random salt)
 CHUNK = 8 * 1024 * 1024
 KEEP = 14
 FOLDER = "Prometheus Backups"
@@ -134,19 +135,28 @@ def build_zip(data: Path, home: Path, memory_folder: Path | None, out: Path) -> 
 
 
 # -- encryption: AES-256-GCM in pieces, so big backups never sit whole in memory ------------------
+def _file_key(key: bytes, file_salt: bytes) -> bytes:
+    from cryptography.hazmat.primitives import hashes
+    from cryptography.hazmat.primitives.kdf.hkdf import HKDF
+
+    return HKDF(algorithm=hashes.SHA256(), length=32, salt=file_salt, info=b"prometheus backup").derive(key)
+
+
 def encrypt_file(src: Path, dst: Path, salt: bytes, key: bytes) -> None:
     from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
-    aes = AESGCM(key)
+    file_salt = secrets.token_bytes(16)
+    aes = AESGCM(_file_key(key, file_salt))
     prefix = secrets.token_bytes(4)
+    MAGIC_ = MAGIC2
     with open(src, "rb") as fin, open(dst, "wb") as fout:
-        fout.write(MAGIC + salt + prefix)
+        fout.write(MAGIC2 + salt + file_salt + prefix)
         n = 0
         while True:
             piece = fin.read(CHUNK)
             last = len(piece) < CHUNK
             nonce = prefix + struct.pack(">Q", n)
-            sealed = aes.encrypt(nonce, piece, MAGIC + struct.pack(">Q?", n, last))
+            sealed = aes.encrypt(nonce, piece, MAGIC_ + struct.pack(">Q?", n, last))
             fout.write(struct.pack(">I", len(sealed)) + sealed)
             n += 1
             if last:
@@ -158,11 +168,15 @@ def decrypt_file(src: Path, dst: Path, code: str) -> None:
     from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
     with open(src, "rb") as fin, open(dst, "wb") as fout:
-        head = fin.read(len(MAGIC) + 20)
-        if not head.startswith(MAGIC):
+        magic = fin.read(len(MAGIC))
+        if magic == MAGIC2:
+            salt, file_salt, prefix = fin.read(16), fin.read(16), fin.read(4)
+            aes = AESGCM(_file_key(derive_key(code, salt), file_salt))
+        elif magic == MAGIC:
+            salt, prefix = fin.read(16), fin.read(4)
+            aes = AESGCM(derive_key(code, salt))
+        else:
             raise BackupError("That isn't a Prometheus backup file.")
-        salt, prefix = head[len(MAGIC):len(MAGIC) + 16], head[len(MAGIC) + 16:]
-        aes = AESGCM(derive_key(code, salt))
         n = 0
         while True:
             size_raw = fin.read(4)
@@ -172,7 +186,7 @@ def decrypt_file(src: Path, dst: Path, code: str) -> None:
             nonce = prefix + struct.pack(">Q", n)
             for last in (False, True):
                 try:
-                    piece = aes.decrypt(nonce, sealed, MAGIC + struct.pack(">Q?", n, last))
+                    piece = aes.decrypt(nonce, sealed, magic + struct.pack(">Q?", n, last))
                     break
                 except InvalidTag:
                     piece = None
@@ -275,19 +289,19 @@ def restore(file: Path, code: str, data: Path, home: Path, overwrite: bool = Fal
                 name = item.filename
                 if name == "backup.json" or name.endswith("/"):
                     continue
-                if name.startswith("data/"):
-                    target = data / name[5:]
-                elif name.startswith("documents/"):
-                    target = home / "Documents" / name[10:]
-                elif name.startswith("memory-folder/"):
-                    from prometheus.memory.archive import FOLDER_NAME
+                from prometheus.memory.archive import FOLDER_NAME
 
-                    target = home / FOLDER_NAME / name[14:]
+                if name.startswith("data/"):
+                    base, rest = data, name[5:]
+                elif name.startswith("documents/"):
+                    base, rest = home / "Documents", name[10:]
+                elif name.startswith("memory-folder/"):
+                    base, rest = home / FOLDER_NAME, name[14:]
                 else:
                     continue
-                target = target.resolve()
-                base = (data if name.startswith("data/") else home).resolve()
-                if base not in target.parents:
+                base = base.resolve()
+                target = (base / rest).resolve()
+                if base not in target.parents:                 # each file stays inside its own folder
                     raise BackupError("The backup has a file pointing outside its folder; stopped.")
                 target.parent.mkdir(parents=True, exist_ok=True)
                 with z.open(item) as src, open(target, "wb") as dst:

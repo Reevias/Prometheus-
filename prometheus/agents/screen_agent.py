@@ -116,7 +116,10 @@ class ScreenAgent(Agent):
                                       "(the page address if visible, else '').", LOOK_SCHEMA)
         except Exception as e:
             return StepResult("failed", f"I couldn't understand the screen ({type(e).__name__}).")
-        return StepResult("done", data["answer"], {"repo": data.get("github_repo", ""), "url": data.get("url", "")})
+        from prometheus.agents.base import untrusted
+
+        return StepResult("done", untrusted(data["answer"], "what's on the screen"),
+                          {"repo": data.get("github_repo", ""), "url": data.get("url", "")})
 
     def _click(self, ctx, shot, block, scale, target, where) -> StepResult:
         from prometheus.connectors.browser import kind_of_click
@@ -129,13 +132,16 @@ class ScreenAgent(Agent):
         x = int(shot["left"] + data["x"] / scale)
         y = int(shot["top"] + data["y"] / scale)
         label = data.get("label") or target
-        payload = {"action": "click", "x": str(x), "y": str(y)}
+        import time as _t
+
+        payload = {"x": x, "y": y, "label": label, "title": shot.get("title", ""), "left": shot["left"],
+                   "top": shot["top"], "made": _t.time()}
         if kind_of_click(f"{label} {target}") == "pay":
-            ctx.approvals.request("laptop_action", f"Click '{label}' on screen (it may spend money)", payload)
+            ctx.approvals.request("screen_click", f"Click '{label}' on screen (it may spend money)", payload)
             return StepResult("waiting_approval", f"'{label}' could spend money: approve the click on the Approvals "
                                                   "page.")
-        return ctx.ask("laptop_action", f"Click '{label}' in {shot.get('title', 'the window')}", payload,
-                       exact=f"screenclick:{x},{y}:{label.lower()}",
+        return ctx.ask("screen_click", f"Click '{label}' in {shot.get('title', 'the window')}", payload,
+                       exact=f"screenclick:{_t.time()}",          # never remembered: each click is asked
                        waiting=f"I found '{label}'. Click it? Answer below.")
 
     def _add_repo(self, ctx, shot, block, where) -> StepResult:
@@ -161,6 +167,26 @@ class ScreenAgent(Agent):
                               {"url": url, "repo": repo, "chat_id": ctx.chat_id()})
         extra = " I've also put downloading its code (checked for malware first) on the Approvals page."
         return StepResult(res.status, res.summary + extra, {"repo": repo})
+
+
+def screen_click_handler(payload: dict) -> str:
+    """At the moment of the yes: the same window must still be in front, in the same place, and the yes must be
+    recent; otherwise the click could land on something else."""
+    import time as _t
+
+    laptop = getattr(SERVICES, "laptop", None)
+    if laptop is None:
+        raise RuntimeError("Clicking works on Windows only.")
+    if _t.time() - float(payload.get("made", 0)) > 600:
+        raise RuntimeError("That was more than 10 minutes ago and the screen may have changed. Ask me again.")
+    now = laptop.window_shot()
+    try:
+        Path(now["path"]).unlink()
+    except OSError:
+        pass
+    if now.get("title") != payload.get("title") or (now["left"], now["top"]) != (payload["left"], payload["top"]):
+        raise RuntimeError("The window changed since I looked, so I didn't click. Ask me again.")
+    return laptop.click(int(payload["x"]), int(payload["y"]))
 
 
 def clone_and_check_handler(payload: dict, quarantine: Path) -> str:
