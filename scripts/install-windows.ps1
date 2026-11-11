@@ -1,15 +1,26 @@
-# Installs (or updates) the new Prometheus and makes the desktop shortcut.
-# The repository is private, so download it with Git first (it asks you to sign in to GitHub once):
-#   git clone https://github.com/Reevias/Prometheus-.git $env:USERPROFILE\Prometheus-
-#   powershell -ExecutionPolicy Bypass -File $env:USERPROFILE\Prometheus-\scripts\install-windows.ps1
-# (If the repository is made public, this also works:
-#   irm https://raw.githubusercontent.com/Reevias/Prometheus-/main/scripts/install-windows.ps1 | iex)
+# Installs (or updates) Prometheus and makes the Start-menu and desktop shortcuts.
+# One line, in PowerShell:
+#   irm https://raw.githubusercontent.com/Reevias/Prometheus-/main/scripts/install-windows.ps1 | iex
+# It also gets Git and Python by itself (through winget) when they're missing. Prometheus-Setup.exe runs this too.
 $ErrorActionPreference = "Stop"
 $Repo = "https://github.com/Reevias/Prometheus-.git"
 $Dir = Join-Path $env:USERPROFILE "Prometheus-"
 
-if (-not (Get-Command git -ErrorAction SilentlyContinue)) { throw "Git is not installed. Get it from https://git-scm.com/download/win" }
-if (-not (Get-Command py -ErrorAction SilentlyContinue)) { throw "Python is not installed. Get Python 3.12 or newer from https://www.python.org/downloads/" }
+function Refresh-Path {
+    $env:Path = [Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [Environment]::GetEnvironmentVariable("Path", "User")
+}
+function Get-Tool($Name, $WingetId) {
+    if (Get-Command $Name -ErrorAction SilentlyContinue) { return }
+    if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
+        throw "$Name is missing and winget isn't available to get it. Install $Name, then run this again."
+    }
+    Write-Host "Installing $Name (one time)..."
+    winget install --id $WingetId -e --silent --accept-package-agreements --accept-source-agreements | Out-Null
+    Refresh-Path
+    if (-not (Get-Command $Name -ErrorAction SilentlyContinue)) { throw "$Name was installed but isn't found yet. Close this window, open a new one and run the line again." }
+}
+Get-Tool git "Git.Git"
+Get-Tool py "Python.Python.3.12"
 
 # Newest installed Python that is 3.12 or later.
 $Py = $null

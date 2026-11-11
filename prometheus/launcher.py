@@ -15,11 +15,36 @@ OLD_REPOS = ("Claude-testing-",)
 SHORTCUT_NAME = "Prometheus.lnk"
 
 # Fixed script: the paths travel in environment variables, never inside the command text.
+# Besides the icon, the shortcut gets the same app id the Prometheus window uses (System.AppUserModel.ID). Without
+# it, Windows search and the taskbar treat the shortcut as "a Python program" and show Python's icon.
 SHORTCUT_PS = (
+    "Remove-Item -LiteralPath $env:PROM_LINK -ErrorAction SilentlyContinue; "
     "$s = (New-Object -ComObject WScript.Shell).CreateShortcut($env:PROM_LINK); "
     "$s.TargetPath = $env:PROM_TARGET; $s.Arguments = $env:PROM_ARGS; "
     "$s.WorkingDirectory = $env:PROM_DIR; $s.Description = 'Prometheus, your AI brain'; "
-    "if ($env:PROM_ICON) { $s.IconLocation = $env:PROM_ICON + ',0' }; $s.Save()"
+    "if ($env:PROM_ICON) { $s.IconLocation = $env:PROM_ICON + ',0' }; $s.Save(); "
+    "if ($env:PROM_APPID) { try { Add-Type -TypeDefinition @'\n"
+    "using System; using System.Runtime.InteropServices;\n"
+    "[ComImport, Guid(\"886D8EEB-8CF2-4446-8D02-CDBA1DBDCF99\"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]\n"
+    "public interface IPropStore { int GetCount(out uint c); int GetAt(uint i, out PKey k); "
+    "int GetValue(ref PKey k, IntPtr v); int SetValue(ref PKey k, ref PVar v); int Commit(); }\n"
+    "[StructLayout(LayoutKind.Sequential, Pack = 4)] public struct PKey { public Guid fmtid; public uint pid; }\n"
+    "[StructLayout(LayoutKind.Explicit, Size = 24)] public struct PVar { [FieldOffset(0)] public ushort vt; "
+    "[FieldOffset(8)] public IntPtr p; }\n"
+    "public static class PromAppId {\n"
+    "  [DllImport(\"shell32.dll\", CharSet = CharSet.Unicode)] static extern int SHGetPropertyStoreFromParsingName("
+    "string path, IntPtr bc, int flags, ref Guid iid, out IPropStore ps);\n"
+    "  public static void Set(string lnk, string id) {\n"
+    "    Guid iid = new Guid(\"886D8EEB-8CF2-4446-8D02-CDBA1DBDCF99\"); IPropStore ps;\n"
+    "    Marshal.ThrowExceptionForHR(SHGetPropertyStoreFromParsingName(lnk, IntPtr.Zero, 2, ref iid, out ps));\n"
+    "    PKey k = new PKey(); k.fmtid = new Guid(\"9F4C2855-9F79-4B39-A8D0-E1D42DE1D5F3\"); k.pid = 5;\n"
+    "    PVar v = new PVar(); v.vt = 31; v.p = Marshal.StringToCoTaskMemUni(id);\n"
+    "    try { Marshal.ThrowExceptionForHR(ps.SetValue(ref k, ref v)); Marshal.ThrowExceptionForHR(ps.Commit()); }\n"
+    "    finally { Marshal.FreeCoTaskMem(v.p); Marshal.ReleaseComObject(ps); }\n"
+    "  }\n"
+    "}\n"
+    "'@ -ErrorAction SilentlyContinue; [PromAppId]::Set($env:PROM_LINK, $env:PROM_APPID) } catch { } }; "
+    "Start-Process -FilePath ie4uinit.exe -ArgumentList '-show' -WindowStyle Hidden -ErrorAction SilentlyContinue"
 )
 
 
@@ -118,6 +143,21 @@ ICON = Path(__file__).resolve().parent / "data" / "prometheus.ico"
 APP_ID = "Reevias.Prometheus"           # how Windows tells Prometheus apart from other Python programs
 
 
+def stable_icon() -> Path:
+    """A copy of the icon in %LOCALAPPDATA%\\Prometheus, so shortcuts keep it even if the code folder moves."""
+    local = Path(os.environ.get("LOCALAPPDATA") or Path(os.environ.get("USERPROFILE") or Path.home())
+                 / "AppData" / "Local") / "Prometheus"
+    try:
+        local.mkdir(parents=True, exist_ok=True)
+        target = local / "prometheus.ico"
+        data = ICON.read_bytes()
+        if not target.exists() or target.read_bytes() != data:
+            target.write_bytes(data)
+        return target
+    except OSError:
+        return ICON
+
+
 def make_shortcuts(run=None, windows: bool | None = None) -> list[Path]:
     """Desktop and Start-menu shortcuts that always open THIS copy (replacing any older Prometheus shortcut)."""
     if not (os.name == "nt" if windows is None else windows):
@@ -127,7 +167,7 @@ def make_shortcuts(run=None, windows: bool | None = None) -> list[Path]:
     for link in shortcut_paths():
         link.parent.mkdir(parents=True, exist_ok=True)
         env = {**os.environ, "PROM_LINK": str(link), "PROM_TARGET": pythonw(), "PROM_DIR": str(CODE_DIR),
-               "PROM_ARGS": "-m prometheus.cli app", "PROM_ICON": str(ICON)}
+               "PROM_ARGS": "-m prometheus.cli app", "PROM_ICON": str(stable_icon()), "PROM_APPID": APP_ID}
         proc = run(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", SHORTCUT_PS], env=env,
                    capture_output=True, text=True, timeout=30)
         if proc.returncode == 0:
@@ -151,7 +191,7 @@ def set_autostart(on: bool, run=None, windows: bool | None = None) -> str:
     run = run or subprocess.run
     link.parent.mkdir(parents=True, exist_ok=True)
     env = {**os.environ, "PROM_LINK": str(link), "PROM_TARGET": pythonw(), "PROM_DIR": str(CODE_DIR),
-           "PROM_ARGS": "-m prometheus.cli background", "PROM_ICON": str(ICON)}
+           "PROM_ARGS": "-m prometheus.cli background", "PROM_ICON": str(stable_icon())}
     proc = run(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", SHORTCUT_PS], env=env,
                capture_output=True, text=True, timeout=30)
     if proc.returncode != 0:
