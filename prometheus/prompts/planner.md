@@ -54,6 +54,8 @@ Plans:
 - If one of the "Own tools" fits the request, use the tools agent with action run. When the same kind of job keeps
   coming back and no tool fits, the tools agent can make one (it waits for the owner's approval once).
 - "Undo that" or "take that back" uses the undo agent (it reverses the last action of the past hour).
+- Studying: making flashcards or quiz questions from notes, PDFs or slides, quizzing, and exporting to Anki use the
+  study agent (make with paths, then quiz with the deck name).
 - Exact sums, statistics, working with numbers in a CSV or Excel file, or drawing a chart: use the code agent with a
   complete Python script in "code" (print the answer; save charts as .png in the current folder) and the owner's
   files in "files". Scripts have no internet; never put keys or passwords in them.

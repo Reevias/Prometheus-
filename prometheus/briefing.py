@@ -119,6 +119,14 @@ def _done_today(services) -> list[str]:
         photos = 0
     if photos:
         lines.append(f"{photos} new photos looked at (say \"sort my photos\" to put them in folders)")
+    try:
+        from prometheus.agents import study_agent
+
+        studied = study_agent.STUDY.summary_today() if study_agent.STUDY else ""
+    except Exception:
+        studied = ""
+    if studied:
+        lines.append(f"study: {studied}")
     if any(a.kind == "add_skill" for a in store.big_approvals()):
         lines.append("a repo of the day is waiting on the Approvals page")
     return lines
@@ -214,7 +222,46 @@ class BriefingClock:
                 store.kv_set(key, today)
                 self.deliver(kind)
                 sent.append(kind)
+        sent += self.study_nudge(now, today)
         return sent
+
+    def study_nudge(self, now: float, today: str) -> list[str]:
+        """Once a day at the study time: tell the owner how many flashcards are due."""
+        s, store = self.services.settings, self.services.store
+        at = getattr(s, "study_reminder", "") or ""
+        try:
+            due_at = _at(now, at) if at else None
+        except ValueError:
+            due_at = None
+        if due_at is None or not (due_at <= now < due_at + 3 * 3600) or store.kv_get("study_nudge") == today:
+            return []
+        from prometheus.agents import study_agent
+
+        if study_agent.STUDY is None:
+            return []
+        due = len(study_agent.STUDY.due())
+        store.kv_set("study_nudge", today)
+        if not due:
+            return []
+        text = f"{due} flashcard(s) are due for review. Say \"quiz me\" when you're ready."
+        store.add_message(self.study_chat(), "assistant", text, "study")
+        if self.notify is not None:
+            try:
+                self.notify(text)
+            except Exception:
+                pass
+        return ["study"]
+
+    def study_chat(self) -> int:
+        from prometheus.study import CHAT as STUDY_CHAT
+
+        store = self.services.store
+        for chat_id, title in store.chats():
+            if title == STUDY_CHAT:
+                return chat_id
+        chat_id = store.create_chat(STUDY_CHAT)
+        store.rename_chat(chat_id, STUDY_CHAT, by="user")
+        return chat_id
 
     def loop(self) -> None:
         while not self._stop.wait(CHECK_EVERY):

@@ -90,6 +90,7 @@ class VoiceService:
                 loop = VoiceLoop(Microphone(), WakeSpotter(self.models, transcriber), command_tr,
                                  KokoroSpeaker(self.models, self.services.settings.voice_name), self.command,
                                  log=lambda m: self.services.store.audit("voice", "note", {"text": m}))
+                loop.followup = self.quiz_running
                 loop.start()
                 self.loop = loop
                 self.apply_profile(self.profile)
@@ -130,6 +131,14 @@ class VoiceService:
         threading.Thread(target=work, daemon=True).start()
 
     # -- a spoken command -----------------------------------------------------------------------
+    def quiz_running(self) -> bool:
+        from prometheus.agents import study_agent
+
+        try:
+            return study_agent.STUDY is not None and study_agent.STUDY.quiz_state(self.voice_chat()) is not None
+        except Exception:
+            return False
+
     def voice_chat(self) -> int:
         store = self.services.store
         title = "Voice " + time.strftime("%Y-%m-%d")

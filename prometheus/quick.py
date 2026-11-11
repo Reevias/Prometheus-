@@ -137,6 +137,11 @@ def understand(text: str, store=None, now: float | None = None) -> Quick | None:
             said = ""
         if said:
             return Quick(answer=("Tomorrow: " if tomorrow else "Today: ") + said + ".")
+    m = re.fullmatch(r"(?:quiz|test) me(?: on| about)?\s*(.*?)(?: please)?|(?:start|begin) (?:a |the )?quiz(?: on)?\s*"
+                     r"(.*)|revise(?: my)? flashcards(?: on)?\s*(.*)", low)
+    if m:
+        deck = next((g for g in m.groups() if g), "").strip()
+        return Quick(steps=[_step("study", f"Quiz {deck or 'everything due'}", action="quiz", deck=deck)])
     if re.fullmatch(r"(undo|undo that|undo it|undo the last (?:thing|action|step)|reverse that|take that back|"
                     r"wapas karo|undo karo)", low):
         return Quick(steps=[_step("undo", "Undo the last action", action="undo")], action=True)

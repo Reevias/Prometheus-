@@ -31,6 +31,7 @@ class VoiceLoop:
         self.muted = False
         self.last_heard = ""
         self.last_timing: dict = {}      # seconds per stage of the last command, shown in Settings
+        self.followup = None             # callable -> True when the answer asked something (a quiz question)
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self.noise = NoiseFloor()
@@ -139,6 +140,21 @@ class VoiceLoop:
         self.last_timing = {"hearing": round(t_heard - t0, 1), "thinking": round(t_answer - t_think, 1),
                             "speaking": round(time.monotonic() - t_answer, 1)}
         self.log(f"voice timing: {self.last_timing}")
+        # a quiz question was asked: the owner's answer needs no "Hello Prometheus"
+        turns = 0
+        while self.followup is not None and self.followup() and turns < 40 and not self._stop.is_set():
+            turns += 1
+            self.state = "listening"
+            verdict, audio = self._record(wait=8.0)
+            reply = self.transcriber.text(audio).strip() if verdict == "done" else ""
+            if not reply:
+                reply = "stop"                    # silence ends the quiz
+            self.last_heard = reply
+            self.state = "thinking"
+            answer = self.on_command(reply)
+            if answer:
+                self.state = "speaking"
+                self._speak_quietly(lambda: self.speaker.say(speakable(answer, limit=400)))
 
     def _speak_quietly(self, action) -> None:
         """Speak with the microphone ignored, so Prometheus never hears (and answers) itself."""

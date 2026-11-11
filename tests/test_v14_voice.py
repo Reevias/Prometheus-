@@ -284,3 +284,22 @@ def test_the_chosen_speech_model_hears_the_command_again():
     asked = []
     loop.handle_wake(b"\x00" * 960)
     assert asked == ["Open YouTube."] and set(loop.last_timing) == {"hearing", "thinking", "speaking"}
+
+
+def test_quiz_answers_need_no_wake_phrase():
+    asked = []
+    quiz = {"left": 2}
+
+    def command(c):
+        asked.append(c)
+        if c.startswith("Quiz"):
+            return "Q1. Symbol for sodium?"
+        quiz["left"] -= 1
+        return "✓ Right." if quiz["left"] else "Quiz done."
+
+    mic = FakeMic(tone(1.0) + tone(1.0, loud=False) + tone(1.0) + tone(1.0, loud=False))
+    loop = VoiceLoop(mic, HeardSpotter(3, "Hello Prometheus, quiz me"), FakeTranscriber(["Na", "Cl"]), FakeSpeaker(),
+                     command)
+    loop.followup = lambda: quiz["left"] > 0 and len(asked) >= 1
+    loop.handle_wake(b"\x00" * 960)
+    assert asked == ["Quiz me", "Na", "Cl"]

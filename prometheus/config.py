@@ -64,6 +64,8 @@ class Settings:
     notify_briefing: bool = True
     notify_repo: bool = True
     notify_updates: bool = True
+    study_cloud: bool = False              # let Claude make cards and mark answers (better; notes are sent)
+    study_reminder: str = "18:00"          # daily "cards are due" reminder; "" for none
     tray: bool = True                      # icon by the clock; closing the window keeps Prometheus running      # run scripts in Windows Sandbox when this laptop has it
     repo_of_day: bool = True
     step_tries: int = 3                         # tries per task step, counting the first (planning loop)

@@ -924,6 +924,16 @@ def register_routes(app: FastAPI, services: Services) -> None:
         store.audit("user", "app_removed", {"name": name})
         return settings_page(request, saved=True)
 
+    @app.post("/settings/study", response_class=HTMLResponse)
+    def save_study(request: Request, cloud: str = Form(""), reminder: str = Form("")):
+        reminder = reminder.strip()
+        if reminder and not re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", reminder):
+            return settings_page(request, 400, error="Times look like 18:00.")
+        services.settings.study_cloud, services.settings.study_reminder = bool(cloud), reminder
+        save_settings(services.settings)
+        store.audit("user", "study_settings", {"cloud": bool(cloud)})
+        return settings_page(request, saved=True)
+
     @app.post("/settings/notifications", response_class=HTMLResponse)
     async def save_notifications(request: Request):
         form = await request.form()

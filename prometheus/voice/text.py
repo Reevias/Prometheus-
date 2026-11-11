@@ -67,7 +67,7 @@ def speakable(answer: str, limit: int = SPEAK_CHARS) -> str:
     text = "\n".join(line for line in text.splitlines() if not line.strip().startswith("|"))   # tables
     text = re.sub(r"^\s*#{1,6}\s*", "", text, flags=re.M)
     text = re.sub(r"^\s*(?:[-*•]|\d+[.)])\s+", "", text, flags=re.M)
-    text = re.sub(r"[*_~>#]+", "", text)
+    text = re.sub(r"[*_~>#✓✗≈]+", "", text)
     text = re.sub(r"\s*\[\d+\]", "", text)                               # citation marks
     lines = [" ".join(line.split()) for line in text.splitlines()]
     # each heading or list item becomes its own sentence, so they aren't read as one run-on line

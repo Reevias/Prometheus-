@@ -201,6 +201,7 @@ class Orchestrator:
         self.step_tries, self.task_budget, self.max_steps = STEP_TRIES, TASK_BUDGET, MAX_TASK_STEPS
         self.extra_catalog = None          # callable: tools of connected apps, for the planner
         self.extra_sections: list = []     # (heading, callable returning text) added to the planner's system
+        self.interceptors: list = []       # callables (chat_id, text) -> answer or None: e.g. a quiz in progress
         self.skills = skills
         from prometheus.memory.facts import Facts
 
@@ -500,6 +501,13 @@ class Orchestrator:
         user_msg = self.store.add_message(chat_id, "user", text)
         task_id = self.store.create_task(chat_id, text)
         self.store.set_task_status(task_id, "running")
+        for intercept in self.interceptors:            # a quiz waiting for an answer, for example
+            try:
+                said = intercept(chat_id, text)
+            except Exception:
+                said = None
+            if said:
+                return self._finish(chat_id, task_id, "done", said, "instant")
         from prometheus.quick import understand
 
         try:

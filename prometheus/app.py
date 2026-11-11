@@ -355,6 +355,11 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
 
     _undo.SERVICES, _ga.UNDO_STORE = services, store
     approvals.register("undo", _undo.handler)
+    from prometheus import study as _study
+    from prometheus.agents import study_agent as _sa
+
+    _sa.STUDY = _study.Study(store, router, settings)
+    orchestrator.interceptors.append(_sa.STUDY.answer)
     return services
 
 

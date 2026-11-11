@@ -1,6 +1,7 @@
 # Changelog
 
 ## 1.8
+- Study coach: "make flashcards from my physics notes" turns notes, PDFs or slides into question-and-answer cards (recall, understanding and application). "Quiz me on physics" asks them in the chat, or out loud by voice (answers need no "Hello Prometheus"; silence or "stop" ends it). Each answer is marked right, partly or wrong; wrong cards come back later in the same quiz and tomorrow, right ones after longer and longer gaps (the method Anki uses). A daily reminder (18:00 by default) says how many cards are due, the evening wrap-up shows the score, and any deck exports as a file Anki can import. Cards are made by the local AI unless you let Claude do it in Settings → Study coach.
 - "Undo that" (typed or spoken, instant): reverses the last thing Prometheus did in the past hour, after a yes in the chat: moved, renamed or new files and notes, sorted photos, a reminder or standing goal, a calendar event it added, facts it saved, a model change. Sent email can't be unsent, and it says so.
 - Use Prometheus from other AI apps (MCP): Antigravity, Claude Desktop, Cursor and others can search what Prometheus remembers, look up facts about people, find your files by what's in them (names and folders only), and ask it questions. Anything that changes something goes to your Approvals page first. Text from your private files never leaves. The setup to paste is in Settings; the desktop app now keeps its usual port so other apps can find it.
 
