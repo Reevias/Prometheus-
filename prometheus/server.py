@@ -66,7 +66,11 @@ def create_app(services: Services, background: bool = False) -> FastAPI:
             services.watchers.start()
         if services.briefing is not None:
             services.briefing.start()
+        if services.file_index is not None:
+            services.file_index.start()
         yield
+        if services.file_index is not None:
+            services.file_index.stop()
         if services.watchers is not None:
             services.watchers.stop()
         if services.reminders is not None:

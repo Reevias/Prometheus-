@@ -60,6 +60,7 @@ class Services:
     reminders: object = None
     watchers: object = None
     briefing: object = None
+    file_index: object = None
     laptop: object = None
     browser: object = None
 
@@ -272,6 +273,10 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
     from prometheus.agents import briefing_agent
 
     briefing_agent.SERVICES = services
+    from prometheus import file_index as _fi
+
+    services.file_index = _fi.FileIndex(store, policy, usable_extra_folders(settings, home))
+    _fi.CURRENT = services.file_index
     approvals.register("add_skill", lambda payload: RepoOfTheDay(services).add(payload))
     return services
 

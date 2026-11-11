@@ -19,7 +19,7 @@ from prometheus.agents.base import Agent, AgentContext, StepResult, register
 from prometheus.agents.file_sorter import TYPES, is_system_file
 from prometheus.safety.paths import PathBlocked, PathPolicy
 
-READ_ACTIONS = {"find", "list", "info"}
+READ_ACTIONS = {"find", "search_text", "list", "info"}
 CHANGE_ACTIONS = {"copy", "move", "rename", "recycle", "make_folder", "create"}
 MAX_NEW_FILE = 2_000_000
 TEXT_TYPES = {".txt", ".md", ".markdown", ".csv", ".tsv", ".json", ".html", ".htm", ".css", ".xml", ".yaml", ".yml",
@@ -150,7 +150,9 @@ class Files(Agent):
         "Finds and handles files ANYWHERE on this laptop that Prometheus may use (the user folder plus drives or "
         "folders added in Settings). Actions: find (query = words in the name or a pattern like *.pdf, where = "
         "folder or 'anywhere', kind = images/documents/videos/music/archives/code/pdf, modified = today/this week/"
-        "this month/this year, min_size_mb), list (folder), info (path), copy (paths, to), move (paths, to), "
+        "this month/this year, min_size_mb), search_text (query = words that are INSIDE the file, e.g. 'invoice 4521'; "
+        "searches PDFs, Word, Excel, PowerPoint and text files in Documents, Desktop, Downloads and OneDrive), "
+        "list (folder), info (path), copy (paths, to), move (paths, to), "
         "rename (path, new_name), recycle (paths; sends to the Recycle Bin), make_folder (path), create (path = new "
         "file name with its type, e.g. Documents/notes.md, plan.docx, roadmap.pdf, budget.xlsx (Markdown tables "
         "become sheets with totals and charts), revision.pptx (# title, ## one slide each, - bullets, Notes: speaker "
@@ -233,6 +235,26 @@ class Files(Agent):
         if lines:
             summary += "\n" + "\n".join(lines)
         return StepResult("done", summary, {"paths": [str(p) for p, _ in shown]})
+
+    def _search_text(self, inputs: dict, ctx: AgentContext) -> StepResult:
+        from prometheus import file_index
+
+        query = str(inputs.get("query") or "").strip()
+        if not query:
+            return StepResult("failed", "Tell me what words are in the file.")
+        index = file_index.CURRENT
+        if index is None:
+            return StepResult("failed", "Searching inside files isn't set up.")
+        hits = [h for h in index.search(query) if not ctx.policy.is_blocked(Path(h["path"]))]
+        status = ctx.store.kv_get("file_index_status") or "I haven't read your files yet"
+        if not hits:
+            return StepResult("done", f"No file I've read mentions '{query}'. ({status}; files are read at night, "
+                                      "or press 'Read my files now' in Settings.)", {"paths": []})
+        for h in hits[:OUTPUTS_SHOWN]:
+            ctx.store.add_output(ctx.task_id, h["path"], "found")
+        lines = [f"- {h['path']}\n  …{h['passage']}…" for h in hits]
+        return StepResult("done", f"Files that mention '{query}':\n" + "\n".join(lines),
+                          {"paths": [h["path"] for h in hits]})
 
     def _list(self, inputs: dict, ctx: AgentContext) -> StepResult:
         folder = self._place(str(inputs.get("folder") or inputs.get("path") or inputs.get("where") or ""), ctx)

@@ -2,7 +2,7 @@
 {% block body %}
 <main class="single">
   <h2>Settings</h2>
-  {% if error %}<p class="error">{{ error }}</p>{% endif %}{% if saved %}<p class="status-done">Saved.</p>{% endif %}
+  {% if error %}<p class="error">{{ error }}</p>{% endif %}{% if saved %}<p class="status-done">Saved.</p>{% endif %}{% if notice %}<p class="status-done">{{ notice }}</p>{% endif %}
   <h3 style="margin-top:0">AI</h3>
   {% if key_error %}<p class="error">{{ key_error }}</p>{% endif %}{% if key_saved %}<p class="status-done">{{ key_saved }} is on.</p>{% endif %}
   <p class="muted">Search for an AI, paste its key, and it switches on at once. Prometheus picks the model and moves to
@@ -151,6 +151,14 @@
       <input type="password" name="password" placeholder="Your Prometheus password" autocomplete="current-password" required style="max-width:220px">
       <button type="submit">Connect</button>
     </form>
+  </div>
+
+  <h3>Search inside files</h3>
+  <div class="panel">
+    <p class="muted">Prometheus reads the text of PDFs, Word, Excel, PowerPoint and text files in Documents, Desktop,
+      Downloads and OneDrive (and folders added above), a little at a time at night, so you can find a file by what's
+      written in it. It stays on this laptop. {{ file_index_status }}</p>
+    <button hx-post="/settings/read-files" hx-target="body">Read my files now</button>
   </div>
 
   <h3>Daily summary</h3>

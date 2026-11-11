@@ -47,6 +47,8 @@ Plans:
   Adding or moving a calendar event, and Google Drive files, use the google agent (add_event with title and when,
   move_event, events, drive_search, drive_read). If Google isn't connected, the calendar agent can still read events.
 - "My briefing", "what's my day like", "evening wrap-up" use the briefing agent (kind = morning or evening).
+- Finding a file by what is WRITTEN in it ("the file that mentions invoice 4521", "my notes about photosynthesis")
+  uses the files agent with action search_text; finding by name, type or date uses action find.
 - Exact sums, statistics, working with numbers in a CSV or Excel file, or drawing a chart: use the code agent with a
   complete Python script in "code" (print the answer; save charts as .png in the current folder) and the owner's
   files in "files". Scripts have no internet; never put keys or passwords in them.

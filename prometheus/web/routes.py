@@ -455,7 +455,9 @@ def register_routes(app: FastAPI, services: Services) -> None:
                     vaults=[str(v) for v in __import__("prometheus.agents.obsidian", fromlist=["x"]).detect_vaults()],
                     voices=__import__("prometheus.voice.engines", fromlist=["VOICES"]).VOICES,
                     home=str(services.home), bad_places=bad_places,
-                    budget=services.budget.state(), catalog_date=catalog_updated(), **extra)
+                    budget=services.budget.state(), catalog_date=catalog_updated(),
+                    file_index_status=(getattr(services.file_index, "status", "") or store.kv_get("file_index_status")
+                                       or "Not read yet."), **extra)
 
     @app.get("/settings", response_class=HTMLResponse)
     def settings(request: Request):
@@ -784,6 +786,13 @@ def register_routes(app: FastAPI, services: Services) -> None:
             pass
         store.audit("user", "app_removed", {"name": name})
         return settings_page(request, saved=True)
+
+    @app.post("/settings/read-files", response_class=HTMLResponse)
+    def read_files_now(request: Request):
+        if services.file_index is not None:
+            services.file_index.read_now()
+            store.audit("user", "read_files_now", {})
+        return settings_page(request, notice="Reading your files in the background. Searching works as it goes.")
 
     @app.post("/settings/briefing", response_class=HTMLResponse)
     def save_briefing(request: Request, morning: str = Form("08:00"), evening: str = Form("21:00"),
