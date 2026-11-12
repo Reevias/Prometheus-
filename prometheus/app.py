@@ -8,8 +8,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import prometheus
+from prometheus.actions.atomic_fs import AtomicFiles
 from prometheus.actions.files import FileActions
 from prometheus.actions.journal import Journal
+from prometheus.actions.terminal import AsyncTerminal
 from prometheus.agents import REGISTRY
 from prometheus.agents.base import AgentContext
 from prometheus.agents.antigravity import AntigravityRunner
@@ -71,6 +73,8 @@ class Services:
     laptop: object = None
     browser: object = None
     notifier: object = None          # shows a Windows notification (None when not on Windows)
+    atomic_files: AtomicFiles | None = None
+    terminal: AsyncTerminal | None = None
 
     def notify(self, kind: str, text: str) -> bool:
         """A Windows notification, if the owner wants this kind (Settings → Notifications)."""
@@ -289,6 +293,8 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
     orchestrator.task_budget = max(0.01, min(float(settings.task_budget_usd), 10.0))
     services = Services(settings, home, store, policy, journal, files, permissions, approvals, budget, killswitch,
                         router, orchestrator, patcher, prompts, skills)
+    services.atomic_files = AtomicFiles(policy=policy, backup_dir=data / "backups")
+    services.terminal = AsyncTerminal(policy=policy)
     services.archive = archive
     from prometheus.voice.service import VoiceService
 
