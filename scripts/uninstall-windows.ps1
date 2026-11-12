@@ -20,9 +20,10 @@ $Links = @(
 )
 foreach ($l in $Links) { if (Test-Path $l) { Remove-Item -Force $l; Write-Host "Removed $l" } }
 
-# the program itself: the new folder and the old one from the first repository
-foreach ($d in @((Join-Path $env:USERPROFILE "Prometheus-"), (Join-Path $env:USERPROFILE "Claude-testing-"))) {
-    if (Test-Path (Join-Path $d "pyproject.toml")) {
+# the program itself. Only Prometheus's own folder, and only if it really is Prometheus. The older copy inside
+# %USERPROFILE%\Claude-testing- is left alone: that folder can hold your other work.
+foreach ($d in @((Join-Path $env:USERPROFILE "Prometheus-"))) {
+    if ((Test-Path (Join-Path $d "pyproject.toml")) -and (Test-Path (Join-Path $d "prometheus\cli.py"))) {
         Remove-Item -Recurse -Force $d -ErrorAction SilentlyContinue
         if (Test-Path $d) { Write-Host "Couldn't remove all of $d (a file is open?). Restart Windows and run this again." -ForegroundColor Yellow }
         else { Write-Host "Removed $d" }

@@ -1,6 +1,12 @@
 # Changelog
 
 ## 2.3
+- "Remember…", "update memory…", "note down…", "don't forget…" always save at once, without any AI, and say what was saved. "Forget …", "change X to Y in memory" and "what do you remember about …" work the same way. "Remember X and can you also…?" saves X and then does the rest.
+- Repos of the day: the first 10 trending on GitHub each evening, descriptions in English (translated when they aren't). Pick which to add on the Skills page or say "add repo 3"; "show today's repos" lists them any time.
+- Translate: "translate this to Hindi: …", "how do you say thank you in Japanese", "translate notes.pdf to English", "translate <link>", "translate my screen". Files and web pages are saved in Documents/Translations. Your files are translated only by the AI on the laptop.
+- A request stopped by an AI limit (rate limited, out of free allowance, every AI busy) is tried again by itself after 6, 15 and 30 minutes, then hourly for a day; the answer appears in the same chat. "Stop trying" cancels. Switch: Features → Try again by itself after an AI limit.
+- Microphone: when Windows refuses one way of opening it ("MME error 1"), Prometheus tries the others and the mic's own rate; if none works it says what to check (microphone privacy setting, input device, another app using it).
+- Security pass on everything new: uninstall never touches the old Claude-testing- folder; repo descriptions can't put links in the chat; translations are treated as outside text; safety markers no longer show in answers.
 - Fixed: "the AI that plans answered twice in a way I couldn't use". Plans are now read even when the AI wraps them in its thinking or a sentence, and when one AI still can't plan, the next one in line tries (up to three) before Prometheus gives up.
 - Paid AI asks first: free AIs are always tried first, and when only a paid one could answer, Prometheus says which and waits; reply "yes, use paid" to use it for that request only. A paid Brain you pick yourself counts as a yes. Switch in Settings → AI.
 - Expensive models are no longer offered on OpenRouter (nothing over $1 in or $4 out per million tokens): 25 strong cheap or free ones remain. Kimi K3.1 Pro is still there for free through Ollama cloud.

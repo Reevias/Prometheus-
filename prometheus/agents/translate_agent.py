@@ -34,8 +34,9 @@ class TranslateAgent(Agent):
             text = str(inputs.get("text") or "").strip()
             if not text:
                 return StepResult("failed", "What should I translate? Paste the text, or name a file or a web page.")
-            out, cut = translate(ctx.router, text, to, private=True)
-            return StepResult("done", out + ("\n\n(The text was long: this is the first part.)" if cut else ""))
+            out, cut = translate(ctx.router, text, to, private=True, cloud_if_needed=True)
+            return StepResult("done", untrusted(out, f"translation into {to}")
+                              + ("\n\n(The text was long: this is the first part.)" if cut else ""))
         if action == "file":
             ctx.use(self.name, "read_files")
             try:

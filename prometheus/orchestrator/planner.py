@@ -465,6 +465,8 @@ class Orchestrator:
 
     def _finish(self, chat_id: int, task_id: int, status: str, answer: str, model: str = "",
                 private: bool = False, topic: str = "") -> TaskOutcome:
+        # the markers around outside text are for the AIs; the owner sees only the words
+        answer = re.sub(r"</?untrusted(?: source=\"[^\"\n]*\")?>\n?", "", answer or "").replace("&lt;/untrusted", "</untrusted")
         noted = self._remembered.pop(task_id, [])
         if noted:
             answer = (answer.rstrip() + "\n\n_Remembered: " + "; ".join(noted)

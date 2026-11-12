@@ -188,7 +188,9 @@ class RepoOfTheDay:
         lines = [f"**Today's top {len(t['repos'])} repos on GitHub** ({t['date']})"]
         for i, r in enumerate(t["repos"], 1):
             mark = " ⚠ sensitive" if r.get("sensitive") else ""
-            lines.append(f"{i}. [{r['full_name']}](https://github.com/{r['full_name']}): {r['description'] or 'no description'}"
+            desc = re.sub(r"[\[\]()<>`*_|]", " ", r["description"] or "no description")
+            desc = re.sub(r"https?://\S+", "", desc)
+            lines.append(f"{i}. [{r['full_name']}](https://github.com/{r['full_name']}): {' '.join(desc.split())}"
                          f" ({r['stars_today']} stars today{', ' + r['language'] if r['language'] else ''}){mark}")
         lines.append("\nSay **add repo 3** (or \"add repos 2 and 5\") to add any to my skills, or pick them on the "
                      "Skills page. Adding reads the README only; nothing is installed or run.")

@@ -2,7 +2,17 @@
 
 Every bug found and fixed, newest first, so the count is always exact. Add a line for each new one.
 
-**Total fixed: 42** (as of 11 November 2026)
+**Total fixed: 48** (as of 11 November 2026)
+
+## 12 November 2026 (6)
+| # | Bug | Fixed by |
+|---|---|---|
+| 48 | Instant answers with outside text (screen, phone screen, translations) showed raw `<untrusted …>` markers in the chat | markers are removed from what the owner sees |
+| 47 | The uninstall script could delete the whole old `Claude-testing-` folder (it may hold other work) | it only removes Prometheus's own folder |
+| 46 | "Remember…" sometimes didn't save (the AI had to decide) | remember / update memory / forget / change are done at once, without AI |
+| 45 | "What did I copy this morning" used the wrong clock (failed after midnight in tests) | the clipboard agent uses the clipboard's own clock |
+| 44 | Message said "the AI that plan" | grammar fixed |
+| 43 | Voice could not start: "PortAudioError … MME error 1" (only one way of opening the microphone was tried) | every Windows sound system and the mic's own rate are tried; plain-words help if none works |
 
 ## 11 November 2026: on the owner's laptop and phone (23)
 | # | Bug | Fixed by |
