@@ -9,6 +9,7 @@ from prometheus.config import Settings
 from prometheus.launcher import version
 
 BACKGROUND = "#0d0709"
+ACTIVE_WINDOW = None
 
 
 class LocalServer:
@@ -159,6 +160,8 @@ def run_desktop(settings: Settings, webview=None, server=None) -> int:
                                        height=780, min_size=(860, 560), background_color=BACKGROUND,
                                        text_select=True)  # pywebview blocks selecting and copying text unless asked
         windows_identity(window, title)
+        global ACTIVE_WINDOW
+        ACTIVE_WINDOW = window
         try:
             tray = attach_tray(window, settings) if window is not None else None
         except Exception:                       # the tray is a nicety: never let it stop the window

@@ -8,7 +8,7 @@ from pathlib import Path
 from urllib.parse import unquote
 
 from fastapi import FastAPI, Form, Request
-from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from markupsafe import Markup, escape
@@ -74,10 +74,65 @@ def register_routes(app: FastAPI, services: Services) -> None:
                     notes=store.chat_notes(chat_id), busy=busy, doing=current_step(chat_id) if busy else "")
 
     @app.get("/", response_class=HTMLResponse)
-    def home(request: Request):
+    def home(request: Request, view: str = ""):
+        if view == "classic":
+            chats = store.chats()
+            chat_id = chats[0][0] if chats else store.create_chat("First chat")
+            return chat_page(request, chat_id)
+        return page(request, "v3/shell.html")
+
+    @app.get("/v3", response_class=HTMLResponse)
+    def v3_home(request: Request):
+        return page(request, "v3/shell.html")
+
+    @app.get("/api/v3/telemetry")
+    def api_v3_telemetry():
+        from prometheus.services.telemetry import telemetry_service
+        return telemetry_service.get_telemetry()
+
+    @app.get("/api/v3/state")
+    def api_v3_state():
+        from prometheus.services.ui_state import ui_state_service
+        ui_state_service.services = services
+        return ui_state_service.get_full_state()
+
+    @app.get("/api/v3/slash-commands")
+    def api_v3_slash_commands():
+        from prometheus.services.ui_state import ui_state_service
+        return ui_state_service.get_slash_commands()
+
+    @app.post("/api/v3/command")
+    async def api_v3_command(request: Request):
+        try:
+            body = await request.json()
+        except Exception:
+            body = {}
+        text = str(body.get("text", "")).strip()[:4000]
+        if not text:
+            return JSONResponse({"status": "empty", "error": "No command text provided"}, status_code=400)
         chats = store.chats()
-        chat_id = chats[0][0] if chats else store.create_chat("First chat")
-        return chat_page(request, chat_id)
+        chat_id = chats[0][0] if chats else store.create_chat("New chat")
+        if chat_id not in services.running:
+            store.rename_chat(chat_id, quick_title(text))
+            services.start_task(chat_id, text)
+        return {"status": "ok", "chat_id": chat_id, "text": text}
+
+    @app.post("/api/v3/window/{action}")
+    def api_v3_window_action(action: str):
+        from prometheus import desktop
+        action = action.lower()
+        win = getattr(desktop, "ACTIVE_WINDOW", None)
+        if win is not None:
+            try:
+                if action == "minimize":
+                    win.minimize()
+                elif action == "maximize":
+                    win.maximize()
+                elif action == "close":
+                    win.destroy()
+            except Exception as e:
+                return {"status": "error", "action": action, "error": str(e)}
+        return {"status": "ok", "action": action}
 
     @app.post("/chats")
     def new_chat():
