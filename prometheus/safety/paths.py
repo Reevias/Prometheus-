@@ -37,6 +37,10 @@ class PathBlocked(Exception):
     """Raised when a path is outside what Prometheus may touch."""
 
 
+class PathInspectionError(PathBlocked):
+    """Raised when link, junction, or file metadata cannot be safely inspected."""
+
+
 def _norm(p: Path | str) -> str:
     return os.path.normcase(str(p))
 
@@ -94,14 +98,39 @@ def _has_git_component(p: Path | str) -> bool:
 
 
 def _is_link_or_junction(p: Path | str) -> bool:
-    """Detect if path is a symlink, NTFS junction, or mount point reparse tag."""
+    """Detect if path is a symlink, NTFS junction, or mount point reparse tag.
+
+    Fails closed: If inspection cannot be completed due to permissions or OS errors,
+    raises PathInspectionError so callers reject the path.
+    Only returns False when the entry provably does not exist (FileNotFoundError)
+    or when metadata inspection succeeds and confirms the entry is not a link/junction.
+    """
+    path = Path(p)
     try:
-        path = Path(p)
-        if path.is_symlink():
-            return True
-        if hasattr(path, "is_junction") and path.is_junction():
-            return True
-        st = os.lstat(str(p))
+        try:
+            if path.is_symlink():
+                return True
+        except FileNotFoundError:
+            return False
+        except (OSError, ValueError) as err:
+            raise PathInspectionError(f"Failed to inspect symlink status for {p}: {err}") from err
+
+        if hasattr(path, "is_junction"):
+            try:
+                if path.is_junction():
+                    return True
+            except FileNotFoundError:
+                return False
+            except (OSError, ValueError) as err:
+                raise PathInspectionError(f"Failed to inspect junction status for {p}: {err}") from err
+
+        try:
+            st = os.lstat(str(p))
+        except FileNotFoundError:
+            return False
+        except (OSError, ValueError) as err:
+            raise PathInspectionError(f"Failed to inspect path metadata for {p}: {err}") from err
+
         if stat.S_ISLNK(st.st_mode):
             return True
         tag = getattr(st, "st_reparse_tag", 0)
@@ -110,8 +139,10 @@ def _is_link_or_junction(p: Path | str) -> bool:
         if tag in (mount_point, symlink):
             return True
         return False
-    except (OSError, ValueError):
-        return False
+    except PathInspectionError:
+        raise
+    except Exception as err:
+        raise PathInspectionError(f"Unexpected error inspecting path {p}: {err}") from err
 
 
 def get_final_path_from_handle(fd: int) -> Path:
@@ -172,8 +203,11 @@ def extra_root_problem(folder: str, home: Path) -> str:
     path = Path(os.path.abspath(Path(raw).expanduser()))
     if not path.is_absolute() or not path.exists() or not path.is_dir():
         return f"{raw} doesn't exist or isn't a folder."
-    if _is_link_or_junction(path):
-        return "Symlinks or junctions cannot be added as an extra place."
+    try:
+        if _is_link_or_junction(path):
+            return "Symlinks or junctions cannot be added as an extra place."
+    except PathBlocked as err:
+        return f"Cannot safely verify path: {err}"
     resolved = path.resolve()
     if _has_git_component(resolved):
         return "Git repository internals (.git) cannot be added as an extra place."
