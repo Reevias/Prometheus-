@@ -1,8 +1,10 @@
 """Atomic, verified filesystem primitives for Prometheus 3.0."""
 from __future__ import annotations
 
+import codecs
 import difflib
 import hashlib
+import io
 import json
 import shutil
 import os
@@ -21,6 +23,7 @@ from filelock import FileLock, Timeout
 from prometheus.safety.paths import (
     PathBlocked,
     PathPolicy,
+    _inside,
     _is_link_or_junction,
     get_final_path_from_handle,
     verify_handle_containment,
@@ -30,6 +33,8 @@ MAX_EDITABLE_SIZE = 10 * 1024 * 1024    # 10 MB
 MAX_WINDOW_LINES = 1000
 DEFAULT_WINDOW_LINES = 200
 CHUNK_SIZE = 64 * 1024                  # 64 KB
+LINE_PIECE_CHARS = 1024 * 1024          # read_window reads very long lines in pieces of this size
+TX_ID_RE = re.compile(r"^[A-Za-z0-9_.-]{1,128}$")
 
 
 class AtomicFSError(Exception):
@@ -180,6 +185,106 @@ def safe_replace_with_backoff(src: Path, dst: Path, max_attempts: int = 5) -> No
                 time.sleep(backoffs[min(attempt, len(backoffs) - 1)])
             else:
                 raise last_err from None
+
+
+def scan_text_file(f: Any) -> tuple[str, int, bool, FileEncodingInfo]:
+    """One streaming pass over an open binary file: SHA-256, size, binary check, encoding and newline.
+
+    Gives the same answers as compute_file_sha256 + detect_encoding_and_newline on the whole file, without
+    holding more than one chunk in memory.
+    """
+    hasher = hashlib.sha256()
+    total = 0
+    is_binary = False
+    utf8_ok = True
+    decoder = codecs.getincrementaldecoder("utf-8")()
+    crlf = False
+    prev_cr = False
+    head = b""
+    f.seek(0)
+    while True:
+        chunk = f.read(CHUNK_SIZE)
+        if not chunk:
+            break
+        total += len(chunk)
+        hasher.update(chunk)
+        if len(head) < 3:
+            head += chunk[: 3 - len(head)]
+        if not is_binary and b"\x00" in chunk:
+            is_binary = True
+        if utf8_ok:
+            try:
+                decoder.decode(chunk)
+            except UnicodeDecodeError:
+                utf8_ok = False
+        if not crlf and (b"\r\n" in chunk or (prev_cr and chunk.startswith(b"\n"))):
+            crlf = True
+        prev_cr = chunk.endswith(b"\r")
+    if utf8_ok:
+        try:
+            decoder.decode(b"", final=True)
+        except UnicodeDecodeError:
+            utf8_ok = False
+    f.seek(0)
+    has_bom = head.startswith(b"\xef\xbb\xbf")
+    encoding = "utf-8-sig" if has_bom else ("utf-8" if utf8_ok else "latin-1")
+    info = FileEncodingInfo(encoding=encoding, has_bom=has_bom, newline="\r\n" if crlf else "\n")
+    return hasher.hexdigest(), total, is_binary, info
+
+
+def _ends_line(part: str) -> bool:
+    """True if this piece (one element of str.splitlines(keepends=True)) ends with a line break."""
+    return part.splitlines()[0] != part if part else False
+
+
+def replace_pinned(src: Path, dst: Path, root: Path, max_attempts: int = 5) -> None:
+    """Replace dst with src (both in the same folder), with the folder pinned by an open handle.
+
+    On Linux and macOS the folder is opened once (not following a link), checked to really be inside root, and
+    the rename is done relative to that open folder, so swapping a parent folder for a link after the check can no
+    longer redirect the write. Windows has no folder-relative rename in Python, so there it falls back to the
+    path-based replace after re-checking every parent; that small window is a documented residual risk
+    (docs/security/THREAT_MODEL.md), caught afterwards by the handle check in the callers.
+    """
+    if src.parent != dst.parent:
+        raise PathSecurityError(f"Staged file and target must share a folder: {src} vs {dst}")
+    canonical_root = Path(os.path.abspath(Path(root).expanduser())).resolve()
+    curr = dst.parent
+    while True:
+        if _is_link_or_junction(curr):
+            raise PathSecurityError(f"Parent directory is a link or junction: {curr}")
+        if curr.resolve() == canonical_root or curr == curr.parent:
+            break
+        curr = curr.parent
+    if sys.platform == "win32" or os.rename not in os.supports_dir_fd:
+        safe_replace_with_backoff(src, dst, max_attempts=max_attempts)
+        return
+    if dst.exists() and not os.access(dst, os.W_OK):
+        raise PermissionError(f"Target file is not writable: {dst}")
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        dfd = os.open(str(dst.parent), flags)
+    except OSError as err:
+        raise PathSecurityError(f"Could not open the target's folder safely: {dst.parent}: {err}") from err
+    try:
+        real = get_final_path_from_handle(dfd)
+        if not _inside(real, canonical_root):
+            raise PathSecurityError(f"Target folder resolves outside {canonical_root}: {real}")
+        backoffs = [0.025, 0.05, 0.1, 0.2, 0.4]
+        for attempt in range(max_attempts):
+            try:
+                os.rename(src.name, dst.name, src_dir_fd=dfd, dst_dir_fd=dfd)   # POSIX rename replaces dst
+                break
+            except OSError:
+                if attempt == max_attempts - 1:
+                    raise
+                time.sleep(backoffs[min(attempt, len(backoffs) - 1)])
+        try:
+            os.fsync(dfd)   # make the rename itself survive a power cut
+        except OSError:
+            pass
+    finally:
+        os.close(dfd)
 
 
 @dataclass
@@ -337,31 +442,54 @@ class AtomicFiles:
         if not p.exists() or not p.is_file():
             raise FileNotFoundError(f"File not found: {p}")
 
-        # Open handle once and keep open during validation, hashing, and read
+        start_line = max(1, start_line)
+        line_count = max(0, min(line_count, MAX_WINDOW_LINES))
+        last_wanted = start_line - 1 + line_count     # last line number kept
+
+        # One open handle for containment, hashing and reading. The file is streamed: only the requested lines
+        # are kept, so a huge file never sits in memory as a whole.
         with open(p, "rb") as f_in:
             if root is not None:
                 verify_handle_containment(f_in.fileno(), root)
-            sha256, total_bytes, is_binary = compute_file_sha256(f_in)
+            sha256, total_bytes, is_binary, enc_info = scan_text_file(f_in)
             if is_binary:
                 raise AtomicFSError(f"Binary file detected: {p}")
-            f_in.seek(0)
-            raw = f_in.read()
-
-        enc_info = detect_encoding_and_newline(raw)
-        text = raw.decode(enc_info.encoding)
-        all_lines = text.splitlines(keepends=True)
-        total_lines = len(all_lines)
-
-        # Enforce bounds
-        start_line = max(1, start_line)
-        line_count = max(0, min(line_count, MAX_WINDOW_LINES))
+            text_in = io.TextIOWrapper(f_in, encoding=enc_info.encoding, newline="")
+            try:
+                window_lines: list[str] = []
+                total_lines = 0
+                open_line = False          # the last piece stopped in the middle of a line
+                cut_after_cr = False       # ...and that piece ended in "\r" (a "\r\n" may be split)
+                while True:
+                    piece = text_in.readline(LINE_PIECE_CHARS)
+                    if not piece:
+                        break
+                    cut = len(piece) == LINE_PIECE_CHARS
+                    if cut_after_cr and piece.startswith("\n"):
+                        # "\r\n" split by the piece limit: the "\n" belongs to the line that ended in "\r"
+                        if start_line <= total_lines <= last_wanted and window_lines:
+                            window_lines[-1] += "\n"
+                        piece = piece[1:]
+                    cut_after_cr = False
+                    for part in piece.splitlines(keepends=True):
+                        if open_line:
+                            if start_line <= total_lines <= last_wanted and window_lines:
+                                window_lines[-1] += part
+                        else:
+                            total_lines += 1
+                            if start_line <= total_lines <= last_wanted:
+                                window_lines.append(part)
+                        open_line = not _ends_line(part)
+                    if cut and piece.endswith("\r"):
+                        cut_after_cr = True
+            finally:
+                text_in.detach()
 
         if start_line > total_lines:
             window_lines = []
             end_line = start_line - 1
             truncated = False
         else:
-            window_lines = all_lines[start_line - 1 : start_line - 1 + line_count]
             end_line = start_line - 1 + len(window_lines)
             truncated = end_line < total_lines
 
@@ -492,17 +620,8 @@ class AtomicFiles:
                 "updated_at": time.time(),
             })
 
-            # Re-verify parent directory lineage immediately before replacement
-            curr = p.parent
-            while True:
-                if _is_link_or_junction(curr):
-                    raise PathSecurityError(f"Parent directory is a link or junction: {curr}")
-                if curr.resolve() == root.resolve() or curr == curr.parent:
-                    break
-                curr = curr.parent
-
-            # Commit replacement
-            safe_replace_with_backoff(tmp_path, p)
+            # Re-verify the parents and replace with the folder pinned (see replace_pinned)
+            replace_pinned(tmp_path, p, root)
 
             # Post-replacement handle containment verification
             with open(p, "rb") as f_post:
@@ -657,16 +776,8 @@ class AtomicFiles:
                 "updated_at": time.time(),
             })
 
-            # Re-verify parent directory lineage immediately before replacement
-            curr = p.parent
-            while True:
-                if _is_link_or_junction(curr):
-                    raise PathSecurityError(f"Parent directory is a link or junction: {curr}")
-                if curr.resolve() == root.resolve() or curr == curr.parent:
-                    break
-                curr = curr.parent
-
-            safe_replace_with_backoff(tmp_path, p)
+            # Re-verify the parents and replace with the folder pinned (see replace_pinned)
+            replace_pinned(tmp_path, p, root)
 
             # Post-replacement handle containment verification
             with open(p, "rb") as f_post:
@@ -722,153 +833,205 @@ class AtomicFiles:
             except Exception:
                 pass
 
-    def rollback_transaction(self, transaction_id: str) -> bool:
-        """Rollback an uncommitted or failed transaction restoring original hash."""
-        if not self.transactions_log.exists():
-            return False
+    # ---- journal-driven rollback and recovery -------------------------------------------------------------
+    # The journal is a file on disk, so nothing read from it is trusted: every path is checked against the path
+    # policy and the expected file names, and a backup is only restored if its SHA-256 matches the hash recorded
+    # before the edit. A file whose content is neither the old nor the new version is left alone (someone changed
+    # it since), and reported instead of overwritten.
 
-        target_record: dict = {}
+    def _read_journal(self) -> dict[str, dict]:
+        transactions: dict[str, dict] = {}
+        if not self.transactions_log.exists():
+            return transactions
         with open(self.transactions_log, "r", encoding="utf-8") as f:
             for line in f:
                 try:
                     rec = json.loads(line)
-                    if rec.get("tx_id") == transaction_id:
-                        target_record.update(rec)
                 except json.JSONDecodeError:
                     continue
+                if not isinstance(rec, dict):
+                    continue
+                tx_id = rec.get("tx_id")
+                if isinstance(tx_id, str) and tx_id:
+                    transactions.setdefault(tx_id, {}).update(rec)
+        return transactions
 
-        if not target_record or "target_path" not in target_record:
-            return False
+    def _checked_paths(self, tx_id: str, rec: dict) -> tuple[Path, Path | None, Path | None]:
+        """Validate the journal's paths for one transaction. Raises TransactionError if any is unsafe."""
+        if not TX_ID_RE.match(tx_id):
+            raise TransactionError(f"Journal entry has an invalid transaction id: {tx_id!r}")
+        target_str = rec.get("target_path")
+        if not isinstance(target_str, str) or not target_str:
+            raise TransactionError(f"{tx_id}: journal entry has no target path")
+        root = self.policy.root_for(target_str)
+        if root is None:
+            raise TransactionError(f"{tx_id}: target is outside every allowed folder: {target_str}")
+        try:
+            target = self.policy.check_change(target_str, root)
+        except PathBlocked as err:
+            raise TransactionError(f"{tx_id}: target not allowed: {err}") from err
+        if _is_link_or_junction(target):
+            raise TransactionError(f"{tx_id}: target is a link: {target}")
 
-        target_path = Path(target_record["target_path"])
-        backup_path = Path(target_record["backup_path"])
-        old_sha256 = target_record.get("old_sha256")
+        backup = None
+        backup_str = rec.get("backup_path")
+        if isinstance(backup_str, str) and backup_str:
+            raw = Path(backup_str)
+            backup_root = self.backup_dir.resolve()
+            if _is_link_or_junction(raw) or not raw.name.startswith(f"{tx_id}_"):
+                raise TransactionError(f"{tx_id}: backup path is not one of Prometheus's backups: {raw}")
+            resolved = Path(os.path.abspath(raw)).resolve()
+            if resolved.parent != backup_root:
+                raise TransactionError(f"{tx_id}: backup is outside the backup folder: {raw}")
+            backup = resolved
 
-        if not backup_path.exists():
-            raise TransactionError(f"Backup file not found for rollback: {backup_path}")
+        tmp = None
+        tmp_str = rec.get("tmp_path")
+        if isinstance(tmp_str, str) and tmp_str:
+            raw = Path(tmp_str)
+            expected = target.parent / f".{target.name}.tmp_{tx_id}"
+            if _norm_path(raw) != _norm_path(expected) or _is_link_or_junction(raw):
+                raise TransactionError(f"{tx_id}: staged-file path doesn't match the target: {raw}")
+            tmp = expected
+        return target, backup, tmp
 
-        safe_replace_with_backoff(backup_path, target_path)
-
-        restored_sha256, _, _ = compute_file_sha256(target_path)
-        if old_sha256 and restored_sha256 != old_sha256:
-            raise TransactionError(
-                f"Rollback hash mismatch: expected {old_sha256}, actual {restored_sha256}"
-            )
-
-        tmp_path_str = target_record.get("tmp_path")
-        if tmp_path_str:
-            tmp_path = Path(tmp_path_str)
-            if tmp_path.exists():
+    def _restore_backup(self, tx_id: str, backup: Path, target: Path, old_sha256: str) -> None:
+        """Copy a verified backup over target (the backup itself is kept)."""
+        if not old_sha256:
+            raise TransactionError(f"{tx_id}: no recorded hash for the backup, so it isn't trusted")
+        backup_sha, _, _ = compute_file_sha256(backup)
+        if backup_sha != old_sha256:
+            raise TransactionError(f"{tx_id}: backup is damaged or was changed (hash mismatch), not restored")
+        root = self.policy.root_for(target)
+        staged = target.parent / f".{target.name}.restore_{tx_id}"
+        try:
+            with open(backup, "rb") as src, open(staged, "xb") as out:
+                shutil.copyfileobj(src, out, CHUNK_SIZE)
+                out.flush()
+                os.fsync(out.fileno())
+            if compute_file_sha256(staged)[0] != old_sha256:
+                raise TransactionError(f"{tx_id}: restored copy doesn't match the backup")
+            replace_pinned(staged, target, root)
+        finally:
+            if staged.exists():
                 try:
-                    tmp_path.unlink()
+                    staged.unlink()
                 except OSError:
                     pass
+        restored_sha, _, _ = compute_file_sha256(target)
+        if restored_sha != old_sha256:
+            raise TransactionError(f"Rollback hash mismatch: expected {old_sha256}, actual {restored_sha}")
+
+    def _mark(self, tx_id: str, state: TransactionState, target: Path, note: str = "") -> None:
+        self._log_transaction({
+            "tx_id": tx_id,
+            "state": state.value,
+            "target_path": str(target),
+            "note": note,
+            "updated_at": time.time(),
+        }, critical=False)
+
+    def rollback_transaction(self, transaction_id: str) -> bool:
+        """Undo one transaction: put back the file as it was before the edit, from its verified backup."""
+        rec = self._read_journal().get(transaction_id)
+        if not rec or "target_path" not in rec:
+            return False
+        target, backup, tmp = self._checked_paths(transaction_id, rec)
+        old_sha256 = rec.get("old_sha256") or ""
+        new_sha256 = rec.get("new_sha256") or ""
+        if backup is None or not backup.exists():
+            raise TransactionError(f"Backup file not found for rollback: {backup}")
+
+        lock = self._get_lock(target)
+        try:
+            lock.acquire()
+        except Timeout:
+            raise ConcurrencyError(f"File is locked by another operation: {target}") from None
+        try:
+            if target.exists():
+                current = compute_file_sha256(target)[0]
+                if current not in (old_sha256, new_sha256):
+                    raise ConcurrencyError(
+                        f"{target} was changed after this edit; not overwriting it (current hash {current})"
+                    )
+            self._restore_backup(transaction_id, backup, target, old_sha256)
+            if tmp is not None and tmp.exists():
+                try:
+                    tmp.unlink()
+                except OSError:
+                    pass
+        finally:
+            try:
+                lock.release()
+            except Exception:
+                pass
 
         self._log_transaction({
             "tx_id": transaction_id,
             "state": TransactionState.ROLLED_BACK.value,
-            "target_path": str(target_path),
-            "backup_path": str(backup_path),
+            "target_path": str(target),
+            "backup_path": str(backup),
             "updated_at": time.time(),
         })
         return True
 
     def recover_interrupted_transactions(self) -> list[str]:
-        """Scan backup journal at startup, clean orphaned tmp files, and report/resolve state."""
-        if not self.transactions_log.exists():
-            return []
+        """At startup: finish or undo edits that were cut off (crash, power cut), and clean staged files.
 
-        transactions: dict[str, dict] = {}
-        with open(self.transactions_log, "r", encoding="utf-8") as f:
-            for line in f:
-                try:
-                    rec = json.loads(line)
-                    tx_id = rec.get("tx_id")
-                    if tx_id:
-                        if tx_id not in transactions:
-                            transactions[tx_id] = rec
-                        else:
-                            transactions[tx_id].update(rec)
-                except json.JSONDecodeError:
-                    continue
-
+        Every result is reported as "<tx_id>: <what happened>". Unsafe or unclear entries are skipped and reported,
+        never acted on.
+        """
         recovered: list[str] = []
-
-        for tx_id, rec in transactions.items():
+        for tx_id, rec in self._read_journal().items():
             state = rec.get("state")
             if state in (TransactionState.COMMITTED.value, TransactionState.ROLLED_BACK.value):
                 continue
-
-            target_path_str = rec.get("target_path")
-            backup_path_str = rec.get("backup_path")
-            tmp_path_str = rec.get("tmp_path")
-            old_sha256 = rec.get("old_sha256")
-            new_sha256 = rec.get("new_sha256")
-
-            if not target_path_str:
+            if not rec.get("target_path"):
+                continue
+            try:
+                target, backup, tmp = self._checked_paths(tx_id, rec)
+            except (TransactionError, PathBlocked) as err:
+                recovered.append(f"{tx_id}: skipped_unsafe_journal_entry ({err})")
                 continue
 
-            target_path = Path(target_path_str)
-            tmp_path = Path(tmp_path_str) if tmp_path_str else None
-            backup_path = Path(backup_path_str) if backup_path_str else None
+            old_sha256 = rec.get("old_sha256") or ""
+            new_sha256 = rec.get("new_sha256") or ""
 
-            if tmp_path and tmp_path.exists():
+            if tmp is not None and tmp.exists():
                 try:
-                    tmp_path.unlink()
+                    tmp.unlink()
                 except OSError:
                     pass
 
-            if target_path.exists():
-                curr_sha256, _, _ = compute_file_sha256(target_path)
-                if state == TransactionState.VERIFIED.value:
-                    if curr_sha256 == new_sha256:
-                        self._log_transaction({
-                            "tx_id": tx_id,
-                            "state": TransactionState.COMMITTED.value,
-                            "recovered_at": time.time(),
-                        }, critical=False)
+            try:
+                if target.exists():
+                    current = compute_file_sha256(target)[0]
+                    if old_sha256 and current == old_sha256:
+                        self._mark(tx_id, TransactionState.ROLLED_BACK, target, "file unchanged")
+                        recovered.append(f"{tx_id}: rolled_back")
+                    elif new_sha256 and current == new_sha256 and state == TransactionState.VERIFIED.value:
+                        self._mark(tx_id, TransactionState.COMMITTED, target, "replacement had finished")
                         recovered.append(f"{tx_id}: committed")
-                    elif curr_sha256 == old_sha256:
-                        self._log_transaction({
-                            "tx_id": tx_id,
-                            "state": TransactionState.ROLLED_BACK.value,
-                            "recovered_at": time.time(),
-                        }, critical=False)
+                    elif new_sha256 and current == new_sha256 and backup is not None and backup.exists():
+                        # the write landed but was never confirmed: undo it
+                        self._restore_backup(tx_id, backup, target, old_sha256)
+                        self._mark(tx_id, TransactionState.ROLLED_BACK, target, "unconfirmed write undone")
+                        recovered.append(f"{tx_id}: restored_from_backup")
+                    elif not old_sha256:
+                        # failed before anything was staged: nothing to undo
+                        self._mark(tx_id, TransactionState.ROLLED_BACK, target, "nothing was staged")
                         recovered.append(f"{tx_id}: rolled_back")
                     else:
-                        if backup_path and backup_path.exists():
-                            safe_replace_with_backoff(backup_path, target_path)
-                            self._log_transaction({
-                                "tx_id": tx_id,
-                                "state": TransactionState.ROLLED_BACK.value,
-                                "recovered_at": time.time(),
-                            }, critical=False)
-                            recovered.append(f"{tx_id}: restored_from_backup")
-                else:  # STAGED, FAILED, etc.
-                    if curr_sha256 == old_sha256:
-                        self._log_transaction({
-                            "tx_id": tx_id,
-                            "state": TransactionState.ROLLED_BACK.value,
-                            "recovered_at": time.time(),
-                        }, critical=False)
-                        recovered.append(f"{tx_id}: rolled_back")
-                    else:
-                        if backup_path and backup_path.exists():
-                            safe_replace_with_backoff(backup_path, target_path)
-                            self._log_transaction({
-                                "tx_id": tx_id,
-                                "state": TransactionState.ROLLED_BACK.value,
-                                "recovered_at": time.time(),
-                            }, critical=False)
-                            recovered.append(f"{tx_id}: restored_from_backup")
-            else:
-                if backup_path and backup_path.exists():
-                    safe_replace_with_backoff(backup_path, target_path)
-                    self._log_transaction({
-                        "tx_id": tx_id,
-                        "state": TransactionState.ROLLED_BACK.value,
-                        "recovered_at": time.time(),
-                    }, critical=False)
+                        recovered.append(f"{tx_id}: skipped_changed_since (file has other content; left as is)")
+                elif backup is not None and backup.exists():
+                    self._restore_backup(tx_id, backup, target, old_sha256)
+                    self._mark(tx_id, TransactionState.ROLLED_BACK, target, "missing file restored")
                     recovered.append(f"{tx_id}: restored_missing_from_backup")
+            except (TransactionError, PathBlocked, OSError) as err:
+                recovered.append(f"{tx_id}: failed ({err})")
 
         return recovered
+
+
+def _norm_path(p: Path) -> str:
+    return os.path.normcase(os.path.abspath(p))
