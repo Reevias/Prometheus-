@@ -4,6 +4,7 @@ from __future__ import annotations
 import difflib
 import hashlib
 import json
+import shutil
 import os
 import re
 import stat
@@ -13,13 +14,14 @@ import uuid
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from filelock import FileLock, Timeout
 
 from prometheus.safety.paths import (
     PathBlocked,
     PathPolicy,
+    _is_link_or_junction,
     get_final_path_from_handle,
     verify_handle_containment,
 )
@@ -97,13 +99,17 @@ class EditResult:
     transaction_id: str = ""
 
 
-def compute_file_sha256(path: Path | str) -> tuple[str, int, bool]:
-    """Compute SHA-256 hash, byte count, and binary status using chunked streaming."""
+def compute_file_sha256(path_or_file: Any) -> tuple[str, int, bool]:
+    """Compute SHA-256 hash, byte count, and binary status using chunked streaming.
+    Supports either a path or an already open binary file object / descriptor.
+    """
     hasher = hashlib.sha256()
     total_bytes = 0
     is_binary = False
 
-    with open(path, "rb") as f:
+    if hasattr(path_or_file, "read"):
+        f = path_or_file
+        f.seek(0)
         while True:
             chunk = f.read(CHUNK_SIZE)
             if not chunk:
@@ -112,8 +118,19 @@ def compute_file_sha256(path: Path | str) -> tuple[str, int, bool]:
             hasher.update(chunk)
             if not is_binary and b"\x00" in chunk:
                 is_binary = True
-
-    return hasher.hexdigest(), total_bytes, is_binary
+        f.seek(0)
+        return hasher.hexdigest(), total_bytes, is_binary
+    else:
+        with open(path_or_file, "rb") as f:
+            while True:
+                chunk = f.read(CHUNK_SIZE)
+                if not chunk:
+                    break
+                total_bytes += len(chunk)
+                hasher.update(chunk)
+                if not is_binary and b"\x00" in chunk:
+                    is_binary = True
+        return hasher.hexdigest(), total_bytes, is_binary
 
 
 def detect_encoding_and_newline(raw: bytes) -> FileEncodingInfo:
@@ -307,13 +324,16 @@ class AtomicFiles:
         if not p.exists() or not p.is_file():
             raise FileNotFoundError(f"File not found: {p}")
 
-        # Compute SHA-256 and binary status
-        sha256, total_bytes, is_binary = compute_file_sha256(p)
-        if is_binary:
-            raise AtomicFSError(f"Binary file detected: {p}")
+        # Open handle once and keep open during validation, hashing, and read
+        with open(p, "rb") as f_in:
+            if root is not None:
+                verify_handle_containment(f_in.fileno(), root)
+            sha256, total_bytes, is_binary = compute_file_sha256(f_in)
+            if is_binary:
+                raise AtomicFSError(f"Binary file detected: {p}")
+            f_in.seek(0)
+            raw = f_in.read()
 
-        # Read content and detect encoding
-        raw = p.read_bytes()
         enc_info = detect_encoding_and_newline(raw)
         text = raw.decode(enc_info.encoding)
         all_lines = text.splitlines(keepends=True)
@@ -382,19 +402,20 @@ class AtomicFiles:
             raise ConcurrencyError(f"File is locked by another operation: {p}") from None
 
         try:
-            with open(p, "rb") as fd_check:
-                verify_handle_containment(fd_check.fileno(), root)
-
-            pre_sha256, _, is_binary = compute_file_sha256(p)
-            if is_binary:
-                raise AtomicFSError(f"Cannot edit binary file: {p}")
-
-            if expected_sha256 and pre_sha256.lower() != expected_sha256.strip().lower():
-                raise ConcurrencyError(
-                    f"SHA-256 conflict on {p}: expected {expected_sha256}, actual {pre_sha256}"
-                )
-
-            raw_bytes = p.read_bytes()
+            # Open handle once and keep open for containment verification, hashing, and reading
+            with open(p, "rb") as f_in:
+                verify_handle_containment(f_in.fileno(), root)
+                pre_sha256, file_size, is_binary = compute_file_sha256(f_in)
+                if is_binary:
+                    raise AtomicFSError(f"Cannot edit binary file: {p}")
+                if file_size > MAX_EDITABLE_SIZE:
+                    raise AtomicFSError(f"File exceeds 10 MB limit ({file_size} bytes)")
+                if expected_sha256 and pre_sha256.lower() != expected_sha256.strip().lower():
+                    raise ConcurrencyError(
+                        f"SHA-256 conflict on {p}: expected {expected_sha256}, actual {pre_sha256}"
+                    )
+                f_in.seek(0)
+                raw_bytes = f_in.read()
             enc_info = detect_encoding_and_newline(raw_bytes)
             original_text = raw_bytes.decode(enc_info.encoding)
 
@@ -458,8 +479,25 @@ class AtomicFiles:
                 "updated_at": time.time(),
             })
 
-            # Commit
+            # Re-verify parent directory lineage immediately before replacement
+            curr = p.parent
+            while True:
+                if _is_link_or_junction(curr):
+                    raise PathSecurityError(f"Parent directory is a link or junction: {curr}")
+                if curr.resolve() == root.resolve() or curr == curr.parent:
+                    break
+                curr = curr.parent
+
+            # Commit replacement
             safe_replace_with_backoff(tmp_path, p)
+
+            # Post-replacement handle containment verification
+            with open(p, "rb") as f_post:
+                verify_handle_containment(f_post.fileno(), root)
+                post_sha256, _, _ = compute_file_sha256(f_post)
+                if post_sha256 != new_sha256:
+                    shutil.copy2(backup_path, p)
+                    raise PathSecurityError(f"Post-replacement integrity check failed on {p}")
 
             self._log_transaction({
                 "tx_id": tx_id,
@@ -552,19 +590,19 @@ class AtomicFiles:
             raise ConcurrencyError(f"File is locked by another operation: {p}") from None
 
         try:
-            with open(p, "rb") as fd_check:
-                verify_handle_containment(fd_check.fileno(), root)
-
-            pre_sha256, _, is_binary = compute_file_sha256(p)
-            if is_binary:
-                raise AtomicFSError(f"Cannot patch binary file: {p}")
-
-            if expected_sha256 and pre_sha256.lower() != expected_sha256.strip().lower():
-                raise ConcurrencyError(
-                    f"SHA-256 conflict on {p}: expected {expected_sha256}, actual {pre_sha256}"
-                )
-
-            raw_bytes = p.read_bytes()
+            with open(p, "rb") as f_in:
+                verify_handle_containment(f_in.fileno(), root)
+                pre_sha256, file_size, is_binary = compute_file_sha256(f_in)
+                if is_binary:
+                    raise AtomicFSError(f"Cannot patch binary file: {p}")
+                if file_size > MAX_EDITABLE_SIZE:
+                    raise AtomicFSError(f"File exceeds 10 MB limit ({file_size} bytes)")
+                if expected_sha256 and pre_sha256.lower() != expected_sha256.strip().lower():
+                    raise ConcurrencyError(
+                        f"SHA-256 conflict on {p}: expected {expected_sha256}, actual {pre_sha256}"
+                    )
+                f_in.seek(0)
+                raw_bytes = f_in.read()
             enc_info = detect_encoding_and_newline(raw_bytes)
             original_text = raw_bytes.decode(enc_info.encoding)
             original_lines = original_text.splitlines(keepends=True)
@@ -612,7 +650,24 @@ class AtomicFiles:
                 "updated_at": time.time(),
             })
 
+            # Re-verify parent directory lineage immediately before replacement
+            curr = p.parent
+            while True:
+                if _is_link_or_junction(curr):
+                    raise PathSecurityError(f"Parent directory is a link or junction: {curr}")
+                if curr.resolve() == root.resolve() or curr == curr.parent:
+                    break
+                curr = curr.parent
+
             safe_replace_with_backoff(tmp_path, p)
+
+            # Post-replacement handle containment verification
+            with open(p, "rb") as f_post:
+                verify_handle_containment(f_post.fileno(), root)
+                post_sha256, _, _ = compute_file_sha256(f_post)
+                if post_sha256 != new_sha256:
+                    shutil.copy2(backup_path, p)
+                    raise PathSecurityError(f"Post-replacement integrity check failed on {p}")
 
             self._log_transaction({
                 "tx_id": tx_id,

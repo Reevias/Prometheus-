@@ -385,3 +385,69 @@ def test_apply_diff_crlf_preservation(atomic_env):
 def test_rollback_nonexistent_tx(atomic_env):
     _, _, _, _, afs = atomic_env
     assert afs.rollback_transaction("tx_does_not_exist") is False
+
+
+# ============================================================================
+# Finding B: Adversarial TOCTOU and Handle Containment Tests
+# ============================================================================
+
+def test_handle_based_sha256_streaming(atomic_env):
+    """compute_file_sha256 accepts already-open file handles directly without reopening."""
+    home, project, data, policy, afs = atomic_env
+    test_file = project / "handle_test.txt"
+    test_file.write_text("stream content", encoding="utf-8")
+
+    with open(test_file, "rb") as f:
+        sha, total_bytes, is_binary = compute_file_sha256(f)
+        assert total_bytes == len("stream content")
+        assert is_binary is False
+        assert sha == hashlib.sha256(b"stream content").hexdigest()
+        # Verify handle was seeked back to 0
+        assert f.tell() == 0
+
+
+def test_adversarial_swapped_parent_directory_detected_before_replace(atomic_env, monkeypatch):
+    """Simulates a parent directory being swapped to a link/junction before replacement."""
+    home, project, data, policy, afs = atomic_env
+    sub_dir = project / "subdir"
+    sub_dir.mkdir()
+    target = sub_dir / "app.txt"
+    target.write_text("original text\n", encoding="utf-8")
+
+    # Hook _is_link_or_junction to simulate sub_dir becoming a junction right before replace
+    import prometheus.actions.atomic_fs as afs_module
+    orig_check = afs_module._is_link_or_junction
+
+    def mock_link_check(p):
+        if str(p) == str(sub_dir):
+            return True
+        return orig_check(p)
+
+    monkeypatch.setattr(afs_module, "_is_link_or_junction", mock_link_check)
+
+    with pytest.raises(PathSecurityError, match="Parent directory is a link or junction"):
+        afs.edit_exact(target, target="original", replacement="updated", root=project)
+
+    # Verify original text was NOT modified
+    assert target.read_text(encoding="utf-8") == "original text\n"
+
+
+def test_post_replace_tamper_detection_triggers_rollback(atomic_env, monkeypatch):
+    """If post-replacement integrity check fails, changes are safely rolled back from backup."""
+    home, project, data, policy, afs = atomic_env
+    target = project / "tamper_test.txt"
+    target.write_text("safe base\n", encoding="utf-8")
+
+    # Hook safe_replace_with_backoff to write corrupt content to simulate post-replace tampering
+    import prometheus.actions.atomic_fs as afs_module
+
+    def corrupt_replace(src, dst):
+        dst.write_text("tampered content\n", encoding="utf-8")
+
+    monkeypatch.setattr(afs_module, "safe_replace_with_backoff", corrupt_replace)
+
+    with pytest.raises(PathSecurityError, match="Post-replacement integrity check failed"):
+        afs.edit_exact(target, target="safe", replacement="dangerous", root=project)
+
+    # Verify target was rolled back to original content
+    assert target.read_text(encoding="utf-8") == "safe base\n"
