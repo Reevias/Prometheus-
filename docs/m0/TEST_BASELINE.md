@@ -2,12 +2,12 @@
 
 How to run: `python -m pytest -q` from the repository root (Python 3.14+; `pip install -e ".[dev]"`).
 
-## Results (12 Nov 2026, branch `prometheus-v3`)
+## Results (12 Nov 2026, branch `main`: M0 + M1, without M2)
 
 | Where | Order | Passed | Failed | Skipped | Notes |
 |---|---|---|---|---|---|
-| Linux (cloud container), Python 3.14.6 | normal | 1137 | 0 | 37 | Windows-only tests skip here |
-| Linux (cloud container), Python 3.14.6 | reversed | 1137 | 0 | 37 | every test also passes when the whole suite runs backwards |
+| Linux (cloud container), Python 3.14.6 | normal | 1118 | 0 | 37 | Windows-only tests skip here |
+| Linux (cloud container), Python 3.14.6 | reversed | 1118 | 0 | 37 | every test also passes when the whole suite runs backwards |
 | Native Windows (GitHub `windows-latest`), Python 3.14 and 3.15 | normal | see the GitHub Actions "Tests" run for this commit | | | the only native Windows evidence; not the owner's laptop |
 
 ## Test isolation (what M0 fixed)
