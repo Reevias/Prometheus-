@@ -242,3 +242,52 @@ def test_terminal_multiple_workers_allowed(terminal_env):
     res = asyncio.run(run())
     assert res.exit_code == 0
     assert "Results: [2, 4, 6]" in res.stdout
+
+
+# ============================================================================
+# Findings C & D: Secret Isolation & Command Redaction Tests
+# ============================================================================
+
+def test_terminal_env_secret_isolation(terminal_env, monkeypatch):
+    """Parent API keys and secrets must NOT be inherited by child processes."""
+    home, project, _, _, terminal = terminal_env
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-api03-supersecret1234567890")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-proj-supersecret1234567890")
+    monkeypatch.setenv("GITHUB_TOKEN", "ghp_supersecret1234567890")
+    monkeypatch.setenv("MY_APP_SECRET", "very_secret_value_12345")
+
+    async def run():
+        code = (
+            "import os, sys\n"
+            "for k in os.environ:\n"
+            "    print(f'ENV:{k}')\n"
+        )
+        return await terminal.execute([sys.executable, "-c", code], cwd=project)
+
+    res = asyncio.run(run())
+    assert res.exit_code == 0
+    lines = res.stdout.splitlines()
+    env_keys = [line.split("ENV:")[1] for line in lines if line.startswith("ENV:")]
+
+    assert "ANTHROPIC_API_KEY" not in env_keys
+    assert "OPENAI_API_KEY" not in env_keys
+    assert "GITHUB_TOKEN" not in env_keys
+    assert "MY_APP_SECRET" not in env_keys
+
+
+def test_terminal_command_argument_redaction(terminal_env):
+    """Returned TerminalResult.command must have sensitive tokens scrubbed."""
+    home, project, _, _, terminal = terminal_env
+    fake_key = "sk-ant-api03-abcdef1234567890abcdef1234567890"
+
+    async def run():
+        return await terminal.execute(
+            [sys.executable, "-c", "import sys; print('ARG:', sys.argv[1])", fake_key],
+            cwd=project,
+        )
+
+    res = asyncio.run(run())
+    assert res.exit_code == 0
+    assert "[REDACTED_ANTHROPIC_KEY]" in res.stdout
+    assert fake_key not in res.command
+    assert any("[REDACTED_ANTHROPIC_KEY]" in arg for arg in res.command)

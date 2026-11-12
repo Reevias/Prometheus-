@@ -49,6 +49,51 @@ def scrub_secrets(text: str) -> str:
     return result
 
 
+SAFE_ENV_ALLOWLIST = frozenset({
+    # Windows system essentials
+    "SYSTEMROOT", "SYSTEMDRIVE", "WINDIR", "COMSPEC", "PATH", "PATHEXT",
+    "TEMP", "TMP", "USERPROFILE", "HOMEDRIVE", "HOMEPATH",
+    "APPDATA", "LOCALAPPDATA", "PROGRAMFILES", "PROGRAMFILES(X86)", "PROGRAMDATA",
+    "NUMBER_OF_PROCESSORS", "PROCESSOR_ARCHITECTURE", "PROCESSOR_IDENTIFIER", "PROCESSOR_LEVEL",
+    "OS",
+    # Unix system essentials
+    "HOME", "USER", "SHELL", "LANG", "LC_ALL", "TMPDIR", "TERM",
+    # Python environment essentials
+    "VIRTUAL_ENV",
+})
+
+BLOCKED_SECRET_SUBSTRINGS = (
+    "KEY", "TOKEN", "SECRET", "PASSWORD", "AUTH", "CREDENTIAL", "PRIVATE"
+)
+
+
+def build_isolated_environment(env_overrides: dict[str, str] | None = None) -> dict[str, str]:
+    """Construct a clean, minimal environment isolated from parent credentials and API keys.
+
+    Only permits explicit system essentials from SAFE_ENV_ALLOWLIST.
+    Explicitly filters out all credential and secret variables present in the parent
+    environment (e.g. ANTHROPIC_API_KEY, OPENAI_API_KEY, GITHUB_TOKEN).
+    Deliberate non-secret overrides can be passed via env_overrides.
+    """
+    clean_env: dict[str, str] = {}
+    for k, v in os.environ.items():
+        k_upper = k.upper()
+        if k_upper in SAFE_ENV_ALLOWLIST:
+            if any(sub in k_upper for sub in BLOCKED_SECRET_SUBSTRINGS):
+                continue
+            clean_env[k] = v
+
+    if env_overrides:
+        clean_env.update(env_overrides)
+
+    return clean_env
+
+
+def redact_command(argv: list[str]) -> list[str]:
+    """Return a diagnostic copy of argv with sensitive tokens/credentials scrubbed."""
+    return [scrub_secrets(arg) for arg in argv]
+
+
 class WinJobManager:
     """Encapsulates Windows Job Object lifecycle for descendant process cleanup.
 
@@ -176,9 +221,7 @@ class AsyncTerminal:
 
         timeout = min(max(0.1, timeout), MAX_TIMEOUT)
 
-        env = os.environ.copy()
-        if env_overrides:
-            env.update(env_overrides)
+        env = build_isolated_environment(env_overrides=env_overrides)
 
         creationflags = 0
         if sys.platform == "win32":
@@ -307,7 +350,7 @@ class AsyncTerminal:
         duration = time.time() - start_time
 
         return TerminalResult(
-            command=argv,
+            command=redact_command(argv),
             exit_code=exit_code,
             stdout="".join(stdout_buf),
             stderr="".join(stderr_buf),
