@@ -319,3 +319,37 @@ def test_hear_a_voice_before_choosing_it(app_client, monkeypatch, tmp_path):
     assert client.get("/voice/preview?engine=eleven&voice=../../x").status_code == 400
     page = client.get("/settings").text
     assert "Hear it" in page and "promHear" in page
+
+
+def test_microphone_tries_other_ways_before_giving_up():
+    import pytest
+
+    from prometheus.voice.audio import FRAME, MicError, Microphone
+
+    class FakeSD:
+        def __init__(self, works):
+            self.works, self.opened = works, []
+            self.default = SimpleNamespace(device=(1, 3))
+
+        def query_devices(self):
+            return [{"max_input_channels": 0, "hostapi": 0, "default_samplerate": 48000},
+                    {"max_input_channels": 2, "hostapi": 0, "default_samplerate": 44100},     # MME
+                    {"max_input_channels": 2, "hostapi": 1, "default_samplerate": 48000}]     # WASAPI
+
+        def query_hostapis(self):
+            return [{"name": "MME"}, {"name": "Windows WASAPI"}]
+
+        def RawInputStream(self, samplerate, channels, dtype, device, blocksize, callback):
+            self.opened.append((device, samplerate))
+            if (device, samplerate) not in self.works:
+                raise RuntimeError("Error opening RawInputStream: Unanticipated host error [MME error 1]")
+            return SimpleNamespace(start=lambda: None, stop=lambda: None, close=lambda: None)
+
+    sd = FakeSD(works={(2, 48000)})                 # only the WASAPI device at its own rate opens
+    mic = Microphone(sd)
+    assert (mic.device, mic.rate) == (2, 48000) and sd.opened[0] == (None, 16000)
+    block = array("h", [1000] * 1440).tobytes()      # 30 ms at 48 kHz
+    mic._callback(block, 1440, None, None)
+    assert len(mic.read(timeout=0.1)) == FRAME * 2  # arrives as a normal 16 kHz frame
+    with pytest.raises(MicError, match="Let desktop apps access your microphone"):
+        Microphone(FakeSD(works=set()))

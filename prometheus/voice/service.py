@@ -111,7 +111,9 @@ class VoiceService:
                 self.loop = loop
                 self.apply_profile(self.profile)
             except Exception as e:      # no microphone, broken driver, damaged model…
-                self.error = f"Voice could not start: {type(e).__name__}: {e}"
+                from prometheus.voice.audio import MicError
+
+                self.error = str(e) if isinstance(e, MicError) else f"Voice could not start: {type(e).__name__}: {e}"
                 return False
             self.loop, self.error = loop, ""
             return True
