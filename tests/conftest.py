@@ -15,6 +15,15 @@ def tmp_home(tmp_path, monkeypatch):
     return SimpleNamespace(home=home, data=data)
 
 
+@pytest.fixture(autouse=True)
+def isolate_quick_weather(monkeypatch):
+    """Ensure prometheus.quick.WEATHER starts at None for each test and resets on teardown."""
+    from prometheus import quick
+    monkeypatch.setattr(quick, "WEATHER", None)
+    yield
+    quick.WEATHER = None
+
+
 @pytest.fixture
 def make_ctx(tmp_home):
     """Build an AgentContext with real safety pieces and the given providers."""
