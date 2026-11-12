@@ -10,7 +10,7 @@ run on real Windows before M1 can be accepted.
 | 2 | Thread-resume failure left a suspended process | `resume_process_threads` checks every OpenThread/ResumeThread and raises if none resumed; `execute` then kills the process, closes the job and raises. A failed spawn also closes the job | `test_resume_failure_*`, `test_spawn_failure_closes_job` |
 | 3 | `read_window` loaded the whole file | one streaming pass for hash/encoding/newline, then lines are streamed and only the window is kept (same line numbering as `str.splitlines`) | `test_read_window_*` (21 MB file stays under 4 MB peak) |
 | 4 | Journal paths and backups not validated | journal paths must pass the path policy and match the expected names/folders; a backup is restored only if its SHA-256 matches; files changed since are left alone and reported; rollback copies (keeps the backup) | `test_recovery_*`, `test_rollback_*` |
-| 5 | Pathname replacement TOCTOU | `replace_pinned`: folder-relative rename through a checked folder handle on POSIX; Windows residual risk documented in `docs/security/THREAT_MODEL.md` | `test_replace_pinned_*` |
+| 5 | Pathname replacement TOCTOU | `replace_pinned`: rename relative to a checked folder handle (dir_fd on POSIX, NtSetInformationFile on Windows) | `test_replace_pinned_*` |
 
 Other bugs found while checking:
 - **Critical:** on Linux/macOS, stopping a timed-out or cancelled command killed Prometheus's whole process group

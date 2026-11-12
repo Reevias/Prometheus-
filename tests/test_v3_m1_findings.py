@@ -313,7 +313,14 @@ def test_rollback_keeps_backup(env):
 
 # ---- Finding 5: replacement with the folder pinned -----------------------------------------------------
 
-@pytest.mark.skipif(sys.platform == "win32", reason="folder-relative rename is POSIX only (documented)")
+def _link_folder(link, target):
+    if sys.platform == "win32":
+        import subprocess
+        subprocess.run(["cmd", "/c", "mklink", "/J", str(link), str(target)], check=True, capture_output=True)
+    else:
+        os.symlink(target, link)
+
+
 def test_replace_pinned_refuses_swapped_parent(env, tmp_path):
     _, project, _, _, _ = env
     elsewhere = tmp_path / "elsewhere"
@@ -324,7 +331,7 @@ def test_replace_pinned_refuses_swapped_parent(env, tmp_path):
     src.write_text("new", encoding="utf-8")
     # an attacker swaps the folder for a link to somewhere outside the project
     os.rename(sub, project / "sub_moved")
-    os.symlink(elsewhere, sub)
+    _link_folder(sub, elsewhere)
     with pytest.raises(PathSecurityError):
         replace_pinned(sub / ".f.tmp", sub / "f.txt", project)
     assert not (elsewhere / "f.txt").exists()
@@ -346,3 +353,27 @@ def test_replace_pinned_replaces(env):
     src.write_text("new", encoding="utf-8")
     replace_pinned(src, dst, project)
     assert dst.read_text(encoding="utf-8") == "new" and not src.exists()
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows handle-based rename")
+def test_windows_pinned_rename_checks_handle_folder(env, tmp_path, monkeypatch):
+    """Even if the path checks are fooled, the folder handle itself is checked against the root."""
+    _, project, _, _, _ = env
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    (elsewhere / ".f.tmp").write_text("new", encoding="utf-8")
+    link = project / "j"
+    _link_folder(link, elsewhere)
+    monkeypatch.setattr(afs_mod, "_is_link_or_junction", lambda p: False)   # simulate a swap after the check
+    with pytest.raises(PathSecurityError):
+        replace_pinned(link / ".f.tmp", link / "f.txt", project)
+    assert not (elsewhere / "f.txt").exists()
+
+
+def test_replace_pinned_overwrites_open_for_reading_target(env):
+    _, project, _, _, _ = env
+    src, dst = project / ".o.tmp", project / "o.txt"
+    dst.write_text("old", encoding="utf-8")
+    src.write_text("new", encoding="utf-8")
+    replace_pinned(src, dst, project)
+    assert dst.read_text(encoding="utf-8") == "new"

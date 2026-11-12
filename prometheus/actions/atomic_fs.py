@@ -240,11 +240,10 @@ def _ends_line(part: str) -> bool:
 def replace_pinned(src: Path, dst: Path, root: Path, max_attempts: int = 5) -> None:
     """Replace dst with src (both in the same folder), with the folder pinned by an open handle.
 
-    On Linux and macOS the folder is opened once (not following a link), checked to really be inside root, and
-    the rename is done relative to that open folder, so swapping a parent folder for a link after the check can no
-    longer redirect the write. Windows has no folder-relative rename in Python, so there it falls back to the
-    path-based replace after re-checking every parent; that small window is a documented residual risk
-    (docs/security/THREAT_MODEL.md), caught afterwards by the handle check in the callers.
+    The folder is opened once (not following a link or junction), checked to really be inside root, and the
+    rename is done relative to that open folder, so swapping a parent folder for a link after the check can no
+    longer redirect the write. Linux/macOS use a folder-relative rename (dir_fd); Windows uses NtSetInformationFile
+    (FileRenameInformation) on a handle to the staged file with the pinned folder handle as RootDirectory.
     """
     if src.parent != dst.parent:
         raise PathSecurityError(f"Staged file and target must share a folder: {src} vs {dst}")
@@ -256,7 +255,12 @@ def replace_pinned(src: Path, dst: Path, root: Path, max_attempts: int = 5) -> N
         if curr.resolve() == canonical_root or curr == curr.parent:
             break
         curr = curr.parent
-    if sys.platform == "win32" or os.rename not in os.supports_dir_fd:
+    if sys.platform == "win32":
+        if dst.exists() and not os.access(dst, os.W_OK):
+            raise PermissionError(f"Target file is not writable: {dst}")
+        _win_replace_pinned(src, dst, canonical_root, max_attempts)
+        return
+    if os.rename not in os.supports_dir_fd:
         safe_replace_with_backoff(src, dst, max_attempts=max_attempts)
         return
     if dst.exists() and not os.access(dst, os.W_OK):
@@ -285,6 +289,114 @@ def replace_pinned(src: Path, dst: Path, root: Path, max_attempts: int = 5) -> N
             pass
     finally:
         os.close(dfd)
+
+
+def _win_replace_pinned(src: Path, dst: Path, canonical_root: Path, max_attempts: int = 5) -> None:
+    """Windows: rename src over dst relative to a pinned, checked handle of their folder."""
+    import ctypes
+    from ctypes import wintypes
+
+    k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    ntdll = ctypes.WinDLL("ntdll")
+    k32.CreateFileW.restype = wintypes.HANDLE
+    k32.CreateFileW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD, wintypes.LPVOID,
+                                wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE]
+    k32.CloseHandle.argtypes = [wintypes.HANDLE]
+    k32.GetFileAttributesW.argtypes = [wintypes.LPCWSTR]
+    k32.GetFileAttributesW.restype = wintypes.DWORD
+    k32.GetFinalPathNameByHandleW.argtypes = [wintypes.HANDLE, wintypes.LPWSTR, wintypes.DWORD, wintypes.DWORD]
+    k32.GetFinalPathNameByHandleW.restype = wintypes.DWORD
+
+    class BY_HANDLE_FILE_INFORMATION(ctypes.Structure):
+        _fields_ = [("dwFileAttributes", wintypes.DWORD), ("ftCreationTime", wintypes.FILETIME),
+                    ("ftLastAccessTime", wintypes.FILETIME), ("ftLastWriteTime", wintypes.FILETIME),
+                    ("dwVolumeSerialNumber", wintypes.DWORD), ("nFileSizeHigh", wintypes.DWORD),
+                    ("nFileSizeLow", wintypes.DWORD), ("nNumberOfLinks", wintypes.DWORD),
+                    ("nFileIndexHigh", wintypes.DWORD), ("nFileIndexLow", wintypes.DWORD)]
+
+    k32.GetFileInformationByHandle.argtypes = [wintypes.HANDLE, ctypes.POINTER(BY_HANDLE_FILE_INFORMATION)]
+
+    class IO_STATUS_BLOCK(ctypes.Structure):
+        _fields_ = [("Status", ctypes.c_void_p), ("Information", ctypes.c_void_p)]
+
+    INVALID = wintypes.HANDLE(-1).value
+    DELETE, SYNCHRONIZE, FILE_LIST_DIRECTORY, FILE_READ_ATTRIBUTES = 0x00010000, 0x00100000, 0x0001, 0x0080
+    SHARE_ALL = 0x1 | 0x2 | 0x4
+    OPEN_EXISTING = 3
+    FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT = 0x02000000, 0x00200000
+    FILE_ATTRIBUTE_REPARSE_POINT = 0x400
+    FileRenameInformation = 10
+
+    def final_path(h) -> Path:
+        buf = ctypes.create_unicode_buffer(32768)
+        if not k32.GetFinalPathNameByHandleW(h, buf, 32768, 0):
+            raise PathSecurityError(f"Could not read the real path of a handle (error {ctypes.get_last_error()})")
+        text = buf.value
+        if text.startswith("\\\\?\\UNC\\"):
+            text = "\\\\" + text[8:]
+        elif text.startswith("\\\\?\\"):
+            text = text[4:]
+        return Path(text)
+
+    def is_reparse(h) -> bool:
+        info = BY_HANDLE_FILE_INFORMATION()
+        if not k32.GetFileInformationByHandle(h, ctypes.byref(info)):
+            raise PathSecurityError(f"Could not inspect a handle (error {ctypes.get_last_error()})")
+        return bool(info.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT)
+
+    h_dir = k32.CreateFileW(str(dst.parent), FILE_LIST_DIRECTORY | FILE_READ_ATTRIBUTES | SYNCHRONIZE, SHARE_ALL,
+                            None, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT, None)
+    if not h_dir or h_dir == INVALID:
+        raise PathSecurityError(f"Could not open the target's folder safely: {dst.parent} "
+                                f"(error {ctypes.get_last_error()})")
+    try:
+        if is_reparse(h_dir):
+            raise PathSecurityError(f"Target folder is a link or junction: {dst.parent}")
+        real_dir = final_path(h_dir)
+        if not _inside(real_dir, canonical_root):
+            raise PathSecurityError(f"Target folder resolves outside {canonical_root}: {real_dir}")
+
+        h_src = k32.CreateFileW(str(src), DELETE | FILE_READ_ATTRIBUTES | SYNCHRONIZE, SHARE_ALL, None,
+                                OPEN_EXISTING, FILE_FLAG_OPEN_REPARSE_POINT, None)
+        if not h_src or h_src == INVALID:
+            raise OSError(f"Could not open the staged file {src} (error {ctypes.get_last_error()})")
+        try:
+            if is_reparse(h_src):
+                raise PathSecurityError(f"Staged file is a link: {src}")
+            if os.path.normcase(str(final_path(h_src).parent)) != os.path.normcase(str(real_dir)):
+                raise PathSecurityError(f"Staged file is not in the target folder: {src}")
+
+            name = dst.name.encode("utf-16-le")
+            # FILE_RENAME_INFORMATION: ReplaceIfExists (padded to a pointer), RootDirectory, FileNameLength, FileName
+            ptr = ctypes.sizeof(ctypes.c_void_p)
+            off_len = 2 * ptr
+            off_name = off_len + 4
+            buf = ctypes.create_string_buffer(off_name + len(name) + 2)
+            buf[0] = 1
+            ctypes.c_void_p.from_buffer(buf, ptr).value = h_dir
+            ctypes.c_ulong.from_buffer(buf, off_len).value = len(name)
+            ctypes.memmove(ctypes.addressof(buf) + off_name, name, len(name))
+
+            ntdll.NtSetInformationFile.argtypes = [wintypes.HANDLE, ctypes.POINTER(IO_STATUS_BLOCK), ctypes.c_void_p,
+                                                   wintypes.ULONG, ctypes.c_int]
+            ntdll.NtSetInformationFile.restype = ctypes.c_long
+            ntdll.RtlNtStatusToDosError.argtypes = [ctypes.c_long]
+            ntdll.RtlNtStatusToDosError.restype = wintypes.ULONG
+            backoffs = [0.025, 0.05, 0.1, 0.2, 0.4]
+            for attempt in range(max_attempts):
+                iosb = IO_STATUS_BLOCK()
+                status = ntdll.NtSetInformationFile(h_src, ctypes.byref(iosb), buf, len(buf.raw),
+                                                    FileRenameInformation)
+                if status >= 0:
+                    return
+                winerr = ntdll.RtlNtStatusToDosError(status)
+                if attempt == max_attempts - 1 or winerr not in (5, 32, 33):   # access denied / sharing / lock
+                    raise PermissionError(winerr, f"Could not replace {dst} (Windows error {winerr})")
+                time.sleep(backoffs[min(attempt, len(backoffs) - 1)])
+        finally:
+            k32.CloseHandle(h_src)
+    finally:
+        k32.CloseHandle(h_dir)
 
 
 @dataclass
