@@ -374,12 +374,14 @@ class AsyncTerminal:
         async def stop_all() -> None:
             """Kill the command and everything it started, then reap it."""
             if sys.platform == "win32":
-                job.close()          # kill-on-close ends the whole tree
+                # Kill the command first (TerminateProcess, exit code 1): processes ended by closing the job
+                # report exit code 0, which would look like success. Then close the job to end its children.
                 if proc.returncode is None:
                     try:
                         proc.kill()
                     except Exception:
                         pass
+                job.close()          # kill-on-close ends the rest of the tree
             else:
                 if pgid is not None and pgid != os.getpgrp():
                     try:
