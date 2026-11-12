@@ -291,3 +291,28 @@ def test_terminal_command_argument_redaction(terminal_env):
     assert "[REDACTED_ANTHROPIC_KEY]" in res.stdout
     assert fake_key not in res.command
     assert any("[REDACTED_ANTHROPIC_KEY]" in arg for arg in res.command)
+
+
+# ============================================================================
+# Finding E: Pre-Execution Job Object Containment Tests
+# ============================================================================
+
+def test_terminal_job_assignment_failure_aborts_without_execution(terminal_env, monkeypatch):
+    """If Job Object assignment fails, process must be killed without running user code."""
+    home, project, _, _, terminal = terminal_env
+    canary_file = project / "canary.txt"
+
+    # Mock assign_process to fail
+    import prometheus.actions.terminal as term_mod
+    monkeypatch.setattr(term_mod.WinJobManager, "assign_process", lambda self, pid: False)
+
+    code = f"with open(r'{canary_file}', 'w') as f: f.write('executed')\n"
+
+    async def run():
+        return await terminal.execute([sys.executable, "-c", code], cwd=project)
+
+    if sys.platform == "win32":
+        with pytest.raises(RuntimeError, match="Security failure: Failed to assign process"):
+            asyncio.run(run())
+        # The process was killed before resuming, so canary file must NOT exist!
+        assert not canary_file.exists()

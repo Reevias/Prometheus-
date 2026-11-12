@@ -171,6 +171,47 @@ class WinJobManager:
             self.job_handle = None
 
 
+def resume_process_threads(pid: int) -> None:
+    """Resume suspended threads of process so it begins execution inside Job Object."""
+    if sys.platform != "win32":
+        return
+    import ctypes
+    k32 = ctypes.windll.kernel32
+    TH32CS_SNAPTHREAD = 0x00000004
+    THREAD_SUSPEND_RESUME = 0x0002
+
+    class THREADENTRY32(ctypes.Structure):
+        _fields_ = [
+            ("dwSize", ctypes.c_ulong),
+            ("cntUsage", ctypes.c_ulong),
+            ("th32ThreadID", ctypes.c_ulong),
+            ("th32OwnerProcessID", ctypes.c_ulong),
+            ("tpBasePri", ctypes.c_long),
+            ("tpDeltaPri", ctypes.c_long),
+            ("dwFlags", ctypes.c_ulong),
+        ]
+
+    h_snap = k32.CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0)
+    if not h_snap or h_snap == -1:
+        raise OSError("CreateToolhelp32Snapshot failed to inspect process threads")
+    try:
+        te = THREADENTRY32()
+        te.dwSize = ctypes.sizeof(THREADENTRY32)
+        if k32.Thread32First(h_snap, ctypes.byref(te)):
+            while True:
+                if te.th32OwnerProcessID == pid:
+                    h_thread = k32.OpenThread(THREAD_SUSPEND_RESUME, False, te.th32ThreadID)
+                    if h_thread:
+                        try:
+                            k32.ResumeThread(h_thread)
+                        finally:
+                            k32.CloseHandle(h_thread)
+                if not k32.Thread32Next(h_snap, ctypes.byref(te)):
+                    break
+    finally:
+        k32.CloseHandle(h_snap)
+
+
 def kill_process_tree(pid: int) -> None:
     """Reliably terminate a process and all its descendants."""
     if sys.platform == "win32":
@@ -225,7 +266,8 @@ class AsyncTerminal:
 
         creationflags = 0
         if sys.platform == "win32":
-            creationflags = subprocess.CREATE_NO_WINDOW
+            CREATE_SUSPENDED = 0x00000004
+            creationflags = subprocess.CREATE_NO_WINDOW | CREATE_SUSPENDED
 
         start_time = time.time()
         job = WinJobManager()
@@ -239,7 +281,18 @@ class AsyncTerminal:
             creationflags=creationflags,
         )
 
-        job.assign_process(proc.pid)
+        if sys.platform == "win32":
+            assigned = job.assign_process(proc.pid)
+            if not assigned:
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
+                job.close()
+                raise RuntimeError(
+                    f"Security failure: Failed to assign process {proc.pid} to Job Object before execution"
+                )
+            resume_process_threads(proc.pid)
 
         stdout_buf: list[str] = []
         stderr_buf: list[str] = []
