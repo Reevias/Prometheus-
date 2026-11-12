@@ -4,6 +4,11 @@ Prometheus is the owner's personal AI assistant for their Windows laptop (8 GB R
 phone app. The owner is a student: use plain words.
 
 ## How the owner wants to work
+- **Windows first.** Prometheus is built for the owner's Windows laptop: Windows is the main platform and gets
+  the most testing; Linux and others come second. Design every fix for Windows first and check it on native
+  Windows (the GitHub `windows-latest` test jobs run on every push; say clearly that this is not the owner's
+  own laptop). Never call something Windows-verified from Linux runs or mocked Windows calls; if it couldn't be
+  tested on Windows, say NOT VERIFIED. Never weaken security or Windows behaviour to suit another platform.
 - Ask lots of questions before building anything (2 to 4 at a time, recommended option first). Ask again whenever
   something is unclear, rather than guessing.
 - One step at a time, short reports. Don't repeat the "what's missing" list over and over.
