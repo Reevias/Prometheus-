@@ -101,3 +101,16 @@ def login(client, password="correct horse battery"):
     resp = client.post("/login", data={"password": password}, follow_redirects=False)
     assert resp.status_code == 303, resp.text
     return client.cookies.get("csrf_token")
+
+
+@pytest.fixture(autouse=True)
+def _time_sleep_is_restored():
+    """M0 isolation guard: a test that replaces time.sleep for good (instead of with monkeypatch) breaks every test
+    after it. Fail that test, and put the real one back."""
+    import time as _time
+
+    real = _time.sleep
+    yield
+    if _time.sleep is not real:
+        _time.sleep = real
+        pytest.fail("time.sleep was replaced and not restored; use monkeypatch.setattr")

@@ -72,7 +72,7 @@ def test_free_actions(adb, make_ctx):
     assert agent.run("x", {"action": "setting", "what": "volume", "value": "99"}, ctx).status == "failed"
 
 
-def test_taps_typing_messages_calls_are_asked(adb, make_ctx):
+def test_taps_typing_messages_calls_are_asked(adb, make_ctx, monkeypatch):
     ctx = make_ctx()
     ctx.approvals.register("phone_action", pa.action_handler)
     agent = pa.PhoneAgent()
@@ -88,7 +88,7 @@ def test_taps_typing_messages_calls_are_asked(adb, make_ctx):
     assert msg.status == "waiting_approval" and "Ravi Kumar" in ask.summary and "Running 10 min late" in ask.summary
     import prometheus.connectors.android as an
 
-    an.time.sleep = lambda s: None
+    monkeypatch.setattr(an.time, "sleep", lambda s: None)     # undone after this test (it is time.sleep itself)
     out = ctx.approvals.resolve(ask.id, approved=True)
     assert "wa.me/919810011111?text=Running%2010%20min%20late" in " ".join(shells(adb)) and "Sent to Ravi" in out
     call = agent.run("x", {"action": "call", "to": "Mom"}, ctx)
