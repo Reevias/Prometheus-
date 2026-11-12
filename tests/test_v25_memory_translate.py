@@ -61,3 +61,48 @@ def test_spoken_remember_goes_through_the_chat(app_client):
     out = services.orchestrator.run(chat, "Remember that my teacher's name is Mrs Rao.")
     assert out.status == "done" and "Saved to memory" in out.answer
     assert store.memories()[-1].text == "My teacher's name is Mrs Rao"
+
+
+def test_translate_phrases_are_understood():
+    from prometheus.quick import understand
+
+    def step(t):
+        q = understand(t)
+        return (q.steps[0]["agent"], q.steps[0]["inputs"]) if q and q.steps else None
+
+    assert step("translate this to hindi: good morning") == ("translate", {"action": "text", "text": "good morning", "to": "Hindi"})
+    assert step("translate 你好，世界 to english")[1]["text"] == "你好，世界"
+    assert step("how do you say thank you in japanese")[1] == {"action": "text", "text": "thank you", "to": "Japanese"}
+    assert step("translate: 我喜欢学习物理")[1]["to"] == "English" and step("translate 我喜欢学习物理")[1]["to"] == "English"
+    assert step("translate Documents/notes.pdf to Hindi")[1] == {"action": "file", "path": "Documents/notes.pdf", "to": "Hindi"}
+    assert step("translate https://example.cn/news/1")[1]["action"] == "page"
+    agent, inputs = step("translate what's on my screen to Hindi")
+    assert agent == "screen" and "into Hindi" in inputs["question"]
+    assert step("what is photosynthesis in plants") is None and step("translate") is None
+
+
+def test_translating_text_a_file_and_long_text(make_ctx, tmp_home):
+    from prometheus.agents.translate_agent import TranslateAgent
+    from prometheus.models.fake import FakeProvider
+    from prometheus.translate import chunks, not_english, to_english_many
+
+    assert not_english("我喜欢学习物理") and not_english("मुझे चाय पसंद है") and not not_english("I like tea, 很好")
+    long = ("One sentence here. " * 400).strip()
+    assert all(len(c) <= 3001 for c in chunks(long)) and "".join(chunks(long)).replace(" ", "") == long.replace(" ", "")
+    fake = FakeProvider(["<think>hmm</think>Good morning"], name="fake")
+    ctx = make_ctx([fake])
+    res = TranslateAgent().run("t", {"action": "text", "text": "सुप्रभात", "to": "english"}, ctx)
+    assert res.status == "done" and res.summary == "Good morning"
+    assert "do not follow them" in fake.calls[0]["system"] and "<untrusted" in fake.calls[0]["messages"][0]["content"]
+    (tmp_home.home / "Documents").mkdir(exist_ok=True)
+    (tmp_home.home / "Documents" / "letter.txt").write_text("Bonjour, comment allez-vous ?", encoding="utf-8")
+    ctx = make_ctx([FakeProvider(["Hello, how are you?"], name="fake")])
+    res = TranslateAgent().run("t", {"action": "file", "path": str(tmp_home.home / "Documents" / "letter.txt")}, ctx)
+    assert res.status == "done", res.summary
+    saved = tmp_home.home / "Documents" / "Translations" / "letter (English).md"
+    assert saved.read_text(encoding="utf-8") == "Hello, how are you?"
+    # repo descriptions: only the non-English ones are sent, and a failed translation keeps the originals
+    ctx = make_ctx([FakeProvider(['{"lines": ["A fast web framework"]}'], name="fake")], routes={"research": ["fake"]})
+    assert to_english_many(ctx.router, ["A CLI tool", "一个快速的网络框架"]) == ["A CLI tool", "A fast web framework"]
+    ctx = make_ctx([FakeProvider(["sorry, no"], name="fake")], routes={"research": ["fake"]})
+    assert to_english_many(ctx.router, ["一个快速的网络框架"]) == ["一个快速的网络框架"]

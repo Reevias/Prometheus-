@@ -114,11 +114,76 @@ def _step(agent: str, goal: str, **inputs) -> dict:
     return {"id": 1, "agent": agent, "goal": goal, "skill": "", "inputs": inputs, "depends_on": []}
 
 
+_LANG = (r"(english|hindi|chinese|mandarin|japanese|korean|french|spanish|german|italian|portuguese|russian|arabic|"
+         r"bengali|tamil|telugu|marathi|gujarati|punjabi|urdu|kannada|malayalam|odia|nepali|sanskrit|turkish|dutch|"
+         r"greek|hebrew|thai|vietnamese|indonesian|malay|polish|swedish|ukrainian|persian|swahili|hinglish)")
+TR_SCREEN = re.compile(r"^\W*(?:please\s+)?translate (?:what(?:'s| is) on |everything on )?(?:my |the |this )?"
+                       r"(?:screen|window)(?:\s+(?:to|into|in)\s+" + _LANG + r")?\W*$", re.I)
+TR_URL = re.compile(r"^\W*(?:please\s+)?translate (?:the |this )?(?:web ?page|page|site|website|article|link)?\s*"
+                    r"(?P<url>https?://\S+|(?:www\.)?[a-z0-9-]+(?:\.[a-z0-9-]+)+/\S*)(?:\s+(?:to|into|in)\s+" + _LANG + r")?\W*$", re.I)
+TR_FILE = re.compile(r"^\W*(?:please\s+)?translate (?:the |my |this )?(?:file |document |pdf )?(?P<path>[^\n]{1,200}?\."
+                     r"(?:pdf|docx?|txt|md|rtf|pptx|xlsx|csv))(?:\s+(?:to|into|in)\s+" + _LANG + r")?\W*$", re.I)
+TR_TO_FIRST = re.compile(r"^\W*(?:please\s+)?translate (?:this |that |it )?(?:to|into|in)\s+" + _LANG + r"\s*[:,\-]?\s+(?P<text>.+)$",
+                         re.I | re.S)
+TR_TO_LAST = re.compile(r"^\W*(?:please\s+)?translate (?:this|that|it)?\s*[:,\-]?\s*(?P<text>.+?)\s+(?:to|into|in)\s+" + _LANG + r"\W*$",
+                        re.I | re.S)
+TR_PLAIN = re.compile(r"^\W*(?:please\s+)?translate\s*(?:this|that|it)?\s*[:,\-]\s*(?P<text>.+)$", re.I | re.S)
+TR_BARE = re.compile(r"^\W*(?:please\s+)?translate\s+(?P<text>.+)$", re.I | re.S)
+TR_SAY = re.compile(r"^\W*(?:how (?:do|would) (?:you|i|we) say|what(?:'s| is))\s+(?P<text>.+?)\s+in\s+" + _LANG + r"\W*$",
+                    re.I | re.S)
+
+
+def _translate(text: str) -> "Quick | None":
+    """"translate … to Hindi", "translate my screen", "translate notes.pdf", "translate <link>"."""
+    t = text.strip()
+    if len(t) > 6000 or not re.match(r"^\W*(?:please\s+)?(?:translate|how (?:do|would) |what(?:'s| is) )", t, re.I):
+        return None
+    m = TR_SCREEN.match(t)
+    if m:
+        to = (m.group(1) or "English").title()
+        return Quick(steps=[_step("screen", "Translate the screen", action="look", question=(
+            f"Translate everything readable in this window into {to}. Give the translation only, in the order it "
+            "appears; keep names and numbers."))])
+    m = TR_URL.match(t)
+    if m:
+        return Quick(steps=[_step("translate", "Translate a web page", action="page", url=m.group("url"),
+                                  to=(m.group(m.lastindex) if m.lastindex and m.lastindex > 1 else "") or "English")])
+    m = TR_FILE.match(t)
+    if m:
+        to = t[m.end("path"):].strip(" .!?")
+        to = to.split()[-1] if to else "English"
+        return Quick(steps=[_step("translate", "Translate a file", action="file", path=m.group("path").strip(), to=to)],
+                     action=True)
+    for pattern in (TR_TO_FIRST, TR_TO_LAST):
+        m = pattern.match(t)
+        if m and m.group("text").strip():
+            to = next(g for g in m.groups() if g and g.lower() != m.group("text").lower() and re.fullmatch(_LANG, g, re.I))
+            return Quick(steps=[_step("translate", "Translate", action="text", text=m.group("text").strip(), to=to.title())])
+    m = TR_SAY.match(t)
+    if m and len(m.group("text")) <= 200 and re.match(r"^\W*how ", t, re.I):
+        return Quick(steps=[_step("translate", "Translate", action="text", text=m.group("text").strip(" \"'“”"),
+                                  to=m.group(m.lastindex).title())])
+    m = TR_PLAIN.match(t)
+    if m and m.group("text").strip():
+        return Quick(steps=[_step("translate", "Translate", action="text", text=m.group("text").strip(), to="English")])
+    m = TR_BARE.match(t)
+    if m:
+        from prometheus.translate import not_english
+
+        if not_english(m.group("text")):          # "translate 我喜欢物理": clearly another language, so into English
+            return Quick(steps=[_step("translate", "Translate", action="text", text=m.group("text").strip(),
+                                      to="English")])
+    return None
+
+
 def understand(text: str, store=None, now: float | None = None) -> Quick | None:
     """An instant answer or plan for a common command, or None to let the AI handle it."""
     now = time.time() if now is None else now
     t = clean(text)
     low = t.lower()
+    tr = _translate(text or "")
+    if tr is not None:
+        return tr
     if not t or len(t) > 120:
         return None
     m = TIME.search(low)

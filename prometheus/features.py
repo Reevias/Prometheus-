@@ -67,6 +67,7 @@ FEATURES: tuple[Feature, ...] = (
     Feature("email", "Email (reading and drafting)", "Online", agents=("email",)),
     Feature("google", "Google Calendar and Drive", "Online", agents=("google", "calendar")),
     Feature("research", "Web research", "Online", agents=("research", "wikipedia")),
+    Feature("translate", "Translating text, files, web pages and the screen", "Online", agents=("translate",)),
     Feature("github", "GitHub and new skills from repos", "Online", agents=("github", "repo_scout", "antigravity")),
     Feature("sync", "Sync with the cloud copy", "Online"),
     Feature("backup", "Nightly backup to Google Drive", "Online", attr="backup_on"),
@@ -76,7 +77,7 @@ BY_KEY = {f.key: f for f in FEATURES}
 CURRENT = None          # the app's settings, for background loops that don't carry them
 GROUPS = tuple(dict.fromkeys(f.group for f in FEATURES))
 # what may still run while everything is stopped: answering, memory, documents, the user's own reminders
-SAFE_WHEN_PAUSED = {"files", "documents", "guide", "reminders", "undo", "study", "exams", "assignments", "reader",
+SAFE_WHEN_PAUSED = {"translate", "files", "documents", "guide", "reminders", "undo", "study", "exams", "assignments", "reader",
                     "photos", "tools"}
 
 
