@@ -84,9 +84,37 @@ def build_isolated_environment(env_overrides: dict[str, str] | None = None) -> d
             clean_env[k] = v
 
     if env_overrides:
-        clean_env.update(env_overrides)
+        for k, v in env_overrides.items():
+            if not overrides_allowed(k, v):
+                raise ValueError(f"Environment override {k!r} looks like a secret and is not passed to commands")
+            clean_env[str(k)] = str(v)
 
     return clean_env
+
+
+def overrides_allowed(name: object, value: object) -> bool:
+    """True if a caller-supplied environment variable is safe to give a command.
+
+    The same rules as the parent environment: a name that mentions a key, token, password etc. is refused,
+    and so is a value that matches a known secret pattern or one of the owner's saved keys.
+    """
+    import re
+    k, v = str(name), str(value)
+    if not k or "=" in k or "\0" in k or "\0" in v:
+        return False
+    if any(sub in k.upper() for sub in BLOCKED_SECRET_SUBSTRINGS):
+        return False
+    for rx_pattern in PATTERNS.values():
+        if re.search(rx_pattern, v):
+            return False
+    try:
+        for secret_name in KEY_NAMES:
+            saved = get_secret(secret_name)
+            if saved and len(saved) >= 12 and saved in v:
+                return False
+    except Exception:
+        pass
+    return True
 
 
 def redact_command(argv: list[str]) -> list[str]:
@@ -171,10 +199,14 @@ class WinJobManager:
             self.job_handle = None
 
 
-def resume_process_threads(pid: int) -> None:
-    """Resume suspended threads of process so it begins execution inside Job Object."""
+def resume_process_threads(pid: int) -> int:
+    """Resume the suspended threads of a process so it starts running inside its Job Object.
+
+    Returns how many threads were resumed. Raises OSError if the threads can't be listed, if any ResumeThread call
+    fails, or if no thread of the process was found (it would otherwise stay suspended for ever).
+    """
     if sys.platform != "win32":
-        return
+        return 0
     import ctypes
     k32 = ctypes.windll.kernel32
     TH32CS_SNAPTHREAD = 0x00000004
@@ -191,8 +223,17 @@ def resume_process_threads(pid: int) -> None:
             ("dwFlags", ctypes.c_ulong),
         ]
 
+    k32.CreateToolhelp32Snapshot.restype = ctypes.c_void_p
+    k32.OpenThread.restype = ctypes.c_void_p
+    k32.ResumeThread.restype = ctypes.c_ulong
+    k32.ResumeThread.argtypes = [ctypes.c_void_p]
+    k32.CloseHandle.argtypes = [ctypes.c_void_p]
+    k32.Thread32First.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+    k32.Thread32Next.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+    INVALID = ctypes.c_void_p(-1).value
+    resumed = 0
     h_snap = k32.CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0)
-    if not h_snap or h_snap == -1:
+    if not h_snap or h_snap == INVALID:
         raise OSError("CreateToolhelp32Snapshot failed to inspect process threads")
     try:
         te = THREADENTRY32()
@@ -201,15 +242,21 @@ def resume_process_threads(pid: int) -> None:
             while True:
                 if te.th32OwnerProcessID == pid:
                     h_thread = k32.OpenThread(THREAD_SUSPEND_RESUME, False, te.th32ThreadID)
-                    if h_thread:
-                        try:
-                            k32.ResumeThread(h_thread)
-                        finally:
-                            k32.CloseHandle(h_thread)
+                    if not h_thread:
+                        raise OSError(f"OpenThread failed for thread {te.th32ThreadID} of process {pid}")
+                    try:
+                        if k32.ResumeThread(h_thread) == 0xFFFFFFFF:
+                            raise OSError(f"ResumeThread failed for thread {te.th32ThreadID} of process {pid}")
+                        resumed += 1
+                    finally:
+                        k32.CloseHandle(h_thread)
                 if not k32.Thread32Next(h_snap, ctypes.byref(te)):
                     break
     finally:
         k32.CloseHandle(h_snap)
+    if resumed == 0:
+        raise OSError(f"No threads of process {pid} were found to resume")
+    return resumed
 
 
 def kill_process_tree(pid: int) -> None:
@@ -225,13 +272,22 @@ def kill_process_tree(pid: int) -> None:
         except Exception:
             pass
     else:
+        # Commands start in their own session (start_new_session=True), so their group id is their own pid.
+        # Never signal any other group: before this check, killing a command also killed Prometheus itself.
         try:
-            os.killpg(os.getpgid(pid), signal.SIGKILL)
+            pgid = os.getpgid(pid)
         except Exception:
+            pgid = None
+        if pgid is not None and pgid == pid and pgid != os.getpgrp():
             try:
-                os.kill(pid, signal.SIGKILL)
+                os.killpg(pgid, signal.SIGKILL)
+                return
             except Exception:
                 pass
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except Exception:
+            pass
 
 
 class AsyncTerminal:
@@ -272,14 +328,19 @@ class AsyncTerminal:
         start_time = time.time()
         job = WinJobManager()
 
-        proc = await asyncio.create_subprocess_exec(
-            *argv,
-            cwd=str(canonical_cwd),
-            env=env,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            creationflags=creationflags,
-        )
+        spawn_kwargs: dict = {"creationflags": creationflags} if sys.platform == "win32" else {"start_new_session": True}
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                *argv,
+                cwd=str(canonical_cwd),
+                env=env,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                **spawn_kwargs,
+            )
+        except BaseException:
+            job.close()
+            raise
 
         if sys.platform == "win32":
             assigned = job.assign_process(proc.pid)
@@ -292,7 +353,21 @@ class AsyncTerminal:
                 raise RuntimeError(
                     f"Security failure: Failed to assign process {proc.pid} to Job Object before execution"
                 )
-            resume_process_threads(proc.pid)
+            try:
+                resume_process_threads(proc.pid)
+            except BaseException as err:
+                # fail safe: a half-resumed or still-suspended process is killed, and the job closed
+                kill_process_tree(proc.pid)
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
+                job.close()
+                try:
+                    await asyncio.wait_for(proc.wait(), timeout=2.0)
+                except Exception:
+                    pass
+                raise RuntimeError(f"Security failure: could not resume process {proc.pid} safely: {err}") from err
 
         stdout_buf: list[str] = []
         stderr_buf: list[str] = []
