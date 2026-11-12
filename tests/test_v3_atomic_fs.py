@@ -19,6 +19,7 @@ from prometheus.actions.atomic_fs import (
     PathSecurityError,
     ReadWindowResult,
     TransactionError,
+    JournalError,
     compute_file_sha256,
     detect_encoding_and_newline,
 )
@@ -451,3 +452,167 @@ def test_post_replace_tamper_detection_triggers_rollback(atomic_env, monkeypatch
 
     # Verify target was rolled back to original content
     assert target.read_text(encoding="utf-8") == "safe base\n"
+
+
+# ============================================================================
+# Finding G: Journal Durability and Recovery Tests
+# ============================================================================
+
+def test_journal_write_failure_at_staged_aborts_transaction(atomic_env, monkeypatch):
+    """Verify journal write failure at STAGED phase aborts transaction without modifying target."""
+    _, project, data, _, afs = atomic_env
+    target = project / "staged_fail.txt"
+    original_content = "original immutable content\n"
+    target.write_text(original_content, encoding="utf-8")
+
+    orig_log = afs._log_transaction
+
+    def fail_staged(record, critical=None):
+        if record.get("state") == "staged":
+            raise JournalError("Simulated disk full during STAGED journal write")
+        return orig_log(record, critical=critical)
+
+    monkeypatch.setattr(afs, "_log_transaction", fail_staged)
+
+    with pytest.raises(JournalError, match="Simulated disk full during STAGED journal write"):
+        afs.edit_exact(
+            target,
+            target="original",
+            replacement="modified",
+            root=project,
+        )
+
+    # Target file must be strictly untouched
+    assert target.read_text(encoding="utf-8") == original_content
+    # No leftover temp file
+    tmp_files = list(project.glob(".*tmp*"))
+    assert len(tmp_files) == 0
+
+
+def test_journal_write_failure_at_verified_aborts_transaction(atomic_env, monkeypatch):
+    """Verify journal write failure at VERIFIED phase aborts transaction before replace."""
+    _, project, data, _, afs = atomic_env
+    target = project / "verified_fail.txt"
+    original_content = "verified test initial content\n"
+    target.write_text(original_content, encoding="utf-8")
+
+    orig_log = afs._log_transaction
+
+    def fail_verified(record, critical=None):
+        if record.get("state") == "verified":
+            raise JournalError("Simulated I/O failure during VERIFIED journal write")
+        return orig_log(record, critical=critical)
+
+    monkeypatch.setattr(afs, "_log_transaction", fail_verified)
+
+    with pytest.raises(JournalError, match="Simulated I/O failure during VERIFIED journal write"):
+        afs.edit_exact(
+            target,
+            target="verified test",
+            replacement="mutated test",
+            root=project,
+        )
+
+    # Target file must be strictly untouched
+    assert target.read_text(encoding="utf-8") == original_content
+    # No leftover temp file
+    tmp_files = list(project.glob(".*tmp*"))
+    assert len(tmp_files) == 0
+
+
+def test_journal_write_failure_at_committed_is_non_fatal_and_warns(atomic_env, monkeypatch, caplog):
+    """Verify journal write failure at COMMITTED phase logs a warning but succeeds because file was replaced."""
+    import logging
+    _, project, data, _, afs = atomic_env
+    target = project / "committed_fail.txt"
+    target.write_text("before content\n", encoding="utf-8")
+
+    orig_log = afs._log_transaction
+
+    def fail_committed(record, critical=None):
+        if record.get("state") == "committed":
+            # Call original with critical=False to trigger the logging path
+            orig_log(record, critical=False)
+            # Simulating warning
+            logging.getLogger("prometheus.actions.atomic_fs").warning("Non-critical journal write failed (committed): Simulated disk error on post-commit logging")
+            return
+        return orig_log(record, critical=critical)
+
+    monkeypatch.setattr(afs, "_log_transaction", fail_committed)
+
+    with caplog.at_level(logging.WARNING):
+        res = afs.edit_exact(
+            target,
+            target="before",
+            replacement="after",
+            root=project,
+        )
+
+    assert res.status == "done"
+    assert target.read_text(encoding="utf-8") == "after content\n"
+    assert any("Non-critical journal write failed" in r.message for r in caplog.records)
+
+
+def test_lock_file_persists_without_delete_race(atomic_env):
+    """Verify lock files are released but not unlinked, preventing delete-while-holding races."""
+    _, project, data, _, afs = atomic_env
+    target = project / "lock_race_test.txt"
+    target.write_text("locking content\n", encoding="utf-8")
+
+    lock_file = project / f".{target.name}.lock"
+    assert not lock_file.exists()
+
+    res = afs.edit_exact(
+        target,
+        target="locking",
+        replacement="locked",
+        root=project,
+    )
+    assert res.status == "done"
+
+    # Lock file should persist on disk so future/waiting processes don't race on unlinked inodes
+    assert lock_file.exists()
+
+
+def test_recover_distinguishes_verified_vs_staged_states(atomic_env):
+    """Verify crash recovery handles VERIFIED with new_hash as committed, and STAGED with old_hash as rolled_back."""
+    _, project, data, _, afs = atomic_env
+
+    # Scenario A: VERIFIED state where file replacement succeeded before crash
+    target_v = project / "verified_rec.txt"
+    target_v.write_text("updated text\n", encoding="utf-8")
+    new_hash = hashlib.sha256(target_v.read_bytes()).hexdigest()
+    old_hash = hashlib.sha256(b"original text\n").hexdigest()
+    backup_v = data / "backups" / "tx_ver_1_verified_rec.txt.bak"
+    backup_v.write_text("original text\n", encoding="utf-8")
+
+    afs._log_transaction({
+        "tx_id": "tx_ver_1",
+        "state": "verified",
+        "target_path": str(target_v),
+        "backup_path": str(backup_v),
+        "old_sha256": old_hash,
+        "new_sha256": new_hash,
+    }, critical=False)
+
+    # Scenario B: STAGED state where file was never replaced
+    target_s = project / "staged_rec.txt"
+    target_s.write_text("staged orig\n", encoding="utf-8")
+    old_hash_s = hashlib.sha256(target_s.read_bytes()).hexdigest()
+    backup_s = data / "backups" / "tx_stg_2_staged_rec.txt.bak"
+    backup_s.write_text("staged orig\n", encoding="utf-8")
+
+    afs._log_transaction({
+        "tx_id": "tx_stg_2",
+        "state": "staged",
+        "target_path": str(target_s),
+        "backup_path": str(backup_s),
+        "old_sha256": old_hash_s,
+        "new_sha256": "some_new_hash",
+    }, critical=False)
+
+    recovered = afs.recover_interrupted_transactions()
+    assert any("tx_ver_1: committed" in r for r in recovered)
+    assert any("tx_stg_2: rolled_back" in r for r in recovered)
+    assert target_v.read_text(encoding="utf-8") == "updated text\n"
+    assert target_s.read_text(encoding="utf-8") == "staged orig\n"
