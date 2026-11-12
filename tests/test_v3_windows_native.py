@@ -44,9 +44,13 @@ def junction(link: Path, target: Path) -> None:
 @windows_only
 @pytest.mark.parametrize("name", ["AppData", "appdata", "APPDATA", "AppData.", "AppData ", "AppData. ."])
 def test_blocked_folder_case_and_trailing_dots(env, name):
+    # AppData is blocked, except Prometheus's own data folder, which it may read (but never change, nor read its
+    # keys file). So this checks AppData\Roaming, and the keys file, under every spelling.
     home, _, _, policy, _ = env
     with pytest.raises(PathBlocked):
-        policy.check_read(str(home) + "\\" + name + "\\Local\\Prometheus\\x.txt")
+        policy.check_read(str(home) + "\\" + name + "\\Roaming\\x.txt")
+    with pytest.raises(PathBlocked):
+        policy.check_read(str(home) + "\\" + name + "\\Local\\Prometheus\\.ENV")
 
 
 @windows_only
