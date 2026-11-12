@@ -1102,7 +1102,8 @@ class AtomicFiles:
         root = self.policy.root_for(target)
         if root is None:
             raise TransactionError(f"{tx_id}: target is outside every allowed folder: {target}")
-        staged = target.parent / f".{target.name}.restore_{tx_id}"
+        # a fresh name each time: a leftover from a crash (or a planted file) can never block a restore
+        staged = target.parent / f".{target.name}.restore_{tx_id}_{uuid.uuid4().hex[:8]}"
         created = False
         try:
             read_flags = os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)
@@ -1110,14 +1111,17 @@ class AtomicFiles:
                            | getattr(os, "O_NOFOLLOW", 0))
             with os.fdopen(os.open(backup, read_flags), "rb") as src:
                 try:
-                    verify_handle_containment(src.fileno(), self.backup_dir)
-                except PathBlocked as err:
+                    real_backup = verify_handle_containment(src.fileno(), self.backup_dir)
+                except (PathBlocked, OSError) as err:
                     raise TransactionError(f"{tx_id}: backup is not inside the backup folder: {err}") from err
+                if _norm_path(real_backup.parent) != _norm_path(self.backup_dir.resolve()):
+                    raise TransactionError(f"{tx_id}: backup is not directly in the backup folder: {real_backup}")
+                backup_mode = stat.S_IMODE(os.fstat(src.fileno()).st_mode)
                 with os.fdopen(os.open(staged, write_flags, 0o600), "wb") as out:
                     created = True
                     try:
                         verify_handle_containment(out.fileno(), root)
-                    except PathBlocked as err:
+                    except (PathBlocked, OSError) as err:
                         raise TransactionError(f"{tx_id}: restore copy would land outside {root}: {err}") from err
                     hasher = hashlib.sha256()
                     while True:
@@ -1132,6 +1136,8 @@ class AtomicFiles:
                 raise TransactionError(f"{tx_id}: backup is damaged or was changed (hash mismatch), not restored")
             if target.exists():
                 copy_file_metadata(target, staged)
+            elif sys.platform != "win32":
+                os.chmod(staged, backup_mode)          # a file restored from nothing gets the backup's permissions
             replace_pinned(staged, target, root)
             created = False                   # the copy is now the target
         except FileExistsError as err:
@@ -1145,7 +1151,7 @@ class AtomicFiles:
         with open(target, "rb") as f_post:
             try:
                 verify_handle_containment(f_post.fileno(), root)
-            except PathBlocked as err:
+            except (PathBlocked, OSError) as err:
                 raise TransactionError(f"{tx_id}: restored file resolves outside {root}: {err}") from err
             restored_sha, _, _ = compute_file_sha256(f_post)
         if restored_sha != old_sha256:
