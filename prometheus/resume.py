@@ -9,9 +9,13 @@ need the owner. Stop all pauses the retries too.
 """
 from __future__ import annotations
 
+import logging
 import re
 import threading
 import time
+import uuid
+
+log = logging.getLogger(__name__)
 
 KV = "resume_queue"
 WAITS = [6, 15, 30] + [60] * 24          # minutes between tries: about a day in all
@@ -25,9 +29,36 @@ def worth_retrying(error: str) -> bool:
     return bool(LIMITISH.search(error or "")) and "use paid" not in (error or "")
 
 
+# Every read-modify-write of the queue happens under this lock, so two updates can't lose each other's changes.
+_LOCK = threading.RLock()
+_IN_FLIGHT: set[str] = set()          # ids of waiting requests being started right now (never started twice)
+
+
+def _valid(item) -> bool:
+    return (isinstance(item, dict) and isinstance(item.get("chat_id"), int) and isinstance(item.get("text"), str)
+            and isinstance(item.get("tries", 0), int))
+
+
 def _queue(store) -> list[dict]:
-    got = store.kv_get(KV, [])
-    return got if isinstance(got, list) else []
+    """The waiting requests. Malformed entries are dropped; old entries get an id."""
+    with _LOCK:
+        got = store.kv_get(KV, [])
+        items = [q for q in got if _valid(q)] if isinstance(got, list) else []
+        for q in items:
+            q.setdefault("id", uuid.uuid4().hex)
+            q.setdefault("tries", 0)
+        return items
+
+
+def _save(store, queue: list[dict]) -> None:
+    with _LOCK:
+        store.kv_set(KV, queue)
+
+
+def _without(store, item_id: str) -> None:
+    """Remove one waiting request by its id (never another request with the same text)."""
+    with _LOCK:
+        _save(store, [q for q in _queue(store) if q.get("id") != item_id])
 
 
 def note_limit(store, chat_id: int, text: str, error: str, now: float | None = None) -> str:
@@ -35,30 +66,33 @@ def note_limit(store, chat_id: int, text: str, error: str, now: float | None = N
     if not worth_retrying(error) or not text or len(text) > 4000:
         return ""
     now = time.time() if now is None else now
-    queue = _queue(store)
-    item = next((q for q in queue if q["chat_id"] == chat_id and q["text"] == text), None)
-    if item is None:
-        if len(queue) >= MAX_WAITING:
-            return ""
-        item = {"chat_id": chat_id, "text": text, "tries": 0, "first": now}
-        queue.append(item)
-    if item["tries"] >= len(WAITS):
-        queue.remove(item)
-        store.kv_set(KV, queue)
-        return "I've tried for a day and the AIs are still not answering, so I've stopped. Ask me again when you like."
-    wait = WAITS[item["tries"]]
-    item["tries"] += 1
-    item["due"] = now + wait * 60
-    store.kv_set(KV, queue)
+    with _LOCK:
+        queue = _queue(store)
+        item = next((q for q in queue if q["chat_id"] == chat_id and q["text"] == text), None)
+        if item is None:
+            if len(queue) >= MAX_WAITING:
+                return ""
+            item = {"id": uuid.uuid4().hex, "chat_id": chat_id, "text": text, "tries": 0, "first": now}
+            queue.append(item)
+        if item["tries"] >= len(WAITS):
+            queue.remove(item)
+            _save(store, queue)
+            return ("I've tried for a day and the AIs are still not answering, so I've stopped. "
+                    "Ask me again when you like.")
+        wait = WAITS[item["tries"]]
+        item["tries"] += 1
+        item["due"] = now + wait * 60
+        _save(store, queue)
     when = f"{wait} minutes" if wait < 60 else "an hour"
     return f"I'll try this again by myself in {when}; the answer will appear here. (Say “stop trying” to cancel.)"
 
 
 def cancel(store, chat_id: int) -> int:
-    queue = _queue(store)
-    keep = [q for q in queue if q["chat_id"] != chat_id]
-    store.kv_set(KV, keep)
-    return len(queue) - len(keep)
+    with _LOCK:
+        queue = _queue(store)
+        keep = [q for q in queue if q["chat_id"] != chat_id]
+        _save(store, keep)
+        return len(queue) - len(keep)
 
 
 def answer(store, chat_id: int, text: str) -> str | None:
@@ -81,40 +115,85 @@ class Resumer:
 
         if paused(s.settings) or not on(s.settings, "resume"):
             return 0
-        now, started = self.clock(), 0
-        for item in list(_queue(s.store)):
-            if item.get("due", 0) > now or item["chat_id"] in s.running:
-                continue
-            item["due"] = now + 3600          # while it runs it isn't started twice; a new limit sets the real time
+        now = self.clock()
+        to_start: list[dict] = []
+        with _LOCK:
             queue = _queue(s.store)
-            for q in queue:
-                if q["chat_id"] == item["chat_id"] and q["text"] == item["text"]:
-                    q["due"] = item["due"]
-            s.store.kv_set(KV, queue)
-            self._run(item)
-            started += 1
-        return started
+            for item in queue:
+                if item.get("due", 0) > now or item["chat_id"] in s.running or item["id"] in _IN_FLIGHT:
+                    continue
+                item["due"] = now + 3600      # while it runs it isn't started twice; a new limit sets the real time
+                _IN_FLIGHT.add(item["id"])
+                to_start.append(dict(item))
+            if to_start:
+                _save(s.store, queue)
+        for item in to_start:
+            try:
+                self._run(item)
+            except Exception:                 # couldn't even start the worker thread
+                log.exception("Couldn't start the retry worker")
+                self._failed(item, "the retry worker couldn't start")
+        return len(to_start)
+
+    def _notify(self, text: str) -> None:
+        s = self.services
+        if hasattr(s, "notify"):
+            try:
+                s.notify("task", text)
+            except Exception:                 # a broken notifier never stops the retries
+                log.warning("Couldn't show a notification about a waiting request", exc_info=True)
+
+    def _failed(self, item: dict, why: str) -> None:
+        """A restart crashed: count it as a try, wait for the next turn, and give up after the last one."""
+        s = self.services
+        gave_up = False
+        try:
+            with _LOCK:
+                queue = _queue(s.store)
+                q = next((x for x in queue if x["id"] == item["id"]), None)
+                if q is not None:
+                    q["tries"] = int(q.get("tries", 0)) + 1
+                    q["last_error"] = why[:200]
+                    if q["tries"] > len(WAITS):
+                        queue.remove(q)
+                        gave_up = True
+                    else:
+                        q["due"] = self.clock() + WAITS[min(q["tries"], len(WAITS)) - 1] * 60
+                    _save(s.store, queue)
+        finally:
+            _IN_FLIGHT.discard(item["id"])
+        if gave_up:
+            self._notify("A request that was waiting for the AI couldn't be restarted, so I've stopped trying. "
+                         "Please ask again.")
 
     def _run(self, item: dict) -> None:
         s = self.services
 
         def work():
-            thread = s.start_task(item["chat_id"], item["text"])
-            end = time.monotonic() + 1800
-            time.sleep(0.05)
-            # the answer is in as soon as the chat stops running (what follows it, like notifications, can take longer)
-            while thread.is_alive() and item["chat_id"] in s.running and time.monotonic() < end:
+            try:
+                try:
+                    thread = s.start_task(item["chat_id"], item["text"])
+                except Exception as err:
+                    log.exception("Restarting a waiting request failed")
+                    self._failed(item, f"restart failed ({type(err).__name__})")
+                    return
+                end = time.monotonic() + 1800
                 time.sleep(0.05)
-            task = s.store.latest_task(item["chat_id"])
-            if task and task["status"] != "paused":           # answered (or failed for another reason): done waiting
-                queue = [q for q in _queue(s.store)
-                         if not (q["chat_id"] == item["chat_id"] and q["text"] == item["text"])]
-                s.store.kv_set(KV, queue)
-                if task["status"] == "done" and hasattr(s, "notify"):
-                    try:
-                        s.notify("task", "The AI is answering again: your waiting request is done.")
-                    except Exception:
-                        pass
+                # the answer is in as soon as the chat stops running (notifications etc. can take longer)
+                while (thread is not None and thread.is_alive() and item["chat_id"] in s.running
+                       and time.monotonic() < end):
+                    time.sleep(0.05)
+                task = s.store.latest_task(item["chat_id"])
+                if task and task["status"] != "paused":       # answered (or failed for another reason): done waiting
+                    _without(s.store, item["id"])
+                    if task["status"] == "done":
+                        self._notify("The AI is answering again: your waiting request is done.")
+            except Exception as err:
+                log.exception("The retry worker failed")
+                self._failed(item, f"retry worker failed ({type(err).__name__})")
+                return
+            finally:
+                _IN_FLIGHT.discard(item["id"])
 
         threading.Thread(target=work, name="prometheus-resume", daemon=True).start()
 
@@ -122,8 +201,8 @@ class Resumer:
         while not self._stop.wait(CHECK_EVERY):
             try:
                 self.tick()
-            except Exception:
-                pass
+            except Exception:                 # keep the loop alive, but leave a trace
+                log.exception("Checking waiting requests failed")
 
     def start(self) -> None:
         threading.Thread(target=self.loop, name="prometheus-resumer", daemon=True).start()
