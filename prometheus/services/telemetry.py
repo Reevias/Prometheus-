@@ -81,7 +81,6 @@ class SystemTelemetryService:
         self._last_kernel_time: int = 0
         self._last_user_time: int = 0
         self._last_cpu_percent: float = 0.0
-        self._boot_time = time.time()
         self._init_cpu_baseline()
 
     def _init_cpu_baseline(self) -> None:
@@ -206,12 +205,25 @@ class SystemTelemetryService:
         """Return system uptime in seconds."""
         if _IS_WINDOWS:
             try:
-                # GetTickCount64 returns milliseconds since boot
-                ms = ctypes.windll.kernel32.GetTickCount64()
-                return round(ms / 1000.0, 1)
+                # GetTickCount64 returns milliseconds since boot (64-bit: the default int result wraps after 24.8 days)
+                k32 = ctypes.windll.kernel32
+                k32.GetTickCount64.restype = ctypes.c_ulonglong
+                return round(k32.GetTickCount64() / 1000.0, 1)
             except Exception:
                 pass
-        return round(time.time() - self._boot_time, 1)
+        boottime = getattr(time, "CLOCK_BOOTTIME", None)
+        if boottime is not None:
+            try:
+                return round(time.clock_gettime(boottime), 1)
+            except OSError:
+                pass
+        try:
+            with open("/proc/uptime", encoding="ascii") as f:
+                return round(float(f.read().split()[0]), 1)
+        except (OSError, ValueError, IndexError):
+            pass
+        # last resort (macOS etc.): monotonic time is time since boot there
+        return round(time.monotonic(), 1)
 
     def get_telemetry(self) -> Dict[str, Any]:
         """Aggregate full telemetry snapshot."""
