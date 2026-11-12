@@ -21,8 +21,8 @@ BLOCKED_NAME_PREFIXES = ("keepass",)
 
 WINDOWS_RESERVED_NAMES = frozenset({
     "CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$",
-    *(f"COM{i}" for i in range(1, 10)),
-    *(f"LPT{i}" for i in range(1, 10)),
+    *(f"COM{i}" for i in range(0, 10)),        # COM0/LPT0 are listed as reserved by Microsoft too
+    *(f"LPT{i}" for i in range(0, 10)),
     # Windows also treats superscript 1-3 as device numbers (COM¹ is the same device as COM1)
     *(f"{dev}{sup}" for dev in ("COM", "LPT") for sup in ("\u00b9", "\u00b2", "\u00b3")),
 })

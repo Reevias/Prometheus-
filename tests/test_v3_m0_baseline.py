@@ -37,17 +37,15 @@ def test_inventory_lists_the_m1_primitives():
 
 def test_resume_worker_stops_cleanly():
     import threading
-    import time
     from types import SimpleNamespace
 
     from prometheus import resume
 
     r = resume.Resumer(SimpleNamespace())
-    before = {t.name for t in threading.enumerate()}
+    before = set(threading.enumerate())
     r.start()
-    assert any(t.name == "prometheus-resumer" for t in threading.enumerate())
+    mine = [t for t in threading.enumerate() if t not in before and t.name == "prometheus-resumer"]
+    assert len(mine) == 1
     r.stop()
-    end = time.monotonic() + 3
-    while any(t.name == "prometheus-resumer" for t in threading.enumerate()) and time.monotonic() < end:
-        time.sleep(0.02)
-    assert "prometheus-resumer" in before or not any(t.name == "prometheus-resumer" for t in threading.enumerate())
+    mine[0].join(3)
+    assert not mine[0].is_alive()

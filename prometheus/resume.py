@@ -32,6 +32,7 @@ def worth_retrying(error: str) -> bool:
 # Every read-modify-write of the queue happens under this lock, so two updates can't lose each other's changes.
 _LOCK = threading.RLock()
 _IN_FLIGHT: set[str] = set()          # ids of waiting requests being started right now (never started twice)
+_FINISHED: set[str] = set()           # ids already answered in this run of Prometheus (never started again)
 
 
 def _valid(item) -> bool:
@@ -67,7 +68,7 @@ def note_limit(store, chat_id: int, text: str, error: str, now: float | None = N
         return ""
     now = time.time() if now is None else now
     with _LOCK:
-        queue = _queue(store)
+        queue = [q for q in _queue(store) if q["id"] not in _FINISHED]
         item = next((q for q in queue if q["chat_id"] == chat_id and q["text"] == text), None)
         if item is None:
             if len(queue) >= MAX_WAITING:
@@ -120,20 +121,38 @@ class Resumer:
         with _LOCK:
             queue = _queue(s.store)
             for item in queue:
+                if item["id"] in _FINISHED:
+                    continue                  # answered earlier; it is dropped from the queue below
                 if item.get("due", 0) > now or item["chat_id"] in s.running or item["id"] in _IN_FLIGHT:
                     continue
                 item["due"] = now + 3600      # while it runs it isn't started twice; a new limit sets the real time
-                _IN_FLIGHT.add(item["id"])
                 to_start.append(dict(item))
-            if to_start:
-                _save(s.store, queue)
+            leftovers = [q for q in queue if q["id"] in _FINISHED]
+            if not to_start and not leftovers:
+                return 0
+            queue = [q for q in queue if q["id"] not in _FINISHED]
+            _save(s.store, queue)             # if this fails nothing is marked running, so the next tick tries again
+            _IN_FLIGHT.update(item["id"] for item in to_start)
+            if not to_start:
+                return 0
+        started = 0
         for item in to_start:
+            handed_over = False
             try:
                 self._run(item)
+                handed_over = True
+                started += 1
             except Exception:                 # couldn't even start the worker thread
                 log.exception("Couldn't start the retry worker")
-                self._failed(item, "the retry worker couldn't start")
-        return len(to_start)
+                try:
+                    self._failed(item, "the retry worker couldn't start")
+                except Exception:
+                    log.exception("Couldn't record a failed restart")
+            finally:
+                if not handed_over:
+                    with _LOCK:
+                        _IN_FLIGHT.discard(item["id"])
+        return started
 
     def _notify(self, text: str) -> None:
         s = self.services
@@ -154,14 +173,15 @@ class Resumer:
                 if q is not None:
                     q["tries"] = int(q.get("tries", 0)) + 1
                     q["last_error"] = why[:200]
-                    if q["tries"] > len(WAITS):
+                    if q["tries"] >= len(WAITS):      # the same limit as note_limit
                         queue.remove(q)
                         gave_up = True
                     else:
                         q["due"] = self.clock() + WAITS[min(q["tries"], len(WAITS)) - 1] * 60
                     _save(s.store, queue)
         finally:
-            _IN_FLIGHT.discard(item["id"])
+            with _LOCK:
+                _IN_FLIGHT.discard(item["id"])
         if gave_up:
             self._notify("A request that was waiting for the AI couldn't be restarted, so I've stopped trying. "
                          "Please ask again.")
@@ -171,12 +191,18 @@ class Resumer:
 
         def work():
             try:
+                thread = s.start_task(item["chat_id"], item["text"])
+            except Exception as err:
+                log.exception("Restarting a waiting request failed")
                 try:
-                    thread = s.start_task(item["chat_id"], item["text"])
-                except Exception as err:
-                    log.exception("Restarting a waiting request failed")
-                    self._failed(item, f"restart failed ({type(err).__name__})")
-                    return
+                    self._failed(item, f"restart failed ({type(err).__name__})")   # releases the in-flight mark
+                except Exception:
+                    log.exception("Couldn't record a failed restart")
+                    with _LOCK:
+                        _IN_FLIGHT.discard(item["id"])
+                return
+            # From here on the request has run (or is running): an error below never makes it run again.
+            try:
                 end = time.monotonic() + 1800
                 time.sleep(0.05)
                 # the answer is in as soon as the chat stops running (notifications etc. can take longer)
@@ -185,15 +211,23 @@ class Resumer:
                     time.sleep(0.05)
                 task = s.store.latest_task(item["chat_id"])
                 if task and task["status"] != "paused":       # answered (or failed for another reason): done waiting
-                    _without(s.store, item["id"])
+                    with _LOCK:
+                        _FINISHED.add(item["id"])            # never started again, even if removing it fails
+                    for attempt in range(3):
+                        try:
+                            _without(s.store, item["id"])
+                            break
+                        except Exception:
+                            if attempt == 2:
+                                raise
+                            time.sleep(0.2)
                     if task["status"] == "done":
                         self._notify("The AI is answering again: your waiting request is done.")
-            except Exception as err:
-                log.exception("The retry worker failed")
-                self._failed(item, f"retry worker failed ({type(err).__name__})")
-                return
+            except Exception:
+                log.exception("Tidying up after a resumed request failed (it is not run again)")
             finally:
-                _IN_FLIGHT.discard(item["id"])
+                with _LOCK:
+                    _IN_FLIGHT.discard(item["id"])
 
         threading.Thread(target=work, name="prometheus-resume", daemon=True).start()
 

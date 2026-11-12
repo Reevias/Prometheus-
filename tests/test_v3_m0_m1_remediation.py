@@ -268,29 +268,70 @@ def test_restore_uses_what_was_hashed_even_if_backup_swapped_after_check(env, mo
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="symlink creation needs privileges on Windows")
-def test_restore_refuses_backup_link_and_planted_restore_file(env, tmp_path):
+def test_planted_or_leftover_restore_file_never_blocks_or_is_touched(env, tmp_path):
+    # Review fix: the restore copy gets a fresh random name, so a file left by a crash (or planted) at an old name
+    # can't block a restore forever. It is still never written through and never deleted by us.
     _, project, _, afs = env
     target = project / "t.txt"
     target.write_text("one", encoding="utf-8")
     res = afs.edit_exact(target, "one", "two", root=project)
-    # a file planted where the restore copy goes is never written through, and never deleted by us
     victim = tmp_path / "victim.txt"
     victim.write_text("keep", encoding="utf-8")
     planted = project / f".t.txt.restore_{res.transaction_id}"
     os.symlink(victim, planted)
-    with pytest.raises(TransactionError, match="leftover restore file"):
-        afs.rollback_transaction(res.transaction_id)
-    assert victim.read_text(encoding="utf-8") == "keep" and planted.is_symlink()
+    leftover = project / f".t.txt.restore_{res.transaction_id}_deadbeef"
+    leftover.write_text("crash leftover", encoding="utf-8")
+    assert afs.rollback_transaction(res.transaction_id)
+    assert target.read_text(encoding="utf-8") == "one"
+    assert victim.read_text(encoding="utf-8") == "keep" and planted.is_symlink() and leftover.exists()
+
+
+def _link_dir(link, target):
+    if sys.platform == "win32":
+        import subprocess
+        subprocess.run(["cmd", "/c", "mklink", "/J", str(link), str(target)], check=True, capture_output=True)
+    else:
+        os.symlink(target, link)
+
+
+def test_backup_reached_through_linked_folder_is_refused_by_handle_check(env, tmp_path):
+    # Reaches the handle-containment check itself (O_NOFOLLOW only covers the last name): a folder inside the
+    # backup folder that is a link/junction to somewhere else. Runs on Windows (junction) and Linux (symlink).
+    _, project, _, afs = env
+    target = project / "t.txt"
+    target.write_text("two", encoding="utf-8")
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "evil.bak").write_bytes(b"one")
+    link = afs.backup_dir / "linked"
+    _link_dir(link, outside)
+    with pytest.raises(TransactionError, match="backup"):
+        afs._restore_backup("tx_x", link / "evil.bak", target, sha(b"one"))
     assert target.read_text(encoding="utf-8") == "two"
-    planted.unlink()
-    # a backup replaced by a link to a file outside the backup folder is refused through its handle
-    outside = tmp_path / "outside.bak"
-    outside.write_bytes(b"one")
-    res.backup_path.unlink()
-    os.symlink(outside, res.backup_path)
-    with pytest.raises((TransactionError, OSError)):
-        afs._restore_backup(res.transaction_id, res.backup_path, target, sha(b"one"))
-    assert target.read_text(encoding="utf-8") == "two"
+
+
+def test_backup_in_a_subfolder_of_backups_is_refused(env):
+    _, project, _, afs = env
+    target = project / "t.txt"
+    target.write_text("two", encoding="utf-8")
+    sub = afs.backup_dir / "sub"
+    sub.mkdir()
+    (sub / "x.bak").write_bytes(b"one")
+    with pytest.raises(TransactionError, match="directly in the backup folder"):
+        afs._restore_backup("tx_y", sub / "x.bak", target, sha(b"one"))
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX permission bits")
+def test_restored_missing_file_gets_backup_permissions(env):
+    _, project, _, afs = env
+    target = project / "gone.txt"
+    target.write_text("one", encoding="utf-8")
+    os.chmod(target, 0o644)
+    res = afs.edit_exact(target, "one", "two", root=project)
+    target.unlink()
+    out = afs.recover_interrupted_transactions()       # committed edits are skipped; restore directly
+    afs._restore_backup(res.transaction_id, res.backup_path, target, res.old_sha256)
+    assert target.read_text(encoding="utf-8") == "one" and (os.stat(target).st_mode & 0o777) == 0o644
 
 
 def test_restore_keeps_backup_until_verified_and_after(env):
@@ -314,3 +355,103 @@ def test_replace_fails_closed_without_pinned_rename(env, monkeypatch):
     with pytest.raises(PathSecurityError, match="folder-pinned"):
         afs_mod.replace_pinned(src, dst, project)
     assert not called and dst.read_text(encoding="utf-8") == "old"
+
+
+
+# ---- review fixes: the store failing must never lose a request or run it twice ----------------------------------
+
+class FlakyStore(KVStore):
+    def __init__(self, status="done"):
+        super().__init__(status)
+        self.fail_sets, self.fail_latest, self.fail_sets_after = 0, False, None
+        self.sets = 0
+
+    def kv_set(self, key, value):
+        self.sets += 1
+        if self.fail_sets > 0:
+            self.fail_sets -= 1
+            raise RuntimeError("database is locked")
+        if self.fail_sets_after is not None and self.sets > self.fail_sets_after:
+            raise RuntimeError("database is locked")
+        super().kv_set(key, value)
+
+    def latest_task(self, chat_id):
+        if self.fail_latest:
+            raise RuntimeError("database is locked")
+        return super().latest_task(chat_id)
+
+
+def test_failed_save_in_tick_does_not_strand_the_request():
+    calls = []
+    s = make_services(lambda c, t: calls.append(c))
+    s.store = FlakyStore()
+    resume.note_limit(s.store, 1, "q", "rate limited", now=0)
+    r = resume.Resumer(s, clock=lambda: 10 ** 6)
+    s.store.fail_sets = 1
+    with pytest.raises(RuntimeError):
+        r.tick()
+    assert not resume._IN_FLIGHT                       # nothing marked running
+    assert r.tick() == 1                               # the next tick starts it
+    assert wait_for(lambda: calls == [1])
+
+
+def test_worker_that_cannot_start_releases_every_request(monkeypatch):
+    s = make_services(lambda c, t: None)
+    s.store = FlakyStore()
+    for chat in (1, 2, 3):
+        resume.note_limit(s.store, chat, f"q{chat}", "rate limited", now=0)
+    r = resume.Resumer(s, clock=lambda: 10 ** 6)
+
+    def no_thread(item):
+        raise RuntimeError("can't start new thread")
+
+    monkeypatch.setattr(r, "_run", no_thread)
+    s.store.fail_sets_after = s.store.sets + 1       # the tick's save works, every save after it fails
+    assert r.tick() == 0
+    assert not resume._IN_FLIGHT                       # none stuck as "running" for ever
+
+
+def test_request_is_not_run_again_when_tidying_up_fails():
+    calls = []
+    s = make_services(lambda c, t: calls.append(c))
+    s.store = FlakyStore(status="done")
+    resume.note_limit(s.store, 1, "q", "rate limited", now=0)
+    later = {"t": 10 ** 6}
+    r = resume.Resumer(s, clock=lambda: later["t"])
+    s.store.fail_sets_after = s.store.sets + 1       # removing the answered request fails
+    assert r.tick() == 1
+    assert wait_for(lambda: calls == [1] and not resume._IN_FLIGHT, 5)
+    s.store.fail_sets_after = None
+    later["t"] += 2 * 3600                             # long past its one-hour hold
+    assert r.tick() == 0                               # answered: never started again
+    assert calls == [1] and queued(s) == []            # and it is tidied away
+
+
+def test_latest_task_failing_after_start_does_not_requeue():
+    calls = []
+    s = make_services(lambda c, t: calls.append(c))
+    s.store = FlakyStore()
+    resume.note_limit(s.store, 1, "q", "rate limited", now=0)
+    r = resume.Resumer(s, clock=lambda: 10 ** 6)
+    s.store.fail_latest = True
+    assert r.tick() == 1
+    assert wait_for(lambda: not resume._IN_FLIGHT)
+    item = queued(s)[0]
+    assert item["tries"] == 1 and "last_error" not in item     # not counted as a failed try, not rescheduled early
+
+
+def test_give_up_threshold_matches_note_limit():
+    def boom(chat_id, text):
+        raise RuntimeError("x")
+
+    s = make_services(boom)
+    s.store.kv_set(resume.KV, [{"id": "a", "chat_id": 1, "text": "q", "tries": len(resume.WAITS) - 1, "due": 0}])
+    assert resume.Resumer(s, clock=lambda: 10 ** 6).tick() == 1
+    assert wait_for(lambda: queued(s) == [])
+
+
+@pytest.mark.parametrize("name", ["COM0", "lpt0.txt", "COM\u00b9", "LPT\u00b3.log", "CONIN$", "conout$", "AUX .txt"])
+def test_windows_device_names_refused_on_every_platform(name):
+    from prometheus.safety.paths import PathBlocked, _check_raw_path
+    with pytest.raises(PathBlocked):
+        _check_raw_path(name)
