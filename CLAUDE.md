@@ -58,7 +58,7 @@ minimal; LocalRuntime default, Cloudroom optional).
 | Milestone | Purpose | Status (per register) |
 |---|---|---|
 | M0 | Baseline, test isolation | Reported complete (a0663fd) |
-| M1 | Tool primitives: path hardening, atomic FS, bounded reader/diff, async terminal, services integration | Reported complete; NOT approved: 5 open findings below |
+| M1 | Tool primitives: path hardening, atomic FS, bounded reader/diff, async terminal, services integration | 5 findings fixed 12 Nov (be3e168, report in docs/reports/PROMETHEUS_M1_FINDINGS_FIX_REPORT.md); needs a real-Windows test run + independent audit before acceptance |
 | M2 | Desktop UI from the owner's orange-orbital screenshot (sidebar: Home, Agents, Skills, Tasks, Projects, Memory, Automations, Research, Integrations, System; orbital core; command bar; slash palette; right panel with real health/CPU/RAM/GPU; bottom wave; native window controls) | Spec exists; commits on branch (31a4aac…34793a3) but not audited; audit only after M1 approval |
 | M3 | ReAct orchestrator and model routing | Planned |
 | M4 | Repository-to-skill intelligence (separate repo hub for candidates) | Planned |
@@ -69,7 +69,9 @@ minimal; LocalRuntime default, Cloudroom optional).
 | M9 | End-to-end evaluation, release audit | Planned |
 | M10 | Jarvis-style autonomy (reference hectorg2211/jarvis); reserved: don't pull into M0–M9 | Reserved |
 
-Next immediate action (register): fix the 5 M1 findings, run Windows tests, push, request another independent audit.
+Merge plan (agreed approach): merge into main one milestone at a time, after that milestone passes its tests, a real
+Windows run and an audit. Don't wait for M0–M10. M1 and M2 share the branch, so M1 is merged first on its own.
+Next: run the v3 tests on real Windows, then the M1 audit. Findings (all fixed on the branch, 12 Nov):
 1. Caller environment overrides can bypass secret filtering (terminal).
 2. Thread-resumption failures need fail-safe handling (suspended process + Job Object).
 3. `read_window` still loads the whole file into memory.
