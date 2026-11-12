@@ -17,13 +17,11 @@
 - Global persistent STOP ALL killswitch.
 
 ## Residual risks (M1, updated 12 Nov 2026)
-- **File replacement on Windows (finding 5).** On Linux and macOS the final rename is done relative to an open handle
-  of the target folder (`replace_pinned`), after checking that handle really sits inside the task folder, so a folder
-  swapped for a link after the check can't redirect the write. Python has no folder-relative rename on Windows, so
-  there the replace is path-based, right after every parent folder is re-checked for links and junctions, and the
-  file is re-checked through its own handle afterwards (a wrong result is rolled back). A small window remains on
-  Windows between the parent check and the rename. Closing it fully needs `SetFileInformationByHandle`
-  (FileRenameInfo with a pinned RootDirectory handle); that is planned for M7 and must be tested on real Windows.
+- **File replacement (finding 5): closed.** The final rename is done relative to an open, checked handle of the
+  target folder (`replace_pinned`): `dir_fd` rename on Linux/macOS, `NtSetInformationFile(FileRenameInformation)` with
+  the folder handle as RootDirectory on Windows. A folder swapped for a link or junction after the check can no
+  longer redirect the write. Remaining: a path *outside* the task folder can't be pinned the same way, but every
+  such path is refused before any write.
 - **Environment overrides (finding 1).** Override names containing KEY/TOKEN/SECRET/PASSWORD/AUTH/CREDENTIAL/PRIVATE,
   values matching a known secret pattern, and values containing a saved key are refused. A secret in an unknown
   format under an innocent-looking name can't be recognised; callers must still not pass secrets on purpose.
