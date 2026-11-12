@@ -103,6 +103,28 @@ def mic_candidates(sd) -> list[tuple[int | None, int]]:
     return out
 
 
+def _resample_plain(data: bytes, out_len: int) -> bytes:
+    """Linear resampling of 16-bit mono sound to out_len samples, in plain Python (about 1500 samples a frame)."""
+    from array import array
+
+    src = array("h")
+    src.frombytes(data[: len(data) - len(data) % 2])
+    n = len(src)
+    if n < 2 or out_len < 1:
+        return b""
+    out = array("h", bytes(2 * out_len))
+    step = (n - 1) / (out_len - 1) if out_len > 1 else 0.0
+    for i in range(out_len):
+        x = i * step
+        j = int(x)
+        if j >= n - 1:
+            out[i] = src[n - 1]
+        else:
+            f = x - j
+            out[i] = int(src[j] + (src[j + 1] - src[j]) * f)
+    return out.tobytes()
+
+
 class Microphone:
     """A microphone as 16 kHz mono 30 ms frames. Tries every way Windows offers to open one before giving up.
     Needs the 'sounddevice' package (voice extra)."""
@@ -130,7 +152,10 @@ class Microphone:
 
     def _to_16k(self, data: bytes) -> bytes:
         """Sound recorded at the microphone's own rate (44.1 or 48 kHz), converted to one 16 kHz frame."""
-        import numpy as np
+        try:
+            import numpy as np
+        except ImportError:          # the raw microphone stream doesn't need numpy, so this must work without it
+            return _resample_plain(data, FRAME)
 
         src = np.frombuffer(data, dtype=np.int16)
         if len(src) < 2:
