@@ -28,7 +28,7 @@ jobs:
       - name: Install
         run: pip install -e ".[dev]"
       - name: Run tests
-        run: python -m pytest -q
+        run: python -m pytest -q -rs
 
   extras:
     # every add-on really installs on Windows with Python 3.14 (voice, photos, browser, desktop window)
