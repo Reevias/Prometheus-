@@ -136,7 +136,7 @@ def test_edit_exact_duplicate_match(atomic_env):
     src_file.write_text("value = 1\nvalue = 1\n", encoding="utf-8")
     old_bytes = src_file.read_bytes()
 
-    with pytest.raises(MatchError, match="occurs 2 times"):
+    with pytest.raises(MatchError, match="more than once"):
         afs.edit_exact(src_file, target="value = 1", replacement="value = 2", root=project)
 
     assert src_file.read_bytes() == old_bytes
@@ -442,8 +442,16 @@ def test_post_replace_tamper_detection_triggers_rollback(atomic_env, monkeypatch
     # Hook the replace step to write corrupt content to simulate post-replace tampering
     import prometheus.actions.atomic_fs as afs_module
 
+    real_replace = afs_module.replace_pinned
+    calls = []
+
     def corrupt_replace(src, dst, *args, **kwargs):
-        dst.write_text("tampered content\n", encoding="utf-8")
+        calls.append(dst)
+        if len(calls) == 1:          # the edit's own replace is tampered with; the restore works normally
+            src.unlink()
+            dst.write_text("tampered content\n", encoding="utf-8")
+        else:
+            real_replace(src, dst, *args, **kwargs)
 
     monkeypatch.setattr(afs_module, "replace_pinned", corrupt_replace)
 

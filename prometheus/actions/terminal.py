@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import codecs
 import os
 import signal
 import subprocess
@@ -86,23 +87,40 @@ def build_isolated_environment(env_overrides: dict[str, str] | None = None) -> d
     if env_overrides:
         for k, v in env_overrides.items():
             if not overrides_allowed(k, v):
-                raise ValueError(f"Environment override {k!r} looks like a secret and is not passed to commands")
+                raise ValueError(f"Environment override {k!r} is not allowed (it looks like a secret, or it could "
+                                 f"change which program runs)")
             clean_env[str(k)] = str(v)
 
     return clean_env
 
 
+# Variables that decide which program or code actually runs. An approved "git status" must stay git status.
+HIJACK_NAMES = frozenset({
+    "PATH", "PATHEXT", "COMSPEC", "SYSTEMROOT", "WINDIR", "SHELL", "BASH_ENV", "ENV", "ZDOTDIR", "IFS",
+    "NODE_OPTIONS", "NODE_PATH", "PERL5OPT", "PERL5LIB", "PERLLIB", "RUBYOPT", "RUBYLIB",
+    "JAVA_TOOL_OPTIONS", "_JAVA_OPTIONS", "JDK_JAVA_OPTIONS", "CLASSPATH", "PSMODULEPATH",
+    "PROMPT_COMMAND", "EDITOR", "VISUAL", "PAGER", "LESSOPEN", "BROWSER", "SSH_ASKPASS", "SUDO_ASKPASS",
+    "HOME", "USERPROFILE", "APPDATA", "LOCALAPPDATA", "XDG_CONFIG_HOME",   # where tools read their config
+})
+HIJACK_PREFIXES = ("LD_", "DYLD_", "GIT_", "PYTHON", "NPM_CONFIG_", "PIP_", "CARGO_", "RUSTC")
+HIJACK_OK = frozenset({"PYTHONIOENCODING", "PYTHONUTF8", "PYTHONUNBUFFERED", "PYTHONDONTWRITEBYTECODE"})
+
+
 def overrides_allowed(name: object, value: object) -> bool:
     """True if a caller-supplied environment variable is safe to give a command.
 
-    The same rules as the parent environment: a name that mentions a key, token, password etc. is refused,
-    and so is a value that matches a known secret pattern or one of the owner's saved keys.
+    Refused: names that mention a key, token, password etc.; names that change which program or code runs (PATH,
+    LD_PRELOAD, GIT_*, NODE_OPTIONS, ...); values that match a known secret pattern or contain one of the owner's
+    saved keys. If the saved keys can't be checked, the value is refused (fail closed).
     """
     import re
     k, v = str(name), str(value)
     if not k or "=" in k or "\0" in k or "\0" in v:
         return False
-    if any(sub in k.upper() for sub in BLOCKED_SECRET_SUBSTRINGS):
+    ku = k.upper()
+    if any(sub in ku for sub in BLOCKED_SECRET_SUBSTRINGS):
+        return False
+    if ku in HIJACK_NAMES or (ku.startswith(HIJACK_PREFIXES) and ku not in HIJACK_OK):
         return False
     for rx_pattern in PATTERNS.values():
         if re.search(rx_pattern, v):
@@ -113,7 +131,7 @@ def overrides_allowed(name: object, value: object) -> bool:
             if saved and len(saved) >= 12 and saved in v:
                 return False
     except Exception:
-        pass
+        return False
     return True
 
 
@@ -135,6 +153,9 @@ class WinJobManager:
             import ctypes
             from ctypes import wintypes
             k32 = ctypes.windll.kernel32
+            k32.CreateJobObjectW.restype = wintypes.HANDLE
+            k32.SetInformationJobObject.argtypes = [wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p, wintypes.DWORD]
+            k32.CloseHandle.argtypes = [wintypes.HANDLE]
             job = k32.CreateJobObjectW(None, None)
             if job:
                 class JOBOBJECT_BASIC_LIMIT_INFORMATION(ctypes.Structure):
@@ -180,7 +201,11 @@ class WinJobManager:
         if not self.job_handle or sys.platform != "win32":
             return False
         import ctypes
+        from ctypes import wintypes
         k32 = ctypes.windll.kernel32
+        k32.OpenProcess.restype = wintypes.HANDLE
+        k32.AssignProcessToJobObject.argtypes = [wintypes.HANDLE, wintypes.HANDLE]
+        k32.CloseHandle.argtypes = [wintypes.HANDLE]
         PROCESS_SET_QUOTA = 0x0100
         PROCESS_TERMINATE = 0x0001
         h_proc = k32.OpenProcess(PROCESS_SET_QUOTA | PROCESS_TERMINATE, False, pid)
@@ -342,6 +367,36 @@ class AsyncTerminal:
             job.close()
             raise
 
+        # POSIX: the command leads its own process group (start_new_session), recorded now so it is never
+        # re-derived from a pid that may have been reused after the command exited.
+        pgid = proc.pid if sys.platform != "win32" else None
+
+        async def stop_all() -> None:
+            """Kill the command and everything it started, then reap it."""
+            if sys.platform == "win32":
+                job.close()          # kill-on-close ends the whole tree
+                if proc.returncode is None:
+                    try:
+                        proc.kill()
+                    except Exception:
+                        pass
+            else:
+                if pgid is not None and pgid != os.getpgrp():
+                    try:
+                        os.killpg(pgid, signal.SIGKILL)   # also reaches children left after the leader exited
+                    except (ProcessLookupError, PermissionError):
+                        pass
+                elif proc.returncode is None:
+                    try:
+                        proc.kill()
+                    except Exception:
+                        pass
+            if proc.returncode is None:
+                try:
+                    await asyncio.wait_for(proc.wait(), timeout=2.0)
+                except BaseException:
+                    pass
+
         if sys.platform == "win32":
             assigned = job.assign_process(proc.pid)
             if not assigned:
@@ -377,6 +432,7 @@ class AsyncTerminal:
         stderr_truncated = False
 
         STREAM_CHUNK_SIZE = 8192
+        MAX_UNBROKEN = 4 * STREAM_CHUNK_SIZE
 
         async def read_stream(stream: asyncio.StreamReader, is_stdout: bool):
             nonlocal stdout_chars, stderr_chars, stdout_truncated, stderr_truncated
@@ -421,19 +477,30 @@ class AsyncTerminal:
                         stderr_buf.append(f"\n[Output truncated at {max_output_chars} characters]")
                         stderr_truncated = True
 
+            # one decoder per stream, so a character split between two reads is decoded correctly
+            decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
             while True:
                 # Bounded chunked stream reads (prevents memory exhaustion on newline-free output)
                 chunk = await stream.read(STREAM_CHUNK_SIZE)
                 if not chunk:
+                    line_buffer += decoder.decode(b"", final=True)
                     break
-                decoded = chunk.decode("utf-8", errors="replace")
-                line_buffer += decoded
+                line_buffer += decoder.decode(chunk)
                 while "\n" in line_buffer:
                     line, line_buffer = line_buffer.split("\n", 1)
                     handle_token(line + "\n")
-                if len(line_buffer) >= STREAM_CHUNK_SIZE:
-                    handle_token(line_buffer[:STREAM_CHUNK_SIZE])
-                    line_buffer = line_buffer[STREAM_CHUNK_SIZE:]
+                # A long line without a newline is passed on in pieces, cut at a space so a secret is never split
+                # across two pieces (secrets have no spaces). Without any space it is cut at MAX_UNBROKEN.
+                while len(line_buffer) >= STREAM_CHUNK_SIZE:
+                    cut = max(line_buffer.rfind(" ", 0, STREAM_CHUNK_SIZE), line_buffer.rfind("\t", 0, STREAM_CHUNK_SIZE))
+                    if cut > 0:
+                        handle_token(line_buffer[:cut + 1])
+                        line_buffer = line_buffer[cut + 1:]
+                    elif len(line_buffer) >= MAX_UNBROKEN:
+                        handle_token(line_buffer[:MAX_UNBROKEN])
+                        line_buffer = line_buffer[MAX_UNBROKEN:]
+                    else:
+                        break
 
             if line_buffer:
                 handle_token(line_buffer)
@@ -446,8 +513,10 @@ class AsyncTerminal:
         cancelled = False
 
         async def wait_process():
-            await proc.wait()
-            await asyncio.gather(reader_task_out, reader_task_err, return_exceptions=True)
+            # Not proc.wait(): since Python 3.12 it also waits for the output pipes to close, so a background child
+            # holding them would look like the command still running. The exit code is set as soon as it exits.
+            while proc.returncode is None:
+                await asyncio.sleep(0.02)
 
         async def wait_cancel():
             if cancel_event is not None:
@@ -469,22 +538,34 @@ class AsyncTerminal:
 
             if not done:
                 timed_out = True
-                kill_process_tree(proc.pid)
-                job.close()
-                try:
-                    await asyncio.wait_for(proc.wait(), timeout=2.0)
-                except asyncio.TimeoutError:
-                    pass
-            elif cancel_event is not None and cancel_event.is_set():
+                await stop_all()
+            elif cancel_event is not None and cancel_event.is_set() and proc.returncode is None:
                 cancelled = True
-                kill_process_tree(proc.pid)
-                job.close()
+                await stop_all()
+            else:
+                # The command finished. Its output may still be in the pipes; a background child that kept the
+                # pipes open must not turn this into a timeout, so wait briefly, then stop whatever is left.
                 try:
-                    await asyncio.wait_for(proc.wait(), timeout=2.0)
+                    await asyncio.wait_for(
+                        asyncio.gather(reader_task_out, reader_task_err, return_exceptions=True), timeout=2.0)
+                except asyncio.TimeoutError:
+                    await stop_all()
+            if timed_out or cancelled:
+                try:
+                    await asyncio.wait_for(
+                        asyncio.gather(reader_task_out, reader_task_err, return_exceptions=True), timeout=1.0)
                 except asyncio.TimeoutError:
                     pass
 
         finally:
+            # also runs when the caller cancels this coroutine: never leave the command running
+            if proc.returncode is None:
+                await stop_all()
+            elif sys.platform != "win32" and pgid is not None and pgid != os.getpgrp():
+                try:
+                    os.killpg(pgid, signal.SIGKILL)   # leftovers of a finished command
+                except (ProcessLookupError, PermissionError):
+                    pass
             job.close()
             reader_task_out.cancel()
             reader_task_err.cancel()

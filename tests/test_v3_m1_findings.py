@@ -257,7 +257,7 @@ def test_recovery_does_not_restore_tampered_backup(env):
     target.write_text("new", encoding="utf-8")
     backup = afs.backup_dir / "tx_d1_t.txt.bak"
     backup.write_text("tampered", encoding="utf-8")
-    _journal(afs, tx_id="tx_d1", state="staged", target_path=str(target), backup_path=str(backup),
+    _journal(afs, tx_id="tx_d1", state="failed", target_path=str(target), backup_path=str(backup),
              old_sha256=sha(b"original"), new_sha256=sha(b"new"))
     out = afs.recover_interrupted_transactions()
     assert any(r.startswith("tx_d1: failed") and "hash mismatch" in r for r in out)
@@ -283,7 +283,7 @@ def test_recovery_undoes_unconfirmed_write_and_keeps_backup(env):
     target.write_text("new", encoding="utf-8")
     backup = afs.backup_dir / "tx_u1_t.txt.bak"
     backup.write_text("original", encoding="utf-8")
-    _journal(afs, tx_id="tx_u1", state="staged", target_path=str(target), backup_path=str(backup),
+    _journal(afs, tx_id="tx_u1", state="failed", target_path=str(target), backup_path=str(backup),
              old_sha256=sha(b"original"), new_sha256=sha(b"new"))
     out = afs.recover_interrupted_transactions()
     assert "tx_u1: restored_from_backup" in out
@@ -377,3 +377,186 @@ def test_replace_pinned_overwrites_open_for_reading_target(env):
     src.write_text("new", encoding="utf-8")
     replace_pinned(src, dst, project)
     assert dst.read_text(encoding="utf-8") == "new"
+
+
+
+# ---- Second audit (12 Nov 2026) ------------------------------------------------------------------------
+
+@pytest.mark.parametrize("name", ["PATH", "path", "LD_PRELOAD", "DYLD_INSERT_LIBRARIES", "GIT_CONFIG_PARAMETERS",
+                                  "GIT_SSH_COMMAND", "PYTHONSTARTUP", "PYTHONPATH", "NODE_OPTIONS", "BASH_ENV",
+                                  "PERL5OPT", "COMSPEC", "PATHEXT", "HOME"])
+def test_override_that_changes_the_program_refused(name):          # H1
+    with pytest.raises(ValueError):
+        term.build_isolated_environment({name: "x"})
+
+
+def test_python_encoding_override_still_allowed():
+    assert term.build_isolated_environment({"PYTHONIOENCODING": "utf-8"})["PYTHONIOENCODING"] == "utf-8"
+
+
+def test_saved_key_check_failing_refuses(monkeypatch):               # fail closed
+    def broken(name):
+        raise RuntimeError("keyring locked")
+    monkeypatch.setattr(term, "get_secret", broken)
+    with pytest.raises(ValueError):
+        term.build_isolated_environment({"MODE": "x"})
+
+
+def test_read_window_caps_characters(env, monkeypatch):              # H2
+    _, project, _, _, afs = env
+    monkeypatch.setattr(afs_mod, "MAX_WINDOW_CHARS", 1000)
+    monkeypatch.setattr(afs_mod, "LINE_PIECE_CHARS", 64)
+    f = project / "oneline.txt"
+    f.write_text("x" * 50_000 + "\nsecond\n", encoding="utf-8")
+    res = afs.read_window(f, 1, 1)
+    assert len(res.content) == 1000 and res.truncated and res.total_lines == 2 and res.end_line == 1
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX permission bits")
+@pytest.mark.parametrize("mode", [0o700, 0o600, 0o755])
+def test_edit_keeps_permissions(env, mode):                            # H3
+    _, project, _, _, afs = env
+    f = project / "script.sh"
+    f.write_text("echo one\n", encoding="utf-8")
+    os.chmod(f, mode)
+    afs.edit_exact(f, "one", "two", root=project)
+    assert (os.stat(f).st_mode & 0o777) == mode
+    afs.apply_diff(f, "@@ -1,1 +1,1 @@\n-echo two\n+echo three\n", root=project)
+    assert (os.stat(f).st_mode & 0o777) == mode
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX process groups")
+def test_task_cancel_kills_command(env, tmp_path):                     # H4
+    _, project, _, policy, _ = env
+    marker = tmp_path / "ran"
+    code = f"import time, pathlib; time.sleep(1.5); pathlib.Path({str(marker)!r}).write_text('x')"
+
+    async def main():
+        task = asyncio.create_task(term.AsyncTerminal(policy).execute([sys.executable, "-c", code], project, timeout=30))
+        await asyncio.sleep(0.4)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        await asyncio.sleep(2.0)
+
+    asyncio.run(main())
+    assert not marker.exists()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX shell")
+def test_background_child_is_not_a_timeout_and_is_cleaned(env, tmp_path):   # M1
+    _, project, _, policy, _ = env
+    marker = tmp_path / "late"
+    res = asyncio.run(term.AsyncTerminal(policy).execute(
+        ["sh", "-c", f"(sleep 3; touch {marker}) & echo started"], project, timeout=10))
+    assert res.exit_code == 0 and not res.timed_out and "started" in res.stdout
+    import time
+    time.sleep(3.5)
+    assert not marker.exists()
+
+
+def test_utf8_split_across_reads_and_secret_on_long_line(env):        # L1, L2
+    _, project, _, policy, _ = env
+    key = "sk-ant-api03-" + "Q" * 60
+    code = ("import sys; sys.stdout.write('é' * 9000 + ' ' + 'a ' * 4090 + '%s' + ' tail'); sys.stdout.flush()" % key)
+    res = asyncio.run(term.AsyncTerminal(policy).execute([sys.executable, "-c", code], project, timeout=20,
+                                                         env_overrides={"PYTHONIOENCODING": "utf-8"}))
+    assert "\ufffd" not in res.stdout
+    assert key not in res.stdout and "REDACTED" in res.stdout
+
+
+def test_recovery_staged_with_new_content_is_left_alone(env):          # M4
+    _, project, _, _, afs = env
+    target = project / "t.txt"
+    target.write_text("new", encoding="utf-8")
+    backup = afs.backup_dir / "tx_s9_t.txt.bak"
+    backup.write_text("original", encoding="utf-8")
+    _journal(afs, tx_id="tx_s9", state="staged", target_path=str(target), backup_path=str(backup),
+             old_sha256=sha(b"original"), new_sha256=sha(b"new"))
+    out = afs.recover_interrupted_transactions()
+    assert any(r.startswith("tx_s9: skipped_changed_since") for r in out)
+    assert target.read_text(encoding="utf-8") == "new"
+
+
+def test_recovery_skips_file_being_edited(env):                        # M4
+    _, project, _, _, afs = env
+    target = project / "t.txt"
+    target.write_text("new", encoding="utf-8")
+    backup = afs.backup_dir / "tx_l1_t.txt.bak"
+    backup.write_text("original", encoding="utf-8")
+    _journal(afs, tx_id="tx_l1", state="failed", target_path=str(target), backup_path=str(backup),
+             old_sha256=sha(b"original"), new_sha256=sha(b"new"))
+    lock = afs._get_lock(target)
+    lock.acquire()
+    try:
+        out = afs.recover_interrupted_transactions()
+    finally:
+        lock.release()
+    assert any(r.startswith("tx_l1: skipped_busy") for r in out)
+    assert target.read_text(encoding="utf-8") == "new"
+
+
+def test_mixed_line_endings_kept(env):                                  # M5
+    _, project, _, _, afs = env
+    f = project / "mixed.txt"
+    f.write_bytes(b"a\nb\r\nc\n")
+    afs.edit_exact(f, "a", "x", root=project)
+    assert f.read_bytes() == b"x\nb\r\nc\n"
+    afs.edit_exact(f, "x\nb", "y\nb", root=project)        # multi-line target in an LF part of a CRLF file
+    assert f.read_bytes() == b"y\nb\r\nc\n"
+    afs.apply_diff(f, "@@ -3,1 +3,2 @@\n c\n+d\n", root=project)
+    assert f.read_bytes() == b"y\nb\r\nc\nd\r\n"         # only the added line gets the file's main ending
+
+
+def test_overlapping_match_is_ambiguous(env):                          # L4
+    from prometheus.actions.atomic_fs import MatchError
+    _, project, _, _, afs = env
+    f = project / "o.txt"
+    f.write_text("aaa", encoding="utf-8")
+    with pytest.raises(MatchError):
+        afs.edit_exact(f, "aa", "b", root=project)
+
+
+def test_diff_added_line_starting_with_plus_plus(env):                 # M6
+    _, project, _, _, afs = env
+    f = project / "c.c"
+    f.write_text("int i;\n", encoding="utf-8")
+    afs.apply_diff(f, "--- a/c.c\n+++ b/c.c\n@@ -1,1 +1,2 @@\n+++i;\n int i;\n", root=project)
+    assert f.read_text(encoding="utf-8") == "++i;\nint i;\n"
+    afs.apply_diff(f, "@@ -1,2 +1,1 @@\n---i;\n int i;\n".replace("---i;", "-++i;"), root=project)
+    assert f.read_text(encoding="utf-8") == "int i;\n"
+
+
+def test_diff_removed_dash_dash_comment(env):
+    _, project, _, _, afs = env
+    f = project / "q.sql"
+    f.write_text("-- note\nSELECT 1;\n", encoding="utf-8")
+    afs.apply_diff(f, "@@ -1,2 +1,1 @@\n--- note\n SELECT 1;\n", root=project)
+    assert f.read_text(encoding="utf-8") == "SELECT 1;\n"
+
+
+def test_diff_header_counts_checked(env):
+    from prometheus.actions.atomic_fs import PatchError
+    _, project, _, _, afs = env
+    f = project / "n.txt"
+    f.write_text("a\n", encoding="utf-8")
+    with pytest.raises(PatchError):
+        afs.apply_diff(f, "@@ -1,1 +1,1 @@\n a\n+b\n+c\n+d\n", root=project)
+    assert f.read_text(encoding="utf-8") == "a\n"
+
+
+def test_diff_no_newline_marker(env):
+    _, project, _, _, afs = env
+    f = project / "nn.txt"
+    f.write_bytes(b"a")
+    afs.apply_diff(f, "@@ -1,1 +1,2 @@\n-a\n\\ No newline at end of file\n+a\n+b\n\\ No newline at end of file\n",
+                   root=project)
+    assert f.read_bytes() == b"a\nb"
+
+
+def test_diff_pure_insertion_goes_after_line(env):
+    _, project, _, _, afs = env
+    f = project / "ins.txt"
+    f.write_text("1\n2\n3\n", encoding="utf-8")
+    afs.apply_diff(f, "@@ -2,0 +3,1 @@\n+new\n", root=project)
+    assert f.read_text(encoding="utf-8") == "1\n2\nnew\n3\n"

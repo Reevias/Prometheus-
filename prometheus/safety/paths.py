@@ -155,12 +155,17 @@ def get_final_path_from_handle(fd: int) -> Path:
     if sys.platform == "win32":
         import ctypes
         import msvcrt
+        from ctypes import wintypes
+        k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        k32.GetFinalPathNameByHandleW.argtypes = [wintypes.HANDLE, wintypes.LPWSTR, wintypes.DWORD, wintypes.DWORD]
+        k32.GetFinalPathNameByHandleW.restype = wintypes.DWORD
         handle = msvcrt.get_osfhandle(fd)
-        buf = ctypes.create_unicode_buffer(1024)
-        # 0 = VOLUME_NAME_DOS
-        res = ctypes.windll.kernel32.GetFinalPathNameByHandleW(handle, buf, 1024, 0)
-        if res == 0:
-            raise OSError(ctypes.GetLastError(), "GetFinalPathNameByHandleW failed to query file handle")
+        size = 32768
+        buf = ctypes.create_unicode_buffer(size)
+        # 0 = VOLUME_NAME_DOS. A result >= size means the buffer was too small (nothing written): fail closed.
+        res = k32.GetFinalPathNameByHandleW(handle, buf, size, 0)
+        if res == 0 or res >= size or not buf.value:
+            raise OSError(ctypes.get_last_error(), "GetFinalPathNameByHandleW failed to query file handle")
         path_str = buf.value
         # Strip Windows device namespace prefix if present (e.g. \\?\C:\... -> C:\...)
         if path_str.startswith("\\\\?\\UNC\\"):
@@ -168,11 +173,14 @@ def get_final_path_from_handle(fd: int) -> Path:
         elif path_str.startswith("\\\\?\\"):
             path_str = path_str[4:]
         return Path(path_str).resolve()
-    else:
-        fd_path = f"/proc/self/fd/{fd}"
-        if os.path.exists(fd_path):
-            return Path(os.path.realpath(fd_path))
-        return Path(os.path.realpath(f"/dev/fd/{fd}"))
+    if sys.platform == "darwin":
+        import fcntl
+        raw = fcntl.fcntl(fd, fcntl.F_GETPATH, bytes(1024))   # macOS: /dev/fd/N doesn't resolve to the file
+        return Path(os.fsdecode(raw.split(b"\0", 1)[0])).resolve()
+    fd_path = f"/proc/self/fd/{fd}"
+    if os.path.exists(fd_path):
+        return Path(os.path.realpath(fd_path))
+    return Path(os.path.realpath(f"/dev/fd/{fd}"))
 
 
 def verify_handle_containment(fd: int, root: Path | str) -> Path:

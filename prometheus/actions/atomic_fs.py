@@ -34,6 +34,7 @@ MAX_WINDOW_LINES = 1000
 DEFAULT_WINDOW_LINES = 200
 CHUNK_SIZE = 64 * 1024                  # 64 KB
 LINE_PIECE_CHARS = 1024 * 1024          # read_window reads very long lines in pieces of this size
+MAX_WINDOW_CHARS = 1024 * 1024          # read_window returns at most this many characters
 TX_ID_RE = re.compile(r"^[A-Za-z0-9_.-]{1,128}$")
 
 
@@ -232,6 +233,26 @@ def scan_text_file(f: Any) -> tuple[str, int, bool, FileEncodingInfo]:
     return hasher.hexdigest(), total, is_binary, info
 
 
+def copy_file_metadata(original: Path, staged: Path) -> None:
+    """Give the staged file the original's permissions (and owner, Windows attributes) before it replaces it."""
+    try:
+        st = os.stat(original, follow_symlinks=False)
+    except FileNotFoundError:
+        return
+    if sys.platform == "win32":
+        import ctypes
+        keep = 0x2 | 0x4 | 0x20 | 0x2000   # hidden, system, archive, not-content-indexed
+        attrs = getattr(st, "st_file_attributes", 0) & keep
+        if attrs:
+            ctypes.windll.kernel32.SetFileAttributesW(str(staged), attrs)
+        return
+    os.chmod(staged, stat.S_IMODE(st.st_mode))
+    try:
+        os.chown(staged, st.st_uid, st.st_gid)
+    except (PermissionError, OSError, AttributeError):
+        pass
+
+
 def _ends_line(part: str) -> bool:
     """True if this piece (one element of str.splitlines(keepends=True)) ends with a line break."""
     return part.splitlines()[0] != part if part else False
@@ -338,13 +359,22 @@ def _win_replace_pinned(src: Path, dst: Path, canonical_root: Path, max_attempts
             text = text[4:]
         return Path(text)
 
-    def is_reparse(h) -> bool:
-        info = BY_HANDLE_FILE_INFORMATION()
-        if not k32.GetFileInformationByHandle(h, ctypes.byref(info)):
-            raise PathSecurityError(f"Could not inspect a handle (error {ctypes.get_last_error()})")
-        return bool(info.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT)
+    class FILE_ATTRIBUTE_TAG_INFO(ctypes.Structure):
+        _fields_ = [("FileAttributes", wintypes.DWORD), ("ReparseTag", wintypes.DWORD)]
 
-    h_dir = k32.CreateFileW(str(dst.parent), FILE_LIST_DIRECTORY | FILE_READ_ATTRIBUTES | SYNCHRONIZE, SHARE_ALL,
+    k32.GetFileInformationByHandleEx.argtypes = [wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p, wintypes.DWORD]
+
+    def is_reparse(h) -> bool:
+        """True for links and junctions. Other reparse points (OneDrive cloud files, dedup) are ordinary folders."""
+        info = FILE_ATTRIBUTE_TAG_INFO()
+        if not k32.GetFileInformationByHandleEx(h, 9, ctypes.byref(info), ctypes.sizeof(info)):  # FileAttributeTagInfo
+            raise PathSecurityError(f"Could not inspect a handle (error {ctypes.get_last_error()})")
+        if not info.FileAttributes & FILE_ATTRIBUTE_REPARSE_POINT:
+            return False
+        return info.ReparseTag in (0xA0000003, 0xA000000C)   # mount point (junction), symlink
+
+    # no FILE_SHARE_DELETE: nobody can rename or move the folder while it is pinned
+    h_dir = k32.CreateFileW(str(dst.parent), FILE_LIST_DIRECTORY | FILE_READ_ATTRIBUTES | SYNCHRONIZE, 0x1 | 0x2,
                             None, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT, None)
     if not h_dir or h_dir == INVALID:
         raise PathSecurityError(f"Could not open the target's folder safely: {dst.parent} "
@@ -409,55 +439,89 @@ class _DiffHunk:
 
 
 def parse_unified_diff(patch_text: str) -> list[_DiffHunk]:
-    """Parse unified diff text into structured hunks."""
+    """Parse a single-file unified diff into hunks, strictly.
+
+    Each hunk must hold exactly the line counts its @@ header states. File headers (---/+++/diff/index) are only
+    skipped outside hunks, so an added line like "+++i;" or a removed "-- comment" is never mistaken for one.
+    "\\ No newline at end of file" markers are kept and applied.
+    """
     hunks: list[_DiffHunk] = []
     lines = patch_text.splitlines(keepends=True)
-    i = 0
     hunk_header_re = re.compile(r"^@@\s+-(\d+)(?:,(\d+))?\s+\+(\d+)(?:,(\d+))?\s+@@")
-
+    header_prefixes = ("--- ", "+++ ", "diff ", "index ", "new file mode", "deleted file mode", "similarity",
+                       "rename ", "old mode", "new mode")
+    i = 0
     while i < len(lines):
         line = lines[i]
         match = hunk_header_re.match(line)
-        if match:
-            old_start = int(match.group(1))
-            old_count = int(match.group(2)) if match.group(2) is not None else 1
-            new_start = int(match.group(3))
-            new_count = int(match.group(4)) if match.group(4) is not None else 1
-            hunk_lines: list[str] = []
+        if not match:
+            if hunks and line.strip() and not line.startswith(header_prefixes):
+                raise PatchError(f"Unexpected line outside a hunk: {line.rstrip()!r}")
             i += 1
-            while i < len(lines) and not hunk_header_re.match(lines[i]):
-                if lines[i].startswith(("---", "+++")) and not hunk_lines:
-                    i += 1
-                    continue
-                hunk_lines.append(lines[i])
+            continue
+        old_start = int(match.group(1))
+        old_count = int(match.group(2)) if match.group(2) is not None else 1
+        new_start = int(match.group(3))
+        new_count = int(match.group(4)) if match.group(4) is not None else 1
+        i += 1
+        old_seen = new_seen = 0
+        hunk_lines: list[str] = []
+        while old_seen < old_count or new_seen < new_count:
+            if i >= len(lines):
+                raise PatchError(f"Hunk at line {old_start} ends early: expected -{old_count} +{new_count}, "
+                                 f"found -{old_seen} +{new_seen}")
+            hl = lines[i]
+            marker = hl[:1]
+            if hl in ("\n", "\r\n"):          # a context line whose leading space was stripped
+                hl, marker = " " + hl, " "
+            if marker == " ":
+                old_seen += 1
+                new_seen += 1
+            elif marker == "-":
+                old_seen += 1
+            elif marker == "+":
+                new_seen += 1
+            elif hl.startswith("\\"):
+                hunk_lines.append(hl)
                 i += 1
-            hunks.append(_DiffHunk(old_start, old_count, new_start, new_count, hunk_lines))
-        else:
+                continue
+            else:
+                raise PatchError(f"Malformed line in hunk at line {old_start}: {hl.rstrip()!r}")
+            if old_seen > old_count or new_seen > new_count:
+                raise PatchError(f"Hunk at line {old_start} has more lines than its header says")
+            hunk_lines.append(hl)
             i += 1
+        while i < len(lines) and lines[i].startswith("\\"):
+            hunk_lines.append(lines[i])
+            i += 1
+        hunks.append(_DiffHunk(old_start, old_count, new_start, new_count, hunk_lines))
 
     if not hunks:
         raise PatchError("No valid diff hunks found in patch text")
     return hunks
 
 
-def apply_hunks_to_lines(original_lines: list[str], hunks: list[_DiffHunk]) -> list[str]:
-    """Apply unified diff hunks with strict 0-fuzz context matching."""
+def apply_hunks_to_lines(original_lines: list[str], hunks: list[_DiffHunk], newline: str = "\n") -> list[str]:
+    """Apply unified diff hunks with strict 0-fuzz context matching.
+
+    Unchanged lines keep their own line endings; added lines get `newline`.
+    """
     result: list[str] = []
     orig_idx = 0
 
     for hunk_num, hunk in enumerate(hunks, 1):
-        target_orig_idx = hunk.old_start - 1
+        # a pure insertion (-N,0) goes after line N; everything else starts at line N
+        target_orig_idx = hunk.old_start if hunk.old_count == 0 else hunk.old_start - 1
         if target_orig_idx < orig_idx:
             raise PatchError(f"Hunk {hunk_num} overlaps with previous changes at line {target_orig_idx + 1}")
 
-        # Copy unmodified lines before hunk
         while orig_idx < target_orig_idx:
             if orig_idx >= len(original_lines):
                 raise PatchError(f"Hunk {hunk_num} target line {target_orig_idx + 1} exceeds file length")
             result.append(original_lines[orig_idx])
             orig_idx += 1
 
-        # Apply hunk lines
+        last = ""
         for hline in hunk.lines:
             marker = hline[:1]
             content = hline[1:]
@@ -485,13 +549,15 @@ def apply_hunks_to_lines(original_lines: list[str], hunks: list[_DiffHunk]) -> l
                     )
                 orig_idx += 1
             elif marker == "+":
-                result.append(content)
-            elif hline.startswith("\\ No newline"):
+                result.append(norm_content + newline)
+            elif marker == "\\":
+                if last == "+" and result:
+                    result[-1] = result[-1].rstrip("\r\n")    # the new text ends without a newline
                 continue
             else:
                 raise PatchError(f"Malformed line in hunk {hunk_num}: {hline!r}")
+            last = marker
 
-    # Copy remaining lines after last hunk
     while orig_idx < len(original_lines):
         result.append(original_lines[orig_idx])
         orig_idx += 1
@@ -568,10 +634,26 @@ class AtomicFiles:
                 raise AtomicFSError(f"Binary file detected: {p}")
             text_in = io.TextIOWrapper(f_in, encoding=enc_info.encoding, newline="")
             try:
-                window_lines: list[str] = []
+                pieces: list[str] = []      # the window's text, in pieces (joined once at the end)
+                kept_chars = 0
+                char_capped = False
+                lines_in_window = 0
                 total_lines = 0
                 open_line = False          # the last piece stopped in the middle of a line
                 cut_after_cr = False       # ...and that piece ended in "\r" (a "\r\n" may be split)
+
+                def keep(text: str) -> None:
+                    nonlocal kept_chars, char_capped
+                    room = MAX_WINDOW_CHARS - kept_chars
+                    if room <= 0:
+                        char_capped = True
+                        return
+                    if len(text) > room:
+                        text = text[:room]
+                        char_capped = True
+                    pieces.append(text)
+                    kept_chars += len(text)
+
                 while True:
                     piece = text_in.readline(LINE_PIECE_CHARS)
                     if not piece:
@@ -579,18 +661,17 @@ class AtomicFiles:
                     cut = len(piece) == LINE_PIECE_CHARS
                     if cut_after_cr and piece.startswith("\n"):
                         # "\r\n" split by the piece limit: the "\n" belongs to the line that ended in "\r"
-                        if start_line <= total_lines <= last_wanted and window_lines:
-                            window_lines[-1] += "\n"
+                        if start_line <= total_lines <= last_wanted:
+                            keep("\n")
                         piece = piece[1:]
                     cut_after_cr = False
                     for part in piece.splitlines(keepends=True):
-                        if open_line:
-                            if start_line <= total_lines <= last_wanted and window_lines:
-                                window_lines[-1] += part
-                        else:
+                        if not open_line:
                             total_lines += 1
-                            if start_line <= total_lines <= last_wanted:
-                                window_lines.append(part)
+                            if start_line <= total_lines <= last_wanted and not char_capped:
+                                lines_in_window += 1
+                        if start_line <= total_lines <= last_wanted:
+                            keep(part)
                         open_line = not _ends_line(part)
                     if cut and piece.endswith("\r"):
                         cut_after_cr = True
@@ -598,14 +679,14 @@ class AtomicFiles:
                 text_in.detach()
 
         if start_line > total_lines:
-            window_lines = []
+            pieces = []
             end_line = start_line - 1
             truncated = False
         else:
-            end_line = start_line - 1 + len(window_lines)
-            truncated = end_line < total_lines
+            end_line = start_line - 1 + lines_in_window
+            truncated = end_line < total_lines or char_capped
 
-        content = "".join(window_lines)
+        content = "".join(pieces)
         return ReadWindowResult(
             path=p,
             content=content,
@@ -672,27 +753,26 @@ class AtomicFiles:
             enc_info = detect_encoding_and_newline(raw_bytes)
             original_text = raw_bytes.decode(enc_info.encoding)
 
-            # Normalize target and replacement newlines to match target file convention
-            if enc_info.newline == "\r\n":
-                norm_target = target.replace("\r\n", "\n").replace("\n", "\r\n")
-                norm_replacement = replacement.replace("\r\n", "\n").replace("\n", "\r\n")
-            else:
-                norm_target = target.replace("\r\n", "\n")
-                norm_replacement = replacement.replace("\r\n", "\n")
-
-            count = original_text.count(norm_target)
-            if count == 0:
+            # Match the target with the file's main line ending, or failing that the other one (files can mix them).
+            # Only the replaced text gets that line ending; the rest of the file is kept byte for byte.
+            lf_target = target.replace("\r\n", "\n")
+            lf_replacement = replacement.replace("\r\n", "\n")
+            styles = [enc_info.newline] + [nl for nl in ("\n", "\r\n") if nl != enc_info.newline]
+            match_at = -1
+            for nl in styles:
+                norm_target = lf_target.replace("\n", nl)
+                match_at = original_text.find(norm_target)
+                if match_at != -1:
+                    norm_replacement = lf_replacement.replace("\n", nl)
+                    break
+                if "\n" not in lf_target:
+                    break
+            if match_at == -1:
                 raise MatchError(f"Target string not found in {p}")
-            if count > 1:
-                raise MatchError(f"Target string occurs {count} times in {p}; must be unique")
+            if original_text.find(norm_target, match_at + 1) != -1:   # also catches overlapping matches
+                raise MatchError(f"Target string occurs more than once in {p}; must be unique")
 
-            new_text = original_text.replace(norm_target, norm_replacement, 1)
-
-            # Re-normalize line endings
-            if enc_info.newline == "\r\n":
-                new_text = new_text.replace("\r\n", "\n").replace("\n", "\r\n")
-            else:
-                new_text = new_text.replace("\r\n", "\n")
+            new_text = original_text[:match_at] + norm_replacement + original_text[match_at + len(norm_target):]
 
             new_bytes = new_text.encode(enc_info.encoding)
             new_sha256 = hashlib.sha256(new_bytes).hexdigest()
@@ -716,6 +796,7 @@ class AtomicFiles:
                 f_tmp.write(new_bytes)
                 f_tmp.flush()
                 os.fsync(f_tmp.fileno())
+            copy_file_metadata(p, tmp_path)
 
             # Verification
             staged_sha256, _, _ = compute_file_sha256(tmp_path)
@@ -739,9 +820,9 @@ class AtomicFiles:
             with open(p, "rb") as f_post:
                 verify_handle_containment(f_post.fileno(), root)
                 post_sha256, _, _ = compute_file_sha256(f_post)
-                if post_sha256 != new_sha256:
-                    shutil.copy2(backup_path, p)
-                    raise PathSecurityError(f"Post-replacement integrity check failed on {p}")
+            if post_sha256 != new_sha256:
+                self._restore_backup(tx_id, backup_path, p, pre_sha256)
+                raise PathSecurityError(f"Post-replacement integrity check failed on {p}")
 
             self._log_transaction({
                 "tx_id": tx_id,
@@ -845,13 +926,8 @@ class AtomicFiles:
             original_text = raw_bytes.decode(enc_info.encoding)
             original_lines = original_text.splitlines(keepends=True)
 
-            new_lines = apply_hunks_to_lines(original_lines, hunks)
+            new_lines = apply_hunks_to_lines(original_lines, hunks, newline=enc_info.newline)
             new_text = "".join(new_lines)
-
-            if enc_info.newline == "\r\n":
-                new_text = new_text.replace("\r\n", "\n").replace("\n", "\r\n")
-            else:
-                new_text = new_text.replace("\r\n", "\n")
 
             new_bytes = new_text.encode(enc_info.encoding)
             new_sha256 = hashlib.sha256(new_bytes).hexdigest()
@@ -873,6 +949,7 @@ class AtomicFiles:
                 f_tmp.write(new_bytes)
                 f_tmp.flush()
                 os.fsync(f_tmp.fileno())
+            copy_file_metadata(p, tmp_path)
 
             staged_sha256, _, _ = compute_file_sha256(tmp_path)
             if staged_sha256 != new_sha256:
@@ -895,9 +972,9 @@ class AtomicFiles:
             with open(p, "rb") as f_post:
                 verify_handle_containment(f_post.fileno(), root)
                 post_sha256, _, _ = compute_file_sha256(f_post)
-                if post_sha256 != new_sha256:
-                    shutil.copy2(backup_path, p)
-                    raise PathSecurityError(f"Post-replacement integrity check failed on {p}")
+            if post_sha256 != new_sha256:
+                self._restore_backup(tx_id, backup_path, p, pre_sha256)
+                raise PathSecurityError(f"Post-replacement integrity check failed on {p}")
 
             self._log_transaction({
                 "tx_id": tx_id,
@@ -1109,38 +1186,59 @@ class AtomicFiles:
             old_sha256 = rec.get("old_sha256") or ""
             new_sha256 = rec.get("new_sha256") or ""
 
-            if tmp is not None and tmp.exists():
+            # the same lock as edits, so an edit that is still running is never mistaken for a crashed one
+            lock = self._get_lock(target)
+            try:
+                lock.acquire(timeout=0.5)
+            except Timeout:
+                recovered.append(f"{tx_id}: skipped_busy (an edit of this file is running)")
+                continue
+            try:
+                if tmp is not None and tmp.exists():
+                    try:
+                        tmp.unlink()
+                    except OSError:
+                        pass
+                recovered.extend(self._recover_one(tx_id, state, target, backup, old_sha256, new_sha256))
+            finally:
                 try:
-                    tmp.unlink()
-                except OSError:
+                    lock.release()
+                except Exception:
                     pass
 
-            try:
-                if target.exists():
-                    current = compute_file_sha256(target)[0]
-                    if old_sha256 and current == old_sha256:
-                        self._mark(tx_id, TransactionState.ROLLED_BACK, target, "file unchanged")
-                        recovered.append(f"{tx_id}: rolled_back")
-                    elif new_sha256 and current == new_sha256 and state == TransactionState.VERIFIED.value:
-                        self._mark(tx_id, TransactionState.COMMITTED, target, "replacement had finished")
-                        recovered.append(f"{tx_id}: committed")
-                    elif new_sha256 and current == new_sha256 and backup is not None and backup.exists():
-                        # the write landed but was never confirmed: undo it
-                        self._restore_backup(tx_id, backup, target, old_sha256)
-                        self._mark(tx_id, TransactionState.ROLLED_BACK, target, "unconfirmed write undone")
-                        recovered.append(f"{tx_id}: restored_from_backup")
-                    elif not old_sha256:
-                        # failed before anything was staged: nothing to undo
-                        self._mark(tx_id, TransactionState.ROLLED_BACK, target, "nothing was staged")
-                        recovered.append(f"{tx_id}: rolled_back")
-                    else:
-                        recovered.append(f"{tx_id}: skipped_changed_since (file has other content; left as is)")
-                elif backup is not None and backup.exists():
+        return recovered
+
+    def _recover_one(self, tx_id: str, state: str | None, target: Path, backup: Path | None,
+                     old_sha256: str, new_sha256: str) -> list[str]:
+        recovered: list[str] = []
+        try:
+            if target.exists():
+                current = compute_file_sha256(target)[0]
+                if old_sha256 and current == old_sha256:
+                    self._mark(tx_id, TransactionState.ROLLED_BACK, target, "file unchanged")
+                    recovered.append(f"{tx_id}: rolled_back")
+                elif new_sha256 and current == new_sha256 and state == TransactionState.VERIFIED.value:
+                    self._mark(tx_id, TransactionState.COMMITTED, target, "replacement had finished")
+                    recovered.append(f"{tx_id}: committed")
+                elif (new_sha256 and current == new_sha256 and state == TransactionState.FAILED.value
+                      and backup is not None and backup.exists()):
+                    # the edit replaced the file and then reported a failure: undo it, as reported. (A STAGED
+                    # entry can't have replaced the file: the replace only happens after VERIFIED is logged.)
                     self._restore_backup(tx_id, backup, target, old_sha256)
-                    self._mark(tx_id, TransactionState.ROLLED_BACK, target, "missing file restored")
-                    recovered.append(f"{tx_id}: restored_missing_from_backup")
-            except (TransactionError, PathBlocked, OSError) as err:
-                recovered.append(f"{tx_id}: failed ({err})")
+                    self._mark(tx_id, TransactionState.ROLLED_BACK, target, "unconfirmed write undone")
+                    recovered.append(f"{tx_id}: restored_from_backup")
+                elif not old_sha256:
+                    # failed before anything was staged: nothing to undo
+                    self._mark(tx_id, TransactionState.ROLLED_BACK, target, "nothing was staged")
+                    recovered.append(f"{tx_id}: rolled_back")
+                else:
+                    recovered.append(f"{tx_id}: skipped_changed_since (file has other content; left as is)")
+            elif backup is not None and backup.exists():
+                self._restore_backup(tx_id, backup, target, old_sha256)
+                self._mark(tx_id, TransactionState.ROLLED_BACK, target, "missing file restored")
+                recovered.append(f"{tx_id}: restored_missing_from_backup")
+        except (TransactionError, PathBlocked, OSError) as err:
+            recovered.append(f"{tx_id}: failed ({err})")
 
         return recovered
 
