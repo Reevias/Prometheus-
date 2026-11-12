@@ -11,6 +11,7 @@ Prometheus is a personal AI operating system with a reliable agent harness at it
 - **Device Control**: Permissioned desktop, browser, and Android.
 - **Execution Backends**: Local first, optional Cloudroom.
 - **Trust**: Least privilege, approvals, audit, undo, and global STOP ALL.
+- **Open-Source Integrity**: All original source code across M0–M10 remains open source under the MIT License, preserving local autonomy without mandatory proprietary services. See [AGENTS.md](../../AGENTS.md).
 
 ## 2. Design & Visual Identity
 - **Palette**: Near-black canvas `#0B0B10`, surfaces `#17171F`, raised `#211D1A`, primary orange `#FF922B`, amber `#FFC06A`, text `#F4F1ED`, muted `#AAA5A0`.

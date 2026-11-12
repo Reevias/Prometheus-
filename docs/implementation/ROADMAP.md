@@ -12,3 +12,7 @@
 | **M7 Memory & Sync** | Layered memory, hybrid retrieval, event replication/conflicts. | Offline replay/concurrent write tests pass. |
 | **M8 Device & Voice** | Desktop accessibility, Android services, duplex voice and pairing. | Permissions and reconnect tests pass. |
 | **M9 Release** | Benchmarks, telemetry, packaging, docs, migration/rollback. | Release gates met; limitations documented. |
+
+---
+
+*Mandatory Policy Note: Every milestone from M0 through M10 enforces full compliance with the [Global Open-Source Policy](../../AGENTS.md) as a non-negotiable exit criterion. All original source code remains open-source under the MIT License; no mandatory closed-source dependencies or proprietary runtime lock-in.*
