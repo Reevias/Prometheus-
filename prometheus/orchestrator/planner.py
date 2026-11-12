@@ -481,6 +481,23 @@ class Orchestrator:
         except Exception:
             return 0.0
 
+    def _paused_text(self, chat_id: int, text: str, e: Exception, read_only: bool) -> str:
+        """What to say when no AI could answer; an AI limit also books a retry for later (prometheus/resume.py)."""
+        said = str(e)
+        if read_only or isinstance(e, BudgetExceeded):
+            return said
+        try:
+            from prometheus.features import on
+            from prometheus.resume import note_limit
+
+            if on(getattr(self, "settings", None), "resume"):
+                more = note_limit(self.store, chat_id, text, said)
+                if more:
+                    said = f"{said}\n\n{more}"
+        except Exception:
+            pass
+        return said
+
     def _usable_agents(self):
         """The agents the planner may use: not those of a feature switched off in Settings → Features."""
         from prometheus.features import agent_blocked
@@ -650,7 +667,7 @@ class Orchestrator:
         except PlanError as e:
             return self._finish(chat_id, task_id, "failed", f"I couldn't work out the steps for that: {e}")
         except (ProviderUnavailable, BudgetExceeded) as e:
-            return self._finish(chat_id, task_id, "paused", str(e))
+            return self._finish(chat_id, task_id, "paused", self._paused_text(chat_id, text, e, read_only))
         except Stopped as e:
             return self._finish(chat_id, task_id, "stopped", str(e))
 
@@ -723,7 +740,7 @@ class Orchestrator:
                 if res.status == "failed":
                     bad.add(st["id"])
         except (ProviderUnavailable, BudgetExceeded) as e:
-            return self._finish(chat_id, task_id, "paused", str(e))
+            return self._finish(chat_id, task_id, "paused", self._paused_text(chat_id, text, e, read_only))
         except Stopped as e:
             return self._finish(chat_id, task_id, "stopped", str(e))
 

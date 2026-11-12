@@ -106,3 +106,55 @@ def test_translating_text_a_file_and_long_text(make_ctx, tmp_home):
     assert to_english_many(ctx.router, ["A CLI tool", "一个快速的网络框架"]) == ["A CLI tool", "A fast web framework"]
     ctx = make_ctx([FakeProvider(["sorry, no"], name="fake")], routes={"research": ["fake"]})
     assert to_english_many(ctx.router, ["一个快速的网络框架"]) == ["一个快速的网络框架"]
+
+
+def test_a_request_stopped_by_an_ai_limit_is_tried_again_by_itself(app_client):
+    import time
+
+    from prometheus import resume
+    from prometheus.models.base import ProviderUnavailable
+    from prometheus.models.fake import FakeProvider
+
+    state = {"down": True}
+
+    def reply(messages, system):
+        if state["down"]:
+            raise ProviderUnavailable("OpenRouter: rate limited.")
+        return '{"steps": [], "answer": "Black holes are collapsed stars."}'
+
+    client, services = app_client(providers=[FakeProvider(reply, name="fake")])
+    store = services.store
+    chat = store.create_chat("t")
+    out = services.orchestrator.run(chat, "explain black holes")
+    assert out.status == "paused" and "try this again by myself in 6 minutes" in out.answer
+    queue = store.kv_get(resume.KV)
+    assert len(queue) == 1 and queue[0]["text"] == "explain black holes"
+    r = resume.Resumer(services, clock=lambda: time.time() + 60)
+    assert r.tick() == 0                                        # not yet: 5 minutes haven't passed
+    state["down"] = False
+    services.router.clear_rest()                                # (in real life the AI's 5-minute rest has passed)
+    r = resume.Resumer(services, clock=lambda: time.time() + 7 * 60)
+    assert r.tick() == 1
+    for _ in range(600):
+        if store.kv_get(resume.KV) == []:
+            break
+        time.sleep(0.05)
+    assert store.kv_get(resume.KV) == []                        # answered: no longer waiting
+    assert any("collapsed stars" in m.text for m in store.messages(chat))
+
+
+def test_retries_back_off_stop_on_request_and_skip_what_needs_the_owner(app_client):
+    from prometheus import resume
+
+    client, services = app_client()
+    store = services.store
+    assert "6 minutes" in resume.note_limit(store, 1, "q", "X: rate limited.", now=0)
+    assert "15 minutes" in resume.note_limit(store, 1, "q", "X: rate limited.", now=400)
+    assert len(store.kv_get(resume.KV)) == 1                    # the same request, not a second copy
+    assert resume.note_limit(store, 1, "other", "Reply “yes, use paid” to use it") == ""     # waits for the owner
+    assert resume.note_limit(store, 1, "other", "The key was rejected") == ""
+    assert resume.answer(store, 1, "stop trying") == "OK, I've stopped trying." and store.kv_get(resume.KV) == []
+    assert resume.answer(store, 1, "what is trying") is None
+    services.settings.paused = True
+    resume.note_limit(store, 2, "q2", "rate limited", now=0)
+    assert resume.Resumer(services, clock=lambda: 10 ** 9).tick() == 0     # Stop all pauses retries too

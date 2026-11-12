@@ -116,7 +116,11 @@ def create_app(services: Services, background: bool = False) -> FastAPI:
             services.photos.start()            # on the cloud copy: only photos sent from the phone
         if services.focus is not None:
             services.focus.start_clock()
+        if getattr(services, "resumer", None) is not None:
+            services.resumer.start()
         yield
+        if getattr(services, "resumer", None) is not None:
+            services.resumer.stop()
         if services.focus is not None:
             services.focus.stop_clock()
         if services.clips is not None:

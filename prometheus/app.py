@@ -65,6 +65,7 @@ class Services:
     clips: object = None
     sync: object = None
     laptop_jobs: object = None
+    resumer: object = None
     focus: object = None
     photos: object = None
     laptop: object = None
@@ -386,6 +387,10 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
     approvals.register("photo_sort", lambda payload: _ph.sort_handler(payload, policy, files))
     approvals.register("add_skill", lambda payload: RepoOfTheDay(services).add(payload))
     orchestrator.interceptors.append(lambda chat_id, text: RepoOfTheDay(services).answer(chat_id, text))
+    from prometheus import resume as _resume
+
+    orchestrator.interceptors.append(lambda chat_id, text: _resume.answer(store, chat_id, text))
+    services.resumer = _resume.Resumer(services)
     from prometheus.mcp_server import action_handler
     from prometheus.mcp_server import token as _mcp_token
 

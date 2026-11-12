@@ -67,6 +67,7 @@ FEATURES: tuple[Feature, ...] = (
     Feature("email", "Email (reading and drafting)", "Online", agents=("email",)),
     Feature("google", "Google Calendar and Drive", "Online", agents=("google", "calendar")),
     Feature("research", "Web research", "Online", agents=("research", "wikipedia")),
+    Feature("resume", "Try again by itself after an AI limit", "Online"),
     Feature("translate", "Translating text, files, web pages and the screen", "Online", agents=("translate",)),
     Feature("github", "GitHub and new skills from repos", "Online", agents=("github", "repo_scout", "antigravity")),
     Feature("sync", "Sync with the cloud copy", "Online"),
