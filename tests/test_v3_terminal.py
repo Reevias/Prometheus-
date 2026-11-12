@@ -316,3 +316,37 @@ def test_terminal_job_assignment_failure_aborts_without_execution(terminal_env, 
             asyncio.run(run())
         # The process was killed before resuming, so canary file must NOT exist!
         assert not canary_file.exists()
+
+
+# ============================================================================
+# Finding F: Bounded Stream Reading Tests (Newline-Free Output)
+# ============================================================================
+
+def test_terminal_huge_newline_free_stdout(terminal_env):
+    """Verify 200,000 newline-free bytes on stdout do not exhaust memory or deadlock."""
+    home, project, _, _, terminal = terminal_env
+
+    async def run():
+        # Emit 200k characters with no newline
+        code = "import sys; sys.stdout.write('A' * 200_000); sys.stdout.flush()"
+        return await terminal.execute([sys.executable, "-c", code], cwd=project, timeout=15.0)
+
+    res = asyncio.run(run())
+    assert res.exit_code == 0
+    assert len(res.stdout) <= 50_000 + len("\n[Output truncated at 50000 characters]")
+    assert "[Output truncated at 50000 characters]" in res.stdout
+
+
+def test_terminal_huge_newline_free_stderr(terminal_env):
+    """Verify 200,000 newline-free bytes on stderr do not exhaust memory or deadlock."""
+    home, project, _, _, terminal = terminal_env
+
+    async def run():
+        # Emit 200k characters with no newline on stderr
+        code = "import sys; sys.stderr.write('E' * 200_000); sys.stderr.flush()"
+        return await terminal.execute([sys.executable, "-c", code], cwd=project, timeout=15.0)
+
+    res = asyncio.run(run())
+    assert res.exit_code == 0
+    assert len(res.stderr) <= 50_000 + len("\n[Output truncated at 50000 characters]")
+    assert "[Output truncated at 50000 characters]" in res.stderr

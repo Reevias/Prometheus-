@@ -301,21 +301,23 @@ class AsyncTerminal:
         stdout_truncated = False
         stderr_truncated = False
 
+        STREAM_CHUNK_SIZE = 8192
+
         async def read_stream(stream: asyncio.StreamReader, is_stdout: bool):
             nonlocal stdout_chars, stderr_chars, stdout_truncated, stderr_truncated
-            while True:
-                line = await stream.readline()
-                if not line:
-                    break
-                decoded = line.decode("utf-8", errors="replace")
-                scrubbed = scrub_secrets(decoded)
+            callback = on_stdout if is_stdout else on_stderr
+            line_buffer = ""
+
+            def handle_token(text: str):
+                nonlocal stdout_chars, stderr_chars, stdout_truncated, stderr_truncated
+                scrubbed = scrub_secrets(text)
+                if callback:
+                    try:
+                        callback(scrubbed)
+                    except Exception:
+                        pass
 
                 if is_stdout:
-                    if on_stdout:
-                        try:
-                            on_stdout(scrubbed)
-                        except Exception:
-                            pass
                     if stdout_chars < max_output_chars:
                         if stdout_chars + len(scrubbed) > max_output_chars:
                             remaining = max_output_chars - stdout_chars
@@ -330,11 +332,6 @@ class AsyncTerminal:
                         stdout_buf.append(f"\n[Output truncated at {max_output_chars} characters]")
                         stdout_truncated = True
                 else:
-                    if on_stderr:
-                        try:
-                            on_stderr(scrubbed)
-                        except Exception:
-                            pass
                     if stderr_chars < max_output_chars:
                         if stderr_chars + len(scrubbed) > max_output_chars:
                             remaining = max_output_chars - stderr_chars
@@ -348,6 +345,24 @@ class AsyncTerminal:
                     elif not stderr_truncated:
                         stderr_buf.append(f"\n[Output truncated at {max_output_chars} characters]")
                         stderr_truncated = True
+
+            while True:
+                # Bounded chunked stream reads (prevents memory exhaustion on newline-free output)
+                chunk = await stream.read(STREAM_CHUNK_SIZE)
+                if not chunk:
+                    break
+                decoded = chunk.decode("utf-8", errors="replace")
+                line_buffer += decoded
+                while "\n" in line_buffer:
+                    line, line_buffer = line_buffer.split("\n", 1)
+                    handle_token(line + "\n")
+                if len(line_buffer) >= STREAM_CHUNK_SIZE:
+                    handle_token(line_buffer[:STREAM_CHUNK_SIZE])
+                    line_buffer = line_buffer[STREAM_CHUNK_SIZE:]
+
+            if line_buffer:
+                handle_token(line_buffer)
+                line_buffer = ""
 
         reader_task_out = asyncio.create_task(read_stream(proc.stdout, True))
         reader_task_err = asyncio.create_task(read_stream(proc.stderr, False))
