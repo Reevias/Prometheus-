@@ -447,7 +447,7 @@ class Orchestrator:
                         pass
                     skip = skip | {reply.provider, again.provider}
         if plan is None:
-            raise PlanError(f"the AI{'s' if len(tried) > 1 else ''} that plan ({', '.join(tried)}) answered in a way I "
+            raise PlanError(f"the {'AIs that plan' if len(tried) > 1 else 'AI that plans'} ({', '.join(tried)}) answered in a way I "
                             "couldn't use. Try again, or pick another Brain in Settings → AI.")
         plan.model = label
         return plan
@@ -602,6 +602,20 @@ class Orchestrator:
                 said = None
             if said:
                 return self._finish(chat_id, task_id, "done", said, "instant")
+        if not read_only and "<untrusted" not in text:
+            # "remember…", "update memory…", "forget…": always done, at once, without any AI
+            from prometheus.remember import handle as memory_command
+
+            try:
+                done = memory_command(self.store, chat_id, text)
+            except Exception:
+                done = None
+            if done is not None:
+                said, rest = done
+                if not rest:
+                    return self._finish(chat_id, task_id, "done", said, "instant")
+                self.store.add_message(chat_id, "assistant", said, "instant")
+                text = rest                       # "…and can you also …?": carry on with the rest
         if PAID_YES.match(text or "") and not read_only and "<untrusted" not in text:
             # "yes, use paid": the last request that was waiting for it runs again, with paid AI allowed this once
             rows = self.store._rows("SELECT id, text FROM tasks WHERE chat_id = ? AND id < ? AND status = 'paused' "

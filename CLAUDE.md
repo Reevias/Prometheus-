@@ -39,8 +39,8 @@ the APK, the clap and ElevenLabs voice.
 Owner's answers: resume on limits = both (Prometheus resumes paused tasks itself; Claude leaves notes here);
 repo of the day = list top 10, owner picks which to add; translate = repo descriptions, "translate this",
 files and web pages, what's on screen; memory = "remember…/update memory…" always saves instantly, no AI.
-- [ ] 1. Microphone: "PortAudioError … MME error 1" → try other ways to open the mic (WASAPI, native rate + resample), plain message
-- [ ] 2. Instant memory: remember / note / update memory / don't forget / forget / change X to Y, without AI
+- [x] 1. Microphone: "PortAudioError … MME error 1" → try other ways to open the mic (WASAPI, native rate + resample), plain message
+- [x] 2. Instant memory: remember / note / update memory / don't forget / forget / change X to Y, without AI
 - [ ] 3. Repo of the day: top 10 list, English descriptions, pick which to add
 - [ ] 4. Translate: text, files and web pages, screen, repo descriptions
 - [ ] 5. Tasks paused by an AI limit resume by themselves when the limit resets

@@ -24,7 +24,7 @@ class ClipboardAgent(Agent):
             return StepResult("failed", "Clipboard memory isn't on.")
         kind = str(inputs.get("kind") or "").lower().rstrip("s")
         kind = kind if kind in ("link", "text", "screenshot") else ""
-        since = clipboard.when_from(str(inputs.get("when") or goal), time.time())
+        since = clipboard.when_from(str(inputs.get("when") or goal), mem.clock())
         rows = mem.find(str(inputs.get("query") or ""), kind, since)
         if not rows:
             return StepResult("done", "I don't have anything like that from your clipboard or screenshots.")
