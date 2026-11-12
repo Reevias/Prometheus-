@@ -160,7 +160,11 @@ def detect_encoding_and_newline(raw: bytes) -> FileEncodingInfo:
 
 
 def safe_replace_with_backoff(src: Path, dst: Path, max_attempts: int = 5) -> None:
-    """Atomically replace dst with src, retrying transient Windows file locks (WinError 32)."""
+    """Path-based atomic replace with retries for transient Windows locks (WinError 32).
+
+    Not used for any write that M1 protects: those go through replace_pinned, which never falls back to this.
+    Kept for callers outside the agent's file tools.
+    """
     if dst.exists():
         if sys.platform == "win32":
             try:
@@ -282,8 +286,9 @@ def replace_pinned(src: Path, dst: Path, root: Path, max_attempts: int = 5) -> N
         _win_replace_pinned(src, dst, canonical_root, max_attempts)
         return
     if os.rename not in os.supports_dir_fd:
-        safe_replace_with_backoff(src, dst, max_attempts=max_attempts)
-        return
+        # No folder-pinned rename on this system: refuse rather than fall back to a path-based replace.
+        raise PathSecurityError("This system has no folder-pinned rename (rename with dir_fd); refusing to replace "
+                                f"{dst} by path")
     if dst.exists() and not os.access(dst, os.W_OK):
         raise PermissionError(f"Target file is not writable: {dst}")
     flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
@@ -1085,29 +1090,64 @@ class AtomicFiles:
         return target, backup, tmp
 
     def _restore_backup(self, tx_id: str, backup: Path, target: Path, old_sha256: str) -> None:
-        """Copy a verified backup over target (the backup itself is kept)."""
+        """Copy a verified backup over target. The backup itself is kept.
+
+        The backup is opened once, checked through its handle to really be in the backup folder, and hashed while it
+        is copied, so what is restored is exactly what was verified. The copy is created new (never through an
+        existing file or link), checked through its handle to be in the target's allowed folder, and put in place
+        with the same folder-pinned replace as normal edits. The result is hashed again through a contained handle.
+        """
         if not old_sha256:
             raise TransactionError(f"{tx_id}: no recorded hash for the backup, so it isn't trusted")
-        backup_sha, _, _ = compute_file_sha256(backup)
-        if backup_sha != old_sha256:
-            raise TransactionError(f"{tx_id}: backup is damaged or was changed (hash mismatch), not restored")
         root = self.policy.root_for(target)
+        if root is None:
+            raise TransactionError(f"{tx_id}: target is outside every allowed folder: {target}")
         staged = target.parent / f".{target.name}.restore_{tx_id}"
+        created = False
         try:
-            with open(backup, "rb") as src, open(staged, "xb") as out:
-                shutil.copyfileobj(src, out, CHUNK_SIZE)
-                out.flush()
-                os.fsync(out.fileno())
-            if compute_file_sha256(staged)[0] != old_sha256:
-                raise TransactionError(f"{tx_id}: restored copy doesn't match the backup")
+            read_flags = os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)
+            write_flags = (os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0)
+                           | getattr(os, "O_NOFOLLOW", 0))
+            with os.fdopen(os.open(backup, read_flags), "rb") as src:
+                try:
+                    verify_handle_containment(src.fileno(), self.backup_dir)
+                except PathBlocked as err:
+                    raise TransactionError(f"{tx_id}: backup is not inside the backup folder: {err}") from err
+                with os.fdopen(os.open(staged, write_flags, 0o600), "wb") as out:
+                    created = True
+                    try:
+                        verify_handle_containment(out.fileno(), root)
+                    except PathBlocked as err:
+                        raise TransactionError(f"{tx_id}: restore copy would land outside {root}: {err}") from err
+                    hasher = hashlib.sha256()
+                    while True:
+                        chunk = src.read(CHUNK_SIZE)
+                        if not chunk:
+                            break
+                        hasher.update(chunk)
+                        out.write(chunk)
+                    out.flush()
+                    os.fsync(out.fileno())
+            if hasher.hexdigest() != old_sha256:
+                raise TransactionError(f"{tx_id}: backup is damaged or was changed (hash mismatch), not restored")
+            if target.exists():
+                copy_file_metadata(target, staged)
             replace_pinned(staged, target, root)
+            created = False                   # the copy is now the target
+        except FileExistsError as err:
+            raise TransactionError(f"{tx_id}: a leftover restore file is in the way: {staged}") from err
         finally:
-            if staged.exists():
+            if created:
                 try:
                     staged.unlink()
                 except OSError:
                     pass
-        restored_sha, _, _ = compute_file_sha256(target)
+        with open(target, "rb") as f_post:
+            try:
+                verify_handle_containment(f_post.fileno(), root)
+            except PathBlocked as err:
+                raise TransactionError(f"{tx_id}: restored file resolves outside {root}: {err}") from err
+            restored_sha, _, _ = compute_file_sha256(f_post)
         if restored_sha != old_sha256:
             raise TransactionError(f"Rollback hash mismatch: expected {old_sha256}, actual {restored_sha}")
 
