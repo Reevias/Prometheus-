@@ -439,13 +439,13 @@ def test_post_replace_tamper_detection_triggers_rollback(atomic_env, monkeypatch
     target = project / "tamper_test.txt"
     target.write_text("safe base\n", encoding="utf-8")
 
-    # Hook safe_replace_with_backoff to write corrupt content to simulate post-replace tampering
+    # Hook the replace step to write corrupt content to simulate post-replace tampering
     import prometheus.actions.atomic_fs as afs_module
 
-    def corrupt_replace(src, dst):
+    def corrupt_replace(src, dst, *args, **kwargs):
         dst.write_text("tampered content\n", encoding="utf-8")
 
-    monkeypatch.setattr(afs_module, "safe_replace_with_backoff", corrupt_replace)
+    monkeypatch.setattr(afs_module, "replace_pinned", corrupt_replace)
 
     with pytest.raises(PathSecurityError, match="Post-replacement integrity check failed"):
         afs.edit_exact(target, target="safe", replacement="dangerous", root=project)
