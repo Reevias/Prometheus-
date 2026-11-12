@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import os
+import stat
+import sys
 from pathlib import Path
 
 BLOCKED_UNDER_HOME = (
@@ -17,6 +19,11 @@ BLOCKED_UNDER_HOME = (
 )
 BLOCKED_NAME_PREFIXES = ("keepass",)
 
+WINDOWS_RESERVED_NAMES = frozenset({
+    "CON", "PRN", "AUX", "NUL",
+    *(f"COM{i}" for i in range(1, 10)),
+    *(f"LPT{i}" for i in range(1, 10)),
+})
 
 # Never usable, even inside an extra folder the owner added (for example a whole drive).
 SYSTEM_DIRS = tuple(p for p in (
@@ -26,15 +33,150 @@ SYSTEM_DIRS = tuple(p for p in (
     "/dev", "/System", "/Library") if p)
 
 
+class PathBlocked(Exception):
+    """Raised when a path is outside what Prometheus may touch."""
+
+
+def _norm(p: Path | str) -> str:
+    return os.path.normcase(str(p))
+
+
+def _inside(child: Path, parent: Path) -> bool:
+    c, p = _norm(child), _norm(parent)
+    return c == p or c.startswith(p.rstrip(os.sep) + os.sep)
+
+
+def _check_raw_path(p: Path | str) -> str:
+    """Pre-screen raw path string for UNC, device namespaces, reserved names, and alternate streams.
+
+    Must be evaluated BEFORE invoking os.path or pathlib methods that could
+    trigger Win32 network authentication (SMB/NTLM leaks) or DOS device hangs.
+    """
+    raw = str(p).strip().strip('"\'')
+    if not raw:
+        raise PathBlocked("Empty path is not allowed.")
+
+    norm_slashes = raw.replace("/", "\\")
+
+    # 1. Reject UNC and device namespace forms: \\server, //server, \\?\UNC\, \\.\, etc.
+    if norm_slashes.startswith(("\\\\", "//")):
+        raise PathBlocked(f"UNC and device namespace paths are not allowed: {raw}")
+    if "\\UNC\\" in norm_slashes.upper() or "/UNC/" in raw.upper():
+        raise PathBlocked(f"UNC paths are not allowed: {raw}")
+    if norm_slashes.startswith(("\\\\.\\", "\\\\?\\", "//./", "//?/")):
+        raise PathBlocked(f"Device namespace paths are not allowed: {raw}")
+
+    # 2. Reject NTFS Alternate Data Streams (e.g. file.txt:hidden or drive:dir:stream)
+    # On Windows, drive letter format is C: (colon at index 1). Any other colon is an ADS stream.
+    colon_idx = raw.find(":")
+    if colon_idx != -1:
+        if colon_idx != 1 or ":" in raw[2:]:
+            raise PathBlocked(f"NTFS alternate data streams are not allowed: {raw}")
+
+    # 3. Reject Windows reserved DOS device names (CON, PRN, AUX, NUL, COM1-9, LPT1-9)
+    parts = [part for part in norm_slashes.split("\\") if part]
+    for part in parts:
+        stem = part.split(".")[0].strip().upper()
+        if stem in WINDOWS_RESERVED_NAMES:
+            raise PathBlocked(f"Windows reserved device name is not allowed: {part}")
+
+    return raw
+
+
+def _has_git_component(p: Path | str) -> bool:
+    """Check if any path component refers to .git directory internals."""
+    parts = Path(p).parts
+    for part in parts:
+        cleaned = part.strip().rstrip(".").lower()
+        if cleaned == ".git":
+            return True
+    return False
+
+
+def _is_link_or_junction(p: Path | str) -> bool:
+    """Detect if path is a symlink, NTFS junction, or mount point reparse tag."""
+    try:
+        path = Path(p)
+        if path.is_symlink():
+            return True
+        if hasattr(path, "is_junction") and path.is_junction():
+            return True
+        st = os.lstat(str(p))
+        if stat.S_ISLNK(st.st_mode):
+            return True
+        tag = getattr(st, "st_reparse_tag", 0)
+        mount_point = getattr(stat, "IO_REPARSE_TAG_MOUNT_POINT", 0xA0000003)
+        symlink = getattr(stat, "IO_REPARSE_TAG_SYMLINK", 0xA000000C)
+        if tag in (mount_point, symlink):
+            return True
+        return False
+    except (OSError, ValueError):
+        return False
+
+
+def get_final_path_from_handle(fd: int) -> Path:
+    """Retrieve the canonical file path from an open OS file descriptor.
+
+    On Windows, queries the kernel directly via GetFinalPathNameByHandleW
+    to resolve the true disk path, bypassing symlinks, junctions, and TOCTOU races.
+    On POSIX systems, inspects /proc/self/fd or falls back to os.path.realpath.
+    """
+    if sys.platform == "win32":
+        import ctypes
+        import msvcrt
+        handle = msvcrt.get_osfhandle(fd)
+        buf = ctypes.create_unicode_buffer(1024)
+        # 0 = VOLUME_NAME_DOS
+        res = ctypes.windll.kernel32.GetFinalPathNameByHandleW(handle, buf, 1024, 0)
+        if res == 0:
+            raise OSError(ctypes.GetLastError(), "GetFinalPathNameByHandleW failed to query file handle")
+        path_str = buf.value
+        # Strip Windows device namespace prefix if present (e.g. \\?\C:\... -> C:\...)
+        if path_str.startswith("\\\\?\\UNC\\"):
+            path_str = "\\\\" + path_str[8:]
+        elif path_str.startswith("\\\\?\\"):
+            path_str = path_str[4:]
+        return Path(path_str).resolve()
+    else:
+        fd_path = f"/proc/self/fd/{fd}"
+        if os.path.exists(fd_path):
+            return Path(os.path.realpath(fd_path))
+        return Path(os.path.realpath(f"/dev/fd/{fd}"))
+
+
+def verify_handle_containment(fd: int, root: Path | str) -> Path:
+    """Verify that an open file descriptor points strictly inside an authorized root.
+
+    Mitigates TOCTOU race conditions where a path was swapped to a junction
+    or symlink between path validation and file opening.
+    """
+    canonical_root = Path(os.path.abspath(Path(root).expanduser())).resolve()
+    final_path = get_final_path_from_handle(fd)
+
+    if _has_git_component(final_path):
+        raise PathBlocked(f"Open file handle resolves to .git internals: {final_path}")
+    if not _inside(final_path, canonical_root):
+        raise PathBlocked(f"Open file handle resolves outside authorized root {canonical_root}: {final_path}")
+    return final_path
+
+
 def extra_root_problem(folder: str, home: Path) -> str:
     """Why a folder can't be added as an extra place, or '' if it can."""
     raw = (folder or "").strip().strip('"')
     if not raw:
         return "Type a folder or drive, for example D:\\ or D:\\Photos."
+    try:
+        _check_raw_path(raw)
+    except PathBlocked as err:
+        return str(err)
     path = Path(os.path.abspath(Path(raw).expanduser()))
     if not path.is_absolute() or not path.exists() or not path.is_dir():
         return f"{raw} doesn't exist or isn't a folder."
+    if _is_link_or_junction(path):
+        return "Symlinks or junctions cannot be added as an extra place."
     resolved = path.resolve()
+    if _has_git_component(resolved):
+        return "Git repository internals (.git) cannot be added as an extra place."
     system_drive = os.environ.get("SystemDrive", "C:").rstrip("\\/") + os.sep
     if _norm(resolved) in (_norm(Path(system_drive)), _norm(Path("/"))):
         return "The whole system drive can't be added. Add a folder on it instead, or another drive."
@@ -44,19 +186,6 @@ def extra_root_problem(folder: str, home: Path) -> str:
     if _inside(resolved, Path(home).resolve()):
         return "That is already inside your user folder, which Prometheus can use."
     return ""
-
-
-class PathBlocked(Exception):
-    """Raised when a path is outside what Prometheus may touch."""
-
-
-def _norm(p: Path) -> str:
-    return os.path.normcase(str(p))
-
-
-def _inside(child: Path, parent: Path) -> bool:
-    c, p = _norm(child), _norm(parent)
-    return c == p or c.startswith(p.rstrip(os.sep) + os.sep)
 
 
 class PathPolicy:
@@ -70,10 +199,17 @@ class PathPolicy:
         self._blocked = [self.home / rel for rel in BLOCKED_UNDER_HOME] + [self.code_dir]
 
     def _resolve(self, p: Path | str) -> Path:
+        _check_raw_path(p)
         return Path(os.path.abspath(Path(p).expanduser())).resolve()
 
     def is_blocked(self, p: Path | str) -> bool:
-        path = self._resolve(p)
+        try:
+            _check_raw_path(p)
+            path = self._resolve(p)
+        except PathBlocked:
+            return True
+        if _has_git_component(Path(p)) or _has_git_component(path):
+            return True
         if not _inside(path, self.home):
             if any(_inside(path, r) for r in self.extra_roots):
                 return any(_inside(path, b) for b in self._blocked + self._system()) or self._blocked_name(path)
@@ -98,7 +234,10 @@ class PathPolicy:
 
     def root_for(self, p: Path | str) -> Path | None:
         """The allowed place that holds this path (the most specific one), or None."""
-        path = self._resolve(p)
+        try:
+            path = self._resolve(p)
+        except PathBlocked:
+            return None
         best = None
         for r in self.roots():
             if _inside(path, r) and (best is None or len(str(r)) > len(str(best))):
@@ -106,21 +245,51 @@ class PathPolicy:
         return best
 
     def check_read(self, p: Path | str) -> Path:
+        _check_raw_path(p)
+        if _has_git_component(Path(p)):
+            raise PathBlocked(f"Direct access to .git internals is not allowed: {p}")
         path = self._resolve(p)
+        if _has_git_component(path):
+            raise PathBlocked(f"Direct access to .git internals is not allowed: {p}")
         if self.is_blocked(path):
             raise PathBlocked(f"Not allowed: {p}")
         return path
 
     def check_change(self, p: Path | str, task_root: Path) -> Path:
-        if Path(p).is_symlink():
-            raise PathBlocked(f"Links are never moved or changed: {p}")
+        _check_raw_path(p)
+        _check_raw_path(task_root)
+
+        if _has_git_component(Path(p)):
+            raise PathBlocked(f"Direct access to .git internals is not allowed: {p}")
+        if _has_git_component(Path(task_root)):
+            raise PathBlocked(f"Direct access to .git internals is not allowed: {task_root}")
+
+        if _is_link_or_junction(task_root):
+            raise PathBlocked(f"Task root cannot be a symlink or junction: {task_root}")
+
         root = self._resolve(task_root)
+        if _has_git_component(root):
+            raise PathBlocked(f"Direct access to .git internals is not allowed: {task_root}")
         if self.is_blocked(root):
             raise PathBlocked(f"Not allowed to change files in: {task_root}")
+        if _is_link_or_junction(root):
+            raise PathBlocked(f"Task root cannot be a symlink or junction: {task_root}")
+
+        raw_target = Path(os.path.abspath(Path(p).expanduser()))
+        curr = raw_target
+        while True:
+            if _is_link_or_junction(curr):
+                if _norm(curr) == _norm(raw_target):
+                    raise PathBlocked(f"Links or junctions are never moved or changed: {p}")
+                raise PathBlocked(f"Parent directory is a link or junction: {curr}")
+            if _norm(curr) == _norm(root) or curr == curr.parent:
+                break
+            curr = curr.parent
+
         path = self.check_read(p)
-        if _inside(path, self.data_dir) or any(_inside(path, p) for p in self.protected):
+        if _inside(path, self.data_dir) or any(_inside(path, pr) for pr in self.protected):
             raise PathBlocked("Prometheus's own data (memory, undo history) can't be changed by agents.")
-        if any(_inside(p, path) for p in self.protected):
+        if any(_inside(pr, path) for pr in self.protected):
             raise PathBlocked(f"This folder holds Prometheus's memory, so it is not changed as a whole: {p}")
         if not _inside(path, root):
             raise PathBlocked(f"Outside the folder for this task: {p}")
