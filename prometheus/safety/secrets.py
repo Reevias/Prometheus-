@@ -13,7 +13,7 @@ PATTERNS = {
     "Anthropic key": r"sk-ant-[A-Za-z0-9_-]{20,}",
     "OpenRouter key": r"sk-or-[A-Za-z0-9_-]{20,}",
     "OpenAI-style key": r"\bsk-(?:proj-)?[A-Za-z0-9_-]{32,}",
-    "GitHub token": r"\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{30,}|\bgithub_pat_[A-Za-z0-9_]{40,}",
+    "GitHub token": r"\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{20,}|\bgithub_pat_[A-Za-z0-9_]{40,}",
     "Google API key": r"\bAIza[0-9A-Za-z_-]{35}\b",
     "AWS access key": r"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b",
     "Slack token": r"\bxox[abposr]-[A-Za-z0-9-]{10,}",
