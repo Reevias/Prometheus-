@@ -16,6 +16,8 @@ import pytest
 
 from prometheus.safety.paths import (
     PathBlocked,
+    PathInspectionError,
+    _is_link_or_junction,
     PathPolicy,
     extra_root_problem,
     get_final_path_from_handle,
@@ -311,3 +313,50 @@ def test_dotdot_parent_traversal_blocked(policy_env):
     task_outside = project / ".." / "task_outside.txt"
     with pytest.raises(PathBlocked, match="Outside the folder for this task"):
         policy.check_change(task_outside, task_root=project)
+
+
+# ============================================================================
+# Finding A: Fail-Closed Link and Reparse Point Inspection
+# ============================================================================
+
+def test_link_inspection_error_fails_closed_on_change(policy_env, monkeypatch):
+    _, project, _, policy = policy_env
+    target = project / "test.txt"
+    target.write_text("content")
+
+    def mock_lstat(path):
+        raise PermissionError(13, "Permission denied: metadata inaccessible")
+
+    monkeypatch.setattr(os, "lstat", mock_lstat)
+
+    # Must fail closed with PathInspectionError (which is also PathBlocked)
+    with pytest.raises(PathInspectionError, match="Failed to inspect path metadata"):
+        policy.check_change(target, task_root=project)
+
+
+def test_link_inspection_error_fails_closed_on_extra_root(policy_env, monkeypatch):
+    home, project, _, _ = policy_env
+    folder = project / "extra_folder"
+    folder.mkdir()
+
+    def mock_lstat(path):
+        raise OSError(5, "Device I/O error")
+
+    monkeypatch.setattr(os, "lstat", mock_lstat)
+
+    problem = extra_root_problem(str(folder), home)
+    assert "Cannot safely verify path" in problem
+
+
+def test_link_inspection_nonexistent_returns_false():
+    nonexistent = Path(r"C:\nonexistent_test_directory_123456")
+    assert _is_link_or_junction(nonexistent) is False
+
+
+def test_link_inspection_regular_file_and_dir_succeeds(tmp_path):
+    file_path = tmp_path / "regular.txt"
+    file_path.write_text("ok")
+    assert _is_link_or_junction(file_path) is False
+    dir_path = tmp_path / "regular_dir"
+    dir_path.mkdir()
+    assert _is_link_or_junction(dir_path) is False
