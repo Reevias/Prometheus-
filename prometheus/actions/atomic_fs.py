@@ -56,6 +56,10 @@ class TransactionError(AtomicFSError):
     """Raised when transaction commit or rollback fails."""
 
 
+class JournalError(AtomicFSError):
+    """Raised when transaction journaling fails to persist to disk."""
+
+
 class TransactionState(str, Enum):
     INITIATED = "initiated"
     LOCKED = "locked"
@@ -289,19 +293,28 @@ class AtomicFiles:
         self.journals_dir.mkdir(parents=True, exist_ok=True)
         self.transactions_log = self.journals_dir / "transactions.jsonl"
 
-    def _log_transaction(self, record: dict) -> None:
-        """Append record to transactions.jsonl journal."""
+    def _log_transaction(self, record: dict, critical: bool | None = None) -> None:
+        """Append record to transactions.jsonl journal with flush and fsync."""
+        state = record.get("state")
+        if critical is None:
+            critical = state in (TransactionState.STAGED.value, TransactionState.VERIFIED.value)
+
         line = json.dumps(record) + "\n"
         try:
             with open(self.transactions_log, "a", encoding="utf-8") as f:
                 f.write(line)
-        except OSError:
-            pass
+                f.flush()
+                os.fsync(f.fileno())
+        except OSError as err:
+            if critical:
+                raise JournalError(f"Failed to persist critical transaction journal entry ({state}): {err}") from err
+            import logging
+            logging.getLogger(__name__).warning("Non-critical journal write failed (%s): %s", state, err)
 
     def _get_lock(self, path: Path) -> FileLock:
-        """Acquire target-adjacent FileLock."""
+        """Acquire target-adjacent FileLock without unlinking to prevent races."""
         lock_file = path.parent / f".{path.name}.lock"
-        return FileLock(str(lock_file), timeout=3.0)
+        return FileLock(str(lock_file), timeout=3.0, preserve_lock_file=True)
 
     def read_window(
         self,
@@ -538,7 +551,7 @@ class AtomicFiles:
                 "backup_path": str(backup_path),
                 "error": str(err),
                 "updated_at": time.time(),
-            })
+            }, critical=False)
             raise
 
         finally:
@@ -546,12 +559,6 @@ class AtomicFiles:
                 lock.release()
             except Exception:
                 pass
-            lock_path = p.parent / f".{p.name}.lock"
-            if lock_path.exists():
-                try:
-                    lock_path.unlink()
-                except OSError:
-                    pass
 
     def apply_diff(
         self,
@@ -706,7 +713,7 @@ class AtomicFiles:
                 "backup_path": str(backup_path),
                 "error": str(err),
                 "updated_at": time.time(),
-            })
+            }, critical=False)
             raise
 
         finally:
@@ -714,12 +721,6 @@ class AtomicFiles:
                 lock.release()
             except Exception:
                 pass
-            lock_path = p.parent / f".{p.name}.lock"
-            if lock_path.exists():
-                try:
-                    lock_path.unlink()
-                except OSError:
-                    pass
 
     def rollback_transaction(self, transaction_id: str) -> bool:
         """Rollback an uncommitted or failed transaction restoring original hash."""
@@ -819,29 +820,47 @@ class AtomicFiles:
 
             if target_path.exists():
                 curr_sha256, _, _ = compute_file_sha256(target_path)
-                if curr_sha256 == new_sha256:
-                    self._log_transaction({
-                        "tx_id": tx_id,
-                        "state": TransactionState.COMMITTED.value,
-                        "recovered_at": time.time(),
-                    })
-                    recovered.append(f"{tx_id}: committed")
-                elif curr_sha256 == old_sha256:
-                    self._log_transaction({
-                        "tx_id": tx_id,
-                        "state": TransactionState.ROLLED_BACK.value,
-                        "recovered_at": time.time(),
-                    })
-                    recovered.append(f"{tx_id}: rolled_back")
-                else:
-                    if backup_path and backup_path.exists():
-                        safe_replace_with_backoff(backup_path, target_path)
+                if state == TransactionState.VERIFIED.value:
+                    if curr_sha256 == new_sha256:
+                        self._log_transaction({
+                            "tx_id": tx_id,
+                            "state": TransactionState.COMMITTED.value,
+                            "recovered_at": time.time(),
+                        }, critical=False)
+                        recovered.append(f"{tx_id}: committed")
+                    elif curr_sha256 == old_sha256:
                         self._log_transaction({
                             "tx_id": tx_id,
                             "state": TransactionState.ROLLED_BACK.value,
                             "recovered_at": time.time(),
-                        })
-                        recovered.append(f"{tx_id}: restored_from_backup")
+                        }, critical=False)
+                        recovered.append(f"{tx_id}: rolled_back")
+                    else:
+                        if backup_path and backup_path.exists():
+                            safe_replace_with_backoff(backup_path, target_path)
+                            self._log_transaction({
+                                "tx_id": tx_id,
+                                "state": TransactionState.ROLLED_BACK.value,
+                                "recovered_at": time.time(),
+                            }, critical=False)
+                            recovered.append(f"{tx_id}: restored_from_backup")
+                else:  # STAGED, FAILED, etc.
+                    if curr_sha256 == old_sha256:
+                        self._log_transaction({
+                            "tx_id": tx_id,
+                            "state": TransactionState.ROLLED_BACK.value,
+                            "recovered_at": time.time(),
+                        }, critical=False)
+                        recovered.append(f"{tx_id}: rolled_back")
+                    else:
+                        if backup_path and backup_path.exists():
+                            safe_replace_with_backoff(backup_path, target_path)
+                            self._log_transaction({
+                                "tx_id": tx_id,
+                                "state": TransactionState.ROLLED_BACK.value,
+                                "recovered_at": time.time(),
+                            }, critical=False)
+                            recovered.append(f"{tx_id}: restored_from_backup")
             else:
                 if backup_path and backup_path.exists():
                     safe_replace_with_backoff(backup_path, target_path)
@@ -849,7 +868,7 @@ class AtomicFiles:
                         "tx_id": tx_id,
                         "state": TransactionState.ROLLED_BACK.value,
                         "recovered_at": time.time(),
-                    })
+                    }, critical=False)
                     recovered.append(f"{tx_id}: restored_missing_from_backup")
 
         return recovered
