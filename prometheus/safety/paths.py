@@ -20,9 +20,11 @@ BLOCKED_UNDER_HOME = (
 BLOCKED_NAME_PREFIXES = ("keepass",)
 
 WINDOWS_RESERVED_NAMES = frozenset({
-    "CON", "PRN", "AUX", "NUL",
+    "CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$",
     *(f"COM{i}" for i in range(1, 10)),
     *(f"LPT{i}" for i in range(1, 10)),
+    # Windows also treats superscript 1-3 as device numbers (COM¹ is the same device as COM1)
+    *(f"{dev}{sup}" for dev in ("COM", "LPT") for sup in ("\u00b9", "\u00b2", "\u00b3")),
 })
 
 # Never usable, even inside an extra folder the owner added (for example a whole drive).
@@ -80,7 +82,7 @@ def _check_raw_path(p: Path | str) -> str:
     # 3. Reject Windows reserved DOS device names (CON, PRN, AUX, NUL, COM1-9, LPT1-9)
     parts = [part for part in norm_slashes.split("\\") if part]
     for part in parts:
-        stem = part.split(".")[0].strip().upper()
+        stem = part.split(".")[0].rstrip(" .").strip().upper()   # Windows ignores trailing dots and spaces
         if stem in WINDOWS_RESERVED_NAMES:
             raise PathBlocked(f"Windows reserved device name is not allowed: {part}")
 
