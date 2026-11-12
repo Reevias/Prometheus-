@@ -7,6 +7,21 @@
   {% if shown %}
   <div class="panel" style="margin-bottom:14px"><strong>{{ shown }}</strong><pre class="diff">{{ text }}</pre></div>
   {% endif %}
+  <h3>Today's top repos on GitHub</h3>
+  {% if trending_said %}<p class="status-done">{{ trending_said }}</p>{% endif %}
+  <p class="muted">The first 10 trending today{% if trending.date %} ({{ trending.date }}){% endif %}, descriptions in English.
+    Add any you like as a skill: that reads its README only; nothing is installed or run.</p>
+  {% for r in trending.repos %}
+  <div class="panel row" style="margin-bottom:8px;align-items:flex-start">
+    <div style="flex:1;min-width:0"><strong>{{ loop.index }}. <a href="https://github.com/{{ r.full_name }}" target="_blank" rel="noopener noreferrer">{{ r.full_name }}</a></strong>
+      <span class="muted">{{ r.stars_today }} stars today{% if r.language %}, {{ r.language }}{% endif %}</span>
+      {% if r.sensitive %}<span class="error">sensitive: about tracking, accounts or security</span>{% endif %}
+      <br>{{ r.description or "No description." }}{% if r.original %}<br><span class="muted">Original: {{ r.original }}</span>{% endif %}</div>
+    {% if r.added %}<span class="status-done">Added ✓</span>{% else %}
+    <form hx-post="/skills/trending/add" hx-target="body"><input type="hidden" name="n" value="{{ loop.index }}"><button type="submit">Add to skills</button></form>{% endif %}
+  </div>
+  {% else %}<p class="muted">No list yet. It arrives every evening.</p>{% endfor %}
+  <form hx-post="/skills/trending/refresh" hx-target="body"><button type="submit">Get today's list now</button></form>
   <h3>Tools Prometheus made</h3>
   <p class="muted">Small Python tools Prometheus wrote for jobs that come back. Each ran only after you approved its
     code, and always in the sandbox (no internet, only its own folder). If its code changes it asks again.</p>

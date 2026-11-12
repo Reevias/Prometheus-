@@ -32,7 +32,7 @@ FEATURES: tuple[Feature, ...] = (
     Feature("focus", "Focus mode", "Daily life", agents=("focus",)),
     Feature("clipboard", "Clipboard and screenshot memory", "Daily life", attr="clip_on", agents=("clipboard",)),
     Feature("health", "Weekly laptop health check", "Daily life", agents=("health",)),
-    Feature("repo_of_day", "Repo of the day", "Daily life", attr="repo_of_day"),
+    Feature("repo_of_day", "Repos of the day (top 10 trending)", "Daily life", attr="repo_of_day"),
     Feature("jobs", "Ready-made jobs (notes to actions, news digest, PDFs to a sheet)", "Daily life", agents=("jobs",)),
     # Study
     Feature("study", "Study coach (flashcards, quizzes)", "Study", agents=("study",)),

@@ -385,6 +385,7 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
     _ph.CURRENT = services.photos
     approvals.register("photo_sort", lambda payload: _ph.sort_handler(payload, policy, files))
     approvals.register("add_skill", lambda payload: RepoOfTheDay(services).add(payload))
+    orchestrator.interceptors.append(lambda chat_id, text: RepoOfTheDay(services).answer(chat_id, text))
     from prometheus.mcp_server import action_handler
     from prometheus.mcp_server import token as _mcp_token
 

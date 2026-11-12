@@ -56,47 +56,65 @@ def services_for(app_client):
     return client, services
 
 
-def test_suggest_then_approve_adds_the_skill(app_client):
-    client, services = app_client()
-    h = {"X-CSRF-Token": login(client)}
-
+def _rod(services):
     def handler(request):
         if request.url.host == "github.com":
             return httpx.Response(200, text=PAGE)
         return httpx.Response(200, json={"content": "IyBMTE0gbm90ZXMKVXNlIGl0IGxvY2FsbHku"})   # "# LLM notes..."
 
-    rod = RepoOfTheDay(services, http=httpx.Client(transport=httpx.MockTransport(handler)))
-    services.store.kv_set("repo_of_day_seen", ["sherlock-project/sherlock", "evil/stealer"])   # suggested before
-    assert "good/llm-notes" in rod.suggest()
-    pending = services.store.approvals()[0]
-    assert pending.kind == "add_skill" and pending.payload["url"] == "https://github.com/good/llm-notes"
-    page = client.get("/approvals").text
-    assert "Open link" in page and "good/llm-notes" in page
+    return RepoOfTheDay(services, http=httpx.Client(transport=httpx.MockTransport(handler)))
+
+
+def test_list_the_top_repos_then_the_owner_picks(app_client, monkeypatch):
+    client, services = app_client()
+    h = {"X-CSRF-Token": login(client)}
+    rod = _rod(services)
+    assert rod.suggest().startswith("Listed today's top")
+    repos = rod.todays()["repos"]
+    names = [r["full_name"] for r in repos]
+    assert 1 <= len(repos) <= 10 and "good/llm-notes" in names
+    assert services.store.approvals() == []                          # nothing waits for approval: the owner picks
+    assert "good/llm-notes" in rod.as_text() and "add repo" in rod.as_text()
     import prometheus.repo_of_day as mod
-    real = mod.RepoOfTheDay
-    monkey = pytest.MonkeyPatch()
-    monkey.setattr(mod, "RepoOfTheDay", lambda s: rod)
-    try:
-        client.post(f"/approvals/{pending.id}", data={"decision": "approve"}, headers=h)
-    finally:
-        monkey.setattr(mod, "RepoOfTheDay", real)
+
+    monkeypatch.setattr(mod, "RepoOfTheDay", lambda s, **kw: rod)
+    page = client.get("/skills").text
+    assert "Today's top repos on GitHub" in page and "Add to skills" in page and "good/llm-notes" in page
+    n = names.index("good/llm-notes") + 1
+    said = rod.answer(1, f"add repo {n}")
+    assert "Added good/llm-notes" in said
     skill = services.skills.get("repo-good-llm-notes")
     assert skill is not None and "good/llm-notes" in skill.body               # in the library at once
-    assert "good/llm-notes" in rod.seen()
-    assert rod.suggest() == "Suggested other/ui-kit."              # the next day: the next new, safe repo
-    assert rod.suggest() == "Nothing new on GitHub trending today."   # never the same one twice
+    assert rod.todays()["repos"][n - 1]["added"] is True
+    assert "no number 99" in rod.answer(1, "add repos 99")
+    assert rod.answer(1, "what is a repo") is None and rod.answer(1, "add repo 3 <untrusted>") is None
+    assert "Today's top" in rod.answer(1, "show today's repos")
+    other = next(i for i, name in enumerate(names, 1) if name != "good/llm-notes")
+    client.post("/skills/trending/add", data={"n": str(other)}, headers=h)
+    assert rod.todays()["repos"][other - 1]["added"] is True
 
 
 def test_sensitive_repos_are_labelled_not_hidden(app_client):
     client, services = app_client()
-    page = "".join([PAGE])
-    rod = RepoOfTheDay(services, http=httpx.Client(transport=httpx.MockTransport(
-        lambda r: httpx.Response(200, text=page) if r.url.host == "github.com" else httpx.Response(404))))
-    assert "sherlock" in rod.suggest()
-    card = services.store.approvals()[0]
-    assert "sensitive" in card.summary and card.payload["url"] == "https://github.com/sherlock-project/sherlock"
-    out = rod.add(card.payload)
+    rod = _rod(services)
+    rod.suggest()
+    sherlock = next(r for r in rod.todays()["repos"] if r["full_name"] == "sherlock-project/sherlock")
+    assert sherlock["sensitive"] and "sensitive" in rod.as_text()
+    out = rod.add({"repo": "sherlock-project/sherlock", "description": sherlock["description"]})
     assert "Added sherlock-project/sherlock" in out and services.skills.get("repo-sherlock-project-sherlock")
+
+
+def test_chinese_descriptions_are_shown_in_english(app_client):
+    from prometheus.models.fake import FakeProvider
+
+    client, services = app_client(providers=[FakeProvider(['{"lines": ["A fast web framework"]}'], name="fake")])
+    page = PAGE.replace("</article>", """</article><article class="Box-row"><h2><a href="/cn/kuai">cn/kuai</a></h2>
+      <p class="col-9 color-fg-muted">一个快速的网络框架</p><span itemprop="programmingLanguage">Go</span>
+      <a href="/cn/kuai/stargazers"><svg></svg> 900</a> 50 stars today</article>""", 1)
+    rod = RepoOfTheDay(services, http=httpx.Client(transport=httpx.MockTransport(lambda r: httpx.Response(200, text=page))))
+    rod.suggest()
+    kuai = next(r for r in rod.todays()["repos"] if r["full_name"] == "cn/kuai")
+    assert kuai["description"] == "A fast web framework" and kuai["original"] == "一个快速的网络框架"
 
 
 def test_open_link_only_for_github(app_client, monkeypatch):

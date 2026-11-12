@@ -1,5 +1,6 @@
-"""Repo of the day: once a day, look at github.com/trending, pick the best repository, and ask the owner (on the
-Approvals page, with a link to open) whether to add it to the skill library. Approving writes the skill at once.
+"""Repos of the day: once a day, look at github.com/trending and show the owner the first 10 (descriptions in
+English, translated when they aren't). The owner picks which ones to add to the skill library: on the Skills page,
+or by saying "add repo 3". Nothing is added by itself.
 
 What the skill is: a how-to guide (SKILL.md + references/readme.md) the planner can use later. Nothing is cloned,
 installed or run. The repository's own words (description, README) are kept as data, never as instructions.
@@ -20,6 +21,12 @@ TRENDING = "https://github.com/trending?since=daily"
 API = "https://api.github.com"
 USER_AGENT = "Prometheus/1.4 (personal assistant)"
 README_CHARS = 20_000
+TOP = 10
+CHAT = "Repos of the day"
+ADD = re.compile(r"^\W*(?:please\s+)?add (?:repo(?:sitor(?:y|ies))?s?|numbers?|#)\s*#?((?:\d{1,2}(?:\s*(?:,|and|&)\s*)?)+)"
+                 r"(?:\s+to (?:my |your |the )?skills?(?: library)?)?\W*$", re.I)
+SHOW = re.compile(r"^\W*(?:please\s+)?(?:show|list|what are|give me)(?: me)? (?:today'?s? |the )?(?:top |trending |best )*"
+                  r"(?:10 |ten )?(?:github )?repos?(?:itories)?(?: of the day| today| for today)?\W*$", re.I)
 REPO = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,38}/[A-Za-z0-9._-]{1,100}$")
 # Words that get a "sensitive" label on the approval card (the owner still decides).
 HARMFUL = re.compile(
@@ -129,26 +136,100 @@ class RepoOfTheDay:
         seen = self.services.store.kv_get("repo_of_day_seen", [])
         self.services.store.kv_set("repo_of_day_seen", (seen + [full_name])[-500:])
 
+    def todays(self) -> dict:
+        """Today's list as last fetched: {'date', 'repos': [{full_name, description, language, stars, stars_today,
+        sensitive, added}]}."""
+        got = self.services.store.kv_get("repo_of_day_list", None)
+        return got if isinstance(got, dict) and isinstance(got.get("repos"), list) else {"date": "", "repos": []}
+
     def suggest(self) -> str:
-        """Find today's repository and put it on the Approvals page. Returns what happened, for the log."""
+        """Fetch the first 10 trending repositories, put their descriptions into English, and tell the owner.
+        Returns what happened, for the log."""
         resp = self.http.get(TRENDING)
         resp.raise_for_status()
-        repo = pick(parse_trending(resp.text), self.seen())
-        if repo is None:
-            return "Nothing new on GitHub trending today."
-        self._remember(repo["full_name"])
-        url = f"https://github.com/{repo['full_name']}"
-        label = " [sensitive: about tracking, accounts or security]" if harmful(repo) else ""
-        self.services.approvals.request(
-            "add_skill",
-            f"Repo of the day: {repo['full_name']} ({repo['stars_today']} stars today){label}. Add it to the skill "
-            f"library? {repo['description'][:200]}",
-            {"repo": repo["full_name"], "url": url, "description": repo["description"],
-             "language": repo["language"], "stars": repo["stars"], "stars_today": repo["stars_today"]})
-        self.services.store.audit("system", "repo_of_day", {"repo": repo["full_name"]})
+        repos = [r for r in parse_trending(resp.text)][:TOP]
+        if not repos:
+            return "Nothing on GitHub trending today."
+        try:
+            from prometheus.translate import to_english_many
+
+            english = to_english_many(self.services.router, [r["description"] for r in repos])
+        except Exception:
+            english = [r["description"] for r in repos]
+        have = {s.name for s in self.services.skills.catalog()} if getattr(self.services, "skills", None) else set()
+        for r, desc in zip(repos, english):
+            r["original"] = r["description"] if desc != r["description"] else ""
+            r["description"] = desc
+            r["sensitive"] = harmful(r) or harmful({"full_name": "", "description": r["original"]})
+            r["added"] = skill_name(r["full_name"]) in have
+        self.services.store.kv_set("repo_of_day_list", {"date": time.strftime("%Y-%m-%d"), "repos": repos})
+        self.services.store.audit("system", "repo_of_day", {"repos": [r["full_name"] for r in repos]})
+        try:
+            chat = self.chat()
+            self.services.store.add_message(chat, "assistant", self.as_text(), "repos of the day")
+        except Exception:
+            pass
         if hasattr(self.services, "notify"):
-            self.services.notify("repo", f"Repo of the day: {repo['full_name']}. Open Approvals to look at it.")
-        return f"Suggested {repo['full_name']}."
+            self.services.notify("repo", f"Today's top {len(repos)} GitHub repos are ready. Pick any to add on the "
+                                         "Skills page.")
+        return f"Listed today's top {len(repos)} repositories."
+
+    def chat(self) -> int:
+        store = self.services.store
+        for chat_id, name in store.chats():
+            if name == CHAT:
+                return chat_id
+        chat_id = store.create_chat(CHAT)
+        store.rename_chat(chat_id, CHAT, by="user")
+        return chat_id
+
+    def as_text(self) -> str:
+        t = self.todays()
+        lines = [f"**Today's top {len(t['repos'])} repos on GitHub** ({t['date']})"]
+        for i, r in enumerate(t["repos"], 1):
+            mark = " ⚠ sensitive" if r.get("sensitive") else ""
+            lines.append(f"{i}. [{r['full_name']}](https://github.com/{r['full_name']}): {r['description'] or 'no description'}"
+                         f" ({r['stars_today']} stars today{', ' + r['language'] if r['language'] else ''}){mark}")
+        lines.append("\nSay **add repo 3** (or \"add repos 2 and 5\") to add any to my skills, or pick them on the "
+                     "Skills page. Adding reads the README only; nothing is installed or run.")
+        return "\n".join(lines)
+
+    def add_numbers(self, numbers: list[int]) -> str:
+        """The owner picked some from today's list ("add repo 3"): their say-so is the approval."""
+        repos = self.todays()["repos"]
+        if not repos:
+            return "There's no list for today yet. It arrives every evening; or say \"show today's repos\"."
+        said = []
+        for n in dict.fromkeys(numbers):
+            if not 1 <= n <= len(repos):
+                said.append(f"There's no number {n} on today's list (it has {len(repos)}).")
+                continue
+            r = repos[n - 1]
+            try:
+                said.append(self.add({"repo": r["full_name"], **{k: r.get(k) for k in
+                                                                 ("description", "language", "stars", "stars_today")}}))
+                r["added"] = True
+            except Exception as e:
+                said.append(f"Couldn't add {r['full_name']} ({type(e).__name__}).")
+        self.services.store.kv_set("repo_of_day_list", {**self.todays(), "repos": repos})
+        return "\n".join(said)
+
+    def answer(self, chat_id: int, text: str) -> str | None:
+        """Chat phrases: "add repo 3", "add repos 2, 5 and 7", "show today's repos"."""
+        t = (text or "").strip()
+        if len(t) > 80 or "<untrusted" in t:
+            return None
+        m = ADD.match(t)
+        if m:
+            return self.add_numbers([int(n) for n in re.findall(r"\d+", m.group(1))][:TOP])
+        if SHOW.match(t):
+            if not self.todays()["repos"]:
+                try:
+                    self.suggest()
+                except Exception:
+                    return "I couldn't reach GitHub trending just now. Try again in a bit."
+            return self.as_text()
+        return None
 
     def readme(self, full_name: str) -> str:
         import base64

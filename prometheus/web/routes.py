@@ -464,9 +464,30 @@ def register_routes(app: FastAPI, services: Services) -> None:
     def skills_page(request: Request):
         from prometheus.agents import tools_agent
 
+        from prometheus.repo_of_day import RepoOfTheDay
+
         return page(request, "skills.html", skills=services.skills.catalog(), shown=None, text="",
-                    user_folder=str(services.skills.user),
+                    user_folder=str(services.skills.user), trending=RepoOfTheDay(services).todays(),
+                    trending_said=request.query_params.get("said", ""),
                     own_tools=tools_agent.TOOLS.all() if tools_agent.TOOLS else [])
+
+    @app.post("/skills/trending/add", response_class=HTMLResponse)
+    def add_trending(request: Request, n: int = Form(...)):
+        from prometheus.repo_of_day import RepoOfTheDay
+
+        said = RepoOfTheDay(services).add_numbers([n])
+        store.audit("user", "repo_added", {"n": n})
+        return RedirectResponse(f"/skills?said={__import__('urllib.parse').parse.quote(said[:300])}", status_code=303)
+
+    @app.post("/skills/trending/refresh", response_class=HTMLResponse)
+    def refresh_trending(request: Request):
+        from prometheus.repo_of_day import RepoOfTheDay
+
+        try:
+            said = RepoOfTheDay(services).suggest()
+        except Exception:
+            said = "I couldn't reach GitHub trending just now."
+        return RedirectResponse(f"/skills?said={__import__('urllib.parse').parse.quote(said)}", status_code=303)
 
     @app.post("/tools/{name}/remove", response_class=HTMLResponse)
     def remove_tool(request: Request, name: str):

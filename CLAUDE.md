@@ -41,7 +41,7 @@ repo of the day = list top 10, owner picks which to add; translate = repo descri
 files and web pages, what's on screen; memory = "remember…/update memory…" always saves instantly, no AI.
 - [x] 1. Microphone: "PortAudioError … MME error 1" → try other ways to open the mic (WASAPI, native rate + resample), plain message
 - [x] 2. Instant memory: remember / note / update memory / don't forget / forget / change X to Y, without AI
-- [ ] 3. Repo of the day: top 10 list, English descriptions, pick which to add
+- [x] 3. Repo of the day: top 10 list, English descriptions, pick which to add
 - [x] 4. Translate (repo descriptions wired in step 3): text, files and web pages, screen, repo descriptions
 - [ ] 5. Tasks paused by an AI limit resume by themselves when the limit resets
 - [ ] 6. Security review of everything added since the second review; glitch sweep of the repo (click-through + agent sweep)
