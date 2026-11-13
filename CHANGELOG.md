@@ -1,5 +1,19 @@
 # Changelog
 
+## Prometheus 3.0, M2.1 (on the prometheus-v3 branch, not released yet)
+- A new look built from the owner's design: a sidebar, a large glowing orbital sphere that shows what Prometheus is
+  doing, a command bar with + for files, and a right panel with real readings only (CPU, RAM, disk, network; GPU and
+  temperature when Windows can read them). Phones keep the phone screen.
+- Chats: send and see the answer, Stop for one chat, queue the next message, highlighted code with Copy/Download,
+  tables, maths, diagrams and charts, the steps each answer took, Edit, Again, Delete, export as Markdown/PDF/JSON,
+  files Prometheus made, pin/rename/archive/delete chats.
+- Voice from the command bar (Ctrl+M), a mic mute, a waveform and sphere that follow your voice.
+- Quick actions you can change; "/" and Ctrl+K palettes; keyboard shortcuts (listed in Settings → About),
+  Ctrl+Alt+P from any app.
+- Settings in the new look with every old setting, plus Appearance (glow, sphere quality, motion, text size, density).
+- The window opens fullscreen with its own title bar and remembers its monitor and place; closing keeps it in the tray.
+- A test clicks every button of the new screens in a real browser on Windows, so dead buttons can't come back.
+
 ## Unreleased: Prometheus 3.0 foundations (M0 + M1)
 - Safer building blocks for agents that edit files and run commands (from the 3.0 roadmap; nothing in the app looks
   different yet):

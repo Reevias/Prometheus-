@@ -118,6 +118,56 @@ def windows_identity(window=None, title: str = "") -> None:
         pass
 
 
+def on_a_screen(x, y, screens) -> bool:
+    """True when (x, y) is on one of the screens connected now (a monitor may have been unplugged since)."""
+    for s in screens or []:
+        sx, sy = getattr(s, "x", 0) or 0, getattr(s, "y", 0) or 0
+        w, h = getattr(s, "width", 0) or 0, getattr(s, "height", 0) or 0
+        if sx <= x < sx + w and sy <= y < sy + h:
+            return True
+    return False
+
+
+def start_position(settings, webview) -> dict:
+    """x/y for the new window: where it was last, if that place is on a screen now; otherwise Windows decides."""
+    x, y = getattr(settings, "window_x", None), getattr(settings, "window_y", None)
+    if x is None or y is None:
+        return {}
+    try:
+        screens = list(getattr(webview, "screens", []) or [])
+    except Exception:
+        screens = []
+    return {"x": int(x), "y": int(y)} if on_a_screen(x + 40, y + 20, screens) else {}
+
+
+def remember_position(window, settings, save=None, delay: float = 1.0) -> None:
+    """Keep where the window is (its monitor and place), saved a moment after it stops moving."""
+    import threading as _threading
+
+    if save is None:
+        from prometheus.config import save_settings as save
+    state = {"timer": None}
+
+    def store(x, y):
+        settings.window_x, settings.window_y = int(x), int(y)
+        try:
+            save(settings)
+        except Exception:
+            pass
+
+    def moved(x, y):
+        if state["timer"] is not None:
+            state["timer"].cancel()
+        state["timer"] = _threading.Timer(delay, store, args=(x, y))
+        state["timer"].daemon = True
+        state["timer"].start()
+
+    try:
+        window.events.moved += moved
+    except Exception:
+        pass
+
+
 def attach_tray(window, settings, pystray=None):
     """Icon by the clock. With it on, closing the window only hides it (voice and reminders keep working)."""
     if not getattr(settings, "tray", True):
@@ -162,8 +212,22 @@ def run_desktop(settings: Settings, webview=None, server=None) -> int:
                                        text_select=True,  # pywebview blocks selecting and copying text unless asked
                                        frameless=True,    # the app draws its own themed title bar (M2)
                                        easy_drag=False,   # dragging only from the title bar, not from everywhere
-                                       fullscreen=True)   # opens fullscreen; F11 / Esc switch (M2)
+                                       fullscreen=True,   # opens fullscreen; F11 / Esc switch (M2)
+                                       **start_position(settings, webview))   # on the monitor it was last on
         windows_identity(window, title)
+        remember_position(window, settings)
+        from prometheus.hotkey import GlobalHotkey
+
+        hotkey = GlobalHotkey()
+
+        def bring_to_front():
+            window.show()
+            try:
+                window.restore()
+            except Exception:
+                pass
+
+        hotkey.start(bring_to_front)          # Ctrl+Alt+P from any app; off if another app owns it
         global ACTIVE_WINDOW
         ACTIVE_WINDOW = window
         try:
@@ -173,6 +237,7 @@ def run_desktop(settings: Settings, webview=None, server=None) -> int:
         except Exception:                       # the tray is a nicety: never let it stop the window
             tray = None
         webview.start()
+        hotkey.stop()
         if tray is not None and tray.icon is not None:
             tray.icon.stop()
         return 0
