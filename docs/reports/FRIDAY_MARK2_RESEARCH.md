@@ -4,7 +4,7 @@ Source: the owner's report "New changes and betterment of features" (PDF, 6 page
 `github.com/pranithvelar/Friday_mark2` (main branch, tree commit `45b72243ed775d9fbb2b6ee09b059518ab5ed4e8`).
 
 **Status: the report itself is research only. Afterwards the owner (13 Nov 2026) asked to compare it with our plan and add
-the better ideas: those are F1–F8 below, now in `docs/implementation/ROADMAP.md`. Nothing else here is a task.**
+the better ideas: those are F1–F8 below, now in `docs/PLAN.md`. Nothing else here is a task.**
 No new milestones; scope otherwise stays frozen until M10.
 
 ## What it is (and isn't)

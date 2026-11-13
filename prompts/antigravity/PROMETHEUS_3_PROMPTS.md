@@ -6,7 +6,7 @@ Use one prompt at a time. See the PDF for complete architecture and placement.
 - `AGENTS.md` — persistent rules (Prompt A) in repository root.
 - `prompts/antigravity/PROMETHEUS_3_PROMPTS.md` — staged prompts 1–8.
 - `prompts/review/claude-code-review.md` — Claude review prompt.
-- `docs/architecture/PROMETHEUS_3_MASTER_PLAN.md` — master architecture.
+- `docs/PLAN.md` — the plan (vision, design, M0–M10).
 Do not overwrite existing project instructions; merge carefully.
 
 ## Prompt A — AGENTS.md

@@ -17,7 +17,7 @@ HTMX, JavaScript, HTML/CSS, Canvas, PyWebView/WebView2), **performance first** (
 2. Review the existing M2 code (ChatGPT/Antigravity): keep what matches this plan, list what is redone. Known
    problems to fix: fake idle task ("System Monitoring", 100%), hard-coded "online", wrong sidebar links (Projects →
    history, Automations/Research → study, System → costs), permanent `/` icon, sphere too small, labels lost.
-3. Fix `docs/implementation/ROADMAP.md` to the owner's M0–M10 roadmap (it still says "M2 Skills").
+3. Fix the roadmap to the owner's M0–M10 plan (done; it is now `docs/PLAN.md`).
 4. An automated **click-through test** that presses every visible button on every page and fails on any error or
    dead control (extends the existing 2.x click-through test). Runs on Windows CI from now on.
 
@@ -133,19 +133,9 @@ reachable in the new one (checked against a feature list); tests updated; native
 laptop; merge `prometheus-v3` into `main`; release.
 
 ## Later milestones (hidden in M2, never shown as dead buttons)
-| Milestone | Moved there |
-|---|---|
-| M3 model routing | default model per agent/task type; smarter automatic agent choice; **answers appearing word by word (streaming)**, moved from M2.1 by the owner (13 Nov) |
-| M4 repo-to-skill | sandboxed skill test-runs, dependency checks, skills created from repos; **the owner's repos** (large, linked to other repos): read safely, map how they connect, turn useful parts into skills and searchable knowledge (builds on M1's file tools for finding files and self-editing) |
-| M5 many agents | creating your own agents, the full multi-agent view, conversation branching |
-| M6 runtime / Cloudroom | Control PC; Cloudroom as an optional place to run tasks (already planned) **and to store Prometheus and its knowledge for free** (repo knowledge, backups, sync). Encrypted on the laptop before upload; the laptop copy stays the main one; works offline if Cloudroom is down |
-| M7 security hardening | full per-project permissions, keys in Windows Credential Manager |
-| M8 memory engine | project and conversation memory, long-term knowledge base, fully automatic memory, memory import; finding and pulling information from the repo knowledge (M4) and Cloudroom storage (M6) |
-| M9 release | automatic performance tuning audit, accessibility audit, diagnostics polish, final visual sign-off |
-| M10 autonomy | automations that act without asking, voice that acts on its own |
-
-**Scope freeze (owner, 13 Nov 2026):** apart from the Friday-research items F1–F8 (approved by the owner the same day, see `docs/implementation/ROADMAP.md`), nothing new is added to the plan until M10 is done. New ideas are written
-down in `docs/ideas-after-m10.md` and wait. The owner's repos and Cloudroom storage were the last additions.
+Everything that moved out of M2 (streaming answers, model routing, the owner's repos, Cloudroom storage, Control PC,
+memory engine and the rest) is now in the one plan, [`docs/PLAN.md`](../PLAN.md), with the owner-approved Friday ideas
+F1–F8. Scope is frozen apart from that plan; new ideas go in `docs/ideas-after-m10.md`.
 
 ## Acceptance for each part
 Native Windows CI green (Linux too); the click-through test finds no dead or broken control; every visible number
@@ -166,4 +156,4 @@ safely as above · defaults 25 MB / 10 files / 7 days · model chip switches mod
 
 ## 10. Reference note (13 Nov 2026)
 The Friday Mark 2 research ([`docs/reports/FRIDAY_MARK2_RESEARCH.md`](../reports/FRIDAY_MARK2_RESEARCH.md)) rates M2
-relevance as medium: only its idea of truthful agent/task status data. It changes nothing in M2 and adds no M2 deliverable (the approved ideas F1–F8 belong to M3, M4, M5 and M8).
+relevance as medium: only its idea of truthful agent/task status data. It changes nothing in M2 and adds no M2 deliverable (the approved ideas F1–F8 belong to M3, M4, M5 and M8; see `docs/PLAN.md`).
