@@ -1,6 +1,7 @@
 # Changelog
 
 ## Prometheus 3.0, M2.1 (on the prometheus-v3 branch, not released yet)
+- Docs: added the Friday Mark 2 research (study notes mapped to M3, M4, M5, M8, M10; no scope change, no code copied).
 - Your menu: click your name for Settings, Appearance, Voice, AI models and keys, Connections, keyboard shortcuts,
   your name, shrinking the menu (also Ctrl+B) and Log out (also at the bottom of Settings). Settings left the sidebar
   (the gear by your name, Ctrl+,). The window opens maximised with the taskbar visible.

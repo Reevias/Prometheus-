@@ -163,3 +163,7 @@ the unspecified extra screen size is dropped · chat export kept (Markdown, JSON
 actions (G3) · memory: automatic saving stays as in 2.x (instant "remember…"), fully automatic memory waits for M8 ·
 automations: built on the existing reminders/watchers, the builder in M2.3 · ZIP and audio attachments handled
 safely as above · defaults 25 MB / 10 files / 7 days · model chip switches model.
+
+## 10. Reference note (13 Nov 2026)
+The Friday Mark 2 research ([`docs/reports/FRIDAY_MARK2_RESEARCH.md`](../reports/FRIDAY_MARK2_RESEARCH.md)) rates M2
+relevance as medium: only its idea of truthful agent/task status data. It changes nothing in M2 and adds no deliverable.
