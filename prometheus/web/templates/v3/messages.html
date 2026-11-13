@@ -1,20 +1,41 @@
 {% from "v3/icons.html" import icon %}
+{% macro step_cards(steps, live=False) -%}
+<ol class="steps-list">
+  {% for s in steps %}
+  <li class="step {{ s.status }}">
+    <div class="step-head"><span class="step-dot"></span><b>{{ s.agent | title }}</b><span class="step-goal">{{ s.goal }}</span>
+      {% if live and s.status == "running" %}<span class="step-time">{{ s.secs }}s</span>{% endif %}<span class="step-status">{{ s.status }}</span></div>
+    {% if s.inputs %}<div class="step-io"><span>Inputs</span><code>{{ s.inputs | tojson }}</code></div>{% endif %}
+    {% if s.result %}<div class="step-io"><span>Result</span><div>{{ s.result }}</div></div>{% endif %}
+  </li>
+  {% endfor %}
+</ol>
+{%- endmacro %}
 {% for m in messages %}
-<div class="msg {{ m.role }}" id="m{{ m.id }}">
+<div class="msg {{ m.role }}" id="m{{ m.id }}" data-id="{{ m.id }}">
   <div class="meta"><span class="who">{{ "You" if m.role == "user" else "Prometheus" }}</span><span class="when">{{ m.created|clock }}</span></div>
   <div class="body">{% if m.role == "user" %}{{ m.text }}{% else %}{{ m.text|md }}{% endif %}</div>
-  {% if m.role == "assistant" %}
-  {% if m.model %}<div class="model-tag">{{ m.model }}</div>{% endif %}
+  <template class="raw">{{ m.text }}</template>
+  {% if m.role == "assistant" and steps_by and steps_by.get(m.id) %}
+  <details class="steps"><summary>{{ steps_by[m.id] | length }} step{{ "s" if steps_by[m.id] | length != 1 }}</summary>{{ step_cards(steps_by[m.id]) }}</details>
+  {% endif %}
+  {% if m.role == "assistant" and m.model %}<div class="model-tag">{{ m.model }}</div>{% endif %}
   <div class="actions" id="rate-{{ m.id }}">{% set r = ratings.get(m.id) %}
-    <button type="button" data-copy title="Copy this answer">{{ icon("copy") }}Copy</button>
+    <button type="button" data-act="copy" title="Copy">{{ icon("copy") }}Copy</button>
+    {% if m.role == "user" %}
+    <button type="button" data-act="edit" title="Put this in the command bar to change and send again">{{ icon("write") }}Edit</button>
+    {% else %}
+    <button type="button" data-act="copy-md" title="Copy with its formatting (Markdown)">{{ icon("doc") }}Markdown</button>
+    <button type="button" data-act="regenerate" title="Ask the same question again">{{ icon("send") }}Again</button>
     {% if m.model != "reminder" %}
     <button type="button" class="{{ 'on' if r and r.rating > 0 }}" title="Good answer" aria-label="Good answer"
             hx-post="/messages/{{ m.id }}/rate" hx-vals='{"rating": "1"}' hx-swap="none">{{ icon("up") }}</button>
     <button type="button" class="{{ 'on' if r and r.rating < 0 }}" title="Could be better: Prometheus rewrites it" aria-label="Could be better"
             hx-post="/messages/{{ m.id }}/rate" hx-vals='{"rating": "-1"}' hx-prompt="What should be better? (optional)" hx-swap="none">{{ icon("down") }}</button>
     {% endif %}
+    {% endif %}
+    <button type="button" data-act="delete" title="Delete this message">{{ icon("close") }}</button>
   </div>
-  {% endif %}
 </div>
 {% endfor %}
 {% for a in asks or [] %}
@@ -29,4 +50,9 @@
   </div>
 </div>
 {% endfor %}
-{% if busy %}<div class="working" data-chat="{{ chat_id }}"><span class="dots"><i></i><i></i><i></i></span><span class="steps">{{ doing or "Thinking" }}</span></div>{% endif %}
+{% if busy %}
+<div class="working" data-chat="{{ chat_id }}">
+  <div class="working-line"><span class="dots"><i></i><i></i><i></i></span><span class="steps-now">{{ doing or "Thinking" }}</span><span class="elapsed" data-elapsed></span></div>
+  {% if live_steps %}<details class="steps" open><summary>Steps so far</summary>{{ step_cards(live_steps, live=True) }}</details>{% endif %}
+</div>
+{% endif %}

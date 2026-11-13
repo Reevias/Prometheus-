@@ -14,12 +14,13 @@
   <script src="/static/htmx.min.js"></script>
   <script src="/static/v3/sphere.js" defer></script>
   <script src="/static/v3/app.js" defer></script>
+  {% block scripts %}{% endblock %}
 </head>
 <body data-csrf="{{ csrf }}" data-page="{{ active }}" hx-headers='{"X-CSRF-Token": "{{ csrf }}"}'>
 <div class="app" id="app">
   {% include "v3/sidebar.html" %}
   <header class="topbar pywebview-drag-region">
-    <div class="topbar-title">{% block topbar %}{% endblock %}</div>
+    <div class="topbar-title" style="position: relative">{% block topbar %}{% endblock %}</div>
     <div class="topbar-tools">
       <button type="button" class="icon-btn mute" id="mute" hidden title="Microphone on: click to mute (Ctrl+Shift+M)" aria-label="Mute the microphone" aria-pressed="false">{{ icon("mic") }}</button>
       <button type="button" class="icon-btn bell" id="bell" title="Notifications" aria-label="Notifications" aria-haspopup="true">

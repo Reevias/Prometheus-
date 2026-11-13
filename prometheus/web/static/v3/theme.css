@@ -310,6 +310,51 @@ a { color: var(--amber); }
 @keyframes blink { 0%, 80%, 100% { opacity: 0.25; } 40% { opacity: 1; } }
 .chat .command { margin-top: 8px; }
 
+.chip.small { padding: 5px 12px; font-size: 13px; margin-left: 8px; }
+.topbar-title .menu { left: 40px; }
+
+/* code blocks: language, Copy, Download; colours for highlighting */
+.msg .body pre { position: relative; padding-top: 38px; }
+.code-bar { position: absolute; top: 0; left: 0; right: 0; display: flex; align-items: center; gap: 6px; padding: 6px 10px;
+            border-bottom: 1px solid rgb(var(--text-rgb) / 0.07); font: 12px var(--font); color: var(--muted); }
+.code-bar span { margin-right: auto; text-transform: lowercase; }
+.code-bar button { border: 0; background: rgb(var(--text-rgb) / 0.06); color: var(--muted); border-radius: 7px; padding: 3px 10px; font-size: 12px; }
+.code-bar button:hover { color: var(--text); background: rgb(var(--orange-rgb) / 0.18); }
+.hljs-keyword, .hljs-selector-tag, .hljs-built_in, .hljs-literal { color: var(--orange); }
+.hljs-string, .hljs-attr, .hljs-template-variable, .hljs-addition { color: var(--amber); }
+.hljs-comment, .hljs-quote, .hljs-meta { color: var(--muted); font-style: italic; }
+.hljs-number, .hljs-symbol, .hljs-variable { color: var(--ok); }
+.hljs-title, .hljs-section, .hljs-name, .hljs-type, .hljs-class .hljs-title { color: var(--text); font-weight: 600; }
+.hljs-deletion { color: var(--bad); }
+
+/* maths and diagrams */
+.math.block { display: block; overflow-x: auto; padding: 6px 0; margin: 6px 0; }
+.diagram { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.diagram-box { background: rgb(var(--surface-rgb) / 0.6); border: 1px solid rgb(var(--text-rgb) / 0.08); border-radius: 12px;
+               padding: 12px; margin: 8px 0; overflow-x: auto; }
+.diagram-box svg { max-width: 100%; height: auto; }
+
+/* visible steps: what Prometheus did (never its private reasoning) */
+.steps { margin: 8px 0 2px; font-size: 13px; }
+.steps summary { cursor: pointer; color: var(--muted); }
+.steps summary:hover { color: var(--text); }
+.steps-list { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.step { border: 1px solid rgb(var(--text-rgb) / 0.08); border-radius: 10px; padding: 8px 12px; background: rgb(var(--surface-rgb) / 0.55); }
+.step-head { display: flex; align-items: center; gap: 8px; }
+.step-head b { font-weight: 500; }
+.step-goal { color: var(--muted); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.step-status, .step-time { font: 11px var(--mono); color: var(--muted); }
+.step-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; }
+.step.done .step-dot { background: var(--ok); }
+.step.running .step-dot { background: var(--orange); box-shadow: 0 0 8px rgb(var(--orange-rgb) / 0.8); }
+.step.failed .step-dot, .step.stopped .step-dot { background: var(--bad); }
+.step-io { display: grid; grid-template-columns: 64px 1fr; gap: 8px; margin-top: 6px; color: var(--muted); }
+.step-io code { white-space: pre-wrap; word-break: break-word; font-size: 11px; }
+.step-io div { color: var(--text); white-space: pre-wrap; max-height: 10em; overflow: auto; }
+.working { flex-direction: column; align-items: stretch; }
+.working-line { display: flex; align-items: center; gap: 12px; }
+.elapsed { font: 12px var(--mono); color: var(--muted); }
+
 /* ---- chats list ------------------------------------------------------------------------------------------- */
 .page { flex: 1; min-height: 0; overflow: auto; padding: 8px 40px 40px; position: relative; z-index: 1; }
 .page h1 { font-weight: 400; font-size: 30px; margin: 4px 0 18px; }

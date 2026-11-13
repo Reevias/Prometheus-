@@ -1,6 +1,13 @@
 {% extends "v3/layout.html" %}
 {% block title %}{{ chat_title }} · Prometheus{% endblock %}
-{% block topbar %}<canvas data-sphere="mini" aria-hidden="true"></canvas><b>{{ chat_title }}</b>{% endblock %}
+{% block topbar %}<canvas data-sphere="mini" aria-hidden="true"></canvas><b>{{ chat_title }}</b>
+<button type="button" class="chip small" id="export" aria-haspopup="menu" aria-expanded="false" title="Download this chat">Export</button>
+<div class="menu" id="export-menu" role="menu" hidden style="top: 52px">
+  <a role="menuitem" href="/api/v3/chats/{{ chat_id }}/export?fmt=md" download>Markdown (.md)</a>
+  <a role="menuitem" href="/api/v3/chats/{{ chat_id }}/export?fmt=pdf" download>PDF (.pdf)</a>
+  <a role="menuitem" href="/api/v3/chats/{{ chat_id }}/export?fmt=json" download>JSON (.json)</a>
+</div>{% endblock %}
+{% block scripts %}<script src="/static/v3/chat.js" defer></script>{% endblock %}
 {% block content %}
 <section class="chat">
   <div class="messages" id="messages" data-chat="{{ chat_id }}"

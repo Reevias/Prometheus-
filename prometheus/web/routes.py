@@ -104,9 +104,36 @@ def register_routes(app: FastAPI, services: Services) -> None:
         if chat_id not in dict(store.chats()):
             return RedirectResponse("/", status_code=303)
         busy = chat_id in services.running
+        msgs = store.messages(chat_id)
         return shell(request, "v3/chat.html", "chats", chat_id=chat_id, chat_title=store.chat_title(chat_id),
-                     messages=store.messages(chat_id), ratings=store.ratings_for(chat_id),
-                     asks=store.asks_for_chat(chat_id), busy=busy, doing=current_step(chat_id) if busy else "")
+                     messages=msgs, ratings=store.ratings_for(chat_id), asks=store.asks_for_chat(chat_id),
+                     busy=busy, doing=current_step(chat_id) if busy else "", steps_by=steps_for(chat_id, msgs),
+                     live_steps=running_steps(chat_id) if busy else [])
+
+    def steps_for(chat_id: int, messages) -> dict:
+        """Each answer's visible steps (tool name, inputs, result, time), matched to the request it answered."""
+        tasks = store.chat_tasks(chat_id)
+        out = {}
+        for m in messages:
+            if m.role != "assistant":
+                continue
+            before = [tk for tk in tasks if tk["created"] <= m.created]
+            if not before:
+                continue
+            steps = store.steps(before[-1]["id"])
+            if steps:
+                out[m.id] = [{"agent": s.agent.replace("_", " "), "goal": s.goal, "status": s.status,
+                              "inputs": s.inputs, "result": s.result[:1200]} for s in steps]
+        return out
+
+    def running_steps(chat_id: int) -> list[dict]:
+        task = store.latest_task(chat_id)
+        if not task:
+            return []
+        now = time.time()
+        return [{"agent": s.agent.replace("_", " "), "goal": s.goal, "status": s.status, "inputs": s.inputs,
+                 "result": s.result[:600], "secs": int(now - s.created) if s.created else 0}
+                for s in store.steps(task["id"])]
 
     @app.get("/c/{chat_id}/messages", response_class=HTMLResponse)
     def v3_messages(request: Request, chat_id: int, have: int = -1, busy: int = -1):
@@ -114,9 +141,11 @@ def register_routes(app: FastAPI, services: Services) -> None:
         running = int(chat_id in services.running)
         if have == shown and busy == running and not running:
             return Response(status_code=204)
-        return page(request, "v3/messages.html", chat_id=chat_id, messages=store.messages(chat_id),
+        msgs = store.messages(chat_id)
+        return page(request, "v3/messages.html", chat_id=chat_id, messages=msgs,
                     busy=bool(running), asks=store.asks_for_chat(chat_id), ratings=store.ratings_for(chat_id),
-                    doing=current_step(chat_id) if running else "")
+                    doing=current_step(chat_id) if running else "", steps_by=steps_for(chat_id, msgs),
+                    live_steps=running_steps(chat_id) if running else [])
 
     @app.get("/v3/chats", response_class=HTMLResponse)
     def v3_chats(request: Request, q: str = ""):
@@ -221,6 +250,43 @@ def register_routes(app: FastAPI, services: Services) -> None:
             store.rename_chat(chat_id, quick_title(text))
         services.start_task(chat_id, attachments.request_text(text, saved))
         return {"chat_id": chat_id, "url": f"/c/{chat_id}"}
+
+    @app.post("/api/v3/chats/{chat_id}/messages/{message_id}/delete")
+    def api_v3_delete_message(chat_id: int, message_id: int):
+        if chat_id in services.running:
+            return JSONResponse({"error": "Wait until Prometheus has finished answering."}, status_code=409)
+        if not store.delete_message(chat_id, message_id):
+            return JSONResponse({"error": "That message is already gone."}, status_code=404)
+        store.audit("user", "delete_message", {"chat": chat_id, "message": message_id})
+        return {"deleted": message_id}
+
+    @app.get("/api/v3/chats/{chat_id}/export")
+    def api_v3_export(chat_id: int, fmt: str = "md"):
+        """The whole chat as Markdown, JSON or PDF (a download)."""
+        import json as _json
+
+        if chat_id not in dict(store.chats()):
+            return JSONResponse({"error": "No such chat."}, status_code=404)
+        title = store.chat_title(chat_id) or "Chat"
+        msgs = store.messages(chat_id)
+        safe = re.sub(r"[^\w .-]", "_", title)[:60].strip() or "chat"
+        if fmt == "json":
+            body = _json.dumps({"title": title, "messages": [
+                {"role": m.role, "text": m.text, "time": m.created, "model": m.model} for m in msgs]},
+                ensure_ascii=False, indent=2)
+            return Response(body, media_type="application/json",
+                            headers={"Content-Disposition": f'attachment; filename="{safe}.json"'})
+        md = f"# {title}\n\n" + "\n\n".join(
+            f"**{'You' if m.role == 'user' else 'Prometheus'}** ({time.strftime('%Y-%m-%d %H:%M', time.localtime(m.created))})\n\n{m.text}"
+            for m in msgs)
+        if fmt == "pdf":
+            from prometheus.actions.pdf import markdown_pdf
+            return Response(markdown_pdf(md, title), media_type="application/pdf",
+                            headers={"Content-Disposition": f'attachment; filename="{safe}.pdf"'})
+        if fmt != "md":
+            return JSONResponse({"error": "Use md, json or pdf."}, status_code=400)
+        return Response(md, media_type="text/markdown; charset=utf-8",
+                        headers={"Content-Disposition": f'attachment; filename="{safe}.md"'})
 
     @app.post("/api/v3/chats/{chat_id}/stop")
     def api_v3_stop(chat_id: int):

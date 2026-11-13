@@ -132,6 +132,7 @@ class Step:
     status: str
     result: str
     data: dict = field(default_factory=dict)
+    created: float = 0.0
 
 
 @dataclass
@@ -496,6 +497,21 @@ class Store:
         rows = self._rows("SELECT * FROM chat_notes WHERE chat_id = ? ORDER BY id", (chat_id,))
         return [Note(r["id"], r["text"], r["created"]) for r in rows]
 
+    def delete_message(self, chat_id: int, message_id: int) -> bool:
+        """Remove one message from a chat (the owner's choice). True when it existed."""
+        with self._lock:
+            cur = self._db.execute("DELETE FROM messages WHERE id = ? AND chat_id = ?", (message_id, chat_id))
+            self._db.commit()
+            gone = cur.rowcount > 0
+        if gone:
+            self._unindex("message", message_id)
+        return gone
+
+    def chat_tasks(self, chat_id: int) -> list[dict]:
+        """The requests of a chat, oldest first: id, created, status."""
+        return [{"id": r["id"], "created": float(r["created"]), "status": r["status"]}
+                for r in self._rows("SELECT id, created, status FROM tasks WHERE chat_id = ? ORDER BY id", (chat_id,))]
+
     def delete_chat_note(self, note_id: int) -> None:
         self._write("DELETE FROM chat_notes WHERE id = ?", (note_id,))
         self._unindex("chat_note", note_id)
@@ -552,7 +568,7 @@ class Store:
         rows = self._rows("SELECT * FROM steps WHERE task_id = ? ORDER BY id", (task_id,))
         return [
             Step(r["id"], r["task_id"], r["agent"], r["goal"], json.loads(r["inputs"]), r["status"], r["result"],
-                 json.loads(r["data"]))
+                 json.loads(r["data"]), float(r["created"] or 0.0))
             for r in rows
         ]
 

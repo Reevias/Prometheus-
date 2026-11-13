@@ -212,7 +212,7 @@ def test_classic_view_still_reachable_until_switch_over(app_client):
 def test_colours_only_in_the_token_file():
     """Every colour is defined once in tokens.css; the rest of the interface uses var(--…)."""
     colour = re.compile(r"#[0-9a-fA-F]{3,8}\b|rgba?\(\s*\d")
-    for f in ("static/v3/theme.css", "static/v3/app.js", "static/v3/sphere.js"):
+    for f in ("static/v3/theme.css", "static/v3/app.js", "static/v3/sphere.js", "static/v3/chat.js"):
         text = (WEB / f).read_text(encoding="utf-8")
         assert not colour.findall(text), f"{f} writes colours directly: {colour.findall(text)[:5]}"
     tokens = (WEB / "static/v3/tokens.css").read_text(encoding="utf-8")
@@ -233,3 +233,82 @@ def test_reduced_motion_respected():
     js = (WEB / "static/v3/sphere.js").read_text(encoding="utf-8")
     assert "prefers-reduced-motion" in css and "prefers-reduced-motion" in js
     assert "visibilitychange" in js and '"blur"' in js           # the sphere pauses when hidden or unfocused
+
+
+# ---- chat extras (M2.1) ----------------------------------------------------------------------------------------
+
+def test_renderer_adds_safe_formatting_only():
+    from prometheus.web.render import render_message as r
+    assert '<pre data-lang="python"><code class="language-python">' in str(r("```python\nx = '<b>'\n```"))
+    assert "&lt;b&gt;" in str(r("```python\nx = '<b>'\n```"))
+    t = str(r("| a | b |\n|---|---|\n| <img src=x onerror=1> | **y** |"))
+    assert "<table>" in t and "<img" not in t and "&lt;img" in t and "<strong>y</strong>" in t
+    m = str(r("Energy $E=mc^2$ and \\(a<b\\) but costs $5 and $10"))
+    assert m.count('class="math"') == 2 and "a&lt;b" in m and "$5 and $10" in m
+    assert '<div class="math block">' in str(r("$$\n\\frac{1}{2}\n$$"))
+    d = str(r("```mermaid\ngraph TD; A[<script>]-->B\n```"))
+    assert '<pre class="diagram">' in d and "<script>" not in d
+    assert "<a " not in str(r("[x](http://e.vil) ![i](http://e.vil/p.png)"))     # still no links or images
+
+
+def test_language_tag_cannot_inject():
+    from prometheus.web.render import render_message as r
+    out = str(r('```py" onmouseover="x\nhi\n```'))
+    assert '" onmouseover' not in out and "&#34; onmouseover" in out      # not a fence: escaped as text
+
+
+def test_export_markdown_json_pdf(app_client):
+    client, services = app_client()
+    login(client)
+    cid = services.store.create_chat("Physics: notes")
+    services.store.add_message(cid, "user", "What is energy?")
+    services.store.add_message(cid, "assistant", "Energy is the ability to do work.")
+    md = client.get(f"/api/v3/chats/{cid}/export?fmt=md")
+    assert md.status_code == 200 and "ability to do work" in md.text and 'filename="Physics_ notes.md"' in md.headers["content-disposition"]
+    js = client.get(f"/api/v3/chats/{cid}/export?fmt=json").json()
+    assert js["title"] == "Physics: notes" and [m["role"] for m in js["messages"]] == ["user", "assistant"]
+    pdf = client.get(f"/api/v3/chats/{cid}/export?fmt=pdf")
+    assert pdf.status_code == 200 and pdf.content.startswith(b"%PDF")
+    assert client.get(f"/api/v3/chats/{cid}/export?fmt=exe").status_code == 400
+    assert client.get("/api/v3/chats/9999/export").status_code == 404
+
+
+def test_delete_one_message(app_client):
+    client, services = app_client()
+    csrf = login(client)
+    cid = services.store.create_chat("c")
+    keep = services.store.add_message(cid, "user", "keep me")
+    gone = services.store.add_message(cid, "assistant", "delete me")
+    h = {"X-CSRF-Token": csrf}
+    assert client.post(f"/api/v3/chats/{cid}/messages/{gone}/delete", headers=h).json() == {"deleted": gone}
+    assert [m.text for m in services.store.messages(cid)] == ["keep me"]
+    assert client.post(f"/api/v3/chats/{cid}/messages/{gone}/delete", headers=h).status_code == 404
+    other = services.store.create_chat("other")
+    assert client.post(f"/api/v3/chats/{other}/messages/{keep}/delete", headers=h).status_code == 404   # wrong chat
+
+
+def test_answers_show_their_visible_steps(app_client):
+    client, services = app_client()
+    login(client)
+    st = services.store
+    cid = st.create_chat("c")
+    st.add_message(cid, "user", "sort my downloads")
+    tid = st.create_task(cid, "sort my downloads")
+    sid = st.add_step(tid, "file_sorter", "Sort Downloads", {"folder": "Downloads"})
+    st.finish_step(sid, "done", "Moved 12 files")
+    st.add_message(cid, "assistant", "Done: 12 files sorted.")
+    page = client.get(f"/c/{cid}").text
+    assert "1 step" in page and "File Sorter" in page and "Moved 12 files" in page and "Downloads" in page
+    for act in ('data-act="copy"', 'data-act="edit"', 'data-act="regenerate"', 'data-act="copy-md"', 'data-act="delete"',
+                'id="export"', "/static/v3/chat.js"):
+        assert act in page, act
+
+
+def test_vendor_libraries_are_local_and_licensed():
+    v = WEB / "static" / "vendor"
+    for f in ("highlight.min.js", "mermaid.min.js", "katex/katex.min.js", "katex/katex.min.css",
+              "licenses/highlight.js-LICENSE.txt", "licenses/katex-LICENSE.txt", "licenses/mermaid-LICENSE.txt"):
+        assert (v / f).is_file(), f
+    js = (WEB / "static/v3/chat.js").read_text(encoding="utf-8")
+    assert 'securityLevel: "strict"' in js and "trust: false" in js and "/static/vendor/" in js
+    assert "http://" not in js and "https://" not in js

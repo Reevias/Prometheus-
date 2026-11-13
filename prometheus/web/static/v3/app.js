@@ -382,7 +382,8 @@
       var f = [];
       if (t.ram) f.push(["Memory", t.ram.used_gb.toFixed(1) + " / " + t.ram.total_gb.toFixed(1) + " GB"]);
       if (t.disk) f.push(["Disk free", t.disk.free_gb + " GB"]);
-      if (t.net) f.push(["Network", "↓ " + t.net.down_kbps + " KB/s  ↑ " + t.net.up_kbps + " KB/s"]);
+      var speed = function (k) { return k >= 1024 ? (k / 1024).toFixed(1) + " MB/s" : Math.round(k) + " KB/s"; };
+      if (t.net) f.push(["Network", "↓ " + speed(t.net.down_kbps) + "  ↑ " + speed(t.net.up_kbps)]);
       if (t.gpu) f.push(["GPU", t.gpu.model]);
       $("#facts").innerHTML = f.map(function (x) { return "<dt>" + x[0] + "</dt><dd>" + x[1].replace(/</g, "&lt;") + "</dd>"; }).join("");
       $("#system-card").hidden = !g.length && !f.length;
