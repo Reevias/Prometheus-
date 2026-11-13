@@ -9,6 +9,7 @@ phone app. The owner is a student: use plain words.
   Windows (the GitHub `windows-latest` test jobs run on every push; say clearly that this is not the owner's
   own laptop). Never call something Windows-verified from Linux runs or mocked Windows calls; if it couldn't be
   tested on Windows, say NOT VERIFIED. Never weaken security or Windows behaviour to suit another platform.
+- **Scope freeze until M10 (13 Nov 2026).** The M0–M10 plan is final: don't add new features to any milestone. New ideas from anyone go in `docs/ideas-after-m10.md` and wait until M10 is done. Bug fixes are always fine. Plan: `docs/m2/M2_PLAN.md`.
 - Ask lots of questions before building anything (2 to 4 at a time, recommended option first). Ask again whenever
   something is unclear, rather than guessing.
 - One step at a time, short reports. Don't repeat the "what's missing" list over and over.

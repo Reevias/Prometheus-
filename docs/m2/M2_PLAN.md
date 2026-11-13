@@ -136,13 +136,16 @@ laptop; merge `prometheus-v3` into `main`; release.
 | Milestone | Moved there |
 |---|---|
 | M3 model routing | default model per agent/task type; smarter automatic agent choice |
-| M4 repo-to-skill | sandboxed skill test-runs, dependency checks, skills created from repos |
+| M4 repo-to-skill | sandboxed skill test-runs, dependency checks, skills created from repos; **the owner's repos** (large, linked to other repos): read safely, map how they connect, turn useful parts into skills and searchable knowledge (builds on M1's file tools for finding files and self-editing) |
 | M5 many agents | creating your own agents, the full multi-agent view, conversation branching |
-| M6 runtime / Cloudroom | Control PC |
+| M6 runtime / Cloudroom | Control PC; Cloudroom as an optional place to run tasks (already planned) **and to store Prometheus and its knowledge for free** (repo knowledge, backups, sync). Encrypted on the laptop before upload; the laptop copy stays the main one; works offline if Cloudroom is down |
 | M7 security hardening | full per-project permissions, keys in Windows Credential Manager |
-| M8 memory engine | project and conversation memory, long-term knowledge base, fully automatic memory, memory import |
+| M8 memory engine | project and conversation memory, long-term knowledge base, fully automatic memory, memory import; finding and pulling information from the repo knowledge (M4) and Cloudroom storage (M6) |
 | M9 release | automatic performance tuning audit, accessibility audit, diagnostics polish, final visual sign-off |
 | M10 autonomy | automations that act without asking, voice that acts on its own |
+
+**Scope freeze (owner, 13 Nov 2026):** nothing new is added to the plan until M10 is done. New ideas are written
+down in `docs/ideas-after-m10.md` and wait. The owner's repos and Cloudroom storage were the last additions.
 
 ## Acceptance for each part
 Native Windows CI green (Linux too); the click-through test finds no dead or broken control; every visible number
