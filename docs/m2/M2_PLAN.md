@@ -144,7 +144,7 @@ laptop; merge `prometheus-v3` into `main`; release.
 | M9 release | automatic performance tuning audit, accessibility audit, diagnostics polish, final visual sign-off |
 | M10 autonomy | automations that act without asking, voice that acts on its own |
 
-**Scope freeze (owner, 13 Nov 2026):** nothing new is added to the plan until M10 is done. New ideas are written
+**Scope freeze (owner, 13 Nov 2026):** apart from the Friday-research items F1–F8 (approved by the owner the same day, see `docs/implementation/ROADMAP.md`), nothing new is added to the plan until M10 is done. New ideas are written
 down in `docs/ideas-after-m10.md` and wait. The owner's repos and Cloudroom storage were the last additions.
 
 ## Acceptance for each part
@@ -166,4 +166,4 @@ safely as above · defaults 25 MB / 10 files / 7 days · model chip switches mod
 
 ## 10. Reference note (13 Nov 2026)
 The Friday Mark 2 research ([`docs/reports/FRIDAY_MARK2_RESEARCH.md`](../reports/FRIDAY_MARK2_RESEARCH.md)) rates M2
-relevance as medium: only its idea of truthful agent/task status data. It changes nothing in M2 and adds no deliverable.
+relevance as medium: only its idea of truthful agent/task status data. It changes nothing in M2 and adds no M2 deliverable (the approved ideas F1–F8 belong to M3, M4, M5 and M8).

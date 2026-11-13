@@ -3,8 +3,9 @@
 Source: the owner's report "New changes and betterment of features" (PDF, 6 pages). Repo studied:
 `github.com/pranithvelar/Friday_mark2` (main branch, tree commit `45b72243ed775d9fbb2b6ee09b059518ab5ed4e8`).
 
-**Status: research only. This does not change the M0–M10 plan, add deliverables or authorise any work.** Nothing here
-is a task. Scope stays frozen until M10 (see `docs/implementation/ROADMAP.md`).
+**Status: the report itself is research only. Afterwards the owner (13 Nov 2026) asked to compare it with our plan and add
+the better ideas: those are F1–F8 below, now in `docs/implementation/ROADMAP.md`. Nothing else here is a task.**
+No new milestones; scope otherwise stays frozen until M10.
 
 ## What it is (and isn't)
 A reference project for orchestration, tool/agent registries, parallel execution, layered memory and background work.
@@ -87,3 +88,22 @@ direct code reuse: **not approved until licensed**. Next step (only when authori
 and M8 parts against Prometheus's own source.
 
 Re-check Friday's branch head and licence before any implementation decision.
+
+## Compared with Prometheus (owner-approved, 13 Nov 2026)
+What we already have: one LLM planner (`orchestrator/planner.py`) over a fixed agent list; SQLite memory with word search
+(FTS5) and optional local vectors, instant "remember" facts (`memory/facts.py`); tasks paused by an AI limit resume
+(`resume.py`); reminders and watchers; a sandbox and own tools.
+
+| ID | Friday idea | Ours today | Better? | Decision | Where |
+|---|---|---|---|---|---|
+| F1 | Four routes incl. "ask first"; bounded classifier + rules fallback | one planner path for everything; no ask-first step | Yes: cheaper for simple asks (8 GB, free models first), fewer wrong guesses | **Add** | M3 |
+| F2 | Typed tool/agent registry with scopes; keywords only to shortlist | agent dict; no tool schemas or scopes | Yes, and it feeds M7 permissions | **Add** (with our own validation) | M3 |
+| F3 | Compact live context | none | Small win, cheap | **Add**, tiny | M3 |
+| F4 | State manager, tracked jobs, recovery | resume only for limit-paused tasks | Yes: M5 needs restart tests | **Add** (no fire-and-forget tasks) | M5 |
+| F5 | Layers, promotion/decay, explicit facts protected | facts and chunks, no confidence | Yes, if decay never hides stated facts and the user can see and undo | **Add** | M8 |
+| F6 | Reflection from corrections | none | Yes: facts vs preferences vs task lessons | **Add** (check safeguards first) | M8 |
+| F7 | MMR + context assembler | FTS + vectors, no variety or size budget | Yes, measured against current search (M8 gate) | **Add**, benchmarked | M8 |
+| F8 | Project Chronicle | none | Yes: fits M4 repos and M1 atomic writes | **Add** | M4 |
+| – | Background scheduler, voice interfaces | watchers, clap and voice exist | Not better | Keep as planned | M10 |
+| – | Private thought traces, regex-only routing, one shared SQLite connection, keyword-only agent matching | – | Worse | **Reject** | – |
+| – | Friday source code | – | licence unknown | **Reject** (ideas only) | – |
