@@ -51,3 +51,37 @@ files and web pages, what's on screen; memory = "remember…/update memory…" a
 - [x] 4. Translate (repo descriptions wired in step 3): text, files and web pages, screen, repo descriptions
 - [x] 5. Tasks paused by an AI limit resume by themselves when the limit resets
 - [x] 6. Security review of everything added since the second review; glitch sweep of the repo (click-through + agent sweep)
+
+## Project direction: Prometheus 3.0 (owner's roadmap PDF, 12 Nov 2026)
+Development branch: `prometheus-v3` (branched from main at 8fe8ae2; holds M1 + M2 work). Main is the current 2.x line.
+**M0 and M1 are merged into main (12 Nov 2026)**, copied commit by commit from the branch (files identical). M2 stays on
+the branch until it is audited.
+Rules: preserve the Python/FastAPI/Jinja2/HTMX/Canvas/PyWebView stack; evidence over claims (code + tests + real
+runs + report); a milestone starts only after the previous one is accepted and audited; never fabricate telemetry,
+progress or results; enforce security in code, not prompts; logical commits on the branch, no force-push or
+unapproved merges to main; document residual risks honestly; destructive actions need explicit approval.
+Also follow `AGENTS.md` on the v3 branch (colours #0B0B10 #17171F #211D1A #FF922B #FFC06A #F4F1ED #AAA5A0; home stays
+minimal; LocalRuntime default, Cloudroom optional).
+
+| Milestone | Purpose | Status (per register) |
+|---|---|---|
+| M0 | Baseline, test isolation | Done, merged into main |
+| M1 | Tool primitives: path hardening, atomic FS, bounded reader/diff, async terminal, services integration | Done, merged into main: 5 findings + 16 from a second independent audit fixed; tests pass on Windows and Linux (docs/reports/PROMETHEUS_M1_FINDINGS_FIX_REPORT.md) |
+| M2 | Desktop UI from the owner's orange-orbital screenshot (sidebar: Home, Agents, Skills, Tasks, Projects, Memory, Automations, Research, Integrations, System; orbital core; command bar; slash palette; right panel with real health/CPU/RAM/GPU; bottom wave; native window controls) | Spec exists; commits on branch (31a4aac…34793a3) but not audited; audit only after M1 approval |
+| M3 | ReAct orchestrator and model routing | Planned |
+| M4 | Repository-to-skill intelligence (separate repo hub for candidates) | Planned |
+| M5 | DAG orchestration, concurrent child agents | Planned |
+| M6 | ExecutionRuntime / Cloudroom | Planned |
+| M7 | Security hardening, safe-stop system | Planned |
+| M8 | Multi-layer memory/context engine | Planned |
+| M9 | End-to-end evaluation, release audit | Planned |
+| M10 | Jarvis-style autonomy (reference hectorg2211/jarvis); reserved: don't pull into M0–M9 | Reserved |
+
+Merge plan (agreed approach): merge into main one milestone at a time, after that milestone passes its tests, a real
+Windows run and an audit. Don't wait for M0–M10. M1 and M2 share the branch, so M1 is merged first on its own.
+Next: audit M2 (on the branch). M1's original findings, all fixed:
+1. Caller environment overrides can bypass secret filtering (terminal).
+2. Thread-resumption failures need fail-safe handling (suspended process + Job Object).
+3. `read_window` still loads the whole file into memory.
+4. Journal-derived recovery paths and backup integrity need validation.
+5. Pathname replacement keeps a documented TOCTOU window.

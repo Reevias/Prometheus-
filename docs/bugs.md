@@ -2,11 +2,12 @@
 
 Every bug found and fixed, newest first, so the count is always exact. Add a line for each new one.
 
-**Total fixed: 48** (as of 11 November 2026)
+**Total fixed: 49** (as of 12 November 2026)
 
-## 12 November 2026 (6)
+## 12 November 2026 (7)
 | # | Bug | Fixed by |
 |---|---|---|
+| 49 | A microphone that only opens at 44.1/48 kHz heard nothing if numpy wasn't installed (the sound was silently dropped) | the rate conversion also works without numpy |
 | 48 | Instant answers with outside text (screen, phone screen, translations) showed raw `<untrusted …>` markers in the chat | markers are removed from what the owner sees |
 | 47 | The uninstall script could delete the whole old `Claude-testing-` folder (it may hold other work) | it only removes Prometheus's own folder |
 | 46 | "Remember…" sometimes didn't save (the AI had to decide) | remember / update memory / forget / change are done at once, without AI |

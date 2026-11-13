@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased: Prometheus 3.0 foundations (M0 + M1)
+- Safer building blocks for agents that edit files and run commands (from the 3.0 roadmap; nothing in the app looks
+  different yet):
+  - File edits are all-or-nothing, with a backup and a log, so a crash or power cut never leaves a half-written
+    file; after a crash, Prometheus finishes or undoes the edit by itself. File permissions and line endings are kept.
+  - Reading part of a huge file uses at most about 1 MB of memory.
+  - Commands run in a clean environment without your keys, can't be pointed at a different program, and are always
+    fully stopped (everything they started too) on a timeout or cancel.
+  - Paths can't be tricked with links, junctions, network paths or `.git` folders.
+- Checked twice by independent reviews (21 problems found and fixed), and tested on Windows and Linux on every change.
+- Fixed: a microphone that only opens at 44.1/48 kHz heard nothing if numpy wasn't installed.
+
 ## 2.3
 - "Remember…", "update memory…", "note down…", "don't forget…" always save at once, without any AI, and say what was saved. "Forget …", "change X to Y in memory" and "what do you remember about …" work the same way. "Remember X and can you also…?" saves X and then does the rest.
 - Repos of the day: the first 10 trending on GitHub each evening, descriptions in English (translated when they aren't). Pick which to add on the Skills page or say "add repo 3"; "show today's repos" lists them any time.
