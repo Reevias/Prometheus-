@@ -16,7 +16,6 @@ a { color: var(--amber); }
 [hidden] { display: none !important; }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .muted { color: var(--muted); }
-.mono { font-family: var(--mono); }
 
 /* ---- the frame -------------------------------------------------------------------------------------------- */
 .app {
