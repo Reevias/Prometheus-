@@ -1,0 +1,37 @@
+/* Prometheus 3.0 design tokens: the ONLY place colours are written (tests/test_v3_m2_ui.py checks this).
+   Palette from AGENTS.md; green/amber/red are for status only. */
+:root {
+  --base: #0B0B10;          /* near-black obsidian canvas */
+  --surface: #17171F;       /* charcoal panels */
+  --raised: #211D1A;        /* warm raised surfaces */
+  --orange: #FF922B;        /* primary accent */
+  --amber: #FFC06A;         /* highlight */
+  --text: #F4F1ED;          /* primary text */
+  --muted: #AAA5A0;         /* secondary text */
+  --ok: #4ADE80;            /* status: online, connected */
+  --bad: #FF6B5B;           /* status: error */
+
+  /* the same colours as r,g,b for see-through uses: rgb(var(--orange-rgb) / 0.3) */
+  --base-rgb: 11 11 16;
+  --surface-rgb: 23 23 31;
+  --raised-rgb: 33 29 26;
+  --orange-rgb: 255 146 43;
+  --amber-rgb: 255 192 106;
+  --text-rgb: 244 241 237;
+  --muted-rgb: 170 165 160;
+  --ok-rgb: 74 222 128;
+  --bad-rgb: 255 107 91;
+  --shadow-rgb: 0 0 0;      /* shadows only */
+
+  --glow: 1;                /* glow strength, set from Settings (0.4 subtle … 1.4 strong) */
+  --font: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, "Inter", "Helvetica Neue", Arial, sans-serif;
+  --font-display: "Segoe UI Variable Display", "Segoe UI", system-ui, -apple-system, "Inter", Arial, sans-serif;
+  --mono: "Cascadia Mono", "Cascadia Code", Consolas, ui-monospace, "SF Mono", Menlo, monospace;
+  --sidebar: 280px;
+  --sidebar-mini: 76px;
+  --panel: 340px;
+  --topbar: 64px;
+  --r-lg: 20px;
+  --r-md: 14px;
+  --r-sm: 10px;
+}

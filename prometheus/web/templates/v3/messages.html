@@ -1,0 +1,32 @@
+{% from "v3/icons.html" import icon %}
+{% for m in messages %}
+<div class="msg {{ m.role }}" id="m{{ m.id }}">
+  <div class="meta"><span class="who">{{ "You" if m.role == "user" else "Prometheus" }}</span><span class="when">{{ m.created|clock }}</span></div>
+  <div class="body">{% if m.role == "user" %}{{ m.text }}{% else %}{{ m.text|md }}{% endif %}</div>
+  {% if m.role == "assistant" %}
+  {% if m.model %}<div class="model-tag">{{ m.model }}</div>{% endif %}
+  <div class="actions" id="rate-{{ m.id }}">{% set r = ratings.get(m.id) %}
+    <button type="button" data-copy title="Copy this answer">{{ icon("copy") }}Copy</button>
+    {% if m.model != "reminder" %}
+    <button type="button" class="{{ 'on' if r and r.rating > 0 }}" title="Good answer" aria-label="Good answer"
+            hx-post="/messages/{{ m.id }}/rate" hx-vals='{"rating": "1"}' hx-swap="none">{{ icon("up") }}</button>
+    <button type="button" class="{{ 'on' if r and r.rating < 0 }}" title="Could be better: Prometheus rewrites it" aria-label="Could be better"
+            hx-post="/messages/{{ m.id }}/rate" hx-vals='{"rating": "-1"}' hx-prompt="What should be better? (optional)" hx-swap="none">{{ icon("down") }}</button>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>
+{% endfor %}
+{% for a in asks or [] %}
+<div class="ask" id="ask-{{ a.id }}">
+  <p><strong>{{ a.summary }}?</strong></p>
+  <div class="row">
+    <button type="button" class="ok" hx-post="/ask/{{ a.id }}" hx-vals='{"decision": "allow"}' hx-swap="none"
+            title="Yes, and don't ask again for this exact thing, in any chat">Allow</button>
+    {% if a.payload._broad_label %}<button type="button" hx-post="/ask/{{ a.id }}" hx-vals='{"decision": "always"}' hx-swap="none"
+            title="Yes, and allow the same for: {{ a.payload._broad_label }}">Always allow: {{ a.payload._broad_label }}</button>{% endif %}
+    <button type="button" hx-post="/ask/{{ a.id }}" hx-vals='{"decision": "deny"}' hx-swap="none">Don't allow</button>
+  </div>
+</div>
+{% endfor %}
+{% if busy %}<div class="working" data-chat="{{ chat_id }}"><span class="dots"><i></i><i></i><i></i></span><span class="steps">{{ doing or "Thinking" }}</span></div>{% endif %}

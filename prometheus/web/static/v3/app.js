@@ -1,411 +1,381 @@
-/**
- * Prometheus 3.0 — Frontend Application Orchestration
- *
- * Connects UI components to real-time backend state, telemetry,
- * command submission, slash palette, quick actions, and window controls.
- */
-
+/* Prometheus 3.0 interface: command bar, attachments, palettes, shortcuts, live right panel, window buttons. */
 (function () {
   "use strict";
+  var $ = function (s, r) { return (r || document).querySelector(s); };
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); };
+  var csrf = document.body.dataset.csrf || "";
+  var data = {};
+  try { data = JSON.parse(($("#v3-data") || {}).textContent || "{}"); } catch (e) { data = {}; }
+  var app = $("#app");
 
-  const GAUGE_CIRCUMFERENCE = 2 * Math.PI * 28; // r=28 -> ~175.93
+  function store(k, v) { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch (e) { return null; } }
+  function post(url, body) {
+    return fetch(url, { method: "POST", headers: { "X-CSRF-Token": csrf }, body: body || new FormData(), credentials: "same-origin" });
+  }
+  function toast(text, bad) {
+    var box = $("#toasts"); if (!box) return;
+    var t = document.createElement("div"); t.className = "toast" + (bad ? " bad" : ""); t.textContent = text;
+    box.appendChild(t); setTimeout(function () { t.remove(); }, bad ? 7000 : 4000);
+  }
+  window.promToast = toast;
+  function visible() { return document.visibilityState === "visible"; }
+  function closeMenus(except) {
+    var closed = false;
+    $$(".menu, .dropdown, #slash, #palette").forEach(function (m) {
+      if (m !== except && !m.hidden) { m.hidden = true; closed = true; }
+    });
+    $$("[aria-expanded=true]").forEach(function (b) { b.setAttribute("aria-expanded", "false"); });
+    return closed;
+  }
+  document.addEventListener("click", function (e) {
+    if (!e.target.closest(".menu, .dropdown, #plus, #more, #bell, #slash, #palette, #command-input")) closeMenus();
+  });
 
-  class PrometheusV3App {
-    constructor() {
-      this.csrfToken = document.body.getAttribute("data-csrf") || "";
-      this.slashCommands = [];
-      this.selectedSlashIndex = 0;
-      this.isSubmitting = false;
+  // ---- sidebar and right panel: shrink / hide (remembered on this computer) ----------------------------------
+  if (store("prom-mini") === "1") app.classList.add("mini");
+  if (store("prom-panel") === "0") app.classList.add("no-panel");
+  var collapse = $("#collapse");
+  if (collapse) collapse.addEventListener("click", function () {
+    app.classList.toggle("mini"); store("prom-mini", app.classList.contains("mini") ? "1" : "0");
+  });
+  var panelToggle = $("#panel-toggle");
+  if (panelToggle) panelToggle.addEventListener("click", function () {
+    app.classList.toggle("no-panel"); store("prom-panel", app.classList.contains("no-panel") ? "0" : "1");
+  });
 
-      this.initElements();
-      this.bindEvents();
-      this.initSlashCommands();
-      this.startTelemetryLoop();
-      this.startStateLoop();
-    }
+  // ---- greeting ----------------------------------------------------------------------------------------------
+  var greet = $("#greeting");
+  if (greet) {
+    var h = new Date().getHours(), part = h < 5 ? "Good night" : h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening";
+    greet.textContent = part + (greet.dataset.owner ? ", " + greet.dataset.owner : "") + ". Your personal AI system.";
+  }
+  var setName = $("#set-name");
+  if (setName) setName.addEventListener("click", function () {
+    var name = (prompt("What should Prometheus call you?") || "").trim();
+    if (!name) return;
+    var f = new FormData(); f.append("name", name);
+    post("/api/v3/profile", f).then(function (r) { if (r.ok) location.reload(); else toast("Couldn't save your name.", true); });
+  });
 
-    initElements() {
-      this.cmdInput = document.getElementById("command-input");
-      this.cmdForm = document.getElementById("command-form");
-      this.slashIndicator = document.getElementById("slash-indicator");
-      this.micBtn = document.getElementById("mic-btn");
-      this.submitBtn = document.getElementById("submit-btn");
+  // ---- command bar ------------------------------------------------------------------------------------------
+  var form = $("#command"), input = $("#command-input"), send = $("#send"), fileInput = $("#file-input");
+  var files = [], busy = false, queued = null;
+  var chatId = form ? form.dataset.chat || "" : "";
+  var SEND_ICON = send ? send.innerHTML : "";
+  var STOP_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="1.5"/></svg>';
 
-      // Palette
-      this.paletteOverlay = document.getElementById("slash-palette-overlay");
-      this.paletteSearch = document.getElementById("palette-search");
-      this.paletteList = document.getElementById("palette-list");
-
-      // Gauges
-      this.cpuFill = document.getElementById("cpu-gauge-fill");
-      this.cpuVal = document.getElementById("cpu-gauge-val");
-      this.ramFill = document.getElementById("ram-gauge-fill");
-      this.ramVal = document.getElementById("ram-gauge-val");
-      this.gpuFill = document.getElementById("gpu-gauge-fill");
-      this.gpuVal = document.getElementById("gpu-gauge-val");
-
-      // Active Agent & Task
-      this.agentName = document.getElementById("active-agent-name");
-      this.agentDesc = document.getElementById("active-agent-desc");
-      this.agentBadge = document.getElementById("active-agent-badge");
-      this.taskTitle = document.getElementById("current-task-title");
-      this.taskPercent = document.getElementById("current-task-percent");
-      this.taskFill = document.getElementById("current-task-fill");
-      this.taskDetail = document.getElementById("current-task-detail");
-
-      // Window controls
-      this.winMin = document.getElementById("win-min-btn");
-      this.winMax = document.getElementById("win-max-btn");
-      this.winClose = document.getElementById("win-close-btn");
-    }
-
-    bindEvents() {
-      // Command submission
-      if (this.cmdForm) {
-        this.cmdForm.addEventListener("submit", (e) => {
-          e.preventDefault();
-          this.submitCommand();
-        });
+  function grow() { if (!input) return; input.style.height = "auto"; input.style.height = Math.min(input.scrollHeight, input.clientHeight && parseFloat(getComputedStyle(input).maxHeight) || 9999) + "px"; }
+  function sendState() {
+    if (!send) return;
+    var ready = (input.value.trim() || files.length) && !busy;
+    send.classList.toggle("ready", !!ready);
+    send.classList.toggle("stop", busy);
+    send.innerHTML = busy ? STOP_ICON : SEND_ICON;
+    send.title = busy ? "Stop the reply (Esc)" : "Send (Enter)";
+    send.setAttribute("aria-label", busy ? "Stop the reply" : "Send");
+  }
+  function setBusy(b) {
+    if (b === busy) return;
+    busy = b; sendState();
+    if (!b && queued) { var q = queued; queued = null; $("#queued").hidden = true; submit(q.text, q.files); }
+  }
+  function fmtSize(n) { return n < 1024 ? n + " B" : n < 1048576 ? (n / 1024).toFixed(0) + " KB" : (n / 1048576).toFixed(1) + " MB"; }
+  function renderFiles() {
+    var box = $("#files"); if (!box) return;
+    box.innerHTML = ""; box.hidden = !files.length;
+    files.forEach(function (f, i) {
+      var chip = document.createElement("div"); chip.className = "file";
+      var ext = (f.name.split(".").pop() || "").slice(0, 4);
+      if (/^image\//.test(f.type)) { var img = document.createElement("img"); img.alt = ""; img.src = URL.createObjectURL(f); chip.appendChild(img); }
+      else { var ico = document.createElement("span"); ico.className = "ico"; ico.textContent = ext; chip.appendChild(ico); }
+      var meta = document.createElement("div"); meta.className = "meta";
+      var b = document.createElement("b"); b.textContent = f.name; meta.appendChild(b);
+      var s = document.createElement("span"); s.textContent = fmtSize(f.size) + " · " + (ext || "file").toUpperCase(); meta.appendChild(s);
+      if (/^text\/|\.(md|csv|txt|py|js|json|ts|html|css|log)$/i.test(f.type + " " + f.name) && f.size < 200000) {
+        var pre = document.createElement("pre"); meta.appendChild(pre);
+        f.slice(0, 300).text().then(function (t) { pre.textContent = t; });
       }
-
-      // Enter key submission
-      if (this.cmdInput) {
-        this.cmdInput.addEventListener("keydown", (e) => {
-          if (e.key === "Enter" && !e.shiftKey) {
-            e.preventDefault();
-            this.submitCommand();
-          } else if (e.key === "/" && (this.cmdInput.value === "" || this.cmdInput.selectionStart === 0)) {
-            // Open slash command palette
-            setTimeout(() => this.openSlashPalette(), 10);
-          }
-        });
-      }
-
-      // Slash indicator click
-      if (this.slashIndicator) {
-        this.slashIndicator.addEventListener("click", () => this.openSlashPalette());
-      }
-
-      // Palette search filtering
-      if (this.paletteSearch) {
-        this.paletteSearch.addEventListener("input", (e) => this.filterSlashCommands(e.target.value));
-        this.paletteSearch.addEventListener("keydown", (e) => this.handlePaletteKeydown(e));
-      }
-
-      // Close palette on backdrop click
-      if (this.paletteOverlay) {
-        this.paletteOverlay.addEventListener("click", (e) => {
-          if (e.target === this.paletteOverlay) {
-            this.closeSlashPalette();
-          }
-        });
-      }
-
-      // Global Escape
-      document.addEventListener("keydown", (e) => {
-        if (e.key === "Escape") {
-          this.closeSlashPalette();
-        }
-      });
-
-      // Quick action pills
-      document.querySelectorAll(".quick-action-pill, .quick-actions .chip").forEach((pill) => {
-        pill.addEventListener("click", () => {
-          const action = pill.getAttribute("data-action");
-          this.handleQuickAction(action);
-        });
-      });
-
-      // Window controls
-      if (this.winMin) this.winMin.addEventListener("click", () => this.sendWindowAction("minimize"));
-      if (this.winMax) this.winMax.addEventListener("click", () => this.sendWindowAction("maximize"));
-      if (this.winClose) this.winClose.addEventListener("click", () => this.sendWindowAction("close"));
-
-      // Mic button
-      if (this.micBtn) {
-        this.micBtn.addEventListener("click", () => this.toggleVoice());
-      }
-    }
-
-    async initSlashCommands() {
-      try {
-        const resp = await fetch("/api/v3/slash-commands");
-        if (resp.ok) {
-          this.slashCommands = await resp.json();
-          this.renderPaletteList(this.slashCommands);
-        }
-      } catch (err) {
-        console.warn("Failed to load slash commands", err);
-      }
-    }
-
-    openSlashPalette() {
-      if (!this.paletteOverlay) return;
-      this.paletteOverlay.hidden = false;
-      if (this.paletteSearch) {
-        this.paletteSearch.value = "";
-        this.paletteSearch.focus();
-      }
-      this.selectedSlashIndex = 0;
-      this.renderPaletteList(this.slashCommands);
-    }
-
-    closeSlashPalette() {
-      if (!this.paletteOverlay) return;
-      this.paletteOverlay.hidden = true;
-      if (this.cmdInput) {
-        this.cmdInput.focus();
-      }
-    }
-
-    renderPaletteList(commands) {
-      if (!this.paletteList) return;
-      this.paletteList.innerHTML = "";
-
-      if (commands.length === 0) {
-        this.paletteList.innerHTML = '<div style="padding:12px;color:var(--text-muted);font-size:13px;text-align:center;">No matching commands</div>';
-        return;
-      }
-
-      commands.forEach((cmd, idx) => {
-        const item = document.createElement("div");
-        item.className = `palette-item ${idx === this.selectedSlashIndex ? "selected" : ""}`;
-        item.innerHTML = `
-          <div class="palette-item-left">
-            <span class="palette-cmd-badge">${cmd.command}</span>
-            <span class="palette-cmd-desc">${cmd.description}</span>
-          </div>
-          <span class="palette-cmd-shortcut">${cmd.label}</span>
-        `;
-        item.addEventListener("click", () => {
-          this.applyCommand(cmd.command);
-        });
-        this.paletteList.appendChild(item);
-      });
-    }
-
-    filterSlashCommands(query) {
-      const q = (query || "").toLowerCase().trim();
-      const filtered = this.slashCommands.filter(
-        (c) => c.command.toLowerCase().includes(q) || c.label.toLowerCase().includes(q) || c.description.toLowerCase().includes(q)
-      );
-      this.selectedSlashIndex = 0;
-      this.renderPaletteList(filtered);
-    }
-
-    handlePaletteKeydown(e) {
-      const items = this.paletteList ? this.paletteList.querySelectorAll(".palette-item") : [];
-      if (e.key === "ArrowDown") {
-        e.preventDefault();
-        this.selectedSlashIndex = Math.min(this.selectedSlashIndex + 1, items.length - 1);
-        this.updatePaletteSelection(items);
-      } else if (e.key === "ArrowUp") {
-        e.preventDefault();
-        this.selectedSlashIndex = Math.max(this.selectedSlashIndex - 1, 0);
-        this.updatePaletteSelection(items);
-      } else if (e.key === "Enter") {
-        e.preventDefault();
-        const selected = items[this.selectedSlashIndex];
-        if (selected) {
-          selected.click();
-        }
-      }
-    }
-
-    updatePaletteSelection(items) {
-      items.forEach((item, idx) => {
-        if (idx === this.selectedSlashIndex) {
-          item.classList.add("selected");
-          item.scrollIntoView({ block: "nearest" });
-        } else {
-          item.classList.remove("selected");
-        }
-      });
-    }
-
-    applyCommand(cmdText) {
-      this.closeSlashPalette();
-      if (this.cmdInput) {
-        this.cmdInput.value = cmdText + " ";
-        this.cmdInput.focus();
-        this.cmdInput.setSelectionRange(this.cmdInput.value.length, this.cmdInput.value.length);
-      }
-    }
-
-    handleQuickAction(action) {
-      switch (action) {
-        case "code":
-          this.applyCommand("/code");
-          break;
-        case "research":
-          this.applyCommand("/research");
-          break;
-        case "automate":
-          this.applyCommand("/automate");
-          break;
-        case "pc":
-          this.applyCommand("/pc");
-          break;
-        case "more":
-          this.openSlashPalette();
-          break;
-        default:
-          break;
-      }
-    }
-
-    async submitCommand() {
-      if (!this.cmdInput || this.isSubmitting) return;
-      const text = this.cmdInput.value.trim();
-      if (!text) return;
-
-      this.isSubmitting = true;
-      if (window.orbitalViz) {
-        window.orbitalViz.setState("working");
-      }
-
-      try {
-        const resp = await fetch("/api/v3/command", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-CSRF-Token": this.csrfToken
-          },
-          body: JSON.stringify({ text })
-        });
-
-        if (resp.ok) {
-          this.cmdInput.value = "";
-          // Trigger immediate state refresh
-          this.pollState();
-        } else {
-          console.error("Command execution failed", resp.status);
-        }
-      } catch (err) {
-        console.error("Failed to submit command", err);
-      } finally {
-        this.isSubmitting = false;
-        setTimeout(() => {
-          if (window.orbitalViz) {
-            window.orbitalViz.setState("idle");
-          }
-        }, 1200);
-      }
-    }
-
-    toggleVoice() {
-      if (window.orbitalViz) {
-        const isListening = window.orbitalViz.state === "listen";
-        window.orbitalViz.setState(isListening ? "idle" : "listen");
-      }
-    }
-
-    async sendWindowAction(action) {
-      try {
-        await fetch(`/api/v3/window/${action}`, {
-          method: "POST",
-          headers: { "X-CSRF-Token": this.csrfToken }
-        });
-      } catch (err) {
-        console.warn(`Window action ${action} failed`, err);
-      }
-    }
-
-    startTelemetryLoop() {
-      this.pollTelemetry();
-      setInterval(() => {
-        if (document.visibilityState === "visible") {
-          this.pollTelemetry();
-        }
-      }, 2500);
-    }
-
-    async pollTelemetry() {
-      try {
-        const resp = await fetch("/api/v3/telemetry");
-        if (!resp.ok) return;
-        const data = await resp.json();
-
-        // 1. CPU
-        if (this.cpuVal && this.cpuFill) {
-          const cpu = Math.round(data.cpu || 0);
-          this.cpuVal.textContent = `${cpu}%`;
-          const offset = GAUGE_CIRCUMFERENCE - (cpu / 100) * GAUGE_CIRCUMFERENCE;
-          this.cpuFill.style.strokeDashoffset = offset;
-        }
-
-        // 2. RAM
-        if (this.ramVal && this.ramFill) {
-          const ramPct = Math.round(data.ram?.percent || 0);
-          this.ramVal.textContent = `${ramPct}%`;
-          const offset = GAUGE_CIRCUMFERENCE - (ramPct / 100) * GAUGE_CIRCUMFERENCE;
-          this.ramFill.style.strokeDashoffset = offset;
-        }
-
-        // 3. GPU
-        if (this.gpuVal && this.gpuFill) {
-          if (data.gpu && typeof data.gpu.percent === "number") {
-            const gpuPct = Math.round(data.gpu.percent);
-            this.gpuVal.textContent = `${gpuPct}%`;
-            const offset = GAUGE_CIRCUMFERENCE - (gpuPct / 100) * GAUGE_CIRCUMFERENCE;
-            this.gpuFill.style.strokeDashoffset = offset;
-          } else {
-            this.gpuVal.textContent = "N/A";
-            this.gpuFill.style.strokeDashoffset = GAUGE_CIRCUMFERENCE;
-          }
-        }
-      } catch (err) {
-        // Silently tolerate temporary polling errors
-      }
-    }
-
-    startStateLoop() {
-      this.pollState();
-      setInterval(() => {
-        if (document.visibilityState === "visible") {
-          this.pollState();
-        }
-      }, 3000);
-    }
-
-    async pollState() {
-      try {
-        const resp = await fetch("/api/v3/state");
-        if (!resp.ok) return;
-        const data = await resp.json();
-
-        // Update Active Agent
-        if (data.active_agent) {
-          if (this.agentName) this.agentName.textContent = data.active_agent.name;
-          if (this.agentDesc) this.agentDesc.textContent = data.active_agent.description;
-          if (this.agentBadge) {
-            this.agentBadge.textContent = data.active_agent.status_text || "Ready";
-            if (data.active_agent.status === "working") {
-              this.agentBadge.style.color = "var(--accent-orange)";
-              this.agentBadge.style.backgroundColor = "rgba(255, 146, 43, 0.15)";
-            } else {
-              this.agentBadge.style.color = "var(--status-green)";
-              this.agentBadge.style.backgroundColor = "rgba(52, 211, 153, 0.12)";
-            }
-          }
-        }
-
-        // Update Current Task
-        if (data.current_task) {
-          if (this.taskTitle) this.taskTitle.textContent = data.current_task.title;
-          const pct = Math.round(data.current_task.progress || 100);
-          if (this.taskPercent) this.taskPercent.textContent = `${pct}%`;
-          if (this.taskFill) this.taskFill.style.width = `${pct}%`;
-          if (this.taskDetail) this.taskDetail.textContent = data.current_task.detail || "";
-        }
-      } catch (err) {
-        // Silently tolerate
-      }
+      chip.appendChild(meta);
+      var x = document.createElement("button"); x.type = "button"; x.textContent = "×"; x.title = "Remove " + f.name;
+      x.setAttribute("aria-label", "Remove " + f.name);
+      x.addEventListener("click", function () { files.splice(i, 1); renderFiles(); sendState(); });
+      chip.appendChild(x); box.appendChild(chip);
+    });
+    if (files.length > 1) {
+      var clear = document.createElement("button"); clear.type = "button"; clear.className = "clear"; clear.textContent = "Clear all";
+      clear.addEventListener("click", function () { files = []; renderFiles(); sendState(); }); box.appendChild(clear);
     }
   }
+  function addFiles(list) { Array.prototype.forEach.call(list || [], function (f) { files.push(f); }); renderFiles(); sendState(); if (input) input.focus(); }
 
-  // Initialize on DOM load
-  document.addEventListener("DOMContentLoaded", () => {
-    window.prometheusV3 = new PrometheusV3App();
+  function submit(text, extra) {
+    text = (text || "").trim(); extra = extra || [];
+    if (!text && !extra.length) return;
+    var body = new FormData(); body.append("text", text); if (chatId) body.append("chat_id", chatId);
+    extra.forEach(function (f) { body.append("files", f, f.name); });
+    if (send) send.disabled = true;
+    post("/api/v3/send", body).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (j) { return [r, j]; });
+    }).then(function (rj) {
+      var r = rj[0], j = rj[1];
+      if (!r.ok) { toast(j.error || "Couldn't send that.", true); return; }
+      if (String(j.chat_id) === String(chatId)) { setBusy(true); if (window.htmx) htmx.trigger("#messages", "refresh"); refreshMessages(); }
+      else location.href = j.url;
+    }).catch(function () { toast("Prometheus isn't answering. Is it still running?", true); })
+      .finally(function () { if (send) send.disabled = false; });
+  }
+  function refreshMessages() {
+    var m = $("#messages"); if (!m || !window.htmx) return;
+    htmx.ajax("GET", "/c/" + m.dataset.chat + "/messages", { target: "#messages", swap: "innerHTML" });
+  }
+  function stopReply() {
+    if (!chatId) return;
+    post("/api/v3/chats/" + chatId + "/stop").then(function () { toast("Stopping after the current step…"); });
+  }
+  if (form) {
+    form.addEventListener("submit", function (e) {
+      e.preventDefault();
+      if (busy) { stopReply(); return; }
+      var text = input.value, extra = files.slice();
+      if (!text.trim() && !extra.length) return;
+      store("prom-last", text);
+      input.value = ""; files = []; renderFiles(); grow(); sendState();
+      submit(text, extra);
+    });
+    input.addEventListener("input", function () { grow(); sendState(); slashUpdate(); });
+    input.addEventListener("keydown", function (e) {
+      if (slashKeys(e)) return;
+      if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
+        e.preventDefault();
+        if (busy && (input.value.trim() || files.length)) {         // queue it: sent when the reply finishes
+          queued = { text: input.value, files: files.slice() };
+          $("#queued").textContent = "Queued: sends when this reply finishes"; $("#queued").hidden = false;
+          input.value = ""; files = []; renderFiles(); grow(); sendState(); return;
+        }
+        form.requestSubmit();
+      } else if (e.key === "ArrowUp" && !input.value) {             // edit the last message
+        var last = store("prom-last"); if (last) { e.preventDefault(); input.value = last; grow(); sendState(); }
+      }
+    });
+    var plus = $("#plus"), plusMenu = $("#plus-menu");
+    plus.addEventListener("click", function () {
+      var open = plusMenu.hidden; closeMenus(); plusMenu.hidden = !open; plus.setAttribute("aria-expanded", String(open));
+    });
+    $$("button[data-accept]", plusMenu).forEach(function (b) {
+      b.addEventListener("click", function () {
+        fileInput.accept = b.dataset.accept === "*" ? "" : b.dataset.accept; plusMenu.hidden = true; fileInput.click();
+      });
+    });
+    fileInput.addEventListener("change", function () { addFiles(fileInput.files); fileInput.value = ""; });
+    var chip = $("#model-chip");
+    if (chip) chip.addEventListener("change", function () {
+      var f = new FormData(); f.append("head", chip.value);
+      post("/settings/head", f).then(function (r) { toast(r.ok ? "Answers now come from: " + chip.options[chip.selectedIndex].text : "Couldn't switch the AI.", !r.ok); });
+    });
+    sendState();
+  }
+  // drag and drop anywhere
+  var drop = $("#drop"), depth = 0;
+  window.addEventListener("dragenter", function (e) { if (!form || !e.dataTransfer || [].indexOf.call(e.dataTransfer.types, "Files") < 0) return; depth++; drop.hidden = false; });
+  window.addEventListener("dragleave", function () { depth = Math.max(0, depth - 1); if (!depth) drop.hidden = true; });
+  window.addEventListener("dragover", function (e) { if (form) e.preventDefault(); });
+  window.addEventListener("drop", function (e) { if (!form) return; e.preventDefault(); depth = 0; drop.hidden = true; addFiles(e.dataTransfer.files); });
+
+  // quick actions: fill the command bar
+  function fill(text) { if (!input) return; input.value = text; input.focus(); input.setSelectionRange(text.length, text.length); grow(); sendState(); }
+  $$("[data-fill]").forEach(function (b) { b.addEventListener("click", function () { closeMenus(); fill(b.dataset.fill); }); });
+  var more = $("#more"), moreMenu = $("#more-menu");
+  if (more) more.addEventListener("click", function () {
+    var open = moreMenu.hidden; closeMenus(); moreMenu.hidden = !open; more.setAttribute("aria-expanded", String(open));
+    var r = more.getBoundingClientRect(), pr = more.parentElement.getBoundingClientRect();
+    moreMenu.style.left = (r.left - pr.left) + "px"; moreMenu.style.top = (r.bottom - pr.top + 8) + "px";
   });
+
+  // ---- "/" commands ----------------------------------------------------------------------------------------
+  var slash = $("#slash"), slashList = $("#slash-list"), slashSel = 0, slashItems = [];
+  function runCommand(c) {
+    closeMenus();
+    if (c.kind === "fill") fill(c.value);
+    else if (c.kind === "go") location.href = c.value;
+    else if (c.kind === "do" && c.value === "stop") { if (input) input.value = ""; busy ? stopReply() : toast("Nothing is running in this chat."); sendState(); }
+  }
+  function drawList(listEl, items, sel, onPick) {
+    listEl.innerHTML = "";
+    if (!items.length) { var n = document.createElement("div"); n.className = "none"; n.textContent = "No match"; listEl.appendChild(n); return; }
+    var group = null;
+    items.forEach(function (c, i) {
+      if (c.group !== group) { group = c.group; var g = document.createElement("div"); g.className = "group"; g.textContent = group; listEl.appendChild(g); }
+      var b = document.createElement("button"); b.type = "button"; b.className = "item" + (i === sel ? " sel" : "");
+      b.setAttribute("role", "option"); b.setAttribute("aria-selected", String(i === sel));
+      if (c.command) { var code = document.createElement("code"); code.textContent = c.command; b.appendChild(code); }
+      var bb = document.createElement("b"); bb.textContent = c.label; b.appendChild(bb);
+      var sp = document.createElement("span"); sp.textContent = c.description || ""; b.appendChild(sp);
+      b.addEventListener("mousedown", function (e) { e.preventDefault(); onPick(c); });
+      listEl.appendChild(b);
+    });
+    var cur = listEl.querySelector(".sel"); if (cur) cur.scrollIntoView({ block: "nearest" });
+  }
+  function slashUpdate(force) {
+    if (!slash || !input) return;
+    var v = input.value;
+    if (!force && !/^\/\S*$/.test(v)) { slash.hidden = true; return; }
+    var q = v.slice(1).toLowerCase();
+    slashItems = (data.commands || []).filter(function (c) {
+      return !q || c.command.slice(1).indexOf(q) === 0 || c.label.toLowerCase().indexOf(q) >= 0;
+    });
+    slashSel = Math.min(slashSel, Math.max(0, slashItems.length - 1));
+    slash.hidden = false; drawList(slashList, slashItems, slashSel, runCommand);
+  }
+  function slashKeys(e) {
+    if (!slash || slash.hidden) return false;
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault(); slashSel = (slashSel + (e.key === "ArrowDown" ? 1 : -1) + slashItems.length) % Math.max(1, slashItems.length);
+      drawList(slashList, slashItems, slashSel, runCommand); return true;
+    }
+    if (e.key === "Enter" || e.key === "Tab") { e.preventDefault(); if (slashItems[slashSel]) runCommand(slashItems[slashSel]); return true; }
+    if (e.key === "Escape") { e.preventDefault(); slash.hidden = true; return true; }
+    return false;
+  }
+
+  // ---- Ctrl+K: search everything --------------------------------------------------------------------------
+  var pal = $("#palette"), palInput = $("#palette-input"), palList = $("#palette-list"), palSel = 0, palItems = [];
+  function palAll() {
+    var out = $$("#nav a").map(function (a) { return { group: "Pages", label: a.textContent.trim(), description: "Open", kind: "go", value: a.getAttribute("href") }; });
+    out.push({ group: "Pages", label: "Settings", description: "Open", kind: "go", value: "/settings" });
+    (data.chats || []).forEach(function (c) { out.push({ group: "Chats", label: c[1], description: "Open chat", kind: "go", value: "/c/" + c[0] }); });
+    out.push({ group: "Chats", label: "Search all chats", description: "Chats page", kind: "go", value: "/v3/chats" });
+    (data.commands || []).forEach(function (c) { out.push(Object.assign({}, c, { group: "Commands" })); });
+    return out;
+  }
+  function palDraw() {
+    var q = palInput.value.trim().toLowerCase();
+    palItems = palAll().filter(function (c) { return !q || (c.label + " " + (c.command || "") + " " + (c.description || "")).toLowerCase().indexOf(q) >= 0; });
+    palSel = Math.min(palSel, Math.max(0, palItems.length - 1));
+    drawList(palList, palItems, palSel, function (c) { pal.hidden = true; if (c.kind === "fill" && !input) location.href = "/"; else runCommand(c); });
+  }
+  function openPalette() { closeMenus(); pal.hidden = false; palInput.value = ""; palSel = 0; palDraw(); palInput.focus(); }
+  if (pal) {
+    palInput.addEventListener("input", function () { palSel = 0; palDraw(); });
+    palInput.addEventListener("keydown", function (e) {
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); palSel = (palSel + (e.key === "ArrowDown" ? 1 : -1) + palItems.length) % Math.max(1, palItems.length); palDraw(); }
+      else if (e.key === "Enter") { e.preventDefault(); var c = palItems[palSel]; if (c) { pal.hidden = true; runCommand(c); } }
+      else if (e.key === "Escape") { e.preventDefault(); pal.hidden = true; }
+    });
+  }
+
+  // ---- keyboard shortcuts --------------------------------------------------------------------------------
+  document.addEventListener("keydown", function (e) {
+    var mod = e.ctrlKey || e.metaKey;
+    if (mod && e.key.toLowerCase() === "k") { e.preventDefault(); openPalette(); return; }
+    if (mod && e.key === "/") { e.preventDefault(); if (input) { input.focus(); if (!input.value) input.value = "/"; slashUpdate(true); } return; }
+    if (mod && e.key.toLowerCase() === "l") { e.preventDefault(); if (input) input.focus(); return; }
+    if (mod && e.key.toLowerCase() === "n") { e.preventDefault(); location.href = "/"; return; }
+    if (mod && /^[0-9]$/.test(e.key)) {
+      var n = e.key === "0" ? 10 : +e.key, link = $('#nav a[data-key="' + n + '"]');
+      if (link) { e.preventDefault(); location.href = link.getAttribute("href"); } return;
+    }
+    if (e.key === "F11") { e.preventDefault(); win("fullscreen"); return; }
+    if (e.key === "Escape") {                         // menus first, then the reply, then fullscreen
+      if (closeMenus()) { e.preventDefault(); return; }
+      if (busy) { e.preventDefault(); stopReply(); return; }
+      if (desktop && fullscreen) { win("fullscreen"); fullscreen = false; }
+    }
+    if ((e.key === "ArrowDown" || e.key === "ArrowUp") && document.activeElement && document.activeElement.closest("#nav")) {
+      e.preventDefault(); var links = $$("#nav a"), i = links.indexOf(document.activeElement);
+      links[(i + (e.key === "ArrowDown" ? 1 : -1) + links.length) % links.length].focus();
+    }
+  });
+
+  // ---- desktop window buttons (only inside the Prometheus window, never in a browser) ------------------------
+  var desktop = false, fullscreen = true;
+  function win(action) { if (!desktop) return; post("/api/v3/window/" + action).then(function (r) { if (!r.ok) toast("The window didn't respond.", true); }); }
+  function desktopReady() { desktop = true; var w = $("#win-controls"); if (w) w.hidden = false; }
+  if (window.pywebview) desktopReady(); else window.addEventListener("pywebviewready", desktopReady);
+  $$("[data-win]").forEach(function (b) { b.addEventListener("click", function () { win(b.dataset.win); if (b.dataset.win === "maximize") fullscreen = false; }); });
+
+  // ---- notifications ---------------------------------------------------------------------------------------
+  var bell = $("#bell"), notes = $("#notes");
+  if (bell) bell.addEventListener("click", function () {
+    var open = notes.hidden; closeMenus(); if (!open) return;
+    notes.hidden = false; bell.setAttribute("aria-expanded", "true");
+    fetch("/api/v3/notifications", { credentials: "same-origin" }).then(function (r) { return r.json(); }).then(function (list) {
+      var box = $("#notes-list"); box.innerHTML = "";
+      if (!list.length) { box.innerHTML = '<div class="note muted">No notifications yet.</div>'; return; }
+      list.forEach(function (n) {
+        var d = document.createElement("div"); d.className = "note" + (n.read ? "" : " unread");
+        var w = document.createElement("div"); w.className = "when"; w.textContent = new Date(n.at * 1000).toLocaleString();
+        var t = document.createElement("div"); t.textContent = n.text; d.appendChild(t); d.appendChild(w); box.appendChild(d);
+      });
+      post("/api/v3/notifications/read"); $("#bell-badge").hidden = true;
+    });
+  });
+
+  // ---- right panel: real readings ---------------------------------------------------------------------------
+  var GAUGE = 'M 8 46 A 35 35 0 0 1 78 46';
+  function gauge(label, pct, text) {
+    var len = 110, off = len - len * Math.max(0, Math.min(100, pct)) / 100;
+    return '<div class="gauge"><svg viewBox="0 0 86 52"><path class="track" d="' + GAUGE + '" fill="none" stroke-width="6" stroke-linecap="round"/>' +
+      '<path class="fill" d="' + GAUGE + '" fill="none" stroke-width="6" stroke-linecap="round" stroke-dasharray="' + len + '" stroke-dashoffset="' + off.toFixed(1) + '"/></svg>' +
+      '<div class="label">' + label + '</div><div class="value">' + text + '</div></div>';
+  }
+  function telemetry() {
+    if (!visible() || !$("#gauges") || app.classList.contains("no-panel")) return;
+    fetch("/api/v3/telemetry", { credentials: "same-origin" }).then(function (r) { return r.json(); }).then(function (t) {
+      var g = [];
+      if (t.cpu != null) g.push(gauge("CPU", t.cpu, Math.round(t.cpu) + "%"));
+      if (t.ram) g.push(gauge("RAM", t.ram.percent, Math.round(t.ram.percent) + "%"));
+      if (t.gpu) g.push(gauge("GPU", t.gpu.percent, Math.round(t.gpu.percent) + "%"));
+      if (t.temp_c != null) g.push(gauge("Temp", t.temp_c, Math.round(t.temp_c) + "°"));
+      if (t.disk && g.length < 6) g.push(gauge("Disk", t.disk.percent, Math.round(t.disk.percent) + "%"));
+      $("#gauges").innerHTML = g.join("");
+      var f = [];
+      if (t.ram) f.push(["Memory", t.ram.used_gb.toFixed(1) + " / " + t.ram.total_gb.toFixed(1) + " GB"]);
+      if (t.disk) f.push(["Disk free", t.disk.free_gb + " GB"]);
+      if (t.net) f.push(["Network", "↓ " + t.net.down_kbps + " KB/s  ↑ " + t.net.up_kbps + " KB/s"]);
+      if (t.gpu) f.push(["GPU", t.gpu.model]);
+      $("#facts").innerHTML = f.map(function (x) { return "<dt>" + x[0] + "</dt><dd>" + x[1].replace(/</g, "&lt;") + "</dd>"; }).join("");
+      $("#system-card").hidden = !g.length && !f.length;
+    }).catch(function () {});
+  }
+  var lastTask = null;
+  function esc(s) { var d = document.createElement("div"); d.textContent = s == null ? "" : String(s); return d.innerHTML; }
+  function state() {
+    if (!visible()) return;
+    fetch("/api/v3/state", { credentials: "same-origin" }).then(function (r) { return r.json(); }).then(function (s) {
+      var dot = $("#online-dot"); if (dot) { dot.className = "dot " + (s.online ? "ok" : s.status === "paused" ? "warn" : "bad"); $("#online-label").textContent = s.status_label; }
+      var badge = $("#bell-badge"); if (badge) badge.hidden = !s.unread;
+      var a = s.active_agent, t = s.current_task;
+      if ($("#agent-box")) $("#agent-box").innerHTML = a ? '<div><div class="who">' + esc(a.name) + '</div><div class="what">' + esc(a.description) + '</div></div><span class="spinner" aria-hidden="true"></span>' : '<span class="idle">Nothing running</span>';
+      if ($("#task-box")) $("#task-box").innerHTML = t ? '<div>' + esc(t.title) + '</div>' + (t.progress != null ?
+        '<div class="progress"><div class="track"><i style="width:' + t.progress + '%"></i></div><span>' + Math.round(t.progress) + '%</span></div>' :
+        '<div class="what muted">' + esc(t.detail) + '</div>') : '<span class="idle">No task running</span>';
+      var mine = t && String(t.chat_id) === String(chatId);
+      setBusy(!!mine);
+      if (window.PromSphere) {
+        if (t) PromSphere.setState(a && a.name !== "Planning" ? "tool" : "thinking");
+        else if (lastTask) PromSphere.setState("done");
+        else PromSphere.setState("idle");
+      }
+      lastTask = t;
+    }).catch(function () {
+      var dot = $("#online-dot"); if (dot) { dot.className = "dot bad"; $("#online-label").textContent = "Can't reach Prometheus"; }
+    });
+  }
+  state(); telemetry();
+  setInterval(state, 2000); setInterval(telemetry, 3000);
+  document.addEventListener("visibilitychange", function () { if (visible()) { state(); telemetry(); } });
+
+  // ---- chat page: keep the newest message in view; copy buttons ---------------------------------------------
+  var msgs = $("#messages");
+  if (msgs) {
+    msgs.scrollTop = msgs.scrollHeight;
+    document.body.addEventListener("htmx:afterSwap", function (e) { if (e.target === msgs) { msgs.scrollTop = msgs.scrollHeight; setBusy(!!$(".working", msgs)); } });
+    msgs.addEventListener("click", function (e) {
+      var b = e.target.closest("[data-copy]"); if (!b) return;
+      var body = b.closest(".msg").querySelector(".body");
+      navigator.clipboard.writeText(body.innerText).then(function () { toast("Copied."); });
+    });
+    setBusy(!!$(".working", msgs));
+  }
+  if (input && input.autofocus) input.focus();
 })();

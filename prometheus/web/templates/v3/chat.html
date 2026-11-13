@@ -1,0 +1,13 @@
+{% extends "v3/layout.html" %}
+{% block title %}{{ chat_title }} · Prometheus{% endblock %}
+{% block topbar %}<canvas data-sphere="mini" aria-hidden="true"></canvas><b>{{ chat_title }}</b>{% endblock %}
+{% block content %}
+<section class="chat">
+  <div class="messages" id="messages" data-chat="{{ chat_id }}"
+       hx-get="/c/{{ chat_id }}/messages" hx-trigger="every 2s [document.visibilityState === 'visible']"
+       hx-vals='js:{have: document.querySelectorAll("#messages .msg, #messages .ask").length, busy: document.querySelector("#messages .working") ? 1 : 0}'>
+    {% include "v3/messages.html" %}
+  </div>
+  {% with autofocus = True %}{% include "v3/command_bar.html" %}{% endwith %}
+</section>
+{% endblock %}

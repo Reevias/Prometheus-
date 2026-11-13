@@ -1,0 +1,26 @@
+{% from "v3/icons.html" import icon %}
+<form class="command" id="command" data-chat="{{ chat_id or '' }}" autocomplete="off">
+  <div class="files" id="files" hidden></div>
+  <div class="queued" id="queued" hidden></div>
+  <div class="palette inline" id="slash" hidden role="listbox" aria-label="Commands"><div class="list" id="slash-list"></div>
+    <div class="keys">↑ ↓ to move · Enter to choose · Esc to close</div></div>
+  <div class="bar">
+    <button type="button" class="plus" id="plus" title="Add files" aria-label="Add files" aria-haspopup="menu" aria-expanded="false">{{ icon("plus") }}</button>
+    <div class="menu" id="plus-menu" role="menu" hidden style="bottom: calc(100% + 8px); left: 0">
+      <button type="button" role="menuitem" data-accept="*">{{ icon("files") }}Add files</button>
+      <button type="button" role="menuitem" data-accept="image/png,image/jpeg,image/webp">{{ icon("image") }}Add images</button>
+      <button type="button" role="menuitem" data-accept=".pdf,.txt,.md,.docx,.doc,.rtf,.odt,.pptx,.xlsx,.xls,.csv,.ods,.tsv">{{ icon("doc") }}Add documents</button>
+      <button type="button" role="menuitem" data-accept=".py,.js,.ts,.tsx,.jsx,.java,.c,.h,.cpp,.hpp,.cs,.go,.rs,.rb,.php,.html,.css,.json,.yaml,.yml,.toml,.xml,.sh,.ps1,.bat,.sql,.kt,.swift,.ipynb,.lua,.r,.dart,.vue,.svelte,.ini,.cfg,.log,.zip">{{ icon("code") }}Add code files</button>
+    </div>
+    <input type="file" id="file-input" multiple hidden>
+    <label class="sr" for="command-input">Message</label>
+    <textarea id="command-input" name="text" rows="1" placeholder="Ask Prometheus anything…" {% if autofocus %}autofocus{% endif %}></textarea>
+    {% if heads %}
+    <select class="model-chip" id="model-chip" title="The AI that answers (Settings → AI has more)" aria-label="The AI that answers">
+      <option value="" {{ 'selected' if not head }}>Automatic</option>
+      {% for entry, label in heads %}<option value="{{ entry }}" {{ 'selected' if entry == head }}>{{ label }}</option>{% endfor %}
+    </select>
+    {% endif %}
+    <button type="submit" class="send" id="send" title="Send (Enter)" aria-label="Send">{{ icon("send") }}</button>
+  </div>
+</form>

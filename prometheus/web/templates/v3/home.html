@@ -1,0 +1,29 @@
+{% extends "v3/layout.html" %}
+{% from "v3/icons.html" import icon %}
+{% block content %}
+<section class="home">
+  <canvas class="hero-sphere" id="hero-sphere" data-sphere="hero" aria-hidden="true"></canvas>
+  <h1 class="hero-title">Prometheus</h1>
+  <p class="hero-sub" id="greeting" data-owner="{{ owner }}">Your Personal AI System</p>
+  {% with chat_id = None, autofocus = True %}{% include "v3/command_bar.html" %}{% endwith %}
+  <div class="quick" role="group" aria-label="Quick actions">
+    <button type="button" class="chip" data-fill="Help me with this code: ">{{ icon("code") }}Code</button>
+    <button type="button" class="chip" data-fill="Research ">{{ icon("research") }}Research</button>
+    <button type="button" class="chip" data-fill="Every day at 8 am, ">{{ icon("automations") }}Automate</button>
+    <button type="button" class="chip" id="more" aria-haspopup="menu" aria-expanded="false">{{ icon("grid") }}More</button>
+    <div class="menu" id="more-menu" role="menu" hidden>
+      <button type="button" role="menuitem" data-fill="Summarise the file ">{{ icon("doc") }}Summarise a file</button>
+      <button type="button" role="menuitem" data-fill="Write ">{{ icon("write") }}Write</button>
+      <button type="button" role="menuitem" data-fill="Analyse this data: ">{{ icon("chart") }}Analyse data</button>
+      <button type="button" role="menuitem" data-fill="Explain simply: ">{{ icon("bulb") }}Explain</button>
+      <button type="button" role="menuitem" data-fill="Make a plan for ">{{ icon("list") }}Plan</button>
+      <button type="button" role="menuitem" data-fill="Find the file that ">{{ icon("folder-search") }}Search my files</button>
+    </div>
+  </div>
+  {% if chats %}
+  <div class="recent" aria-label="Recent chats">
+    {% for cid, title in chats[:5] %}<a href="/c/{{ cid }}" title="{{ title }}">{{ title }}</a>{% endfor %}
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

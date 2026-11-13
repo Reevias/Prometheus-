@@ -1,0 +1,65 @@
+{% from "v3/icons.html" import icon %}
+<!doctype html>
+<html lang="en" data-motion="auto">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Prometheus{% endblock %}</title>
+  <link rel="icon" type="image/png" href="/static/favicon.png">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <meta name="theme-color" content="#0B0B10">
+  <script>try{var m=localStorage.getItem("prom-motion");if(m)document.documentElement.dataset.motion=m}catch(e){}</script>
+  <link rel="stylesheet" href="/static/v3/tokens.css">
+  <link rel="stylesheet" href="/static/v3/theme.css">
+  <script src="/static/htmx.min.js"></script>
+  <script src="/static/v3/sphere.js" defer></script>
+  <script src="/static/v3/app.js" defer></script>
+</head>
+<body data-csrf="{{ csrf }}" data-page="{{ active }}" hx-headers='{"X-CSRF-Token": "{{ csrf }}"}'>
+<div class="app" id="app">
+  {% include "v3/sidebar.html" %}
+  <header class="topbar pywebview-drag-region">
+    <div class="topbar-title">{% block topbar %}{% endblock %}</div>
+    <div class="topbar-tools">
+      <button type="button" class="icon-btn bell" id="bell" title="Notifications" aria-label="Notifications" aria-haspopup="true">
+        {{ icon("bell") }}<span class="badge" id="bell-badge" hidden></span></button>
+      <button type="button" class="icon-btn" id="panel-toggle" title="Show or hide the right panel" aria-label="Show or hide the right panel">{{ icon("panel") }}</button>
+      <div class="win" id="win-controls" hidden>
+        <button type="button" class="icon-btn" data-win="minimize" title="Minimize" aria-label="Minimize">{{ icon("minimize") }}</button>
+        <button type="button" class="icon-btn" data-win="maximize" title="Maximize" aria-label="Maximize">{{ icon("maximize") }}</button>
+        <button type="button" class="icon-btn close" data-win="close" title="Close (Prometheus keeps running in the tray)" aria-label="Close">{{ icon("close") }}</button>
+      </div>
+    </div>
+    <div class="dropdown" id="notes" hidden role="dialog" aria-label="Notifications"><h3>Notifications</h3><div id="notes-list"></div></div>
+  </header>
+  <main class="main" id="main">
+    {% block content %}{% endblock %}
+    <div class="wave" aria-hidden="true">
+      <svg viewBox="0 0 1440 260" preserveAspectRatio="none">
+        <defs>
+          <linearGradient id="wv-a" x1="0" x2="1"><stop offset="0" stop-color="var(--orange)" stop-opacity="0"/><stop offset=".45" stop-color="var(--orange)" stop-opacity=".9"/><stop offset=".75" stop-color="var(--amber)" stop-opacity=".7"/><stop offset="1" stop-color="var(--orange)" stop-opacity="0"/></linearGradient>
+          <linearGradient id="wv-b" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="var(--orange)" stop-opacity=".16"/><stop offset="1" stop-color="var(--orange)" stop-opacity="0"/></linearGradient>
+          <filter id="wv-glow" x="-10%" y="-50%" width="120%" height="200%"><feGaussianBlur stdDeviation="3"/></filter>
+        </defs>
+        <g class="drift">
+          <path d="M0 210 C 300 150 520 250 820 190 S 1250 90 1440 150 L1440 260 L0 260Z" fill="url(#wv-b)"/>
+          <path d="M0 210 C 300 150 520 250 820 190 S 1250 90 1440 150" stroke="url(#wv-a)" stroke-width="5" fill="none" filter="url(#wv-glow)"/>
+          <path d="M0 210 C 300 150 520 250 820 190 S 1250 90 1440 150" stroke="url(#wv-a)" stroke-width="1.4" fill="none"/>
+          <path d="M0 232 C 360 190 640 262 960 214 S 1320 160 1440 186" stroke="url(#wv-a)" stroke-width="1" fill="none" opacity=".55"/>
+          <path d="M0 190 C 280 170 600 222 900 176 S 1300 120 1440 130" stroke="url(#wv-a)" stroke-width=".8" fill="none" opacity=".4"/>
+        </g>
+      </svg>
+    </div>
+  </main>
+  {% include "v3/right_panel.html" %}
+</div>
+<div class="palette" id="palette" hidden role="dialog" aria-label="Search everything">
+  <input type="text" id="palette-input" placeholder="Search pages, chats, settings and commands…" autocomplete="off" aria-label="Search">
+  <div class="list" id="palette-list" role="listbox"></div>
+  <div class="keys">↑ ↓ to move · Enter to open · Esc to close</div>
+</div>
+<div class="drop" id="drop" hidden>Drop files to attach them</div>
+<div class="toasts" id="toasts" aria-live="polite"></div>
+<script type="application/json" id="v3-data">{{ {"commands": commands, "chats": chats, "owner": owner} | tojson }}</script>
+</body>
+</html>

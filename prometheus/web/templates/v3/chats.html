@@ -1,0 +1,20 @@
+{% extends "v3/layout.html" %}
+{% block title %}Chats · Prometheus{% endblock %}
+{% block topbar %}<b>Chats</b>{% endblock %}
+{% block content %}
+<section class="page">
+  <h1>Chats</h1>
+  <form method="get" action="/v3/chats"><input class="search" type="search" name="q" value="{{ q }}" placeholder="Search all chats" aria-label="Search all chats"></form>
+  {% if q %}
+    <div class="rows">
+    {% for hit in hits %}<a href="/c/{{ hit.chat_id }}">{{ hit.title or titles.get(hit.chat_id, "Chat") }}<span>{% for s in hit.snippets[:1] %}{{ s.text|marked }}{% endfor %}</span></a>
+    {% else %}<p class="muted">Nothing found for “{{ q }}”.</p>{% endfor %}
+    </div>
+  {% else %}
+    <div class="rows">
+    {% for cid, title in all_chats %}<a href="/c/{{ cid }}">{{ title }}</a>
+    {% else %}<p class="muted">No chats yet. Ask something on Home to start one.</p>{% endfor %}
+    </div>
+  {% endif %}
+</section>
+{% endblock %}
