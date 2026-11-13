@@ -45,11 +45,14 @@ a { color: var(--amber); }
 }
 .brand { display: flex; align-items: center; gap: 14px; padding: 4px 6px 22px; }
 .brand canvas { width: 54px; height: 54px; flex: none; }
-.brand-name { letter-spacing: 0.32em; font-size: 17px; font-weight: 500; }
+.brand-name { letter-spacing: 0.28em; font-size: 16px; font-weight: 500; white-space: nowrap; }
 .brand-ver { color: var(--orange); font-size: 14px; margin-top: 2px; }
+.brand-text { min-width: 0; overflow: hidden; }
 .collapse {
   margin-left: auto; border: 0; background: none; color: var(--muted); padding: 6px; border-radius: 8px;
+  flex: none; width: 32px; height: 32px; display: grid; place-items: center;
 }
+.collapse svg { width: 18px; height: 18px; stroke: currentColor; }
 .collapse:hover { color: var(--text); background: rgb(var(--text-rgb) / 0.05); }
 .nav { display: flex; flex-direction: column; gap: 4px; overflow: hidden auto; min-height: 0; }
 .nav a {
@@ -197,6 +200,7 @@ a { color: var(--amber); }
 .bar .plus svg, .bar .mic svg, .bar .send svg { width: 24px; height: 24px; stroke: currentColor; }
 .bar .plus:hover, .bar .mic:hover { background: rgb(var(--orange-rgb) / 0.1); }
 .bar .send { background: rgb(var(--text-rgb) / 0.06); color: var(--muted); }
+.bar .send:disabled { cursor: default; opacity: 0.55; }
 .bar .send.ready { background: var(--orange); color: var(--base); box-shadow: 0 0 18px rgb(var(--orange-rgb) / 0.55); }
 .bar .send.stop { background: rgb(var(--orange-rgb) / 0.16); color: var(--orange); border: 1px solid var(--orange); }
 .model-chip {

@@ -69,6 +69,7 @@
     if (!send) return;
     var ready = (input.value.trim() || files.length) && !busy;
     send.classList.toggle("ready", !!ready);
+    send.disabled = !ready && !busy;          // nothing to send yet: the button is off, not dead
     send.classList.toggle("stop", busy);
     send.innerHTML = busy ? STOP_ICON : SEND_ICON;
     send.title = busy ? "Stop the reply (Esc)" : "Send (Enter)";
@@ -122,7 +123,7 @@
       if (String(j.chat_id) === String(chatId)) { setBusy(true); if (window.htmx) htmx.trigger("#messages", "refresh"); refreshMessages(); }
       else location.href = j.url;
     }).catch(function () { toast("Prometheus isn't answering. Is it still running?", true); })
-      .finally(function () { if (send) send.disabled = false; });
+      .finally(function () { sendState(); });
   }
   function refreshMessages() {
     var m = $("#messages"); if (!m || !window.htmx) return;

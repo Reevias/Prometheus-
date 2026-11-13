@@ -49,3 +49,20 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "the laptop voice didn't install" }
       - name: Every add-on loads
         run: python -c "import webview, pystray, playwright, fastembed, rapidocr, vosk, faster_whisper, kokoro_onnx, sounddevice, numpy, onnxruntime; print('all add-ons load')"
+
+  clickthrough:
+    # M2: a real browser clicks every control of the new interface; a dead button or page error fails the run
+    name: Click through the interface (Windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+      - name: Install
+        run: |
+          pip install -e ".[dev,browser]"
+          python -m playwright install chromium
+      - name: Click everything
+        run: python -m pytest -q -rs tests/test_v3_clickthrough.py

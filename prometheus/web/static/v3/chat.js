@@ -37,6 +37,7 @@
         var a = document.createElement("a");
         a.href = URL.createObjectURL(new Blob([code.textContent], { type: "text/plain" }));
         a.download = "prometheus-code." + (EXT[lang] || "txt"); a.click(); setTimeout(function () { URL.revokeObjectURL(a.href); }, 2000);
+        toast("Downloaded " + a.download);
       });
       bar.appendChild(copy); bar.appendChild(dl); pre.insertBefore(bar, code);
     });
