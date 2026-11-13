@@ -134,7 +134,7 @@ def test_connect_obsidian_needs_password(app_client):
 def test_theme_toggle_and_text_select(app_client):
     client, services = app_client()
     login(client)
-    page = client.get("/").text
+    page = client.get("/?view=classic").text  # light mode: classic screen only (M2 is dark only)
     assert "theme-toggle" in page and 'localStorage.getItem("prom-theme")' in page
     assert "prom-theme" in client.get("/login").text
     css = client.get("/static/style.css").text

@@ -15,8 +15,11 @@ def test_installable_app(app_client):
     sw = client.get("/sw.js")
     assert sw.status_code == 200 and "showNotification" in sw.text
     login(client)
-    page = client.get("/").text
+    phone = {"user-agent": "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 Mobile Safari/537.36"}
+    page = client.get("/", headers=phone).text            # phones keep the phone screen (the new one is desktop)
     assert 'rel="manifest"' in page and "phone.js" in page and "Hold to talk" in page and 'name="file"' in page
+    desktop = client.get("/").text
+    assert 'rel="manifest"' in desktop and 'data-sphere="hero"' in desktop
 
 
 def test_push_subscribe_and_send(app_client):

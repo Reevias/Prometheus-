@@ -39,7 +39,7 @@ def test_desktop_opens_local_window_and_stops_server(tmp_home):
     assert code == 0 and wv.started and server.started and server.stopped
     title, url, kw = wv.windows[0]
     assert title.startswith("Prometheus") and url == "http://127.0.0.1:54321/"
-    assert kw["background_color"] == "#0d0709"
+    assert kw["background_color"] == "#0B0B10"     # the 3.0 palette base (M2)
 
 
 def test_desktop_server_stops_even_if_window_crashes(tmp_home):
@@ -67,9 +67,11 @@ def test_cli_app_needs_password(tmp_home, capsys):
 def test_pages_only_refresh_while_visible(app_client):
     client, services = app_client()
     login(client)
-    page = client.get("/").text
+    page = client.get("/?view=classic").text + client.get(f"/c/{services.store.create_chat('x')}").text
     triggers = re.findall(r'hx-trigger="([^"]*every[^"]*)"', page)
     assert triggers and all("visibilityState" in t for t in triggers)
+    js = client.get("/static/v3/app.js").text            # the new interface polls from its script, also only when visible
+    assert "function visible()" in js and "if (!visible()" in js
 
 
 def test_theme_has_no_downloads(app_client):
