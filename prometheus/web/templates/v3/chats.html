@@ -1,6 +1,19 @@
 {% extends "v3/layout.html" %}
+{% from "v3/icons.html" import icon %}
 {% block title %}Chats · Prometheus{% endblock %}
 {% block topbar %}<b>Chats</b>{% endblock %}
+{% macro row(cid, title, pinned=False, archived=False) -%}
+<div class="chat-row" data-id="{{ cid }}">
+  <a href="/c/{{ cid }}">{% if pinned %}<span class="pin-mark" title="Pinned">●</span>{% endif %}{{ title }}</a>
+  <div class="row-actions">
+    <button type="button" data-flag="pin" title="{{ 'Unpin' if pinned else 'Pin to the top' }}">{{ "Unpin" if pinned else "Pin" }}</button>
+    <button type="button" hx-post="/chats/{{ cid }}/rename" hx-prompt="New name for this chat" title="Rename">Rename</button>
+    <button type="button" data-flag="archive" title="{{ 'Bring back' if archived else 'Hide from Home and search' }}">{{ "Unarchive" if archived else "Archive" }}</button>
+    <button type="button" class="danger" hx-post="/chats/{{ cid }}/delete"
+            hx-confirm="Delete this chat and everything Prometheus kept from it? This can't be undone." title="Delete">Delete</button>
+  </div>
+</div>
+{%- endmacro %}
 {% block content %}
 <section class="page">
   <h1>Chats</h1>
@@ -11,10 +24,24 @@
     {% else %}<p class="muted">Nothing found for “{{ q }}”.</p>{% endfor %}
     </div>
   {% else %}
+    {% if pinned %}<h2 class="section">Pinned</h2><div class="rows">{% for cid, title in pinned %}{{ row(cid, title, pinned=True) }}{% endfor %}</div>{% endif %}
+    <h2 class="section">{{ "Others" if pinned else "All chats" }}</h2>
     <div class="rows">
-    {% for cid, title in all_chats %}<a href="/c/{{ cid }}">{{ title }}</a>
-    {% else %}<p class="muted">No chats yet. Ask something on Home to start one.</p>{% endfor %}
+    {% for cid, title in recent %}{{ row(cid, title) }}{% else %}<p class="muted">No chats yet. Ask something on Home to start one.</p>{% endfor %}
     </div>
+    {% if archived %}
+    <details class="archived"><summary>Archived ({{ archived | length }})</summary>
+      <div class="rows">{% for cid, title in archived %}{{ row(cid, title, archived=True) }}{% endfor %}</div>
+    </details>
+    {% endif %}
   {% endif %}
 </section>
+<script>
+document.addEventListener("click", function (e) {
+  var b = e.target.closest("[data-flag]"); if (!b) return;
+  var id = b.closest(".chat-row").dataset.id;
+  fetch("/api/v3/chats/" + id + "/" + b.dataset.flag, { method: "POST", credentials: "same-origin",
+        headers: { "X-CSRF-Token": document.body.dataset.csrf } }).then(function (r) { if (r.ok) location.reload(); });
+});
+</script>
 {% endblock %}

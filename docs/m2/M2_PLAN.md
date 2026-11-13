@@ -60,8 +60,8 @@ Markdown, Word, spreadsheets and CSV, code files, ZIP (contents listed; text fil
 audio (transcribed with the existing speech engines). Limits in Settings, defaults **25 MB per file, 10 files per
 message**. Stored in the chat's project if it has one, otherwise temporary, kept **7 days**.
 
-**Chat** — many chats (Chats section): search, rename, delete, pin, archive; export Markdown, JSON, PDF. Streaming
-text. Markdown, code with syntax highlighting and copy, tables, charts, LaTeX math, inline images, Mermaid
+**Chat** — many chats (Chats section): search, rename, delete, pin, archive; export Markdown, JSON, PDF. (Streaming
+text moved to M3.) Markdown, code with syntax highlighting and copy, tables, charts, LaTeX math, inline images, Mermaid
 diagrams. Message actions: copy, edit and resend, regenerate, retry on failure, stop, delete, thumbs up/down.
 Copy message / code / as Markdown, download code block, download generated files, click images to enlarge, save
 image. **Visible progress only**: status line, tool cards (name, inputs, result), step list, elapsed time,
@@ -135,7 +135,7 @@ laptop; merge `prometheus-v3` into `main`; release.
 ## Later milestones (hidden in M2, never shown as dead buttons)
 | Milestone | Moved there |
 |---|---|
-| M3 model routing | default model per agent/task type; smarter automatic agent choice |
+| M3 model routing | default model per agent/task type; smarter automatic agent choice; **answers appearing word by word (streaming)**, moved from M2.1 by the owner (13 Nov) |
 | M4 repo-to-skill | sandboxed skill test-runs, dependency checks, skills created from repos; **the owner's repos** (large, linked to other repos): read safely, map how they connect, turn useful parts into skills and searchable knowledge (builds on M1's file tools for finding files and self-editing) |
 | M5 many agents | creating your own agents, the full multi-agent view, conversation branching |
 | M6 runtime / Cloudroom | Control PC; Cloudroom as an optional place to run tasks (already planned) **and to store Prometheus and its knowledge for free** (repo knowledge, backups, sync). Encrypted on the laptop before upload; the laptop copy stays the main one; works offline if Cloudroom is down |

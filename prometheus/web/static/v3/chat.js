@@ -116,6 +116,19 @@
   document.body.addEventListener("htmx:afterSwap", function (e) { if (e.target === msgs) enhance(); });
   enhance();
 
+  // generated images: click to enlarge, save
+  var box = document.getElementById("lightbox");
+  document.addEventListener("click", function (e) {
+    var b = e.target.closest(".out-img");
+    if (b && box) {
+      document.getElementById("lightbox-img").src = b.dataset.src; document.getElementById("lightbox-img").alt = b.dataset.name;
+      var save = document.getElementById("lightbox-save"); save.href = b.dataset.src + "?download=1"; save.download = b.dataset.name;
+      box.hidden = false; document.getElementById("lightbox-close").focus(); return;
+    }
+    if (box && !box.hidden && (e.target === box || e.target.id === "lightbox-close")) box.hidden = true;
+  });
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape" && box && !box.hidden) { e.stopPropagation(); box.hidden = true; } }, true);
+
   // export menu in the top bar
   var exp = document.getElementById("export"), menu = document.getElementById("export-menu");
   if (exp) exp.addEventListener("click", function (e) { e.stopPropagation(); menu.hidden = !menu.hidden; exp.setAttribute("aria-expanded", String(!menu.hidden)); });

@@ -6,10 +6,15 @@
   <a role="menuitem" href="/api/v3/chats/{{ chat_id }}/export?fmt=md" download>Markdown (.md)</a>
   <a role="menuitem" href="/api/v3/chats/{{ chat_id }}/export?fmt=pdf" download>PDF (.pdf)</a>
   <a role="menuitem" href="/api/v3/chats/{{ chat_id }}/export?fmt=json" download>JSON (.json)</a>
-</div>{% endblock %}
+</div><div class="lightbox" id="lightbox" hidden role="dialog" aria-label="Image">
+  <img id="lightbox-img" alt="">
+  <div class="lightbox-bar"><a id="lightbox-save" download>Save image</a><button type="button" id="lightbox-close">Close (Esc)</button></div>
+</div>
+{% endblock %}
 {% block scripts %}<script src="/static/v3/chat.js" defer></script>{% endblock %}
 {% block content %}
 <section class="chat">
+  <div id="chat-files" class="chat-files" hx-get="/c/{{ chat_id }}/files" hx-trigger="load, every 4s [document.visibilityState === 'visible']"></div>
   <div class="messages" id="messages" data-chat="{{ chat_id }}"
        hx-get="/c/{{ chat_id }}/messages" hx-trigger="every 2s [document.visibilityState === 'visible']"
        hx-vals='js:{have: document.querySelectorAll("#messages .msg, #messages .ask").length, busy: document.querySelector("#messages .working") ? 1 : 0}'>

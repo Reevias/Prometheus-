@@ -75,11 +75,24 @@ def register_routes(app: FastAPI, services: Services) -> None:
                     notes=store.chat_notes(chat_id), busy=busy, doing=current_step(chat_id) if busy else "")
 
     # ---- Prometheus 3.0 interface (M2) ---------------------------------------------------------------------------
+    def chat_flags() -> dict:
+        """Pinned and archived chats (kept as two lists of chat ids)."""
+        flags = store.kv_get("chat_flags", {})
+        flags = flags if isinstance(flags, dict) else {}
+        known = set(dict(store.chats()))
+        return {k: [i for i in flags.get(k, []) if isinstance(i, int) and i in known] for k in ("pinned", "archived")}
+
+    def visible_chats() -> list:
+        """Newest first, pinned on top, archived left out (they stay on the Chats page)."""
+        flags = chat_flags()
+        live = [c for c in store.chats() if c[0] not in flags["archived"]]
+        return [c for c in live if c[0] in flags["pinned"]] + [c for c in live if c[0] not in flags["pinned"]]
+
     def shell(request: Request, name: str, active: str, **ctx):
         from prometheus.services.ui_state import ui_state_service
         ui_state_service.services = services
         return page(request, name, active=active, owner=services.settings.owner_name,
-                    commands=ui_state_service.get_slash_commands(), chats=store.chats()[:8],
+                    commands=ui_state_service.get_slash_commands(), chats=visible_chats()[:8],
                     heads=head_choices(services.router), head=services.settings.head_model,
                     voice=services.voice is not None, **ctx)
 
@@ -147,12 +160,73 @@ def register_routes(app: FastAPI, services: Services) -> None:
                     doing=current_step(chat_id) if running else "", steps_by=steps_for(chat_id, msgs),
                     live_steps=running_steps(chat_id) if running else [])
 
+    IMAGE_TYPES = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp",
+                   ".gif": "image/gif"}
+
+    def chat_files(chat_id: int) -> list[dict]:
+        out = []
+        for o in store.outputs(chat_id):
+            p = Path(o["path"])
+            out.append({"id": o["id"], "name": p.name or o["path"], "path": o["path"], "kind": o.get("kind", ""),
+                        "is_dir": bool(o.get("is_dir")), "exists": p.exists(),
+                        "image": p.suffix.lower() in IMAGE_TYPES and p.is_file()})
+        return out
+
+    @app.get("/c/{chat_id}/files", response_class=HTMLResponse)
+    def v3_chat_files(request: Request, chat_id: int):
+        return page(request, "v3/files_strip.html", files=chat_files(chat_id), chat_id=chat_id)
+
+    @app.get("/api/v3/outputs/{output_id}/file")
+    def api_v3_output_file(output_id: int, download: int = 0):
+        """A file Prometheus made, for the chat's thumbnails and Download button. Only files recorded as outputs,
+        only if the path rules allow reading them, never folders."""
+        from fastapi.responses import FileResponse
+
+        from prometheus.safety.paths import PathBlocked
+
+        item = store.output(output_id)
+        if item is None:
+            return JSONResponse({"error": "Not found."}, status_code=404)
+        try:
+            path = services.policy.check_read(item["path"])
+        except PathBlocked:
+            return JSONResponse({"error": "That file can't be opened from here."}, status_code=403)
+        if not path.is_file():
+            return JSONResponse({"error": "That file isn't there any more."}, status_code=404)
+        image = IMAGE_TYPES.get(path.suffix.lower())
+        if download or not image:
+            return FileResponse(path, filename=path.name, content_disposition_type="attachment")
+        return FileResponse(path, media_type=image, filename=path.name, content_disposition_type="inline",
+                            headers={"Content-Security-Policy": "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'"})
+
     @app.get("/v3/chats", response_class=HTMLResponse)
     def v3_chats(request: Request, q: str = ""):
         q = q.strip()[:200]
         hits = store.search_chats(q) if q else []
-        return shell(request, "v3/chats.html", "chats", all_chats=store.chats(), q=q, hits=hits,
-                     titles=dict(store.chats()))
+        flags = chat_flags()
+        everything = store.chats()
+        return shell(request, "v3/chats.html", "chats", q=q, hits=hits, titles=dict(everything),
+                     pinned=[c for c in everything if c[0] in flags["pinned"] and c[0] not in flags["archived"]],
+                     recent=[c for c in everything if c[0] not in flags["pinned"] and c[0] not in flags["archived"]],
+                     archived=[c for c in everything if c[0] in flags["archived"]])
+
+    @app.post("/api/v3/chats/{chat_id}/pin")
+    def api_v3_chat_pin(chat_id: int):
+        return toggle_flag(chat_id, "pinned")
+
+    @app.post("/api/v3/chats/{chat_id}/archive")
+    def api_v3_chat_archive(chat_id: int):
+        return toggle_flag(chat_id, "archived")
+
+    def toggle_flag(chat_id: int, key: str):
+        """Pin / unpin, archive / unarchive a chat (each toggles)."""
+        if chat_id not in dict(store.chats()):
+            return JSONResponse({"error": "No such chat."}, status_code=404)
+        flags = chat_flags()
+        on = chat_id not in flags[key]
+        flags[key] = [i for i in flags[key] if i != chat_id] + ([chat_id] if on else [])
+        store.kv_set("chat_flags", flags)
+        return {key: on}
 
     @app.get("/api/v3/telemetry")
     def api_v3_telemetry():

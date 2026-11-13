@@ -312,3 +312,48 @@ def test_vendor_libraries_are_local_and_licensed():
     js = (WEB / "static/v3/chat.js").read_text(encoding="utf-8")
     assert 'securityLevel: "strict"' in js and "trust: false" in js and "/static/vendor/" in js
     assert "http://" not in js and "https://" not in js
+
+
+def test_chats_pin_archive_rename_delete(app_client):
+    client, services = app_client()
+    csrf = login(client)
+    h = {"X-CSRF-Token": csrf}
+    st = services.store
+    a, b, c = st.create_chat("Alpha"), st.create_chat("Beta"), st.create_chat("Gamma")
+    assert client.post(f"/api/v3/chats/{a}/pin", headers=h).json() == {"pinned": True}
+    assert client.post(f"/api/v3/chats/{b}/archive", headers=h).json() == {"archived": True}
+    page = client.get("/v3/chats").text
+    assert page.index("Pinned") < page.index("Alpha") < page.index("Gamma") < page.index("Archived (1)") < page.index("Beta")
+    home = client.get("/").text
+    assert "Beta" not in home.split('id="v3-data"')[0] and ">Alpha<" in home       # archived: not on Home; pinned first
+    assert client.post(f"/api/v3/chats/{b}/archive", headers=h).json() == {"archived": False}
+    assert client.post(f"/api/v3/chats/{a}/oops", headers=h).status_code == 404
+    client.post(f"/chats/{c}/rename", data={"title": "Physics revision"}, headers=h)
+    assert "Physics revision" in client.get("/v3/chats").text
+    client.post(f"/chats/{c}/delete", headers=h)
+    assert c not in dict(st.chats())
+
+
+def test_generated_files_strip_and_safe_serving(app_client, tmp_path):
+    client, services = app_client()
+    login(client)
+    st = services.store
+    cid = st.create_chat("c")
+    tid = st.create_task(cid, "make a chart")
+    img = services.home / "Documents" / "chart.png"
+    img.parent.mkdir(parents=True, exist_ok=True)
+    img.write_bytes(b"\x89PNG\r\n\x1a\n" + b"0" * 64)
+    st.add_output(tid, str(img), "created")
+    secret = services.home / ".ssh" / "id_rsa"
+    secret.parent.mkdir(parents=True, exist_ok=True)
+    secret.write_text("PRIVATE")
+    st.add_output(tid, str(secret), "found")
+    strip = client.get(f"/c/{cid}/files").text
+    assert "chart.png" in strip and "out-img" in strip
+    ids = {Path(o["path"]).name: o["id"] for o in st.outputs(cid)}
+    r = client.get(f"/api/v3/outputs/{ids['chart.png']}/file")
+    assert r.status_code == 200 and r.headers["content-type"] == "image/png" and "inline" in r.headers["content-disposition"]
+    d = client.get(f"/api/v3/outputs/{ids['chart.png']}/file?download=1")
+    assert "attachment" in d.headers["content-disposition"]
+    assert client.get(f"/api/v3/outputs/{ids['id_rsa']}/file").status_code == 403     # .ssh is never served
+    assert client.get("/api/v3/outputs/99999/file").status_code == 404
