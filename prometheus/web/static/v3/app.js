@@ -188,8 +188,45 @@
   if (more) more.addEventListener("click", function () {
     var open = moreMenu.hidden; closeMenus(); moreMenu.hidden = !open; more.setAttribute("aria-expanded", String(open));
     var r = more.getBoundingClientRect(), pr = more.parentElement.getBoundingClientRect();
-    moreMenu.style.left = (r.left - pr.left) + "px"; moreMenu.style.top = (r.bottom - pr.top + 8) + "px";
+    moreMenu.style.left = (r.left - pr.left) + "px";
+    var below = r.bottom + 8 + moreMenu.offsetHeight <= window.innerHeight - 8;   // open upward when there's no room
+    moreMenu.style.top = (below ? r.bottom - pr.top + 8 : r.top - pr.top - moreMenu.offsetHeight - 8) + "px";
   });
+
+  // customise quick actions
+  var qd = $("#quick-dialog"), qrows = $("#quick-rows"), qinfo = {};
+  try { qinfo = JSON.parse(($("#quick-data") || {}).textContent || "{}"); } catch (e) { qinfo = {}; }
+  function qRow(a) {
+    var row = document.createElement("div"); row.className = "quick-row";
+    var sel = document.createElement("select"); sel.setAttribute("aria-label", "Icon");
+    (qinfo.icons || []).forEach(function (n) { var o = document.createElement("option"); o.value = n; o.textContent = n; if (n === a.icon) o.selected = true; sel.appendChild(o); });
+    var label = document.createElement("input"); label.value = a.label || ""; label.placeholder = "Name"; label.maxLength = 24; label.setAttribute("aria-label", "Name");
+    var fill = document.createElement("input"); fill.value = a.fill || ""; fill.placeholder = "Text it puts in the command bar"; fill.maxLength = 200; fill.setAttribute("aria-label", "Text");
+    var up = document.createElement("button"); up.type = "button"; up.textContent = "↑"; up.title = "Move up";
+    up.addEventListener("click", function () { if (row.previousElementSibling) qrows.insertBefore(row, row.previousElementSibling); });
+    var del = document.createElement("button"); del.type = "button"; del.textContent = "Remove";
+    del.addEventListener("click", function () { row.remove(); });
+    [sel, label, fill, up, del].forEach(function (x) { row.appendChild(x); });
+    qrows.appendChild(row);
+  }
+  function qSave(actions) {
+    fetch("/api/v3/quick-actions", { method: "POST", credentials: "same-origin",
+      headers: { "X-CSRF-Token": csrf, "Content-Type": "application/json" }, body: JSON.stringify({ actions: actions }) })
+      .then(function (r) { if (r.ok) location.reload(); else toast("Couldn't save the quick actions.", true); });
+  }
+  if (qd) {
+    $("#customise").addEventListener("click", function () {
+      closeMenus(); qrows.innerHTML = ""; (qinfo.actions || []).forEach(qRow); qd.showModal();
+    });
+    $("#quick-add").addEventListener("click", function () { qRow({ label: "", fill: "", icon: "grid" }); qrows.lastChild.querySelector("input").focus(); });
+    $("#quick-cancel").addEventListener("click", function () { qd.close(); });
+    $("#quick-reset").addEventListener("click", function () { if (confirm("Use the original quick actions again?")) qSave([]); });
+    $("#quick-save").addEventListener("click", function () {
+      qSave($$(".quick-row", qrows).map(function (r) {
+        var f = r.querySelectorAll("input"); return { icon: r.querySelector("select").value, label: f[0].value, fill: f[1].value };
+      }).filter(function (x) { return x.label.trim() && x.fill.trim(); }));
+    });
+  }
 
   // ---- "/" commands ----------------------------------------------------------------------------------------
   var slash = $("#slash"), slashList = $("#slash-list"), slashSel = 0, slashItems = [];

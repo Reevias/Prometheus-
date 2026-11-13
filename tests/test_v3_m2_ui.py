@@ -357,3 +357,21 @@ def test_generated_files_strip_and_safe_serving(app_client, tmp_path):
     assert "attachment" in d.headers["content-disposition"]
     assert client.get(f"/api/v3/outputs/{ids['id_rsa']}/file").status_code == 403     # .ssh is never served
     assert client.get("/api/v3/outputs/99999/file").status_code == 404
+
+
+def test_quick_actions_customise(app_client):
+    from prometheus.services.ui_state import DEFAULT_QUICK
+    client, services = app_client()
+    csrf = login(client)
+    page = client.get("/").text
+    assert ">Code<" in page.replace("</svg>", ">") and 'id="customise"' in page
+    mine = [{"label": "Homework", "fill": "Check my homework: ", "icon": "doc"},
+            {"label": "<b>bad</b>", "fill": "x", "icon": "javascript:alert(1)"}, {"label": "", "fill": "empty label"}]
+    r = client.post("/api/v3/quick-actions", json={"actions": mine}, headers={"X-CSRF-Token": csrf})
+    saved = r.json()["actions"]
+    assert saved[0] == {"label": "Homework", "fill": "Check my homework: ", "icon": "doc"}
+    assert saved[1]["icon"] == "grid" and len(saved) == 2                      # unknown icon replaced, empty label dropped
+    page = client.get("/").text
+    assert 'data-fill="Check my homework: "' in page and "&lt;b&gt;bad" in page and "<b>bad" not in page
+    client.post("/api/v3/quick-actions", json={"actions": []}, headers={"X-CSRF-Token": csrf})
+    assert services.settings.quick_actions == [] and DEFAULT_QUICK[0]["label"] in client.get("/").text

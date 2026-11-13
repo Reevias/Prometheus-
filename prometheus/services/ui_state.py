@@ -44,6 +44,40 @@ COMMANDS: List[Dict[str, str]] = [
 ]
 
 
+# Home quick actions: the first three are buttons, the rest are in "More". The owner can change them (Customise).
+QUICK_ICONS = ("code", "research", "automations", "doc", "write", "chart", "bulb", "list", "folder-search", "memory",
+               "chats", "image", "grid")
+DEFAULT_QUICK: List[Dict[str, str]] = [
+    {"label": "Code", "fill": "Help me with this code: ", "icon": "code"},
+    {"label": "Research", "fill": "Research ", "icon": "research"},
+    {"label": "Automate", "fill": "Every day at 8 am, ", "icon": "automations"},
+    {"label": "Summarise a file", "fill": "Summarise the file ", "icon": "doc"},
+    {"label": "Write", "fill": "Write ", "icon": "write"},
+    {"label": "Analyse data", "fill": "Analyse this data: ", "icon": "chart"},
+    {"label": "Explain", "fill": "Explain simply: ", "icon": "bulb"},
+    {"label": "Plan", "fill": "Make a plan for ", "icon": "list"},
+    {"label": "Search my files", "fill": "Find the file that ", "icon": "folder-search"},
+]
+
+
+def clean_quick(items) -> List[Dict[str, str]]:
+    """The owner's quick actions, checked: at most 12, short labels and texts, known icons."""
+    out = []
+    for it in items if isinstance(items, list) else []:
+        if not isinstance(it, dict):
+            continue
+        label = str(it.get("label", "")).strip()[:24]
+        fill = str(it.get("fill", ""))[:200]
+        icon = it.get("icon") if it.get("icon") in QUICK_ICONS else "grid"
+        if label and fill.strip():
+            out.append({"label": label, "fill": fill, "icon": icon})
+    return out[:12]
+
+
+def quick_actions(settings) -> List[Dict[str, str]]:
+    return clean_quick(getattr(settings, "quick_actions", None)) or [dict(q) for q in DEFAULT_QUICK]
+
+
 class UIStateService:
     def __init__(self, services: Optional[Any] = None) -> None:
         self.services = services

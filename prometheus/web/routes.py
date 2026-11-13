@@ -106,7 +106,8 @@ def register_routes(app: FastAPI, services: Services) -> None:
             chats = store.chats()
             chat_id = chats[0][0] if chats else store.create_chat("First chat")
             return chat_page(request, chat_id)
-        return shell(request, "v3/home.html", "home")
+        from prometheus.services.ui_state import QUICK_ICONS, quick_actions
+        return shell(request, "v3/home.html", "home", quick=quick_actions(services.settings), quick_icons=QUICK_ICONS)
 
     @app.get("/v3")
     def v3_home():
@@ -366,6 +367,20 @@ def register_routes(app: FastAPI, services: Services) -> None:
     def api_v3_stop(chat_id: int):
         services.orchestrator.request_stop(chat_id)
         return {"stopping": chat_id in services.running}
+
+    @app.post("/api/v3/quick-actions")
+    async def api_v3_quick_actions(request: Request):
+        """Save the owner's quick actions (an empty list brings back the defaults)."""
+        from prometheus.services.ui_state import clean_quick
+
+        try:
+            body = await request.json()
+        except Exception:
+            return JSONResponse({"error": "That didn't look right."}, status_code=400)
+        items = clean_quick(body.get("actions") if isinstance(body, dict) else None)
+        services.settings = replace(services.settings, quick_actions=items)
+        save_settings(services.settings)
+        return {"actions": items}
 
     @app.post("/api/v3/profile")
     def api_v3_profile(name: str = Form("")):

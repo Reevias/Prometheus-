@@ -126,11 +126,12 @@ a { color: var(--amber); }
 /* ---- home ------------------------------------------------------------------------------------------------- */
 .home { flex: 1; min-height: 0; overflow: hidden auto; display: flex; flex-direction: column; align-items: center;
         padding: 0 32px 120px; position: relative; z-index: 1; }
+.home > * { flex-shrink: 0; }                    /* the column scrolls; nothing gets squashed */
 .hero-sphere { width: min(56vh, 500px); height: min(46vh, 410px); margin-top: 1vh; flex: none; }
 .hero-title { font-family: var(--font-display); font-size: clamp(40px, 5.2vh, 60px); font-weight: 400;
               letter-spacing: 0.01em; margin: -8px 0 2px; text-shadow: 0 0 30px rgb(var(--orange-rgb) / 0.18); }
 .hero-sub { color: var(--muted); font-size: clamp(17px, 2.3vh, 23px); margin: 0 0 clamp(26px, 6vh, 64px); }
-.quick { display: flex; flex-wrap: wrap; justify-content: center; gap: 16px; margin-top: 26px; }
+.quick { display: flex; flex-wrap: wrap; justify-content: center; gap: 16px; margin-top: 26px; position: relative; }
 .chip {
   display: inline-flex; align-items: center; gap: 10px; padding: 11px 22px; border-radius: 999px;
   background: rgb(var(--surface-rgb) / 0.7); border: 1px solid rgb(var(--text-rgb) / 0.12); color: var(--text);
@@ -138,7 +139,7 @@ a { color: var(--amber); }
 }
 .chip svg { width: 20px; height: 20px; stroke: currentColor; }
 .chip:hover { border-color: rgb(var(--orange-rgb) / 0.6); box-shadow: 0 0 16px rgb(var(--orange-rgb) / calc(0.15 * var(--glow))); }
-.recent { width: min(760px, 100%); margin-top: 34px; display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
+.recent { width: min(760px, 100%); margin-top: 34px; display: flex; flex-wrap: nowrap; overflow: hidden; gap: 10px; justify-content: center; }
 .recent a { color: var(--muted); font-size: 13px; text-decoration: none; padding: 6px 12px; border-radius: 999px;
             border: 1px solid rgb(var(--text-rgb) / 0.07); max-width: 240px; white-space: nowrap; overflow: hidden;
             text-overflow: ellipsis; }
@@ -403,6 +404,21 @@ a { color: var(--amber); }
 .pin-mark { color: var(--orange); font-size: 10px; margin-right: 8px; }
 .archived { margin-top: 24px; max-width: 900px; }
 .archived summary { color: var(--muted); cursor: pointer; margin-bottom: 10px; }
+
+/* ---- dialogs ---------------------------------------------------------------------------------------------- */
+.dialog { width: min(760px, 94vw); background: var(--surface); color: var(--text); border: 1px solid rgb(var(--orange-rgb) / 0.35);
+          border-radius: 18px; padding: 22px 24px; box-shadow: 0 30px 90px rgb(var(--shadow-rgb) / 0.6); }
+.dialog::backdrop { background: rgb(var(--base-rgb) / 0.7); }
+.dialog h2 { margin: 0 0 4px; font-weight: 500; }
+.dialog .muted { font-size: 13px; margin: 0 0 14px; }
+.quick-row { display: grid; grid-template-columns: 130px 160px 1fr auto auto; gap: 8px; margin-bottom: 8px; }
+.quick-row input, .quick-row select { background: var(--base); border: 1px solid rgb(var(--text-rgb) / 0.12); border-radius: 9px;
+                                       padding: 7px 10px; color: var(--text); min-width: 0; }
+.quick-row button, .dialog-bar button { border: 1px solid rgb(var(--text-rgb) / 0.14); background: none; border-radius: 9px; padding: 7px 12px; }
+.quick-row button:hover, .dialog-bar button:hover { border-color: var(--orange); }
+.dialog-bar { display: flex; gap: 8px; margin-top: 16px; align-items: center; }
+.dialog-bar .grow { flex: 1; }
+.dialog-bar .primary { background: var(--orange); color: var(--base); border-color: var(--orange); }
 
 /* ---- toasts ----------------------------------------------------------------------------------------------- */
 .toasts { position: fixed; right: 22px; bottom: 22px; z-index: 70; display: flex; flex-direction: column; gap: 10px; }
