@@ -42,9 +42,9 @@ a { color: var(--amber); }
   border-right: 1px solid rgb(var(--text-rgb) / 0.06);
   padding: 18px 16px 14px;
 }
-.brand { display: flex; align-items: center; gap: 14px; padding: 4px 6px 22px; }
-.brand canvas { width: 54px; height: 54px; flex: none; }
-.brand-name { letter-spacing: 0.28em; font-size: 16px; font-weight: 500; white-space: nowrap; }
+.brand { display: flex; align-items: center; gap: 10px; padding: 4px 6px 22px; }
+.brand canvas { width: 44px; height: 44px; flex: none; }
+.brand-name { letter-spacing: 0.18em; font-size: 15px; font-weight: 500; white-space: nowrap; }
 .brand-ver { color: var(--orange); font-size: 14px; margin-top: 2px; }
 .brand-text { min-width: 0; overflow: hidden; }
 .collapse {

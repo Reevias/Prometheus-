@@ -89,6 +89,7 @@ def register_routes(app: FastAPI, services: Services) -> None:
         return [c for c in live if c[0] in flags["pinned"]] + [c for c in live if c[0] not in flags["pinned"]]
 
     def shell(request: Request, name: str, active: str, status_code: int = 200, **ctx):
+        from prometheus.launcher import version as app_version
         from prometheus.services.ui_state import ui_state_service
         ui_state_service.services = services
         s = services.settings
@@ -96,7 +97,7 @@ def register_routes(app: FastAPI, services: Services) -> None:
                               "density": s.ui_density})
         base = {"owner": services.settings.owner_name, "commands": ui_state_service.get_slash_commands(),
                 "chats": visible_chats()[:8], "heads": head_choices(services.router), "head": services.settings.head_model,
-                "has_voice": services.voice is not None}
+                "has_voice": services.voice is not None, "app_version": app_version()}
         return page(request, name, status_code, active=active, **{**base, **ctx})
 
     PHONE = re.compile(r"Android|iPhone|iPad|Mobile", re.I)
@@ -1170,8 +1171,7 @@ def register_routes(app: FastAPI, services: Services) -> None:
         if request.query_params.get("view") == "classic" or PHONE.search(request.headers.get("user-agent", "")):
             return page(request, "settings.html", status_code, **ctx)
         from prometheus.config import data_dir
-        from prometheus.launcher import version as app_version
-        return shell(request, "v3/settings.html", "settings", status_code=status_code, app_version=app_version(),
+        return shell(request, "v3/settings.html", "settings", status_code=status_code,
                      data_folder=str(data_dir()), **ctx)
 
     def _mcp_config() -> str:

@@ -420,3 +420,12 @@ def test_safety_and_account_controls_are_in_the_new_look(app_client):
     services.killswitch.trigger("test")
     page = client.get("/").text
     assert 'hx-post="/kill/reset"' in page and ">Resume<" in page
+
+
+def test_sidebar_shows_the_real_version_and_no_made_up_badges(app_client):
+    from prometheus.launcher import version
+    client, _ = app_client()
+    login(client)
+    page = client.get("/").text
+    assert f"v{version()}" in page and "v3.0" not in page
+    assert "Saiveer" not in page and ">Pro<" not in page and "Control PC" not in page
