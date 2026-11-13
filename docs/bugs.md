@@ -2,7 +2,12 @@
 
 Every bug found and fixed, newest first, so the count is always exact. Add a line for each new one.
 
-**Total fixed: 49** (as of 12 November 2026)
+**Total fixed: 50** (as of 13 November 2026)
+
+## 13 November 2026 (1)
+| # | Bug | Fixed by |
+|---|---|---|
+| 50 | A calendar test started failing on 13 Nov (its sample birthday was on 12 Nov, so it had "passed") | the test uses its own fixed date |
 
 ## 12 November 2026 (7)
 | # | Bug | Fixed by |

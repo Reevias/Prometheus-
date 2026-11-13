@@ -140,6 +140,12 @@ def test_calendar_repeats_all_day_and_cancelled():
 
 
 def test_calendar_agent(make_ctx, monkeypatch):
+    from datetime import datetime
+
+    from prometheus.connectors.calendar_ics import day_range
+
+    # the test calendar is for the week of 9 Nov 2026: search from then, not from the real today (dates go stale)
+    monkeypatch.setattr(calendar_agent, "day_range", lambda when, now=None: day_range(when, datetime(2026, 11, 9)))
     monkeypatch.setattr(calendar_agent, "FETCH", lambda url: parse_ics(ICS))
     monkeypatch.setenv("CALENDAR_LINKS", "https://calendar.google.com/x.ics")
     res = calendar_agent.CalendarAgent().run("x", {"action": "search", "query": "birthday"}, make_ctx())
