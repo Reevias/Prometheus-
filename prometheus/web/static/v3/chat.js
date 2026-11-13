@@ -7,6 +7,7 @@
   if (!msgs) return;
   var chatId = msgs.dataset.chat, csrf = document.body.dataset.csrf || "";
   var toast = function (t, bad) { if (window.promToast) window.promToast(t, bad); };
+  var copyText = function (t, done) { if (window.promCopy) window.promCopy(t, done); };
   var loaded = {};
   function load(src, css) {
     if (loaded[src]) return loaded[src];
@@ -31,7 +32,7 @@
       var bar = document.createElement("div"); bar.className = "code-bar";
       var name = document.createElement("span"); name.textContent = lang || "code"; bar.appendChild(name);
       var copy = document.createElement("button"); copy.type = "button"; copy.textContent = "Copy";
-      copy.addEventListener("click", function () { navigator.clipboard.writeText(code.textContent).then(function () { toast("Code copied."); }); });
+      copy.addEventListener("click", function () { copyText(code.textContent, "Code copied."); });
       var dl = document.createElement("button"); dl.type = "button"; dl.textContent = "Download";
       dl.addEventListener("click", function () {
         var a = document.createElement("a");
@@ -96,9 +97,9 @@
     var b = e.target.closest("[data-act]"); if (!b) return;
     var msg = b.closest(".msg"), act = b.dataset.act, input = document.getElementById("command-input");
     if (act === "copy") {
-      navigator.clipboard.writeText(msg.querySelector(".body").innerText).then(function () { toast("Copied."); });
+      copyText(msg.querySelector(".body").innerText, "Copied.");
     } else if (act === "copy-md") {
-      navigator.clipboard.writeText(raw(msg)).then(function () { toast("Copied as Markdown."); });
+      copyText(raw(msg), "Copied as Markdown.");
     } else if (act === "edit" && input) {
       input.value = raw(msg); input.dispatchEvent(new Event("input")); input.focus();
     } else if (act === "regenerate" && input) {

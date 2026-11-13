@@ -140,6 +140,10 @@ def test_every_control_does_something_and_nothing_breaks(live, browser):
     # every load starts from the default layout: a click that shrinks the menu (remembered in the browser) would
     # otherwise move the buttons, and the next numbered click would land on a different one
     page.add_init_script("try { localStorage.clear(); } catch (e) {}")
+    # the clipboard refuses, as Windows' browser did on GitHub: Copy must say so, never throw an error
+    page.add_init_script("try { navigator.clipboard.writeText = function () {"
+                         " return Promise.reject(new DOMException('Write permission denied.', 'NotAllowedError')); };"
+                         " } catch (e) {}")
     errors, server_errors, problems = [], [], []
     page.on("pageerror", lambda e: errors.append(str(e)))
     seen = {"requests": 0, "asked": 0}                        # one listener each for the whole test

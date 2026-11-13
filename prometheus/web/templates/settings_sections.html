@@ -84,7 +84,7 @@
     </div>
     <p class="muted">{{ p.note }}{% if p.ready and p.model %} Using {{ p.model }}.{% endif %}
       {% if p.signup and not p.key_set %}Get a key at <code>{{ p.signup.replace("https://", "") }}</code>
-        <button type="button" class="link" onclick="navigator.clipboard.writeText('{{ p.signup }}'); this.textContent='Copied'">Copy address</button>{% endif %}</p>
+        <button type="button" class="link" onclick="var b=this; window.promCopy ? promCopy('{{ p.signup }}', 'Copied.') : navigator.clipboard.writeText('{{ p.signup }}').then(function(){b.textContent='Copied'}, function(){b.textContent='Copy failed'})">Copy address</button>{% endif %}</p>
     {% if p.key_name and p.supported %}
     <form class="row" hx-post="/settings/keys" hx-target="body">
       <input type="hidden" name="name" value="{{ p.key_name }}">
@@ -400,7 +400,7 @@
     repository Settings → Webhooks, content type JSON, events “Workflow runs”). Keep it secret. It works from this laptop; from the
     internet it needs a tunnel such as Tailscale Funnel.</p>
     <p style="margin:0"><code>{{ webhook_url }}</code>
-      <button type="button" class="link" onclick="navigator.clipboard.writeText('{{ webhook_url }}'); this.textContent='Copied'">Copy</button></p>
+      <button type="button" class="link" onclick="var b=this; window.promCopy ? promCopy('{{ webhook_url }}', 'Copied.') : navigator.clipboard.writeText('{{ webhook_url }}').then(function(){b.textContent='Copied'}, function(){b.textContent='Copy failed'})">Copy</button></p>
     <form hx-post="/settings/webhook/new" hx-target="body"><button type="submit">Make a new address</button></form>
   </div>
 

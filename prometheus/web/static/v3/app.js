@@ -18,6 +18,26 @@
     box.appendChild(t); setTimeout(function () { t.remove(); }, bad ? 7000 : 4000);
   }
   window.promToast = toast;
+  // Copy text. The browser may refuse the clipboard (Windows can, in some windows): then try the older way, and if
+  // that fails too, say so instead of pretending it worked.
+  function copyText(text, done) {
+    function fallback() {
+      var ta = document.createElement("textarea"), ok = false;
+      ta.value = text; ta.setAttribute("readonly", ""); ta.style.position = "fixed"; ta.style.opacity = "0";
+      document.body.appendChild(ta); ta.select();
+      try { ok = document.execCommand("copy"); } catch (e) { ok = false; }
+      ta.remove();
+      if (ok) toast(done); else toast("Couldn't copy. Select the text and press Ctrl+C.", true);
+    }
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(function () { toast(done); }, fallback);
+        return;
+      }
+    } catch (e) { /* fall through */ }
+    fallback();
+  }
+  window.promCopy = copyText;
   function visible() { return document.visibilityState === "visible"; }
   function closeMenus(except) {
     var closed = false;
@@ -465,7 +485,7 @@
     msgs.addEventListener("click", function (e) {
       var b = e.target.closest("[data-copy]"); if (!b) return;
       var body = b.closest(".msg").querySelector(".body");
-      navigator.clipboard.writeText(body.innerText).then(function () { toast("Copied."); });
+      copyText(body.innerText, "Copied.");
     });
     setBusy(!!$(".working", msgs));
   }
