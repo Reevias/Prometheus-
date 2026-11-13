@@ -1,9 +1,10 @@
 {% from "v3/icons.html" import icon %}
-{# Only pages that work are listed (no dead buttons). Agents, Projects, Automations, Research, Integrations, System
+{# Only pages that work are listed (no dead buttons). Projects, Automations, Research, Integrations, System
    and Files join as they are built (M2.2 / M2.3). Ctrl+1…Ctrl+0 open the first ten, in this order.
    Settings is the gear by your name and in your menu (click your name), not a menu item. #}
 {% set items = [
   ("home", "Home", "/"),
+  ("agents", "Agents", "/v3/agents"),
   ("chats", "Chats", "/v3/chats"),
   ("skills", "Skills", "/skills"),
   ("tasks", "Tasks", "/plans"),

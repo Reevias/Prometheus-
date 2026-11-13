@@ -147,6 +147,9 @@ PAID_YES = re.compile(r"^\W*(?:ok(?:ay)?[, ]+)?(?:yes|yeah|yep|sure|go ahead)?[,
 CODE_REQUEST = re.compile(r"\b(code|coding|script|python|javascript|typescript|java|c\+\+|rust|html|css|function|"
                           r"bug|debug|compile|program(?:me)?|algorithm|regex|sql|refactor|unit tests?|stack ?trace|"
                           r"traceback|pull request|commit|repo(?:sitory)?)\b", re.I)
+# "@research what's new in solar panels": the owner picks the agent for this message (M2.2). Enforced in code: the
+# planner only sees that agent and a plan naming any other one is refused.
+MENTION = re.compile(r"^\s*@([A-Za-z_]{2,30})\b[\s,:]*")
 
 
 def json_part(raw: str) -> str:
@@ -359,8 +362,13 @@ class Orchestrator:
         return "From earlier chats (only the matching parts):\n" + "\n".join(
             untrusted(h.context[:CHAT_PASSAGE_CHARS], h.title) for h in hits) + "\n\n"
 
-    def _plan(self, text: str, history: list[dict] | None = None, chat_id: int | None = None) -> Plan:
-        agents = "\n".join(f"- {name}: {cls.description}" for name, cls in self._usable_agents())
+    def _plan(self, text: str, history: list[dict] | None = None, chat_id: int | None = None, only: str = "") -> Plan:
+        usable = [(n, c) for n, c in self._usable_agents() if not only or n == only]
+        registry = dict(usable) if only else self.registry
+        agents = "\n".join(f"- {name}: {cls.description}" for name, cls in usable)
+        if only:
+            agents += (f"\n\nThe owner chose the {only} agent for this message (they wrote @{only}). Use only that "
+                       "agent, or answer directly when no step is needed.")
         system = f"{self._prompt('planner')}\n\nWriting rules:\n{self._style()}\n\nAgents:\n{agents}"
         catalog = self.skills.catalog_text() if self.skills else ""
         if catalog:
@@ -428,7 +436,7 @@ class Orchestrator:
                 raise                        # (only paid ones left: ask the owner)
             label = f"{reply.provider} · {reply.model}"
             try:
-                plan = validate_plan(reply.text, self.registry)
+                plan = validate_plan(reply.text, registry)
                 break
             except PlanError as e:
                 retry = messages + [{"role": "assistant", "content": reply.text or "(empty)"},
@@ -438,7 +446,7 @@ class Orchestrator:
                                              skip=skip)
                 label = f"{again.provider} · {again.model}"
                 try:
-                    plan = validate_plan(again.text, self.registry)
+                    plan = validate_plan(again.text, registry)
                     break
                 except PlanError as e2:
                     tried.append(label)
@@ -573,9 +581,10 @@ class Orchestrator:
         except Exception:
             pass
 
-    def _repair(self, text: str, st: dict, tries: list, agent_cls) -> dict | None:
+    def _repair(self, text: str, st: dict, tries: list, agent_cls, only: str = "") -> dict | None:
         """Ask the lead AI for ONE different way to reach the same goal, or None to stop."""
-        agents = "\n".join(f"- {name}: {cls.description}" for name, cls in self._usable_agents())
+        usable = [(n, c) for n, c in self._usable_agents() if not only or n == only]
+        agents = "\n".join(f"- {name}: {cls.description}" for name, cls in usable)
         lines = []
         for a, r in tries:
             hidden = getattr(self.registry.get(a["agent"]), "private_outputs", False)
@@ -599,7 +608,7 @@ class Orchestrator:
         try:
             plan = validate_plan(json.dumps({"answer": "", "remember": [], "steps": [{
                 "id": 1, "agent": data.get("agent", ""), "goal": str(data.get("goal") or st["goal"]),
-                "skill": "", "inputs": data.get("inputs") or [], "depends_on": []}]}), self.registry)
+                "skill": "", "inputs": data.get("inputs") or [], "depends_on": []}]}), dict(usable) if only else self.registry)
         except PlanError:
             return None
         nxt = plan.steps[0]
@@ -661,11 +670,22 @@ class Orchestrator:
             return self._finish(chat_id, task_id, "done", from_last_task(self.store, chat_id), "instant")
         from prometheus.quick import understand
 
+        only = ""
+        mention = MENTION.match(text or "") if not read_only and "<untrusted" not in text else None
+        if mention and mention.group(1).lower() in self.registry:
+            from prometheus.features import agent_blocked
+
+            only = mention.group(1).lower()
+            blocked = agent_blocked(getattr(self, "settings", None), only)
+            if blocked:
+                return self._finish(chat_id, task_id, "failed", f"I can't use @{only} now: {blocked}")
+            text = text[mention.end():].strip() or text
+
         try:
             # instant phrases are for the owner's own words only, never for text that carries outside content
             from prometheus.features import on as _feature_on
 
-            fast = (None if "<untrusted" in text or not _feature_on(getattr(self, "settings", None), "instant")
+            fast = (None if only or "<untrusted" in text or not _feature_on(getattr(self, "settings", None), "instant")
                     else understand(text, self.store))
         except Exception:
             fast = None
@@ -674,7 +694,7 @@ class Orchestrator:
         if fast is not None and fast.answer:                  # time, date, weather: no AI needed
             return self._finish(chat_id, task_id, "done", fast.answer, "instant")
         try:
-            plan = Plan(fast.steps, answer="") if fast is not None else self._plan(text, history, chat_id)
+            plan = Plan(fast.steps, answer="") if fast is not None else self._plan(text, history, chat_id, only=only)
         except PlanError as e:
             return self._finish(chat_id, task_id, "failed", f"I couldn't work out the steps for that: {e}")
         except (ProviderUnavailable, BudgetExceeded) as e:
@@ -742,7 +762,7 @@ class Orchestrator:
                     if res.status != "failed" or len(tries) + 1 >= self.step_tries:
                         break
                     tries.append((attempt, res))
-                    nxt = self._repair(text, st, tries, agent_cls)
+                    nxt = self._repair(text, st, tries, agent_cls, only=only)
                     if nxt is None:
                         break
                     attempt = {**nxt, "id": st["id"], "depends_on": st["depends_on"]}

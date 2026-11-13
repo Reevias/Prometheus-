@@ -21,6 +21,7 @@ from prometheus.memory.store import MARK_END, MARK_START
 from prometheus.models.router import head_choices
 from prometheus.memory.titles import PLACEHOLDERS, clean_title, quick_title
 from prometheus.web.render import render_message
+from prometheus.web.agents_view import short as short_about
 from prometheus.config import KEY_NAMES, delete_secret, save_settings, secrets_set, set_secret
 
 WEB = Path(__file__).resolve().parent
@@ -97,7 +98,10 @@ def register_routes(app: FastAPI, services: Services) -> None:
                               "density": s.ui_density})
         base = {"owner": services.settings.owner_name, "commands": ui_state_service.get_slash_commands(),
                 "chats": visible_chats()[:8], "heads": head_choices(services.router), "head": services.settings.head_model,
-                "has_voice": services.voice is not None, "app_version": app_version()}
+                "has_voice": services.voice is not None, "app_version": app_version(),
+                "mentions": [{"command": "@" + n, "label": n.replace("_", " ").title(), "group": "Agents", "kind": "mention",
+                              "value": "@" + n + " ", "description": short_about(c.description)}
+                             for n, c in services.orchestrator._usable_agents()]}
         return page(request, name, status_code, active=active, **{**base, **ctx})
 
     PHONE = re.compile(r"Android|iPhone|iPad|Mobile", re.I)
@@ -232,6 +236,29 @@ def register_routes(app: FastAPI, services: Services) -> None:
         flags[key] = [i for i in flags[key] if i != chat_id] + ([chat_id] if on else [])
         store.kv_set("chat_flags", flags)
         return {key: on}
+
+    # ---- Agents (M2.2) -----------------------------------------------------------------------------------------
+    @app.get("/v3/agents", response_class=HTMLResponse)
+    def v3_agents(request: Request, show: str = ""):
+        from prometheus.web.agents_view import all_agents
+
+        agents = all_agents(services, services.orchestrator.registry)
+        chosen = next((a for a in agents if a["name"] == show), None)
+        history = store.agent_steps(chosen["name"], 8) if chosen else []
+        titles = dict(store.chats())
+        return shell(request, "v3/agents.html", "agents", agents=agents, chosen=chosen, history=history,
+                     titles=titles, running=[a for a in agents if a["now"]])
+
+    @app.post("/api/v3/agents/{name}/switch")
+    def api_v3_agent_switch(name: str, on: str = Form("")):
+        from prometheus.features import agent_on, set_agent_on
+
+        if name not in services.orchestrator.registry:
+            return JSONResponse({"error": "No such agent."}, status_code=404)
+        set_agent_on(services.settings, name, bool(on))
+        save_settings(services.settings)
+        store.audit("user", "agent_switch", {"agent": name, "on": bool(on)})
+        return {"agent": name, "on": agent_on(services.settings, name)}
 
     @app.get("/api/v3/telemetry")
     def api_v3_telemetry():

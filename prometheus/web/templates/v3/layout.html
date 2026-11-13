@@ -69,6 +69,6 @@
 </div>
 <div class="drop" id="drop" hidden>Drop files to attach them</div>
 <div class="toasts" id="toasts" aria-live="polite"></div>
-<script type="application/json" id="v3-data">{{ {"commands": commands, "chats": chats, "owner": owner} | tojson }}</script>
+<script type="application/json" id="v3-data">{{ {"commands": commands, "chats": chats, "owner": owner, "mentions": mentions or []} | tojson }}</script>
 </body>
 </html>

@@ -262,6 +262,7 @@
   function runCommand(c) {
     closeMenus();
     if (c.kind === "fill") fill(c.value);
+    else if (c.kind === "mention") fill(c.value + input.value.replace(/^@\S*\s*/, ""));
     else if (c.kind === "go") location.href = c.value;
     else if (c.kind === "do" && c.value === "stop") { if (input) input.value = ""; busy ? stopReply() : toast("Nothing is running in this chat."); sendState(); }
   }
@@ -284,9 +285,10 @@
   function slashUpdate(force) {
     if (!slash || !input) return;
     var v = input.value;
-    if (!force && !/^\/\S*$/.test(v)) { slash.hidden = true; return; }
+    var at = /^@\S*$/.test(v);                       // "@" at the start: pick the agent for this message
+    if (!force && !at && !/^\/\S*$/.test(v)) { slash.hidden = true; return; }
     var q = v.slice(1).toLowerCase();
-    slashItems = (data.commands || []).filter(function (c) {
+    slashItems = (at ? (data.mentions || []) : (data.commands || [])).filter(function (c) {
       return !q || c.command.slice(1).indexOf(q) === 0 || c.label.toLowerCase().indexOf(q) >= 0;
     });
     slashSel = Math.min(slashSel, Math.max(0, slashItems.length - 1));

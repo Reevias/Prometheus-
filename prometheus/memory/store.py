@@ -572,6 +572,27 @@ class Store:
             for r in rows
         ]
 
+    def agent_activity(self) -> dict[str, dict]:
+        """Per agent: its last step (when, status, goal) and how many steps it ran, from the real steps table."""
+        out: dict[str, dict] = {}
+        for r in self._rows("SELECT agent, COUNT(*) AS runs, MAX(id) AS last_id FROM steps GROUP BY agent"):
+            out[r["agent"]] = {"runs": int(r["runs"]), "last_id": int(r["last_id"])}
+        ids = [v["last_id"] for v in out.values()]
+        if ids:
+            marks = ",".join("?" for _ in ids)
+            for r in self._rows(f"SELECT s.id, s.agent, s.status, s.goal, s.result, s.created, s.task_id, t.chat_id "
+                                f"FROM steps s LEFT JOIN tasks t ON t.id = s.task_id WHERE s.id IN ({marks})", tuple(ids)):
+                out[r["agent"]].update({"status": r["status"], "goal": r["goal"], "result": r["result"],
+                                        "when": float(r["created"] or 0), "task_id": int(r["task_id"]),
+                                        "chat_id": int(r["chat_id"] or 0)})
+        return out
+
+    def agent_steps(self, agent: str, limit: int = 10) -> list[dict]:
+        rows = self._rows("SELECT s.id, s.status, s.goal, s.result, s.created, s.task_id, t.chat_id FROM steps s "
+                          "LEFT JOIN tasks t ON t.id = s.task_id WHERE s.agent = ? ORDER BY s.id DESC LIMIT ?",
+                          (agent, limit))
+        return [dict(r) for r in rows]
+
     def mark_interrupted(self) -> int:
         with self._lock:
             cur = self._db.execute("UPDATE tasks SET status = 'interrupted' WHERE status = 'running'")

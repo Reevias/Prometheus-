@@ -113,12 +113,31 @@ def set_on(settings, key: str, value: bool) -> None:
     settings.features_off = off
 
 
+def agent_on(settings, agent: str) -> bool:
+    """The owner's own switch for this agent (Agents page). True unless switched off there."""
+    return agent not in (getattr(settings, "agents_off", None) or [])
+
+
+def set_agent_on(settings, agent: str, value: bool) -> None:
+    off = [a for a in (getattr(settings, "agents_off", None) or []) if a != agent]
+    if not value:
+        off.append(agent)
+    settings.agents_off = off
+
+
+def feature_of(agent: str):
+    """The Features switch this agent belongs to, if any."""
+    return next((f for f in FEATURES if agent in f.agents), None)
+
+
 def agent_blocked(settings, agent: str) -> str:
     """Why this agent may not run now ("" = it may)."""
     if settings is None:
         return ""
     if paused(settings) and agent not in SAFE_WHEN_PAUSED:
         return "Everything is stopped (Settings → Features → Stop everything). Switch it back on to do this."
+    if not agent_on(settings, agent):
+        return f"The {agent.replace('_', ' ')} agent is switched off (Agents page)."
     for f in FEATURES:
         if agent in f.agents and not on(settings, f.key):
             return f"{f.label} is switched off (Settings → Features)."

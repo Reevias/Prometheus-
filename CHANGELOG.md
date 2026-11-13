@@ -1,5 +1,10 @@
 # Changelog
 
+## Prometheus 3.0, M2.2 (on the prometheus-v3 branch, not released yet)
+- Agents page: every agent as a card (what it does, what it may use, when it last ran), grouped like Features, with a detail panel (description, tools and which ones ask you first, last runs with links to their chats) and a list of agents running right now. Status is only what's really true: Running, Waiting for approval, Idle, Off, Off in Features or Stopped.
+- Switch any agent off or on. Prometheus then never plans with it, and refuses it if it's asked for anyway.
+- Pick the agent yourself: start a message with `@` and its name (`@research solar panels`). Typing `@` in the command bar lists the agents. Only that agent can be used for that message (checked in code, not just asked).
+
 ## Prometheus 3.0, M2.1 (on the prometheus-v3 branch, not released yet)
 - Docs: added the Friday Mark 2 research (compared with our plan; the 8 better ideas F1–F8 are added inside M3, M4, M5 and M8; no code copied, nothing built yet).
 - Docs: one plan, `docs/PLAN.md` (vision, design, M0–M10 split into steps), replaces the old roadmap, master plan and the M2 "later milestones" table.
