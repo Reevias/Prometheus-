@@ -48,7 +48,7 @@
     return closed;
   }
   document.addEventListener("click", function (e) {
-    if (!e.target.closest(".menu, .dropdown, #plus, #more, #bell, #slash, #palette, #command-input")) closeMenus();
+    if (!e.target.closest(".menu, .dropdown, #plus, #more, #bell, #slash, #palette, #command-input, #profile-btn")) closeMenus();
   });
 
   // ---- sidebar and right panel: shrink / hide (remembered on this computer) ----------------------------------
@@ -69,8 +69,16 @@
     var h = new Date().getHours(), part = h < 5 ? "Good night" : h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening";
     greet.textContent = part + (greet.dataset.owner ? ", " + greet.dataset.owner : "") + ". Your personal AI system.";
   }
+  // ---- your menu (click your name) ---------------------------------------------------------------------------
+  var profileBtn = $("#profile-btn"), profileMenu = $("#profile-menu");
+  if (profileBtn && profileMenu) profileBtn.addEventListener("click", function () {
+    var open = profileMenu.hidden; closeMenus(); profileMenu.hidden = !open; profileBtn.setAttribute("aria-expanded", String(open));
+  });
+  var menuShrink = $("#menu-shrink");
+  if (menuShrink) menuShrink.addEventListener("click", function () { closeMenus(); if (collapse) collapse.click(); });
   var setName = $("#set-name");
   if (setName) setName.addEventListener("click", function () {
+    closeMenus();
     var name = (prompt("What should Prometheus call you?") || "").trim();
     if (!name) return;
     var f = new FormData(); f.append("name", name);
@@ -329,11 +337,12 @@
     if (mod && e.key.toLowerCase() === "l") { e.preventDefault(); if (input) input.focus(); return; }
     if (mod && e.key.toLowerCase() === "n") { e.preventDefault(); location.href = "/"; return; }
     if (mod && !e.shiftKey && e.key.toLowerCase() === "b" && collapse) { e.preventDefault(); collapse.click(); return; }
+    if (mod && e.key === ",") { e.preventDefault(); location.href = "/settings"; return; }
     if (mod && /^[0-9]$/.test(e.key)) {
       var n = e.key === "0" ? 10 : +e.key, link = $('#nav a[data-key="' + n + '"]');
       if (link) { e.preventDefault(); location.href = link.getAttribute("href"); } return;
     }
-    if (e.key === "F11") { e.preventDefault(); win("fullscreen"); return; }
+    if (e.key === "F11") { e.preventDefault(); win("fullscreen"); fullscreen = !fullscreen; return; }
     if (e.key === "Escape") {                         // menus first, then the reply, then fullscreen
       if (closeMenus()) { e.preventDefault(); return; }
       if (busy) { e.preventDefault(); stopReply(); return; }
@@ -346,7 +355,7 @@
   });
 
   // ---- desktop window buttons (only inside the Prometheus window, never in a browser) ------------------------
-  var desktop = false, fullscreen = true;
+  var desktop = false, fullscreen = false;   // opens maximised, above the taskbar
   function win(action) { if (!desktop) return; post("/api/v3/window/" + action).then(function (r) { if (!r.ok) toast("The window didn't respond.", true); }); }
   function desktopReady() { desktop = true; var w = $("#win-controls"); if (w) w.hidden = false; }
   if (window.pywebview) desktopReady(); else window.addEventListener("pywebviewready", desktopReady);

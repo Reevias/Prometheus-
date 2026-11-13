@@ -299,9 +299,11 @@ def test_answers_show_their_visible_steps(app_client):
     st.add_message(cid, "assistant", "Done: 12 files sorted.")
     page = client.get(f"/c/{cid}").text
     assert "1 step" in page and "File Sorter" in page and "Moved 12 files" in page and "Downloads" in page
-    for act in ('data-act="copy"', 'data-act="edit"', 'data-act="regenerate"', 'data-act="copy-md"', 'data-act="delete"',
+    for act in ('data-act="copy"', 'data-act="edit"', 'data-act="regenerate"', 'data-act="delete"',
                 'id="export"', "/static/v3/chat.js"):
         assert act in page, act
+    assert 'data-act="copy-md"' not in page                     # one Copy per message (owner, 13 Nov)
+    assert page.count('data-act="copy"') == page.count('class="msg ')
 
 
 def test_vendor_libraries_are_local_and_licensed():

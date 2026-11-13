@@ -166,9 +166,13 @@ def test_every_control_does_something_and_nothing_breaks(live, browser):
     page.goto(base + "/")
     page.click(".nav-more summary")
     links = [a.get_attribute("href") for a in page.query_selector_all(".sidebar a[href]")]
-    for href in links:
+    sections = {h.split("#", 1)[1] for h in links if "#" in h}       # your menu links to sections of Settings
+    for href in dict.fromkeys(h.split("#", 1)[0] for h in links):    # each page once (a #section isn't a new load)
         r = page.goto(base + href)
         assert r is not None and r.status < 400, href
+    page.goto(base + "/settings")
+    for section in sections:
+        assert page.query_selector("#" + section), section
     # the dangerous buttons are wired up (not clicked)
     page.goto(base + "/")
     assert page.query_selector('.stopall[hx-post="/kill"]') and page.query_selector('[hx-post="/logout"]')

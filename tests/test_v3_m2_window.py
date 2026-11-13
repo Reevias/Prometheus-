@@ -7,7 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from prometheus.desktop import on_a_screen, remember_position, start_position
+from prometheus.desktop import on_a_screen, remember_position, start_position, work_area_bounds
 from prometheus.hotkey import GlobalHotkey
 
 LAPTOP = SimpleNamespace(x=0, y=0, width=1920, height=1080)
@@ -60,3 +60,10 @@ def test_hotkey_registers_and_stops_on_windows():
     assert ok or "already used" in hk.error                         # another app may own Ctrl+Alt+P on the runner
     hk.stop()
     assert not hk.registered
+
+
+def test_maximised_window_stops_at_the_taskbar():
+    # main screen 1920x1080 with a 48 px taskbar at the bottom: maximised fills 1920x1032 from its corner
+    assert work_area_bounds((0, 0), (0, 0, 1920, 1032)) == (0, 0, 1920, 1032)
+    # a left monitor at x=-2560 with the taskbar on its left: measured from that monitor's own corner
+    assert work_area_bounds((-2560, 0), (-2500, 0, 2500, 1440)) == (60, 0, 2500, 1440)

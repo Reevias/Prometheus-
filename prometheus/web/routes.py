@@ -435,7 +435,12 @@ def register_routes(app: FastAPI, services: Services) -> None:
             if action == "minimize":
                 win.minimize()
             elif action == "maximize":
-                win.toggle_fullscreen() if getattr(win, "fullscreen", False) else win.maximize()
+                if getattr(win, "fullscreen", False):
+                    win.toggle_fullscreen()
+                elif desktop.is_maximised(win):
+                    win.restore()
+                else:
+                    win.maximize()                  # stops at the taskbar (maximise_above_taskbar)
             elif action == "restore":
                 win.restore()
             elif action == "fullscreen":

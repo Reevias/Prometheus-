@@ -1,6 +1,9 @@
 # Changelog
 
 ## Prometheus 3.0, M2.1 (on the prometheus-v3 branch, not released yet)
+- Your menu: click your name for Settings, Appearance, Voice, AI models and keys, Connections, keyboard shortcuts,
+  your name, shrinking the menu (also Ctrl+B) and Log out (also at the bottom of Settings). Settings left the sidebar
+  (the gear by your name, Ctrl+,). The window opens maximised with the taskbar visible.
 - A new look built from the owner's design: a sidebar, a large glowing orbital sphere that shows what Prometheus is
   doing, a command bar with + for files, and a right panel with real readings only (CPU, RAM, disk, network; GPU and
   temperature when Windows can read them). Phones keep the phone screen.

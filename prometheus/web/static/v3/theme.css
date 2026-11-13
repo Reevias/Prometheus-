@@ -79,21 +79,46 @@ a { color: var(--amber); }
   background: radial-gradient(circle at 35% 30%, var(--raised), var(--surface));
   border: 1px solid rgb(var(--orange-rgb) / 0.35); font-weight: 600; font-size: 18px; color: var(--amber);
 }
-.profile-name { font-size: 16px; }
-.profile-name button { border: 0; background: none; color: var(--amber); padding: 0; text-align: left; }
+.profile-name { font-size: 16px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.profile-name.unnamed { color: var(--amber); }
+.profile-btn { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; border: 0; background: none;
+               color: var(--text); padding: 4px; border-radius: 12px; text-align: left; }
+.profile-btn:hover, .profile-btn[aria-expanded=true] { background: rgb(var(--text-rgb) / 0.06); }
+.sidebar-foot { position: relative; }
+.profile-menu { bottom: calc(100% + 6px); left: 0; width: 264px; }
+.profile-menu .menu-head { display: flex; align-items: center; gap: 10px; padding: 8px 12px 10px; color: var(--muted);
+                           font-size: 13px; border-bottom: 1px solid rgb(var(--text-rgb) / 0.08); margin-bottom: 4px; }
+.avatar.small { width: 28px; height: 28px; font-size: 13px; }
+.profile-menu span:not(.avatar) { flex: 1; }
+.profile-menu kbd { font: 11px var(--mono); color: var(--muted); border: 1px solid rgb(var(--text-rgb) / 0.12);
+                    border-radius: 6px; padding: 1px 6px; }
+.profile-menu hr { border: 0; border-top: 1px solid rgb(var(--text-rgb) / 0.08); margin: 4px 0; }
+.profile-menu .danger { color: var(--bad); }
+.profile-menu .danger svg { stroke: var(--bad); }
+.icon-btn.on { color: var(--orange); }
 .icon-btn {
   border: 0; background: none; color: var(--muted); padding: 8px; border-radius: 10px; display: grid;
   place-items: center; text-decoration: none;
 }
 .icon-btn:hover { color: var(--text); background: rgb(var(--text-rgb) / 0.06); }
 .icon-btn svg { width: 22px; height: 22px; stroke: currentColor; }
-.profile .icon-btn { margin-left: auto; }
+.profile .icon-btn { margin-left: auto; flex: none; }
 .app.mini .brand-text, .app.mini .nav a span, .app.mini .profile-name { display: none; }
 .app.mini .nav a { justify-content: center; padding: 11px 0; }
 .app.mini .brand { flex-direction: column; padding-bottom: 14px; }
 .app.mini .collapse { margin: 0; transform: rotate(180deg); }
 .app.mini .profile { flex-direction: column; }
 .app.mini .profile .icon-btn { margin: 0; }
+.app.mini .profile-btn { flex: none; padding: 0; }
+
+/* ---- scrollbars: thin and dark, like the rest of the window ------------------------------------------------ */
+:root { color-scheme: dark; }
+* { scrollbar-width: thin; scrollbar-color: rgb(var(--text-rgb) / 0.16) transparent; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgb(var(--text-rgb) / 0.16); border-radius: 10px; border: 3px solid transparent;
+                            background-clip: padding-box; }
+::-webkit-scrollbar-thumb:hover { background-color: rgb(var(--orange-rgb) / 0.45); }
 
 /* ---- top bar ---------------------------------------------------------------------------------------------- */
 .topbar { display: flex; align-items: center; gap: 8px; padding: 0 18px 0 26px; min-width: 0; }
@@ -310,6 +335,9 @@ a { color: var(--amber); }
 .msg .body th, .msg .body td { border: 1px solid rgb(var(--text-rgb) / 0.12); padding: 6px 10px; }
 .msg .actions { display: flex; gap: 4px; margin-top: 6px; opacity: 0.55; }
 .msg:hover .actions { opacity: 1; }
+/* your own message: its buttons sit under it on the right and show on hover, so they never look like the answer's */
+.msg.user .actions { justify-content: flex-end; opacity: 0; transition: opacity .15s; }
+.msg.user:hover .actions, .msg.user .actions:focus-within { opacity: 1; }
 .msg .actions button { border: 0; background: none; color: var(--muted); padding: 4px 8px; border-radius: 8px; font-size: 12px;
                        display: inline-flex; gap: 6px; align-items: center; }
 .msg .actions button:hover, .msg .actions button.on { color: var(--orange); background: rgb(var(--orange-rgb) / 0.08); }

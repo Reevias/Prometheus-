@@ -1,6 +1,7 @@
 {% from "v3/icons.html" import icon %}
 {# Only pages that work are listed (no dead buttons). Agents, Projects, Automations, Research, Integrations, System
-   and Files join as they are built (M2.2 / M2.3). Ctrl+1…Ctrl+0 open the first ten, in this order. #}
+   and Files join as they are built (M2.2 / M2.3). Ctrl+1…Ctrl+0 open the first ten, in this order.
+   Settings is the gear by your name and in your menu (click your name), not a menu item. #}
 {% set items = [
   ("home", "Home", "/"),
   ("chats", "Chats", "/v3/chats"),
@@ -8,7 +9,6 @@
   ("tasks", "Tasks", "/plans"),
   ("memory", "Memory", "/memory"),
   ("activity", "Activity", "/history"),
-  ("settings", "Settings", "/settings"),
 ] %}
 <aside class="sidebar" aria-label="Main menu">
   <div class="brand">
@@ -34,12 +34,29 @@
     </nav>
   </details>
   <div class="sidebar-foot">
+    {# your menu: opens upward from your name, like a desktop app's account menu #}
+    <div class="menu profile-menu" id="profile-menu" role="menu" hidden>
+      <div class="menu-head"><span class="avatar small" aria-hidden="true">{{ (owner[:1] or "P") | upper }}</span>
+        <span>{{ owner or "Prometheus" }}</span></div>
+      <a href="/settings" role="menuitem">{{ icon("settings") }}<span>Settings</span><kbd>Ctrl+,</kbd></a>
+      <a href="/settings#appearance" role="menuitem">{{ icon("bulb") }}<span>Appearance</span></a>
+      <a href="/settings#voice" role="menuitem">{{ icon("mic") }}<span>Voice</span></a>
+      <a href="/settings#ai" role="menuitem">{{ icon("agents") }}<span>AI models and keys</span></a>
+      <a href="/settings#connections" role="menuitem">{{ icon("integrations") }}<span>Connections</span></a>
+      <a href="/settings#about" role="menuitem">{{ icon("keyboard") }}<span>Keyboard shortcuts</span></a>
+      <button type="button" role="menuitem" id="set-name">{{ icon("user") }}<span>{{ "Change your name" if owner else "Add your name" }}</span></button>
+      <button type="button" role="menuitem" id="menu-shrink">{{ icon("panel") }}<span>Shrink the menu</span><kbd>Ctrl+B</kbd></button>
+      <hr>
+      <button type="button" role="menuitem" class="danger" hx-post="/logout" hx-swap="none"
+              hx-on::after-request="location.href='/login'">{{ icon("logout") }}<span>Log out</span></button>
+    </div>
     <div class="profile">
-      <div class="avatar" aria-hidden="true">{{ (owner[:1] or "P") | upper }}</div>
-      <div class="profile-name">{% if owner %}{{ owner }}{% else %}<button type="button" id="set-name">Add your name</button>{% endif %}</div>
-      <a class="icon-btn" href="/settings" title="Settings" aria-label="Settings">{{ icon("settings") }}</a>
-      <button type="button" class="icon-btn" title="Log out" aria-label="Log out" hx-post="/logout" hx-swap="none"
-              hx-on::after-request="location.href='/login'">{{ icon("close") }}</button>
+      <button type="button" class="profile-btn" id="profile-btn" aria-haspopup="menu" aria-expanded="false"
+              aria-controls="profile-menu" title="Your menu">
+        <span class="avatar" aria-hidden="true">{{ (owner[:1] or "P") | upper }}</span>
+        <span class="profile-name{{ ' unnamed' if not owner }}">{{ owner or "Add your name" }}</span>
+      </button>
+      <a class="icon-btn {{ 'on' if active == 'settings' }}" href="/settings" title="Settings (Ctrl+,)" aria-label="Settings">{{ icon("settings") }}</a>
     </div>
   </div>
 </aside>

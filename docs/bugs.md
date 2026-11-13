@@ -2,11 +2,14 @@
 
 Every bug found and fixed, newest first, so the count is always exact. Add a line for each new one.
 
-**Total fixed: 51** (as of 13 November 2026)
+**Total fixed: 54** (as of 13 November 2026)
 
-## 13 November 2026 (2)
+## 13 November 2026 (5)
 | # | Bug | Fixed by |
 |---|---|---|
+| 54 | The desktop window opened fullscreen and hid the Windows taskbar | opens maximised, stopping at the taskbar (every monitor); F11 still gives fullscreen |
+| 53 | Your own message's Copy/Edit row sat under the answer, so it looked like two Copy rows | your buttons sit on the right under your message, on hover; one Copy per answer |
+| 52 | Scrollbars were Windows' light classic ones on the dark screen | thin dark scrollbars |
 | 51 | Copy buttons threw an error when Windows' browser refused the clipboard (found by the Windows click-through job) | one copy helper: tries the older copy way, otherwise says "Couldn't copy" |
 | 50 | A calendar test started failing on 13 Nov (its sample birthday was on 12 Nov, so it had "passed") | the test uses its own fixed date |
 

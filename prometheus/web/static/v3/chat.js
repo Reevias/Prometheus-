@@ -98,8 +98,6 @@
     var msg = b.closest(".msg"), act = b.dataset.act, input = document.getElementById("command-input");
     if (act === "copy") {
       copyText(msg.querySelector(".body").innerText, "Copied.");
-    } else if (act === "copy-md") {
-      copyText(raw(msg), "Copied as Markdown.");
     } else if (act === "edit" && input) {
       input.value = raw(msg); input.dispatchEvent(new Event("input")); input.focus();
     } else if (act === "regenerate" && input) {

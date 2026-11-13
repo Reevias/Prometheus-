@@ -25,7 +25,6 @@
     {% if m.role == "user" %}
     <button type="button" data-act="edit" title="Put this in the command bar to change and send again">{{ icon("write") }}Edit</button>
     {% else %}
-    <button type="button" data-act="copy-md" title="Copy with its formatting (Markdown)">{{ icon("doc") }}Markdown</button>
     <button type="button" data-act="regenerate" title="Ask the same question again">{{ icon("send") }}Again</button>
     {% if m.model != "reminder" %}
     <button type="button" class="{{ 'on' if r and r.rating > 0 }}" title="Good answer" aria-label="Good answer"

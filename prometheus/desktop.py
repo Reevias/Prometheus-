@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import socket
+import sys
 import threading
 import time
 
@@ -198,6 +199,57 @@ def attach_tray(window, settings, pystray=None):
     return tray
 
 
+def work_area_bounds(screen_bounds, working_area) -> tuple[int, int, int, int]:
+    """Where a maximised window may go on a monitor: its working area (the screen minus the taskbar), measured from
+    the monitor's own top-left corner, which is how Windows reads it for every monitor, not only the main one."""
+    bx, by = screen_bounds
+    wx, wy, ww, wh = working_area
+    return wx - bx, wy - by, ww, wh
+
+
+def maximise_above_taskbar(window) -> bool:
+    """Windows: a frameless window maximised by WinForms covers the whole screen, taskbar included. Limit "maximised"
+    to the working area (again whenever the window moves to another monitor), then maximise. False elsewhere."""
+    if sys.platform != "win32" or window is None:
+        return False
+
+    def setup():
+        try:
+            import System.Windows.Forms as WinForms  # provided by pywebview's Windows backend (pythonnet)
+            from System import Action
+            from System.Drawing import Rectangle
+
+            form = window.native
+
+            def fit(*_):
+                screen = WinForms.Screen.FromControl(form)
+                b, wa = screen.Bounds, screen.WorkingArea
+                form.MaximizedBounds = Rectangle(*work_area_bounds((b.X, b.Y), (wa.X, wa.Y, wa.Width, wa.Height)))
+
+            def attach():
+                fit()
+                form.LocationChanged += fit
+                form.WindowState = WinForms.FormWindowState.Maximized
+
+            form.Invoke(Action(attach))
+        except Exception:
+            pass                       # a nicety: the window still opens at its normal size
+
+    try:
+        window.events.shown += setup
+    except Exception:                  # a window without events (tests, other backends)
+        return False
+    return True
+
+
+def is_maximised(window) -> bool:
+    try:
+        import System.Windows.Forms as WinForms
+        return window.native.WindowState == WinForms.FormWindowState.Maximized
+    except Exception:
+        return False
+
+
 def run_desktop(settings: Settings, webview=None, server=None) -> int:
     if webview is None:
         import webview  # pywebview
@@ -212,8 +264,8 @@ def run_desktop(settings: Settings, webview=None, server=None) -> int:
                                        text_select=True,  # pywebview blocks selecting and copying text unless asked
                                        frameless=True,    # the app draws its own themed title bar (M2)
                                        easy_drag=False,   # dragging only from the title bar, not from everywhere
-                                       fullscreen=True,   # opens fullscreen; F11 / Esc switch (M2)
                                        **start_position(settings, webview))   # on the monitor it was last on
+        maximise_above_taskbar(window)           # opens maximised, the taskbar stays visible; F11 for fullscreen
         windows_identity(window, title)
         remember_position(window, settings)
         from prometheus.hotkey import GlobalHotkey
