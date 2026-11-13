@@ -375,3 +375,48 @@ def test_quick_actions_customise(app_client):
     assert 'data-fill="Check my homework: "' in page and "&lt;b&gt;bad" in page and "<b>bad" not in page
     client.post("/api/v3/quick-actions", json={"actions": []}, headers={"X-CSRF-Token": csrf})
     assert services.settings.quick_actions == [] and DEFAULT_QUICK[0]["label"] in client.get("/").text
+
+
+def test_settings_in_the_new_look_keep_every_section(app_client):
+    import re as _re
+    client, _ = app_client()
+    login(client)
+    new = client.get("/settings").text
+    classic = client.get("/settings?view=classic").text
+    old_ids = set(_re.findall(r'<section class="set[^"]*" id="([^"]+)"', classic))
+    new_ids = set(_re.findall(r'<section class="set[^"]*" id="([^"]+)"', new))
+    assert old_ids and old_ids <= new_ids                           # nothing dropped
+    assert {"appearance", "about"} <= new_ids
+    nav = new.split('class="set-nav"', 1)[1].split("</nav>", 1)[0]
+    for sid in new_ids:
+        assert f'href="#{sid}"' in nav, sid                          # every section is in the categories menu
+    for cat in ("General", "Appearance", "Notifications", "Audio", "AI models", "Integrations", "Privacy", "Security", "About"):
+        assert f">{cat}<" in nav
+    assert ">Agents<" not in nav and ">Tools<" not in nav            # empty categories aren't shown
+    phone = {"user-agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0) Mobile"}
+    assert 'id="v3-settings"' not in client.get("/settings", headers=phone).text
+
+
+def test_appearance_is_saved_and_applied(app_client):
+    client, services = app_client()
+    csrf = login(client)
+    h = {"X-CSRF-Token": csrf}
+    r = client.post("/api/v3/appearance", data={"ui_glow": "9", "ui_sphere": "low", "ui_motion": "reduced",
+                                                 "ui_text": "17", "ui_density": "compact"}, headers=h)
+    assert r.json() == {"glow": 1.4, "sphere": "low", "motion": "reduced", "text": 17, "density": "compact"}
+    page = client.get("/").text
+    assert 'data-motion="reduced"' in page and "--glow: 1.4" in page and "font-size: 17px" in page and 'data-density="compact"' in page
+    bad = client.post("/api/v3/appearance", data={"ui_sphere": "<x>", "ui_motion": "wild"}, headers=h).json()
+    assert bad["sphere"] == "low" and bad["motion"] == "reduced"      # unknown values are ignored
+    assert client.post("/api/v3/appearance", data={"ui_text": "big"}, headers=h).status_code == 400
+
+
+def test_safety_and_account_controls_are_in_the_new_look(app_client):
+    client, services = app_client()
+    login(client)
+    page = client.get("/").text
+    assert 'hx-post="/kill"' in page and ">Stop all<" in page
+    assert 'hx-post="/logout"' in page and 'href="/approvals"' in page
+    services.killswitch.trigger("test")
+    page = client.get("/").text
+    assert 'hx-post="/kill/reset"' in page and ">Resume<" in page

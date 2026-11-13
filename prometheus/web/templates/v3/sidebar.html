@@ -22,11 +22,24 @@
        title="{{ label }}{% if loop.index <= 10 %} (Ctrl+{{ loop.index % 10 }}){% endif %}">{{ icon(key) }}<span>{{ label }}</span></a>
     {% endfor %}
   </nav>
+  {# Pages from 2.x that get their place in the new sections in M2.2; reachable meanwhile, nothing is lost. #}
+  <details class="nav-more" {{ "open" if active in ("more", "approvals") }}>
+    <summary>More</summary>
+    <nav class="nav">
+      <a href="/approvals" class="{{ 'on' if active == 'approvals' }}">{{ icon("tasks") }}<span>Approvals</span>{% if pending %}<span class="count" title="{{ pending }} waiting">{{ pending }}</span>{% endif %}</a>
+      <a href="/study">{{ icon("bulb") }}<span>Study</span></a>
+      <a href="/money">{{ icon("chart") }}<span>Money</span></a>
+      <a href="/costs">{{ icon("system") }}<span>Costs</span></a>
+      <a href="/phone">{{ icon("monitor") }}<span>Get it on your phone</span></a>
+    </nav>
+  </details>
   <div class="sidebar-foot">
     <div class="profile">
       <div class="avatar" aria-hidden="true">{{ (owner[:1] or "P") | upper }}</div>
       <div class="profile-name">{% if owner %}{{ owner }}{% else %}<button type="button" id="set-name">Add your name</button>{% endif %}</div>
       <a class="icon-btn" href="/settings" title="Settings" aria-label="Settings">{{ icon("settings") }}</a>
+      <button type="button" class="icon-btn" title="Log out" aria-label="Log out" hx-post="/logout" hx-swap="none"
+              hx-on::after-request="location.href='/login'">{{ icon("close") }}</button>
     </div>
   </div>
 </aside>

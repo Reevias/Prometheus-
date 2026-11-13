@@ -468,5 +468,39 @@
     });
     setBusy(!!$(".working", msgs));
   }
+  // Errors from the server: a short message, never a broken page. Plain-text errors become a toast instead of
+  // replacing part of the page; a lost connection says so.
+  document.body.addEventListener("htmx:beforeSwap", function (e) {
+    var x = e.detail.xhr;
+    if (!x || x.status < 400) return;
+    var text = x.responseText || "";
+    if (!/^\s*</.test(text)) { e.detail.shouldSwap = false; toast(text.slice(0, 300) || "That didn't work.", true); }
+  });
+  document.body.addEventListener("htmx:sendError", function () { toast("Prometheus isn't answering. Is it still running?", true); });
+  document.body.addEventListener("htmx:timeout", function () { toast("That took too long. Try again.", true); });
+
+  // Settings: forms there answer with the whole page; only the settings area is replaced, so the sidebar, panel
+  // and their buttons keep working. Appearance changes apply at once.
+  document.body.addEventListener("htmx:beforeSwap", function (e) {
+    var area = $("#v3-settings");
+    if (!area || e.detail.target !== document.body || !e.detail.xhr) return;
+    var doc = new DOMParser().parseFromString(e.detail.xhr.responseText || "", "text/html");
+    var fresh = doc.getElementById("v3-settings");
+    if (!fresh) return;
+    e.detail.shouldSwap = false;
+    area.replaceWith(fresh);
+    if (window.htmx) htmx.process(fresh);
+    if (document.body.classList.contains("show-adv") && window.promAdvanced) promAdvanced(true);
+    var msg = fresh.querySelector(".set-msg"); if (msg) toast(msg.textContent, msg.classList.contains("error"));
+  });
+  var look = $("#appearance-form");
+  if (look) look.addEventListener("change", function (e) {
+    var f = new FormData(look), root = document.documentElement;
+    if (e.target.name === "ui_glow") e.target.nextElementSibling.textContent = e.target.value;
+    root.style.setProperty("--glow", f.get("ui_glow")); root.style.fontSize = f.get("ui_text") + "px";
+    root.dataset.motion = f.get("ui_motion"); root.dataset.density = f.get("ui_density");
+    if (window.PromSphere) PromSphere.setQuality(f.get("ui_sphere"));
+    post("/api/v3/appearance", f).then(function (r) { if (!r.ok) toast("Couldn't save that.", true); });
+  });
   if (input && input.autofocus) input.focus();
 })();

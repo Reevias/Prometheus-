@@ -1,6 +1,7 @@
 {% from "v3/icons.html" import icon %}
 <!doctype html>
-<html lang="en" data-motion="auto">
+<html lang="en" data-motion="{{ ui.motion if ui else 'auto' }}" data-density="{{ ui.density if ui else 'comfortable' }}"
+      style="--glow: {{ ui.glow if ui else 1 }}; font-size: {{ ui.text if ui else 15 }}px">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -8,7 +9,8 @@
   <link rel="icon" type="image/png" href="/static/favicon.png">
   <link rel="manifest" href="/manifest.webmanifest">
   <meta name="theme-color" content="#0B0B10">
-  <script>try{var m=localStorage.getItem("prom-motion");if(m)document.documentElement.dataset.motion=m}catch(e){}</script>
+  <meta name="htmx-config" content='{"responseHandling": [{"code": "204", "swap": false}, {"code": "[23]..", "swap": true}, {"code": "[45]..", "swap": true, "error": true}]}'>
+  <script>try{localStorage.setItem("prom-quality", "{{ ui.sphere if ui else 'auto' }}")}catch(e){}</script>
   <link rel="stylesheet" href="/static/v3/tokens.css">
   <link rel="stylesheet" href="/static/v3/theme.css">
   <script src="/static/htmx.min.js"></script>
@@ -22,6 +24,11 @@
   <header class="topbar pywebview-drag-region">
     <div class="topbar-title" style="position: relative">{% block topbar %}{% endblock %}</div>
     <div class="topbar-tools">
+      {% if stopped %}<button type="button" class="stopall resume" hx-post="/kill/reset" hx-swap="none" hx-on::after-request="location.reload()"
+              title="Everything is paused. Resume lets tasks, jobs and connections run again.">Resume</button>
+      {% else %}<button type="button" class="stopall" hx-post="/kill" hx-swap="none" hx-on::after-request="location.reload()"
+              hx-confirm="Stop everything? Running tasks stop, and background jobs stay paused until you press Resume."
+              title="Stop every task and background job now">Stop all</button>{% endif %}
       <button type="button" class="icon-btn mute" id="mute" hidden title="Microphone on: click to mute (Ctrl+Shift+M)" aria-label="Mute the microphone" aria-pressed="false">{{ icon("mic") }}</button>
       <button type="button" class="icon-btn bell" id="bell" title="Notifications" aria-label="Notifications" aria-haspopup="true">
         {{ icon("bell") }}<span class="badge" id="bell-badge" hidden></span></button>

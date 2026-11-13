@@ -1,0 +1,59 @@
+{% extends "v3/layout.html" %}
+{% block title %}Settings · Prometheus{% endblock %}
+{% block topbar %}<b>Settings</b>{% endblock %}
+{# Categories from the owner's plan. Each lists the existing 2.x sections it holds (nothing was dropped); a
+   category with nothing in it yet (Agents, Tools, Skills) isn't shown. "adv" items appear with Show advanced. #}
+{% set cats = [
+  ("General", [("general", "General", False), ("features", "Features on and off", False)]),
+  ("Appearance", [("appearance", "Appearance", False)]),
+  ("Notifications", [("notifications", "Notifications", True), ("daily-summary", "Daily summary", True), ("focus-mode", "Focus mode", True)]),
+  ("Audio", [("voice", "Voice", False)]),
+  ("AI models", [("ai", "AI and providers", False), ("other-keys", "Other keys", True)]),
+  ("Integrations", [("connections", "Connections", False), ("obsidian", "Obsidian", True), ("github", "GitHub", True),
+                    ("use-prometheus-from-other-ai-apps", "Other AI apps", True)]),
+  ("Study", [("assignments", "Assignments", True), ("study-coach", "Study coach", True), ("practice-tests", "Practice tests", True)]),
+  ("Daily life", [("clipboard-and-screenshot-memory", "Clipboard memory", True), ("money-tracker", "Money tracker", True),
+                  ("search-inside-files", "Search inside files", True), ("watchers", "Watchers", True)]),
+  ("Privacy", [("places-prometheus-may-use", "Places Prometheus may use", True)]),
+  ("Security", [("safety-check", "Phone, cloud copy, backup and safety check", False), ("always-allowed", "Always allowed", True)]),
+  ("About", [("about", "About Prometheus", False)]),
+] %}
+{% block content %}
+<section class="page v3set" id="v3-settings">
+  <nav class="set-nav" aria-label="Settings categories">
+    <input type="search" id="set-search" placeholder="Search settings" autocomplete="off" oninput="promFilterSettings(this.value)" aria-label="Search settings">
+    {% for cat, items in cats %}
+    <span class="set-group{{ ' adv' if items | rejectattr(2) | list | length == 0 }}">{{ cat }}</span>
+    {% for id, label, adv in items %}<a href="#{{ id }}" class="{{ 'adv' if adv }}">{{ label }}</a>{% endfor %}
+    {% endfor %}
+    <button type="button" class="ghost" id="adv-toggle" onclick="promAdvanced()">Show advanced settings</button>
+  </nav>
+  <div class="set-body">
+    <h1>Settings</h1>
+    <section class="set" id="appearance" data-group="Appearance">
+      <h3>Appearance</h3>
+      <form class="appearance" id="appearance-form">
+        <label>Glow <input type="range" name="ui_glow" min="0.4" max="1.4" step="0.1" value="{{ s.ui_glow }}"> <output>{{ s.ui_glow }}</output></label>
+        <label>Sphere quality <select name="ui_sphere">{% for v, t in [("auto", "Automatic (adapts to this PC)"), ("low", "Low"), ("medium", "Medium"), ("high", "High")] %}<option value="{{ v }}" {{ 'selected' if s.ui_sphere == v }}>{{ t }}</option>{% endfor %}</select></label>
+        <label>Motion <select name="ui_motion">{% for v, t in [("auto", "Follow Windows"), ("reduced", "Reduce motion"), ("full", "Full motion")] %}<option value="{{ v }}" {{ 'selected' if s.ui_motion == v }}>{{ t }}</option>{% endfor %}</select></label>
+        <label>Text size <select name="ui_text">{% for v in [13, 14, 15, 16, 17, 18] %}<option value="{{ v }}" {{ 'selected' if s.ui_text == v }}>{{ v }}{{ " (default)" if v == 15 }}</option>{% endfor %}</select></label>
+        <label>Density <select name="ui_density">{% for v, t in [("comfortable", "Comfortable"), ("compact", "Compact")] %}<option value="{{ v }}" {{ 'selected' if s.ui_density == v }}>{{ t }}</option>{% endfor %}</select></label>
+      </form>
+      <p class="muted">Changes show at once and are kept for next time.</p>
+    </section>
+    {% include "settings_sections.html" %}
+    <section class="set" id="about" data-group="About">
+      <h3>About Prometheus</h3>
+      <dl class="facts about">
+        <dt>Version</dt><dd>{{ app_version }}</dd>
+        <dt>Data folder</dt><dd>{{ data_folder }}</dd>
+        <dt>Licence</dt><dd>Prometheus is open source. Bundled: highlight.js (BSD-3), KaTeX (MIT), Mermaid (MIT), htmx (BSD-2)</dd>
+        <dt>Source</dt><dd>github.com/Reevias/Prometheus-</dd>
+      </dl>
+      <p class="muted">Updates: see “Install new versions by itself” in General.</p>
+    </section>
+    <p id="set-none" class="muted" hidden>No setting matches that.</p>
+  </div>
+</section>
+{% include "settings_script.html" %}
+{% endblock %}

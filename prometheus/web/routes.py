@@ -88,13 +88,16 @@ def register_routes(app: FastAPI, services: Services) -> None:
         live = [c for c in store.chats() if c[0] not in flags["archived"]]
         return [c for c in live if c[0] in flags["pinned"]] + [c for c in live if c[0] not in flags["pinned"]]
 
-    def shell(request: Request, name: str, active: str, **ctx):
+    def shell(request: Request, name: str, active: str, status_code: int = 200, **ctx):
         from prometheus.services.ui_state import ui_state_service
         ui_state_service.services = services
-        return page(request, name, active=active, owner=services.settings.owner_name,
-                    commands=ui_state_service.get_slash_commands(), chats=visible_chats()[:8],
-                    heads=head_choices(services.router), head=services.settings.head_model,
-                    voice=services.voice is not None, **ctx)
+        s = services.settings
+        ctx.setdefault("ui", {"glow": s.ui_glow, "sphere": s.ui_sphere, "motion": s.ui_motion, "text": s.ui_text,
+                              "density": s.ui_density})
+        base = {"owner": services.settings.owner_name, "commands": ui_state_service.get_slash_commands(),
+                "chats": visible_chats()[:8], "heads": head_choices(services.router), "head": services.settings.head_model,
+                "has_voice": services.voice is not None}
+        return page(request, name, status_code, active=active, **{**base, **ctx})
 
     PHONE = re.compile(r"Android|iPhone|iPad|Mobile", re.I)
 
@@ -381,6 +384,25 @@ def register_routes(app: FastAPI, services: Services) -> None:
         services.settings = replace(services.settings, quick_actions=items)
         save_settings(services.settings)
         return {"actions": items}
+
+    @app.post("/api/v3/appearance")
+    async def api_v3_appearance(request: Request):
+        """Appearance in Settings: glow, sphere quality, motion, text size, density (checked, then saved)."""
+        form = await request.form()
+        s = services.settings
+        try:
+            glow = min(1.4, max(0.4, round(float(form.get("ui_glow", s.ui_glow)), 1)))
+            text = min(18, max(13, int(form.get("ui_text", s.ui_text))))
+        except (TypeError, ValueError):
+            return JSONResponse({"error": "That didn't look right."}, status_code=400)
+        pick = lambda v, ok, d: v if v in ok else d
+        services.settings = replace(s, ui_glow=glow, ui_text=text,
+                                    ui_sphere=pick(form.get("ui_sphere"), ("auto", "low", "medium", "high"), s.ui_sphere),
+                                    ui_motion=pick(form.get("ui_motion"), ("auto", "reduced", "full"), s.ui_motion),
+                                    ui_density=pick(form.get("ui_density"), ("comfortable", "compact"), s.ui_density))
+        save_settings(services.settings)
+        n = services.settings
+        return {"glow": n.ui_glow, "sphere": n.ui_sphere, "motion": n.ui_motion, "text": n.ui_text, "density": n.ui_density}
 
     @app.post("/api/v3/profile")
     def api_v3_profile(name: str = Form("")):
@@ -1119,7 +1141,7 @@ def register_routes(app: FastAPI, services: Services) -> None:
             live = manager.live.get(e["name"]) if manager else None
             err = manager.errors.get(e["name"], "") if manager else ""
             mcp.append({**e, "ok": live is not None, "status": (f"{len(live.tools)} tools" if live else err)})
-        return page(request, "settings.html", status_code, s=s, providers=rows, other_keys=other_keys,
+        ctx = dict(s=s, providers=rows, other_keys=other_keys,
                     allowed_rules=allowed_rules, mcp=mcp, webhook_url=webhook_url, email_help=help_for(s.email_address),
                     email_key_set=bool(have.get("EMAIL_PASSWORD")), calendar_set=bool(have.get("CALENDAR_LINKS")),
                     google_client=bool(have.get("GOOGLE_CLIENT")), google_on=bool(have.get("GOOGLE_TOKEN")),
@@ -1145,6 +1167,12 @@ def register_routes(app: FastAPI, services: Services) -> None:
                     research_brains=list(__import__("prometheus.models.router", fromlist=["x"]).RESEARCH_LABELS.items()),
                     file_index_status=(getattr(services.file_index, "status", "") or store.kv_get("file_index_status")
                                        or "Not read yet."), **extra)
+        if request.query_params.get("view") == "classic" or PHONE.search(request.headers.get("user-agent", "")):
+            return page(request, "settings.html", status_code, **ctx)
+        from prometheus.config import data_dir
+        from prometheus.launcher import version as app_version
+        return shell(request, "v3/settings.html", "settings", status_code=status_code, app_version=app_version(),
+                     data_folder=str(data_dir()), **ctx)
 
     def _mcp_config() -> str:
         import json as _json

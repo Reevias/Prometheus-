@@ -182,11 +182,14 @@ def test_page_scripts_survive_being_run_twice_and_errors_never_replace_the_page(
 
     client, _ = app_client()
     login(client)
-    page = client.get("/settings").text
-    scripts = re.findall(r"<script>(.*?)</script>", page, re.S)
-    # buttons that reload the whole page run these scripts again: a top-level const/let would crash the second time
-    assert not any(re.search(r"^  (?:const|let) ", s, re.M) for s in scripts)
-    assert "promErrorsReady" in page and "htmx:beforeSwap" in page and "shouldSwap = false" in page
+    for page in (client.get("/settings").text, client.get("/settings?view=classic").text):
+        scripts = re.findall(r"<script>(.*?)</script>", page, re.S)
+        # buttons that reload the page run these scripts again: a top-level const/let would crash the second time
+        assert not any(re.search(r"^  (?:const|let) ", s, re.M) for s in scripts)
+    classic = client.get("/settings?view=classic").text
+    assert "promErrorsReady" in classic and "htmx:beforeSwap" in classic and "shouldSwap = false" in classic
+    js = client.get("/static/v3/app.js").text                 # the new screen does the same in its script
+    assert "htmx:beforeSwap" in js and "shouldSwap = false" in js and "htmx:sendError" in js
 
 
 def test_saving_the_elevenlabs_key_answers_next_to_the_box(app_client):
@@ -205,7 +208,7 @@ def test_saved_message_never_lands_in_the_two_column_grid(app_client):
     csrf = login(client)
     page = client.post("/settings/voice/engine", data={"engine": "auto", "eleven_voice": ""},
                        headers={"X-CSRF-Token": csrf}).text
-    main = page.split('<main class="settings">', 1)[1]
-    # the first thing in the grid must be the menu: a message before it pushed the settings into the narrow column
-    assert re.match(r"\s*<nav class=\"set-nav\"", main), main[:200]
-    assert "Saved." in main.split('<div class="set-body">', 1)[1]
+    # the new screen: the settings area comes back whole (menu first), and "Saved." is inside it (shown as a toast)
+    area = page.split('id="v3-settings">', 1)[1]
+    assert re.match(r"\s*<nav class=\"set-nav\"", area), area[:200]
+    assert "Saved." in area.split('<div class="set-body">', 1)[1]

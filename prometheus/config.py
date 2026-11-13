@@ -56,6 +56,11 @@ class Settings:
     voice_enabled: bool = False                 # listen for "Prometheus" and answer out loud
     voice_autostart: bool = False
     owner_name: str = ""                     # shown in the sidebar; asked on first run
+    ui_glow: float = 1.0                     # Appearance: glow strength 0.4 … 1.4
+    ui_sphere: str = "auto"                  # Appearance: sphere quality auto|low|medium|high
+    ui_motion: str = "auto"                  # Appearance: auto (follow Windows) | reduced | full
+    ui_text: int = 15                        # Appearance: text size (px)
+    ui_density: str = "comfortable"          # Appearance: comfortable | compact
     quick_actions: list = field(default_factory=list)  # Home buttons [{label, fill, icon}]; empty = the defaults
     attach_max_mb: int = 25                  # + button: biggest file (MB)
     attach_max_files: int = 10               # + button: files per message
