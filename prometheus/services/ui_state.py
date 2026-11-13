@@ -1,141 +1,131 @@
-"""UI State Provider and Slash Command Registry for Prometheus 3.0."""
+"""What the new interface shows about Prometheus right now: online or not, what's running, and the `/` commands.
+
+Everything here comes from real state. When nothing is running the panel says so; it never invents a task, an agent
+or a progress number, and "online" is only claimed when Prometheus isn't paused and at least one AI can answer.
+"""
 from __future__ import annotations
 
 import time
 from typing import Any, Dict, List, Optional
 
+# Commands typed after "/" (or picked from the Ctrl+/ palette). "fill" puts a starting prompt in the command bar,
+# "go" opens a page, "do" runs an action in the page. Pages appear here only once they exist in the new interface.
+COMMANDS: List[Dict[str, str]] = [
+    {"command": "/code", "label": "Code", "group": "Ask", "kind": "fill", "value": "Help me with this code: ",
+     "description": "Write, fix or explain code"},
+    {"command": "/research", "label": "Research", "group": "Ask", "kind": "fill", "value": "Research ",
+     "description": "Search the web and give sources"},
+    {"command": "/write", "label": "Write", "group": "Ask", "kind": "fill", "value": "Write ",
+     "description": "Draft an email, essay or message"},
+    {"command": "/explain", "label": "Explain", "group": "Ask", "kind": "fill", "value": "Explain simply: ",
+     "description": "Explain something in plain words"},
+    {"command": "/plan", "label": "Plan", "group": "Ask", "kind": "fill", "value": "Make a plan for ",
+     "description": "Break a goal into steps"},
+    {"command": "/summarise", "label": "Summarise a file", "group": "Files", "kind": "fill",
+     "value": "Summarise the file ", "description": "Summarise a document or attached file"},
+    {"command": "/analyse", "label": "Analyse data", "group": "Files", "kind": "fill",
+     "value": "Analyse this data: ", "description": "Look at a spreadsheet or CSV"},
+    {"command": "/find", "label": "Search my files", "group": "Files", "kind": "fill",
+     "value": "Find the file that ", "description": "Search inside your documents"},
+    {"command": "/translate", "label": "Translate", "group": "Ask", "kind": "fill", "value": "Translate to English: ",
+     "description": "Translate text, a file or a page"},
+    {"command": "/remember", "label": "Remember", "group": "Memory", "kind": "fill", "value": "Remember ",
+     "description": "Save something to memory at once"},
+    {"command": "/remind", "label": "Remind me", "group": "Automate", "kind": "fill", "value": "Remind me ",
+     "description": "A reminder, alarm or timer"},
+    {"command": "/new", "label": "New chat", "group": "Go", "kind": "go", "value": "/",
+     "description": "Start a fresh chat"},
+    {"command": "/chats", "label": "Chats", "group": "Go", "kind": "go", "value": "/v3/chats",
+     "description": "All your chats"},
+    {"command": "/settings", "label": "Settings", "group": "Go", "kind": "go", "value": "/settings",
+     "description": "Open Settings"},
+    {"command": "/stop", "label": "Stop the reply", "group": "Do", "kind": "do", "value": "stop",
+     "description": "Stop what Prometheus is doing in this chat"},
+]
+
 
 class UIStateService:
-    """Provides current UI state, active agent, task progress, and slash command registry."""
-
     def __init__(self, services: Optional[Any] = None) -> None:
         self.services = services
 
     def get_slash_commands(self) -> List[Dict[str, str]]:
-        """Return registered slash commands."""
-        return [
-            {
-                "command": "/code",
-                "label": "Code",
-                "description": "Code assistant for editing, refactoring, and debugging",
-                "example": "/code refactor safety checks",
-            },
-            {
-                "command": "/research",
-                "label": "Research",
-                "description": "Deep academic and technical web research",
-                "example": "/research latest advances in agent architectures",
-            },
-            {
-                "command": "/automate",
-                "label": "Automate",
-                "description": "Schedule or run recurring background automations",
-                "example": "/automate check disk space every morning",
-            },
-            {
-                "command": "/pc",
-                "label": "Control PC",
-                "description": "Desktop integration and system control tasks",
-                "example": "/pc open terminal in workspace",
-            },
-            {
-                "command": "/agents",
-                "label": "Agents",
-                "description": "Inspect registered agents and active workers",
-                "example": "/agents list",
-            },
-            {
-                "command": "/memory",
-                "label": "Memory",
-                "description": "Search long-term memory, facts, and conversation context",
-                "example": "/memory recent decisions",
-            },
-            {
-                "command": "/skills",
-                "label": "Skills",
-                "description": "View and manage available tools and skills",
-                "example": "/skills list",
-            },
-            {
-                "command": "/system",
-                "label": "System",
-                "description": "System health, telemetry metrics, and resource monitors",
-                "example": "/system status",
-            },
-            {
-                "command": "/help",
-                "label": "Help",
-                "description": "Show command guide and keyboard shortcuts",
-                "example": "/help",
-            },
-        ]
+        out = [dict(c) for c in COMMANDS]
+        skills = getattr(self.services, "skills", None) if self.services else None
+        if skills is not None:
+            try:
+                for sk in skills.catalog()[:40]:
+                    out.append({"command": "/" + sk.name.lower().replace(" ", "-"), "label": sk.name, "group": "Skills",
+                                "kind": "fill", "value": f"Use the {sk.name} skill to ",
+                                "description": (sk.description or "")[:90]})
+            except Exception:
+                pass
+        return out
 
-    def get_active_agent(self) -> Dict[str, Any]:
-        """Return information about the currently active or standby agent."""
-        if self.services and getattr(self.services, "running", None):
-            # Check if any chat currently has a running task
-            running_chats = list(self.services.running)
-            if running_chats and getattr(self.services, "store", None):
-                task = self.services.store.latest_task(running_chats[0])
-                if task:
-                    steps = [s for s in self.services.store.steps(task["id"]) if s.status == "running"]
-                    if steps:
-                        curr = steps[-1]
-                        return {
-                            "name": curr.agent.replace("_", " ").title(),
-                            "role": "Active Execution Worker",
-                            "status": "working",
-                            "status_text": "Working",
-                            "description": curr.goal or "Executing requested instructions...",
-                        }
+    def _running(self) -> tuple[Optional[int], Optional[dict]]:
+        s = self.services
+        if not s or not getattr(s, "running", None) or not getattr(s, "store", None):
+            return None, None
+        chat_id = next(iter(list(s.running)), None)
+        if chat_id is None:
+            return None, None
+        try:
+            return chat_id, s.store.latest_task(chat_id)
+        except Exception:
+            return chat_id, None
 
-        # Standby / Core Orchestrator
-        return {
-            "name": "System Orchestrator",
-            "role": "Core Intelligence",
-            "status": "idle",
-            "status_text": "Ready",
-            "description": "Ready to assist with development and system tasks",
-        }
+    def get_active_agent(self) -> Optional[Dict[str, Any]]:
+        """The agent doing a step right now, or None when nothing is running."""
+        _, task = self._running()
+        if not task:
+            return None
+        try:
+            steps = self.services.store.steps(task["id"])
+        except Exception:
+            return None
+        running = [st for st in steps if st.status == "running"]
+        if not running:
+            return {"name": "Planning", "status": "working", "description": "Working out the steps"}
+        st = running[-1]
+        return {"name": st.agent.replace("_", " ").title(), "status": "working", "description": st.goal or ""}
 
-    def get_current_task(self) -> Dict[str, Any]:
-        """Return information about current task progress."""
-        if self.services and getattr(self.services, "running", None):
-            running_chats = list(self.services.running)
-            if running_chats and getattr(self.services, "store", None):
-                task = self.services.store.latest_task(running_chats[0])
-                if task:
-                    steps = self.services.store.steps(task["id"])
-                    if steps:
-                        completed = sum(1 for s in steps if s.status == "done")
-                        total = max(len(steps), 1)
-                        progress = round((completed / total) * 100.0, 1)
-                        running_steps = [s for s in steps if s.status == "running"]
-                        step_goal = running_steps[-1].goal if running_steps else "Processing..."
-                        return {
-                            "title": task.get("goal") or "Executing Task",
-                            "status": "running",
-                            "progress": progress,
-                            "detail": step_goal,
-                        }
+    def get_current_task(self) -> Optional[Dict[str, Any]]:
+        """The running request with real progress (finished steps out of planned ones), or None when idle."""
+        chat_id, task = self._running()
+        if chat_id is None:
+            return None
+        title = (task or {}).get("goal") or ""
+        steps = []
+        if task:
+            try:
+                steps = self.services.store.steps(task["id"])
+            except Exception:
+                steps = []
+        done = sum(1 for st in steps if st.status in ("done", "failed", "skipped"))
+        running = [st for st in steps if st.status == "running"]
+        return {"chat_id": chat_id, "title": title[:120], "status": "running",
+                "progress": round(done * 100.0 / len(steps), 1) if steps else None,
+                "detail": (running[-1].goal if running else "Planning")[:160]}
 
-        return {
-            "title": "System Monitoring",
-            "status": "ready",
-            "progress": 100.0,
-            "detail": "All systems operational",
-        }
+    def get_online(self) -> Dict[str, Any]:
+        s = self.services
+        if s is None:
+            return {"online": False, "status": "unknown", "label": "Starting"}
+        if getattr(getattr(s, "killswitch", None), "is_set", False) or getattr(s.settings, "paused", False):
+            return {"online": False, "status": "paused", "label": "Paused (Stop all)"}
+        router = getattr(s, "router", None)
+        try:
+            usable = any(p.get("available") and not p.get("resting") for p in router.status_detail())
+        except Exception:
+            usable = False
+        if not usable:
+            return {"online": False, "status": "no_ai", "label": "No AI available"}
+        return {"online": True, "status": "online", "label": "Prometheus online"}
 
     def get_full_state(self) -> Dict[str, Any]:
-        """Return unified state snapshot for the v3 interface."""
-        return {
-            "online": True,
-            "timestamp": time.time(),
-            "active_agent": self.get_active_agent(),
-            "current_task": self.get_current_task(),
-            "slash_commands": self.get_slash_commands(),
-        }
+        online = self.get_online()
+        return {"online": online["online"], "status": online["status"], "status_label": online["label"],
+                "timestamp": time.time(), "active_agent": self.get_active_agent(),
+                "current_task": self.get_current_task()}
 
 
-# Global singleton helper
 ui_state_service = UIStateService()

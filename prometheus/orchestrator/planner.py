@@ -252,6 +252,7 @@ class Orchestrator:
         self.extra_sections: list = []     # (heading, callable returning text) added to the planner's system
         self.interceptors: list = []       # callables (chat_id, text) -> answer or None: e.g. a quiz in progress
         self.before_steps = None           # callable (chat_id, text, plan) -> answer to stop with, or "" to go on
+        self.stopping: set[int] = set()    # chats whose reply the owner stopped (Stop button): ends before the next step
         self.skills = skills
         from prometheus.memory.facts import Facts
 
@@ -465,6 +466,7 @@ class Orchestrator:
 
     def _finish(self, chat_id: int, task_id: int, status: str, answer: str, model: str = "",
                 private: bool = False, topic: str = "") -> TaskOutcome:
+        self.stopping.discard(chat_id)
         # the markers around outside text are for the AIs; the owner sees only the words
         answer = re.sub(r"</?untrusted(?: source=\"[^\"\n]*\")?>\n?", "", answer or "").replace("&lt;/untrusted", "</untrusted")
         noted = self._remembered.pop(task_id, [])
@@ -605,9 +607,16 @@ class Orchestrator:
             return None                            # the same thing again: stop instead of looping
         return nxt
 
+    def request_stop(self, chat_id: int) -> None:
+        """Stop this chat's reply only (Stop all pauses everything instead). Takes effect before the next step;
+        a step already running finishes first."""
+        self.stopping.add(chat_id)
+
     def run(self, chat_id: int, text: str, read_only: bool = False) -> TaskOutcome:
         """read_only: another app asked; only reading steps run, nothing is remembered or changed."""
         from prometheus.safety.budget import for_chat
+
+        self.stopping.discard(chat_id)            # a stop pressed for an earlier reply doesn't stop this one
 
         for_chat(chat_id)                         # costs from this task count for this chat
         history = self._history(chat_id)          # taken before this message is added
@@ -682,6 +691,8 @@ class Orchestrator:
         if topic:
             self.store.set_message_topic(user_msg, topic)
         self._name_chat(chat_id, plan.title)
+        if chat_id in self.stopping:
+            return self._finish(chat_id, task_id, "stopped", "Stopped. Ask again whenever you like.")
         if not plan.steps:                        # no tools needed: the plan call already wrote the answer
             return self._finish(chat_id, task_id, "done", plan.answer, plan.model, topic=topic)
 
@@ -700,6 +711,8 @@ class Orchestrator:
             executed = 0
             for st in plan.steps:
                 self.killswitch.check()
+                if chat_id in self.stopping:
+                    raise Stopped("Stopped. Ask again whenever you like.")
                 if any(d in bad for d in st["depends_on"]):
                     sid = self.store.add_step(task_id, st["agent"], st["goal"], st["inputs"])
                     self.store.finish_step(sid, "skipped", "Skipped because an earlier step failed.")

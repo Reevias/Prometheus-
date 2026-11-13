@@ -32,6 +32,7 @@ dependencies = [
     "trafilatura>=1.12",
     "youtube-transcript-api>=1.0",
     "filelock>=3.12",
+    "psutil>=6.0",
 ]
 
 [project.optional-dependencies]

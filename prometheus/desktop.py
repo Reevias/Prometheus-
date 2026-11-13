@@ -8,8 +8,9 @@ import time
 from prometheus.config import Settings
 from prometheus.launcher import version
 
-BACKGROUND = "#0d0709"
+BACKGROUND = "#0B0B10"                   # the palette base, so there is no flash on opening
 ACTIVE_WINDOW = None
+ACTIVE_TRAY = None                 # set when the tray icon is running (closing then only hides)
 
 
 class LocalServer:
@@ -158,12 +159,17 @@ def run_desktop(settings: Settings, webview=None, server=None) -> int:
         windows_identity()                       # before the window exists, so the taskbar groups it as Prometheus
         window = webview.create_window(title, f"http://127.0.0.1:{port}/", width=1220,
                                        height=780, min_size=(860, 560), background_color=BACKGROUND,
-                                       text_select=True)  # pywebview blocks selecting and copying text unless asked
+                                       text_select=True,  # pywebview blocks selecting and copying text unless asked
+                                       frameless=True,    # the app draws its own themed title bar (M2)
+                                       easy_drag=False,   # dragging only from the title bar, not from everywhere
+                                       fullscreen=True)   # opens fullscreen; F11 / Esc switch (M2)
         windows_identity(window, title)
         global ACTIVE_WINDOW
         ACTIVE_WINDOW = window
         try:
             tray = attach_tray(window, settings) if window is not None else None
+            global ACTIVE_TRAY
+            ACTIVE_TRAY = tray if tray is not None and getattr(tray, 'icon', None) is not None else None
         except Exception:                       # the tray is a nicety: never let it stop the window
             tray = None
         webview.start()

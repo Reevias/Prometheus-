@@ -77,7 +77,16 @@ class Services:
     terminal: AsyncTerminal | None = None
 
     def notify(self, kind: str, text: str) -> bool:
-        """A Windows notification, if the owner wants this kind (Settings → Notifications)."""
+        """A Windows notification, if the owner wants this kind (Settings → Notifications). Every notification is
+        also kept for the bell in the app (the last 20)."""
+        try:
+            if self.store is not None:
+                kept = self.store.kv_get("notifications", [])
+                kept = (kept if isinstance(kept, list) else [])[-19:]
+                kept.append({"kind": kind, "text": str(text)[:300], "at": time.time(), "read": False})
+                self.store.kv_set("notifications", kept)
+        except Exception:
+            pass
         if self.focus is not None and kind != "reminder" and self.focus.hold(text):
             return False                       # focus mode: kept for the summary at the end
         wanted = {"task": "notify_tasks", "waiting": "notify_waiting", "briefing": "notify_briefing",

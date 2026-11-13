@@ -55,6 +55,10 @@ class Settings:
     ollama_url: str = "http://127.0.0.1:11434"
     voice_enabled: bool = False                 # listen for "Prometheus" and answer out loud
     voice_autostart: bool = False
+    owner_name: str = ""                     # shown in the sidebar; asked on first run
+    attach_max_mb: int = 25                  # + button: biggest file (MB)
+    attach_max_files: int = 10               # + button: files per message
+    attach_keep_days: int = 7                # attachments not in a project are removed after this
     voice_name: str = "af_heart"
     voice_speech: str = "fast"                  # fast | accent | hindi: how commands are turned into words
     voice_engine: str = "auto"                  # auto (ElevenLabs when its key is in) | elevenlabs | local

@@ -73,17 +73,55 @@ def register_routes(app: FastAPI, services: Services) -> None:
                     asks=store.asks_for_chat(chat_id),
                     notes=store.chat_notes(chat_id), busy=busy, doing=current_step(chat_id) if busy else "")
 
+    # ---- Prometheus 3.0 interface (M2) ---------------------------------------------------------------------------
+    def shell(request: Request, name: str, active: str, **ctx):
+        from prometheus.services.ui_state import ui_state_service
+        ui_state_service.services = services
+        return page(request, name, active=active, owner=services.settings.owner_name,
+                    commands=ui_state_service.get_slash_commands(), chats=store.chats()[:8],
+                    heads=head_choices(services.router), head=services.settings.head_model, **ctx)
+
+    PHONE = re.compile(r"Android|iPhone|iPad|Mobile", re.I)
+
     @app.get("/", response_class=HTMLResponse)
     def home(request: Request, view: str = ""):
-        if view == "classic":
+        # The new interface is for the desktop. Phones (the Android app, a phone browser) keep the phone-friendly
+        # 2.x screen with notifications, hold-to-talk and photo sending. "?view=classic" opens it anywhere.
+        if view == "classic" or (view != "v3" and PHONE.search(request.headers.get("user-agent", ""))):
             chats = store.chats()
             chat_id = chats[0][0] if chats else store.create_chat("First chat")
             return chat_page(request, chat_id)
-        return page(request, "v3/shell.html")
+        return shell(request, "v3/home.html", "home")
 
-    @app.get("/v3", response_class=HTMLResponse)
-    def v3_home(request: Request):
-        return page(request, "v3/shell.html")
+    @app.get("/v3")
+    def v3_home():
+        return RedirectResponse("/", status_code=303)
+
+    @app.get("/c/{chat_id}", response_class=HTMLResponse)
+    def v3_chat(request: Request, chat_id: int):
+        if chat_id not in dict(store.chats()):
+            return RedirectResponse("/", status_code=303)
+        busy = chat_id in services.running
+        return shell(request, "v3/chat.html", "chats", chat_id=chat_id, chat_title=store.chat_title(chat_id),
+                     messages=store.messages(chat_id), ratings=store.ratings_for(chat_id),
+                     asks=store.asks_for_chat(chat_id), busy=busy, doing=current_step(chat_id) if busy else "")
+
+    @app.get("/c/{chat_id}/messages", response_class=HTMLResponse)
+    def v3_messages(request: Request, chat_id: int, have: int = -1, busy: int = -1):
+        shown = len(store.messages(chat_id)) + len(store.asks_for_chat(chat_id))
+        running = int(chat_id in services.running)
+        if have == shown and busy == running and not running:
+            return Response(status_code=204)
+        return page(request, "v3/messages.html", chat_id=chat_id, messages=store.messages(chat_id),
+                    busy=bool(running), asks=store.asks_for_chat(chat_id), ratings=store.ratings_for(chat_id),
+                    doing=current_step(chat_id) if running else "")
+
+    @app.get("/v3/chats", response_class=HTMLResponse)
+    def v3_chats(request: Request, q: str = ""):
+        q = q.strip()[:200]
+        hits = store.search_chats(q) if q else []
+        return shell(request, "v3/chats.html", "chats", all_chats=store.chats(), q=q, hits=hits,
+                     titles=dict(store.chats()))
 
     @app.get("/api/v3/telemetry")
     def api_v3_telemetry():
@@ -94,45 +132,104 @@ def register_routes(app: FastAPI, services: Services) -> None:
     def api_v3_state():
         from prometheus.services.ui_state import ui_state_service
         ui_state_service.services = services
-        return ui_state_service.get_full_state()
+        state = ui_state_service.get_full_state()
+        kept = store.kv_get("notifications", [])
+        state["unread"] = sum(1 for n in kept if isinstance(n, dict) and not n.get("read"))
+        return state
 
     @app.get("/api/v3/slash-commands")
     def api_v3_slash_commands():
         from prometheus.services.ui_state import ui_state_service
+        ui_state_service.services = services
         return ui_state_service.get_slash_commands()
 
-    @app.post("/api/v3/command")
-    async def api_v3_command(request: Request):
+    @app.post("/api/v3/send")
+    async def api_v3_send(request: Request):
+        """The command bar: text and/or attached files. Starts a new chat unless chat_id is given."""
+        from prometheus import attachments
+        from prometheus.config import data_dir
+
+        form = await request.form()
+        text = str(form.get("text") or "").strip()[:4000]
+        files = [f for f in form.getlist("files") if getattr(f, "filename", "")]
+        s = services.settings
+        if not text and not files:
+            return JSONResponse({"error": "Type something or add a file first."}, status_code=400)
+        if len(files) > s.attach_max_files:
+            return JSONResponse({"error": f"Up to {s.attach_max_files} files per message (Settings)."}, status_code=400)
+        saved = []
+        for f in files:
+            try:
+                saved.append(attachments.save(data_dir(), f.filename, await f.read(), s.attach_max_mb))
+            except attachments.AttachmentError as e:
+                return JSONResponse({"error": str(e)}, status_code=400)
         try:
-            body = await request.json()
-        except Exception:
-            body = {}
-        text = str(body.get("text", "")).strip()[:4000]
-        if not text:
-            return JSONResponse({"status": "empty", "error": "No command text provided"}, status_code=400)
-        chats = store.chats()
-        chat_id = chats[0][0] if chats else store.create_chat("New chat")
-        if chat_id not in services.running:
+            chat_id = int(form.get("chat_id") or 0)
+        except ValueError:
+            chat_id = 0
+        if chat_id and chat_id not in dict(store.chats()):
+            chat_id = 0
+        if not chat_id:
+            chat_id = store.create_chat(quick_title(text) if text else "Files")
+        if chat_id in services.running:
+            return JSONResponse({"error": "Prometheus is still answering in this chat. Wait, or press Stop.",
+                                 "chat_id": chat_id}, status_code=409)
+        title = dict(store.chats()).get(chat_id, "")
+        if text and title in PLACEHOLDERS and not store.messages(chat_id) and store.chat_named_by(chat_id) != "user":
             store.rename_chat(chat_id, quick_title(text))
-            services.start_task(chat_id, text)
-        return {"status": "ok", "chat_id": chat_id, "text": text}
+        services.start_task(chat_id, attachments.request_text(text, saved))
+        return {"chat_id": chat_id, "url": f"/c/{chat_id}"}
+
+    @app.post("/api/v3/chats/{chat_id}/stop")
+    def api_v3_stop(chat_id: int):
+        services.orchestrator.request_stop(chat_id)
+        return {"stopping": chat_id in services.running}
+
+    @app.post("/api/v3/profile")
+    def api_v3_profile(name: str = Form("")):
+        name = re.sub(r"[\x00-\x1f<>]", "", name).strip()[:40]
+        services.settings = replace(services.settings, owner_name=name)
+        save_settings(services.settings)
+        return {"name": name}
+
+    @app.get("/api/v3/notifications")
+    def api_v3_notifications():
+        kept = store.kv_get("notifications", [])
+        return [n for n in reversed(kept if isinstance(kept, list) else []) if isinstance(n, dict)][:20]
+
+    @app.post("/api/v3/notifications/read")
+    def api_v3_notifications_read():
+        kept = store.kv_get("notifications", [])
+        kept = [dict(n, read=True) for n in (kept if isinstance(kept, list) else []) if isinstance(n, dict)]
+        store.kv_set("notifications", kept)
+        return {"unread": 0}
 
     @app.post("/api/v3/window/{action}")
     def api_v3_window_action(action: str):
+        """Title-bar buttons of the desktop window (hidden in a browser, where they can't work)."""
         from prometheus import desktop
-        action = action.lower()
         win = getattr(desktop, "ACTIVE_WINDOW", None)
-        if win is not None:
-            try:
-                if action == "minimize":
-                    win.minimize()
-                elif action == "maximize":
-                    win.maximize()
-                elif action == "close":
+        if win is None:
+            return JSONResponse({"error": "Not running in the desktop window."}, status_code=409)
+        try:
+            if action == "minimize":
+                win.minimize()
+            elif action == "maximize":
+                win.toggle_fullscreen() if getattr(win, "fullscreen", False) else win.maximize()
+            elif action == "restore":
+                win.restore()
+            elif action == "fullscreen":
+                win.toggle_fullscreen()
+            elif action == "close":
+                if getattr(desktop, "ACTIVE_TRAY", None) is not None:
+                    win.hide()                  # the tray keeps Prometheus running; Quit is in its menu
+                else:
                     win.destroy()
-            except Exception as e:
-                return {"status": "error", "action": action, "error": str(e)}
-        return {"status": "ok", "action": action}
+            else:
+                return JSONResponse({"error": "Unknown window action."}, status_code=400)
+        except Exception as e:
+            return JSONResponse({"error": str(e)[:200]}, status_code=500)
+        return {"ok": True}
 
     @app.post("/chats")
     def new_chat():

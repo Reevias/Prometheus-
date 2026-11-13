@@ -1,43 +1,28 @@
-"""System telemetry service for Prometheus 3.0.
+"""Real system readings for the right panel: CPU, RAM, GPU, CPU temperature, disk and network.
 
-Provides real-time, non-fabricated metrics for CPU, RAM, and GPU.
-Uses native Windows API calls (kernel32) with zero C-extension overhead,
-providing sub-millisecond query latency and 100% genuine hardware telemetry.
+Every number comes from the operating system. Anything that can't be read on this computer is returned as None and
+the panel hides it: nothing is ever made up or shown as a fake zero. Readings are cheap (psutil, no new processes)
+except the NVIDIA GPU, which is only asked every few seconds and only if nvidia-smi exists.
 """
 from __future__ import annotations
 
-import os
-import sys
-import time
 import shutil
 import subprocess
-from dataclasses import dataclass
-from typing import Optional, Dict, Any
+import sys
+import threading
+import time
+from dataclasses import asdict, dataclass
+from pathlib import Path
+from typing import Any, Dict, Optional
+
+try:
+    import psutil
+except ImportError:                     # declared in pyproject; guarded so the app still starts without it
+    psutil = None
 
 _IS_WINDOWS = sys.platform == "win32"
-
-if _IS_WINDOWS:
-    import ctypes
-    from ctypes import wintypes
-
-    class _MEMORYSTATUSEX(ctypes.Structure):
-        _fields_ = [
-            ("dwLength", wintypes.DWORD),
-            ("dwMemoryLoad", wintypes.DWORD),
-            ("ullTotalPhys", ctypes.c_uint64),
-            ("ullAvailPhys", ctypes.c_uint64),
-            ("ullTotalPageFile", ctypes.c_uint64),
-            ("ullAvailPageFile", ctypes.c_uint64),
-            ("ullTotalVirtual", ctypes.c_uint64),
-            ("ullAvailVirtual", ctypes.c_uint64),
-            ("ullAvailExtendedVirtual", ctypes.c_uint64),
-        ]
-
-    class _FILETIME(ctypes.Structure):
-        _fields_ = [
-            ("dwLowDateTime", wintypes.DWORD),
-            ("dwHighDateTime", wintypes.DWORD),
-        ]
+GPU_EVERY = 5.0                          # seconds between NVIDIA queries
+NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 
 @dataclass
@@ -47,195 +32,144 @@ class RAMInfo:
     used_gb: float
     free_gb: float
 
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            "percent": self.percent,
-            "total_gb": self.total_gb,
-            "used_gb": self.used_gb,
-            "free_gb": self.free_gb,
-        }
+    def to_dict(self) -> Dict[str, float]:
+        return asdict(self)
 
 
 @dataclass
 class GPUInfo:
-    percent: float
     model: str
-    memory_used_mb: Optional[float] = None
-    memory_total_mb: Optional[float] = None
+    percent: float
+    memory_used_mb: float
+    memory_total_mb: float
 
     def to_dict(self) -> Dict[str, Any]:
-        return {
-            "percent": self.percent,
-            "model": self.model,
-            "memory_used_mb": self.memory_used_mb,
-            "memory_total_mb": self.memory_total_mb,
-        }
+        return asdict(self)
 
 
 class SystemTelemetryService:
-    """Collects genuine system telemetry (CPU, RAM, GPU, Uptime)."""
-
     def __init__(self) -> None:
-        self._last_cpu_time: float = 0.0
-        self._last_idle_time: int = 0
-        self._last_kernel_time: int = 0
-        self._last_user_time: int = 0
-        self._last_cpu_percent: float = 0.0
-        self._init_cpu_baseline()
-
-    def _init_cpu_baseline(self) -> None:
-        if _IS_WINDOWS:
-            times = self._get_windows_cpu_times()
-            if times:
-                self._last_idle_time, self._last_kernel_time, self._last_user_time = times
-                self._last_cpu_time = time.monotonic()
-
-    def _filetime_to_int(self, ft: "_FILETIME") -> int:
-        return (ft.dwHighDateTime << 32) | ft.dwLowDateTime
-
-    def _get_windows_cpu_times(self) -> Optional[tuple[int, int, int]]:
-        if not _IS_WINDOWS:
-            return None
-        idle = _FILETIME()
-        kernel = _FILETIME()
-        user = _FILETIME()
-        if ctypes.windll.kernel32.GetSystemTimes(
-            ctypes.byref(idle), ctypes.byref(kernel), ctypes.byref(user)
-        ):
-            return (
-                self._filetime_to_int(idle),
-                self._filetime_to_int(kernel),
-                self._filetime_to_int(user),
-            )
-        return None
-
-    def get_cpu_percent(self) -> float:
-        """Return genuine CPU percentage utilization (0.0 to 100.0)."""
-        if not _IS_WINDOWS:
-            # Fallback for non-Windows (e.g. loadavg)
+        self._lock = threading.Lock()
+        self._net_last: tuple[float, int, int] | None = None
+        self._gpu_cache: tuple[float, Optional[GPUInfo]] = (0.0, None)
+        self._nvidia = shutil.which("nvidia-smi")
+        if psutil is not None:
             try:
-                load = os.getloadavg()[0]
-                cores = os.cpu_count() or 1
-                return round(min(100.0, (load / cores) * 100.0), 1)
-            except (AttributeError, OSError):
-                return 0.0
+                psutil.cpu_percent(interval=None)        # first call primes the counter
+            except Exception:
+                pass
 
-        times = self._get_windows_cpu_times()
-        if not times:
-            return self._last_cpu_percent
+    def get_cpu_percent(self) -> Optional[float]:
+        if psutil is None:
+            return None
+        try:
+            return round(float(psutil.cpu_percent(interval=None)), 1)
+        except Exception:
+            return None
 
-        now = time.monotonic()
-        elapsed = now - self._last_cpu_time
-
-        # If called too quickly (less than 150ms), return cached measurement
-        if elapsed < 0.15 and self._last_cpu_time > 0:
-            return self._last_cpu_percent
-
-        idle, kernel, user = times
-        idle_delta = idle - self._last_idle_time
-        # On Windows, kernel time includes idle time
-        sys_delta = (kernel - self._last_kernel_time) + (user - self._last_user_time)
-
-        self._last_idle_time = idle
-        self._last_kernel_time = kernel
-        self._last_user_time = user
-        self._last_cpu_time = now
-
-        if sys_delta <= 0:
-            return self._last_cpu_percent
-
-        busy = (sys_delta - idle_delta) / sys_delta * 100.0
-        self._last_cpu_percent = round(max(0.0, min(100.0, busy)), 1)
-        return self._last_cpu_percent
-
-    def get_ram_info(self) -> RAMInfo:
-        """Return genuine system RAM metrics."""
-        if _IS_WINDOWS:
-            stat = _MEMORYSTATUSEX()
-            stat.dwLength = ctypes.sizeof(_MEMORYSTATUSEX)
-            if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(stat)):
-                total_gb = stat.ullTotalPhys / (1024 ** 3)
-                avail_gb = stat.ullAvailPhys / (1024 ** 3)
-                used_gb = total_gb - avail_gb
-                return RAMInfo(
-                    percent=float(stat.dwMemoryLoad),
-                    total_gb=round(total_gb, 2),
-                    used_gb=round(used_gb, 2),
-                    free_gb=round(avail_gb, 2),
-                )
-
-        # Cross-platform fallback via /proc/meminfo or sysconf
-        return RAMInfo(percent=0.0, total_gb=0.0, used_gb=0.0, free_gb=0.0)
+    def get_ram_info(self) -> Optional[RAMInfo]:
+        if psutil is None:
+            return None
+        try:
+            vm = psutil.virtual_memory()
+        except Exception:
+            return None
+        gb = 1024 ** 3
+        return RAMInfo(percent=round(float(vm.percent), 1), total_gb=round(vm.total / gb, 2),
+                       used_gb=round((vm.total - vm.available) / gb, 2), free_gb=round(vm.available / gb, 2))
 
     def get_gpu_info(self) -> Optional[GPUInfo]:
-        """Query genuine GPU utilization if a dedicated GPU is present.
-        
-        Returns None if no dedicated GPU or supported telemetry provider is detected.
-        Never fabricates telemetry numbers.
-        """
-        # 1. Check NVIDIA via nvidia-smi
-        if shutil.which("nvidia-smi"):
+        """NVIDIA GPU use via nvidia-smi; None when there is no readable GPU (integrated GPUs aren't readable yet)."""
+        if not self._nvidia:
+            return None
+        with self._lock:
+            when, cached = self._gpu_cache
+            if time.monotonic() - when < GPU_EVERY:
+                return cached
+            info = None
             try:
                 proc = subprocess.run(
-                    [
-                        "nvidia-smi",
-                        "--query-gpu=name,utilization.gpu,memory.used,memory.total",
-                        "--format=csv,noheader,nounits",
-                    ],
-                    capture_output=True,
-                    text=True,
-                    timeout=1.0,
-                )
+                    [self._nvidia, "--query-gpu=name,utilization.gpu,memory.used,memory.total",
+                     "--format=csv,noheader,nounits"],
+                    capture_output=True, text=True, timeout=1.5, creationflags=NO_WINDOW)
                 if proc.returncode == 0 and proc.stdout.strip():
                     parts = [p.strip() for p in proc.stdout.strip().splitlines()[0].split(",")]
                     if len(parts) >= 4:
-                        return GPUInfo(
-                            model=parts[0],
-                            percent=float(parts[1]),
-                            memory_used_mb=float(parts[2]),
-                            memory_total_mb=float(parts[3]),
-                        )
+                        info = GPUInfo(model=parts[0], percent=float(parts[1]),
+                                       memory_used_mb=float(parts[2]), memory_total_mb=float(parts[3]))
             except Exception:
-                pass
+                info = None
+            self._gpu_cache = (time.monotonic(), info)
+            return info
 
-        # If not detected, return None (UI cleanly renders "N/A" without fabrication)
+    def get_cpu_temperature(self) -> Optional[float]:
+        """CPU temperature in °C where the system exposes it (Linux, some PCs). Windows doesn't without admin
+        rights or vendor tools, so it is usually None there and the panel hides it."""
+        if psutil is None or not hasattr(psutil, "sensors_temperatures"):
+            return None
+        try:
+            temps = psutil.sensors_temperatures() or {}
+        except Exception:
+            return None
+        for key in ("coretemp", "k10temp", "cpu_thermal", "acpitz", "zenpower"):
+            for entry in temps.get(key, []):
+                if entry.current and 0 < entry.current < 125:
+                    return round(float(entry.current), 1)
         return None
 
+    def get_disk(self) -> Optional[Dict[str, float]]:
+        """Use of the drive that holds the user's files (C: on most Windows laptops)."""
+        try:
+            usage = shutil.disk_usage(Path.home())
+        except Exception:
+            return None
+        gb = 1024 ** 3
+        return {"percent": round(usage.used * 100 / usage.total, 1) if usage.total else 0.0,
+                "free_gb": round(usage.free / gb, 1), "total_gb": round(usage.total / gb, 1)}
+
+    def get_network(self) -> Optional[Dict[str, float]]:
+        """Download and upload speed in KB/s since the previous reading (None on the very first reading)."""
+        if psutil is None:
+            return None
+        try:
+            io = psutil.net_io_counters()
+        except Exception:
+            return None
+        now = time.monotonic()
+        with self._lock:
+            last, self._net_last = self._net_last, (now, io.bytes_recv, io.bytes_sent)
+        if last is None or now - last[0] <= 0:
+            return None
+        secs = now - last[0]
+        return {"down_kbps": round(max(io.bytes_recv - last[1], 0) / 1024 / secs, 1),
+                "up_kbps": round(max(io.bytes_sent - last[2], 0) / 1024 / secs, 1)}
+
     def get_uptime_seconds(self) -> float:
-        """Return system uptime in seconds."""
-        if _IS_WINDOWS:
+        """Time since the computer started."""
+        if psutil is not None:
             try:
-                # GetTickCount64 returns milliseconds since boot (64-bit: the default int result wraps after 24.8 days)
-                k32 = ctypes.windll.kernel32
-                k32.GetTickCount64.restype = ctypes.c_ulonglong
-                return round(k32.GetTickCount64() / 1000.0, 1)
+                return round(time.time() - psutil.boot_time(), 1)
             except Exception:
                 pass
-        boottime = getattr(time, "CLOCK_BOOTTIME", None)
-        if boottime is not None:
-            try:
-                return round(time.clock_gettime(boottime), 1)
-            except OSError:
-                pass
-        try:
-            with open("/proc/uptime", encoding="ascii") as f:
-                return round(float(f.read().split()[0]), 1)
-        except (OSError, ValueError, IndexError):
-            pass
-        # last resort (macOS etc.): monotonic time is time since boot there
+        if _IS_WINDOWS:
+            import ctypes
+            k32 = ctypes.windll.kernel32
+            k32.GetTickCount64.restype = ctypes.c_ulonglong
+            return round(k32.GetTickCount64() / 1000.0, 1)
         return round(time.monotonic(), 1)
 
     def get_telemetry(self) -> Dict[str, Any]:
-        """Aggregate full telemetry snapshot."""
-        gpu = self.get_gpu_info()
+        ram, gpu = self.get_ram_info(), self.get_gpu_info()
         return {
             "cpu": self.get_cpu_percent(),
-            "ram": self.get_ram_info().to_dict(),
+            "ram": ram.to_dict() if ram else None,
             "gpu": gpu.to_dict() if gpu else None,
+            "temp_c": self.get_cpu_temperature(),
+            "disk": self.get_disk(),
+            "net": self.get_network(),
             "uptime_seconds": self.get_uptime_seconds(),
             "platform": sys.platform,
         }
 
 
-# Global singleton instance
 telemetry_service = SystemTelemetryService()
