@@ -422,10 +422,9 @@ def test_safety_and_account_controls_are_in_the_new_look(app_client):
     assert 'hx-post="/kill/reset"' in page and ">Resume<" in page
 
 
-def test_sidebar_shows_the_real_version_and_no_made_up_badges(app_client):
-    from prometheus.launcher import version
+def test_sidebar_has_no_version_and_no_made_up_badges(app_client):
     client, _ = app_client()
     login(client)
     page = client.get("/").text
-    assert f"v{version()}" in page and "v3.0" not in page
+    assert "brand-ver" not in page and "v3.0" not in page and 'id="collapse"' in page   # version: Settings, About
     assert "Saiveer" not in page and ">Pro<" not in page and "Control PC" not in page

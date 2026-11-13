@@ -328,6 +328,7 @@
     if (mod && e.key === "/") { e.preventDefault(); if (input) { input.focus(); if (!input.value) input.value = "/"; slashUpdate(true); } return; }
     if (mod && e.key.toLowerCase() === "l") { e.preventDefault(); if (input) input.focus(); return; }
     if (mod && e.key.toLowerCase() === "n") { e.preventDefault(); location.href = "/"; return; }
+    if (mod && !e.shiftKey && e.key.toLowerCase() === "b" && collapse) { e.preventDefault(); collapse.click(); return; }
     if (mod && /^[0-9]$/.test(e.key)) {
       var n = e.key === "0" ? 10 : +e.key, link = $('#nav a[data-key="' + n + '"]');
       if (link) { e.preventDefault(); location.href = link.getAttribute("href"); } return;
