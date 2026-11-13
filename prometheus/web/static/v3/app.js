@@ -310,6 +310,57 @@
     });
   });
 
+  // ---- voice: mic button, global mute, live waveform ---------------------------------------------------------
+  var mic = $("#mic"), mute = $("#mute"), voice = { available: false }, voiceFast = null;
+  function voiceLevels(level) {
+    var bars = $$("#levels i"), on = voice.state === "listening" || voice.state === "speaking";
+    bars.forEach(function (b, i) {
+      var h = on ? 4 + Math.round(22 * level * (0.45 + 0.55 * Math.abs(Math.sin(Date.now() / 140 + i * 1.7)))) : 4;
+      b.style.height = h + "px";
+    });
+    if (window.PromSphere) PromSphere.level(on ? level : 0);
+  }
+  function showVoice(v) {
+    voice = v || { available: false };
+    if (mute) {
+      var running = voice.available && voice.state && voice.state !== "off" && voice.state !== "setup" && voice.state !== "error";
+      mute.hidden = !running;
+      mute.classList.toggle("off", !!voice.muted);
+      mute.setAttribute("aria-pressed", String(!!voice.muted));
+      mute.title = voice.muted ? "Microphone muted: click to unmute (Ctrl+Shift+M)" : "Microphone on: click to mute (Ctrl+Shift+M)";
+    }
+    if (mic) mic.classList.toggle("on", voice.state === "listening");
+    var live = voice.state === "listening" || voice.state === "speaking";
+    if (live && !voiceFast) voiceFast = setInterval(function () {
+      fetch("/api/v3/voice", { credentials: "same-origin" }).then(function (r) { return r.json(); }).then(function (v) {
+        voice = v; voiceLevels(v.level || 0);
+        if (window.PromSphere && (v.state === "listening" || v.state === "speaking")) PromSphere.setState(v.state);
+        if (v.state !== "listening" && v.state !== "speaking") { clearInterval(voiceFast); voiceFast = null; voiceLevels(0); showVoice(v); }
+      }).catch(function () {});
+    }, 150);
+    if (!live) voiceLevels(0);
+  }
+  function listen() {
+    post("/api/v3/voice/listen").then(function (r) { return r.json().then(function (j) { return [r, j]; }); }).then(function (rj) {
+      if (!rj[0].ok) { toast(rj[1].error || "Voice didn't start.", true); return; }
+      toast(rj[1].starting ? "Starting voice… speak after the chime." : "Listening… speak after the chime.");
+    }).catch(function () { toast("Voice didn't start.", true); });
+  }
+  if (mic) mic.addEventListener("click", listen);
+  if (mute) mute.addEventListener("click", function () {
+    post("/api/v3/voice/mute").then(function (r) { return r.json(); }).then(function (j) {
+      if (j.error) { toast(j.error, true); return; }
+      voice.muted = j.muted; showVoice(voice);
+      toast(j.muted ? "Microphone muted." : "Microphone on.");
+    });
+  });
+  document.addEventListener("keydown", function (e) {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "m") {
+      e.preventDefault();
+      if (e.shiftKey) { if (mute && !mute.hidden) mute.click(); } else if (mic) listen();
+    }
+  });
+
   // ---- right panel: real readings ---------------------------------------------------------------------------
   var GAUGE = 'M 8 46 A 35 35 0 0 1 78 46';
   function gauge(label, pct, text) {
@@ -344,6 +395,7 @@
     fetch("/api/v3/state", { credentials: "same-origin" }).then(function (r) { return r.json(); }).then(function (s) {
       var dot = $("#online-dot"); if (dot) { dot.className = "dot " + (s.online ? "ok" : s.status === "paused" ? "warn" : "bad"); $("#online-label").textContent = s.status_label; }
       var badge = $("#bell-badge"); if (badge) badge.hidden = !s.unread;
+      showVoice(s.voice);
       var a = s.active_agent, t = s.current_task;
       if ($("#agent-box")) $("#agent-box").innerHTML = a ? '<div><div class="who">' + esc(a.name) + '</div><div class="what">' + esc(a.description) + '</div></div><span class="spinner" aria-hidden="true"></span>' : '<span class="idle">Nothing running</span>';
       if ($("#task-box")) $("#task-box").innerHTML = t ? '<div>' + esc(t.title) + '</div>' + (t.progress != null ?
@@ -351,7 +403,8 @@
         '<div class="what muted">' + esc(t.detail) + '</div>') : '<span class="idle">No task running</span>';
       var mine = t && String(t.chat_id) === String(chatId);
       setBusy(!!mine);
-      if (window.PromSphere) {
+      if (window.PromSphere && s.voice && (s.voice.state === "listening" || s.voice.state === "speaking")) PromSphere.setState(s.voice.state);
+      else if (window.PromSphere) {
         if (t) PromSphere.setState(a && a.name !== "Planning" ? "tool" : "thinking");
         else if (lastTask) PromSphere.setState("done");
         else PromSphere.setState("idle");

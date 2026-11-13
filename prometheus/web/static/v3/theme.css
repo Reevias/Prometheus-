@@ -101,6 +101,10 @@ a { color: var(--amber); }
 .topbar-title b { color: var(--text); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .topbar-tools { margin-left: auto; display: flex; align-items: center; gap: 4px; }
 .bell { position: relative; }
+.mute { color: var(--ok); }
+.mute.off { color: var(--bad); }
+.mute.off svg { opacity: 0.7; }
+.bar .mic.on { background: rgb(var(--orange-rgb) / 0.18); box-shadow: 0 0 16px rgb(var(--orange-rgb) / 0.5); }
 .badge {
   position: absolute; top: 4px; right: 4px; min-width: 9px; height: 9px; border-radius: 9px;
   background: var(--orange); box-shadow: 0 0 8px rgb(var(--orange-rgb) / 0.8);

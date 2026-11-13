@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import re
+import threading
 import time
 from dataclasses import replace
 from pathlib import Path
@@ -79,7 +80,8 @@ def register_routes(app: FastAPI, services: Services) -> None:
         ui_state_service.services = services
         return page(request, name, active=active, owner=services.settings.owner_name,
                     commands=ui_state_service.get_slash_commands(), chats=store.chats()[:8],
-                    heads=head_choices(services.router), head=services.settings.head_model, **ctx)
+                    heads=head_choices(services.router), head=services.settings.head_model,
+                    voice=services.voice is not None, **ctx)
 
     PHONE = re.compile(r"Android|iPhone|iPad|Mobile", re.I)
 
@@ -135,7 +137,47 @@ def register_routes(app: FastAPI, services: Services) -> None:
         state = ui_state_service.get_full_state()
         kept = store.kv_get("notifications", [])
         state["unread"] = sum(1 for n in kept if isinstance(n, dict) and not n.get("read"))
+        state["voice"] = voice_now()
         return state
+
+    def voice_now() -> dict:
+        v = services.voice
+        if v is None:
+            return {"available": False}
+        loop = v.loop
+        return {"available": True, "state": v.state(), "muted": bool(loop and loop.muted),
+                "level": round(float(getattr(loop, "level", 0.0)), 3) if loop else 0.0, "error": v.error}
+
+    @app.get("/api/v3/voice")
+    def api_v3_voice():
+        return voice_now()
+
+    @app.post("/api/v3/voice/listen")
+    def api_v3_voice_listen():
+        """The mic button: listen for one command now. Voice starts first if it was off (for this session)."""
+        v = services.voice
+        if v is None:
+            return JSONResponse({"error": "Voice isn't set up on this computer (Settings → Voice)."}, status_code=409)
+        if v.loop is not None:
+            if not v.loop.listen_now():
+                return JSONResponse({"error": "The microphone is muted. Unmute it first."}, status_code=409)
+            return {"listening": True}
+
+        def start_then_listen():
+            if v.start() and v.loop is not None:
+                v.loop.listen_now()
+
+        threading.Thread(target=start_then_listen, name="prometheus-voice-button", daemon=True).start()
+        return {"starting": True}
+
+    @app.post("/api/v3/voice/mute")
+    def api_v3_voice_mute():
+        v = services.voice
+        if v is None or v.loop is None:
+            return JSONResponse({"error": "Voice isn't running."}, status_code=409)
+        muted = v.toggle_mute()
+        store.audit("user", "voice_mute", {"muted": muted})
+        return {"muted": muted}
 
     @app.get("/api/v3/slash-commands")
     def api_v3_slash_commands():
