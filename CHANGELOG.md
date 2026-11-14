@@ -1,6 +1,7 @@
 # Changelog
 
 ## Prometheus 3.0, M2.2 (on the prometheus-v3 branch, not released yet)
+- Costs moved into Settings → AI models → Costs (this month against your limit, the last 30 days, by model and by chat).
 - Chat files: on wide windows a chat's files sit beside it (a strip above it on narrower ones), with their size;
   Delete sends a file to the Recycle Bin (undo in System → Activity). The Phone page is in the new look, in your menu.
 - Approvals moved into your menu (click your name), with the number waiting and an orange dot on your picture

@@ -780,3 +780,14 @@ html[data-motion="reduced"] *, html[data-motion="reduced"] *::before { animation
   .chat:has(.files-strip) .files-title { display: block; }
   .chat:has(.files-strip) .outfile { max-width: none; }
 }
+
+/* ---- Costs (Settings → AI models) ----------------------------------------------------------------------- */
+.cost-figure { font-size: 26px; font-weight: 400; color: var(--amber); }
+.cost-meter { height: 8px; border-radius: 8px; background: rgb(var(--text-rgb) / 0.08); overflow: hidden; margin: 8px 0 14px; }
+.cost-meter span { display: block; height: 100%; background: var(--ok); }
+.cost-meter span.warn { background: var(--orange); }
+.cost-meter span.bad { background: var(--bad); }
+.cost-bars { display: flex; align-items: flex-end; gap: 3px; height: 90px; margin-bottom: 8px; }
+.cost-bars div { flex: 1; height: 100%; display: flex; align-items: flex-end; }
+.cost-bars span { display: block; width: 100%; min-height: 2px; background: rgb(var(--orange-rgb) / 0.7); border-radius: 3px 3px 0 0; }
+.cost-table dt { font-size: 13px; }

@@ -452,3 +452,14 @@ def test_chat_files_show_size_and_delete_to_the_recycle_bin(app_client):
     bad = [o for o in st.outputs(cid) if o["path"] == "/etc/hostname"][0]["id"]
     if Path("/etc/hostname").exists():
         assert client.post(f"/api/v3/outputs/{bad}/recycle", headers=h).status_code == 409
+
+
+def test_costs_live_in_settings(app_client):
+    client, services = app_client()
+    login(client)
+    chat = services.store.create_chat("Physics notes")
+    services.store.add_cost("anthropic", "claude-sonnet", 0.0123, 1200, 300, chat_id=chat)
+    page = client.get("/settings").text
+    assert 'id="costs"' in page and "claude-sonnet" in page and "Physics notes" in page and "$0.0123" in page
+    assert client.get("/costs", follow_redirects=False).headers["location"] == "/settings#costs"
+    assert "What paid AI has cost" in client.get("/costs?view=classic").text

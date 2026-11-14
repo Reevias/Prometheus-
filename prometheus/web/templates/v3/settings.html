@@ -8,7 +8,7 @@
   ("Appearance", [("appearance", "Appearance", False)]),
   ("Notifications", [("notifications", "Notifications", True), ("daily-summary", "Daily summary", True), ("focus-mode", "Focus mode", True)]),
   ("Audio", [("voice", "Voice", False)]),
-  ("AI models", [("ai", "AI and providers", False), ("other-keys", "Other keys", True)]),
+  ("AI models", [("ai", "AI and providers", False), ("costs", "Costs", False), ("other-keys", "Other keys", True)]),
   ("Integrations", [("connections", "Connections", False), ("obsidian", "Obsidian", True), ("github", "GitHub", True),
                     ("use-prometheus-from-other-ai-apps", "Other AI apps", True)]),
   ("Study", [("assignments", "Assignments", True), ("study-coach", "Study coach", True), ("practice-tests", "Practice tests", True)]),
@@ -42,6 +42,24 @@
       <p class="muted">Changes show at once and are kept for next time.</p>
     </section>
     {% include "settings_sections.html" %}
+    <section class="set" id="costs" data-group="AI models">
+      <h3>What paid AI has cost</h3>
+      {% set c = costs %}
+      <p><b class="cost-figure">${{ "%.2f"|format(c.budget.spent) }}</b> <span class="muted">of your ${{ "%.2f"|format(c.budget.cap) }} limit this month ({{ c.pct }}%).
+        A warning comes at 80%; at 100% paid models stop and free or local ones keep working. All time: ${{ "%.2f"|format(c.all_time) }}.</span></p>
+      <div class="cost-meter" role="img" aria-label="{{ c.pct }} percent of this month's limit used"><span style="width:{{ [c.pct, 100]|min }}%" class="{{ 'bad' if c.budget.stopped else 'warn' if c.budget.warn else '' }}"></span></div>
+      <h4>Last 30 days</h4>
+      {% if c.days %}<div class="cost-bars" role="img" aria-label="Spending per day for the last 30 days">
+        {% for d in c.days %}<div title="{{ d.day }}: ${{ '%.4f'|format(d.usd) }} ({{ d.calls }} calls)"><span style="height:{{ (d.usd / c.top * 100) if c.top else 0 }}%"></span></div>{% endfor %}
+      </div>{% else %}<p class="muted">Nothing spent in the last 30 days. Local and free models cost nothing.</p>{% endif %}
+      <h4>By model, this month</h4>
+      <dl class="facts cost-table">{% for m in c.report.by_model %}<dt>{{ m.model }} <span class="muted">· {{ m.provider }} · {{ m.calls }} calls · {{ "{:,}".format(m.tin or 0) }} / {{ "{:,}".format(m.tout or 0) }} tokens</span></dt><dd>${{ "%.4f"|format(m.usd) }}</dd>
+      {% else %}<dt class="muted">Nothing this month.</dt><dd></dd>{% endfor %}</dl>
+      <h4>By chat, this month</h4>
+      <dl class="facts cost-table">{% for ch in c.report.by_chat %}<dt>{% if ch.chat_id %}<a href="/c/{{ ch.chat_id }}">{{ ch.title }}</a>{% else %}{{ ch.title }}{% endif %} <span class="muted">· {{ ch.calls }} calls</span></dt><dd>${{ "%.4f"|format(ch.usd) }}</dd>
+      {% else %}<dt class="muted">Nothing this month.</dt><dd></dd>{% endfor %}</dl>
+      <p class="muted">Change the monthly limit in AI and providers above.</p>
+    </section>
     <section class="set" id="about" data-group="About">
       <h3>About Prometheus</h3>
       <dl class="facts about">

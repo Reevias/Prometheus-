@@ -1144,6 +1144,9 @@ def register_routes(app: FastAPI, services: Services) -> None:
     def costs(request: Request):
         import time as _t
 
+        if request.query_params.get("view") != "classic" and not PHONE.search(request.headers.get("user-agent", "")):
+            return RedirectResponse("/settings#costs", status_code=303)        # Costs live in AI models and keys
+
         from prometheus.safety.budget import month_start
 
         state = services.budget.state()
@@ -1253,7 +1256,19 @@ def register_routes(app: FastAPI, services: Services) -> None:
             return page(request, "settings.html", status_code, **ctx)
         from prometheus.config import data_dir
         return shell(request, "v3/settings.html", "settings", status_code=status_code,
-                     data_folder=str(data_dir()), **ctx)
+                     data_folder=str(data_dir()), costs=costs_view(), **ctx)
+
+    def costs_view() -> dict:
+        """What paid AI has cost (Settings → AI models and keys → Costs)."""
+        import time as _t
+
+        from prometheus.safety.budget import month_start
+
+        state = services.budget.state()
+        days = store.cost_report(_t.time() - 30 * 86400)["by_day"]
+        return {"budget": state, "report": store.cost_report(month_start()), "days": days,
+                "top": max((d["usd"] for d in days), default=0), "all_time": store.total_cost(),
+                "pct": round(100 * state.spent / state.cap) if state.cap else 0}
 
     def _mcp_config() -> str:
         import json as _json
