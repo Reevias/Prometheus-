@@ -1,6 +1,9 @@
 # Changelog
 
 ## Prometheus 3.0, M2.2 (on the prometheus-v3 branch, not released yet)
+- Connections (in your menu): email, Google, calendar link, GitHub, Obsidian, the cloud copy and your other apps,
+  each with its real state (connected, not connected, needs sign-in again, folder missing), Test (tries it for real
+  and says what happened), Disconnect or switch off, and a link to connect it in Settings.
 - Research: one page with three modes, each with its own ask box, chat and quick prompts. Research: past research
   (search, delete, save as Markdown, PDF, Word or HTML) and sources (open, pin up to 3 so research reads them first,
   leave a site out so it's never used, add your own page). Study (@study): flashcards and quizzes, cards from a file,

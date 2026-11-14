@@ -835,3 +835,5 @@ html[data-motion="reduced"] *, html[data-motion="reduced"] *::before { animation
 .money-cat .cost-meter { margin: 4px 0 0; }
 .bad-text { color: var(--bad); }
 .warn-text { color: var(--orange); }
+.conn-card p { margin: 0; font-size: 13.5px; overflow-wrap: anywhere; }
+.conn-setup { color: var(--orange); font-size: 12px; padding: 5px 9px; text-decoration: none; margin-left: auto; }

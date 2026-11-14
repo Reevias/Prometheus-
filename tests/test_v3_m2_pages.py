@@ -638,3 +638,37 @@ def test_study_and_money_actions(app_client):
         assert "Physics lab report" in page
         did = services.store._rows("SELECT id FROM assignments WHERE title LIKE '%Physics%'")[0]["id"]
         assert client.post(f"/api/v3/deadlines/{did}/done", headers=h).json()["ok"]
+
+
+# ---- Connections ------------------------------------------------------------------------------------------------------
+def test_connections_show_real_states_test_and_disconnect(app_client, tmp_path, monkeypatch):
+    for k in ("GITHUB_TOKEN", "EMAIL_PASSWORD", "GOOGLE_TOKEN", "GOOGLE_CLIENT", "CALENDAR_LINKS"):
+        monkeypatch.delenv(k, raising=False)           # a key from the environment counts as connected
+    client, services = app_client()
+    h = {"X-CSRF-Token": login(client)}
+    s = services.settings
+    page = client.get("/v3/connections").text
+    for part in ("Email", "Google (Gmail, Calendar, Drive)", "GitHub", "Obsidian", "Cloud copy", "Not connected",
+                 'href="/v3/connections"'):
+        assert part in page, part
+    # nothing connected: Test is refused with a plain reason, never a fake "works"
+    assert client.post("/api/v3/connections/email/test", headers=h).status_code == 409
+    assert client.post("/api/v3/connections/github/test", headers=h).status_code == 409
+    # Obsidian: connected while the folder exists; the test counts real notes
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    (vault / "a.md").write_text("# hi")
+    s.obsidian_vault = str(vault)
+    assert "Connected" in client.get("/v3/connections").text
+    r = client.post("/api/v3/connections/obsidian/test", headers=h)
+    assert r.status_code == 200 and "1 notes" in r.json()["message"]
+    s.obsidian_vault = str(tmp_path / "gone")
+    assert "Folder missing" in client.get("/v3/connections").text
+    assert client.post("/api/v3/connections/obsidian/test", headers=h).status_code == 409
+    assert client.post("/api/v3/connections/obsidian/disconnect", headers=h).json()["ok"] and s.obsidian_vault == ""
+    # email disconnect clears it; unknown keys are refused
+    s.email_address, s.email_via = "me@college.edu", "password"
+    client.post("/api/v3/connections/email/disconnect", headers=h)
+    assert s.email_address == ""
+    assert client.post("/api/v3/connections/nope/test", headers=h).status_code == 404
+    assert client.post("/api/v3/connections/cloud/disconnect", headers=h).status_code == 409

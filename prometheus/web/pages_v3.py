@@ -51,6 +51,7 @@ def register_pages(app: FastAPI, services, shell) -> None:
     register_approval_pages(app, services, shell)
     register_automation_pages(app, services, shell)
     register_research_pages(app, services, shell)
+    register_connection_pages(app, services, shell)
 
     # ---- Tasks ---------------------------------------------------------------------------------------------------
     def task_rows(status: str, q: str, period: str) -> list[dict]:
@@ -1268,3 +1269,174 @@ def register_research_pages(app: FastAPI, services, shell) -> None:
         except Exception:
             pass
         return {"ok": True, "message": f"Saved {path.name} in Documents/Prometheus Money."}
+
+
+# ---- Connections (in your menu) --------------------------------------------------------------------------------------
+def register_connection_pages(app: FastAPI, services, shell) -> None:
+    from pathlib import Path
+
+    from prometheus.config import delete_secret, get_secret, save_settings, secrets_set
+
+    store = services.store
+
+    def cards() -> list[dict]:
+        s, have = services.settings, secrets_set()
+        out = []
+        if s.email_address:
+            via = "through your Google sign-in" if s.email_via == "google" else "with an app password"
+            ok = s.email_via == "google" and have.get("GOOGLE_TOKEN") or s.email_via != "google" and have.get("EMAIL_PASSWORD")
+            out.append({"key": "email", "name": "Email", "state": "Connected" if ok else "Needs sign-in again",
+                        "detail": f"{s.email_address}, {via}. Sending always asks you first.", "setup": "connections"})
+        else:
+            out.append({"key": "email", "name": "Email", "state": "Not connected",
+                        "detail": "Read, search and (after your yes) send email.", "setup": "connections"})
+        google = "Connected" if have.get("GOOGLE_TOKEN") else ("Not signed in" if have.get("GOOGLE_CLIENT") else "Not connected")
+        out.append({"key": "google", "name": "Google (Gmail, Calendar, Drive)", "state": google,
+                    "detail": "Calendar events and Gmail ask you before changing anything; Drive is read only.",
+                    "setup": "google-signin"})
+        out.append({"key": "calendar", "name": "Calendar link (iCal)", "state": "Connected" if have.get("CALENDAR_LINKS") else "Not connected",
+                    "detail": "Read-only calendar from a secret .ics link (Google or Outlook).", "setup": "connections"})
+        out.append({"key": "github", "name": "GitHub", "state": "Connected" if have.get("GITHUB_TOKEN") else "Not connected",
+                    "detail": f"Reads and (with your yes) updates {s.github_repo}.", "setup": "github"})
+        vault = (s.obsidian_vault or "").strip()
+        out.append({"key": "obsidian", "name": "Obsidian", "detail": vault or "Your notes vault, read and written as Markdown.",
+                    "state": ("Connected" if Path(vault).is_dir() else "Folder missing") if vault else "Not connected",
+                    "setup": "obsidian"})
+        out.append({"key": "cloud", "name": "Cloud copy and phone", "state": "Connected" if s.cloud_url else "Not set up",
+                    "detail": s.cloud_url or "The always-on copy your phone talks to.", "setup": "safety-check"})
+        try:
+            from prometheus.agents import apps_agent
+
+            manager = apps_agent.MANAGER
+            for e in (manager.entries() if manager else []):
+                live = manager.live.get(e["name"])
+                err = manager.errors.get(e["name"], "")
+                state = ("Off" if not e.get("enabled") else "Connected" if live is not None
+                         else "Needs attention" if err else "Ready (starts when used)")
+                out.append({"key": f"app:{e['name']}", "name": e["name"], "app": True, "enabled": bool(e.get("enabled")),
+                            "state": state, "detail": err[:200] or (f"{len(live.tools)} tools" if live else e.get("target", "")[:120]),
+                            "setup": "connections"})
+        except Exception:
+            pass
+        return out
+
+    @app.get("/v3/connections")
+    def connections_page(request: Request):
+        return shell(request, "v3/connections.html", "connections", cards=cards())
+
+    def bad(text: str, code: int = 400):
+        return JSONResponse({"error": text}, status_code=code)
+
+    @app.post("/api/v3/connections/{key}/test")
+    def api_connection_test(key: str):
+        """Try the connection for real, once, and say what happened in plain words."""
+        import httpx
+
+        s = services.settings
+        try:
+            if key == "email":
+                from prometheus.agents.email_agent import mailbox
+
+                if not s.email_address:
+                    return bad("Email isn't connected.", 409)
+                n = len(mailbox().search(unread=True, days=2))
+                said = f"Works: {n} unread email(s) in the last 2 days."
+            elif key == "google":
+                from prometheus.agents.google_agent import google
+
+                if not get_secret("GOOGLE_TOKEN"):
+                    return bad("Not signed in to Google yet.", 409)
+                n = len(google().events(time.time(), time.time() + 7 * 86400))
+                said = f"Works: {n} event(s) in the next 7 days."
+            elif key == "calendar":
+                from datetime import datetime, timedelta
+
+                from prometheus.connectors.calendar_ics import events_between, fetch
+
+                links = [u.strip() for u in (get_secret("CALENDAR_LINKS") or "").split("|") if u.strip()]
+                if not links:
+                    return bad("No calendar link saved.", 409)
+                now = datetime.now()
+                n = sum(len(events_between(fetch(u), now, now + timedelta(days=7))) for u in links)
+                said = f"Works: {n} event(s) in the next 7 days."
+            elif key == "github":
+                token = get_secret("GITHUB_TOKEN")
+                if not token:
+                    return bad("No GitHub token saved.", 409)
+                r = httpx.get(f"https://api.github.com/repos/{s.github_repo}", timeout=15.0,
+                              headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"})
+                if r.status_code == 401:
+                    return bad("GitHub says the token is wrong or expired: make a new one and save it in Settings.", 502)
+                r.raise_for_status()
+                said = f"Works: can see {s.github_repo}."
+            elif key == "obsidian":
+                vault = Path((s.obsidian_vault or "").strip())
+                if not s.obsidian_vault:
+                    return bad("No vault connected.", 409)
+                if not vault.is_dir():
+                    return bad("That folder isn't there any more. Connect the vault again.", 409)
+                said = f"Works: {sum(1 for _ in vault.rglob('*.md'))} notes found."
+            elif key == "cloud":
+                if not s.cloud_url:
+                    return bad("No cloud copy set up.", 409)
+                r = httpx.get(s.cloud_url.rstrip("/") + "/healthz", timeout=10.0)
+                r.raise_for_status()
+                said = "Works: the cloud copy answered."
+            elif key.startswith("app:"):
+                from prometheus.agents import apps_agent
+
+                conn = apps_agent.MANAGER.get(key[4:])
+                said = f"Works: {len(conn.tools)} tool(s)."
+            else:
+                return bad("Unknown connection.", 404)
+        except Exception as e:
+            msg = str(e).strip()
+            if "401" in msg or "invalid_grant" in msg or "Unauthorized" in msg:
+                return bad("It needs you to sign in again (Settings → Connections).", 502)
+            return bad(f"Didn't work: {msg[:160] or type(e).__name__}.", 502)
+        store.audit("user", "connection_test", {"what": key[:60], "ok": True})
+        return {"ok": True, "message": said}
+
+    @app.post("/api/v3/connections/{key}/disconnect")
+    def api_connection_disconnect(key: str):
+        s = services.settings
+        if key == "email":
+            s.email_address, s.email_via = "", ""
+        elif key == "google":
+            delete_secret("GOOGLE_TOKEN")
+            if s.email_via == "google":
+                s.email_address, s.email_via = "", ""
+        elif key == "calendar":
+            delete_secret("CALENDAR_LINKS")
+        elif key == "github":
+            delete_secret("GITHUB_TOKEN")
+        elif key == "obsidian":
+            s.obsidian_vault = ""
+        elif key.startswith("app:"):
+            from prometheus.agents import apps_agent
+
+            name = key[4:]
+            found = False
+            for e in s.mcp_servers:
+                if e.get("name") == name:
+                    e["enabled"], found = False, True
+            if not found:
+                return bad("No such app.", 404)
+            apps_agent.MANAGER.drop(name)
+        else:
+            return bad("That one is changed in Settings.", 409)
+        save_settings(s)
+        store.audit("user", "connection_disconnect", {"what": key[:60]})
+        return {"ok": True, "message": "Disconnected."}
+
+    @app.post("/api/v3/connections/{key}/enable")
+    def api_connection_enable(key: str):
+        if not key.startswith("app:"):
+            return bad("Use Settings to connect this one.", 409)
+        for e in services.settings.mcp_servers:
+            if e.get("name") == key[4:]:
+                e["enabled"] = True
+                save_settings(services.settings)
+                store.audit("user", "connection_enable", {"what": key[:60]})
+                return {"ok": True, "message": "Switched on: it starts the next time it's needed."}
+        return bad("No such app.", 404)
