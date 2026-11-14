@@ -61,6 +61,7 @@ def test_skills_page_lists_and_removes(app_client, tools):
     client, _ = app_client()
     h = {"X-CSRF-Token": login(client)}
     tools.save_draft("convert_heic", "Turns HEIC photos into JPG", "print('hi')", ["paths"])
-    assert "convert_heic" in client.get("/skills").text
+    assert "convert_heic" in client.get("/v3/skills?tab=tools").text
+    assert "convert_heic" in client.get("/skills?view=classic").text
     client.post("/tools/convert_heic/remove", headers=h)
     assert tools.get("convert_heic") is None

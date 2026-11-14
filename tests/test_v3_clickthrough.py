@@ -154,7 +154,8 @@ def test_every_control_does_something_and_nothing_breaks(live, browser):
     page.fill("input[name=password]", PASSWORD)
     page.press("input[name=password]", "Enter")
     page.wait_for_url(base + "/")
-    for path in ("/", "/v3/chats", f"/c/{chat}", "/v3/agents", "/v3/agents?show=code", "/v3/tasks", "/v3/tasks/1"):
+    for path in ("/", "/v3/chats", f"/c/{chat}", "/v3/agents", "/v3/agents?show=code", "/v3/tasks", "/v3/tasks/1",
+                 "/v3/skills", "/v3/skills/research", "/v3/skills?tab=tools"):
         click_all(page, base + path, problems, seen)
 
     # Settings: the category menu leads to a real section every time (its forms are tested elsewhere)

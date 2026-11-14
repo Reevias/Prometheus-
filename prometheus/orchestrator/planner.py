@@ -540,6 +540,8 @@ class Orchestrator:
             if ctx.skills is None:
                 ctx.skills = self.skills
             res = agent.run(st["goal"], inputs, ctx)
+            if skill is not None:                  # the Skills page shows when each guide was used
+                res.data = {**(res.data or {}), "skill": skill.name}
         except (ProviderUnavailable, BudgetExceeded) as e:
             self.store.finish_step(sid, "paused", str(e))
             raise

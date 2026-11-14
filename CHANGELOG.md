@@ -1,6 +1,11 @@
 # Changelog
 
 ## Prometheus 3.0, M2.2 (on the prometheus-v3 branch, not released yet)
+- Skills: guides as cards or a list, grouped by type, with search; each skill's page shows its guide and reference
+  files, version, author, what it needs, its permissions and every time it was used. Switch a skill off (the planner
+  then never sees it), check it (what Prometheus can read, and any problem, without an AI), try it in a new chat,
+  remove one you added, or add one from a GitHub link (reads the README only). Today's repos and the tools
+  Prometheus made are tabs on the same page.
 - Docs: the README now says plainly what is released (v2.3 on `main`) and what is still only a plan, with the M0-M10 table and honest status. It also lists the 38 real agents and the 10 real skills, and names model types instead of a model list that goes stale.
 - Docs: removed the M2 architecture, test report and completion report (they described files, APIs and test counts this repo does not have), the stale handoff, the old plan (`plan-v1.md`) and the PDF copy of `docs/missing.md`. The two root-level audit reports moved into `docs/reports/`.
 - Removed two colour tokens from `tokens.css` that nothing used (`--muted-rgb`, `--r-sm`).

@@ -1,0 +1,96 @@
+{% extends "v3/layout.html" %}
+{% from "v3/icons.html" import icon %}
+{% block title %}Skills · Prometheus{% endblock %}
+{% block topbar %}<b>Skills</b>{% endblock %}
+{% block content %}
+<section class="page skills-page">
+  <h1>Skills</h1>
+  <p class="muted lead">How-to guides Prometheus follows when they fit what you ask. {{ total }} installed{% if off %}, {{ off }} switched off{% endif %}.
+    Your own go in <code>{{ user_folder }}</code> (a folder with a SKILL.md).</p>
+  {% if said %}<p class="notice">{{ said }}</p>{% endif %}
+  <div class="tabs" role="tablist">
+    <a role="tab" href="/v3/skills?tab=guides" class="{{ 'on' if tab == 'guides' }}">Guides</a>
+    <a role="tab" href="/v3/skills?tab=github" class="{{ 'on' if tab == 'github' }}">Add from GitHub</a>
+    <a role="tab" href="/v3/skills?tab=tools" class="{{ 'on' if tab == 'tools' }}">Tools it made <span class="muted">{{ own_tools|length }}</span></a>
+  </div>
+
+  {% if tab == "guides" %}
+  <div class="task-filters">
+    <form method="get" action="/v3/skills"><input class="search" type="search" name="q" value="{{ q }}" placeholder="Search skills" aria-label="Search skills"></form>
+    <div class="view-toggle" role="group" aria-label="Show as">
+      <button type="button" data-view="cards" title="Cards">{{ icon("grid") }}</button>
+      <button type="button" data-view="list" title="List">{{ icon("list") }}</button>
+    </div>
+  </div>
+  {% for group, cards in groups.items() %}
+  <h2 class="section">{{ group }} <span class="muted">{{ cards|length }}</span></h2>
+  <div class="skill-grid">
+    {% for c in cards %}
+    <a class="skill-card {{ '' if c.on else 'off' }}" href="/v3/skills/{{ c.name }}">
+      <div class="skill-top"><b>{{ c.title }}</b>
+        <span class="state {{ 's-done' if c.on else '' }}">{{ "On" if c.on else "Off" }}</span></div>
+      <p>{{ c.description }}</p>
+      <small class="muted">{{ "Added by you" if c.source == "user" else "Built in" }} · {{ c.refs|length }} reference{{ "s" if c.refs|length != 1 }} · used {{ counts.get(c.name, 0) }} time{{ "s" if counts.get(c.name, 0) != 1 }}</small>
+    </a>
+    {% endfor %}
+  </div>
+  {% else %}<p class="muted empty">{% if q %}No skill matches “{{ q }}”.{% else %}No skills installed yet.{% endif %}</p>{% endfor %}
+
+  {% elif tab == "github" %}
+  <form class="add-skill" id="add-skill">
+    <input class="search" name="link" placeholder="github.com/owner/repository" aria-label="GitHub repository link" required>
+    <button type="submit" class="pill">{{ icon("plus") }}Add as a skill</button>
+  </form>
+  <p class="muted">Adding reads the repository's README only: nothing is downloaded, installed or run.</p>
+  <h2 class="section">Today's top repositories{% if trending.date %} <span class="muted">{{ trending.date }}</span>{% endif %}</h2>
+  <div class="rows">
+  {% for r in trending.repos %}
+    <div class="repo-row">
+      <div><b>{{ loop.index }}. {{ r.full_name }}</b> <span class="muted">{{ r.stars_today }} stars today{% if r.language %} · {{ r.language }}{% endif %}</span>
+        {% if r.sensitive %}<span class="state s-failed">about tracking, accounts or security</span>{% endif %}
+        <p class="muted">{{ r.description or "No description." }}</p></div>
+      {% if r.added %}<span class="state s-done">Added</span>{% else %}
+      <form hx-post="/skills/trending/add" hx-target="body"><input type="hidden" name="n" value="{{ loop.index }}"><button type="submit" class="pill">Add</button></form>{% endif %}
+    </div>
+  {% else %}<p class="muted">No list yet: it arrives every evening.</p>{% endfor %}
+  </div>
+  <form hx-post="/skills/trending/refresh" hx-target="body" style="margin-top:12px"><button type="submit" class="pill">Get today's list now</button></form>
+
+  {% else %}
+  <p class="muted">Small Python tools Prometheus wrote for jobs that come back. Each ran only after you approved its code,
+    always in the sandbox (no internet, only its own folder). If its code changes it asks again.</p>
+  {% for t in own_tools %}
+  <details class="tool-row"><summary><b>{{ t.name }}</b> <span class="muted">{{ t.description }} · {{ "approved" if t.approved else "waiting for approval" }} · used {{ t.runs }} time{{ "s" if t.runs != 1 }}</span></summary>
+    <pre class="io">{{ t.code }}</pre>
+    <button type="button" class="pill danger" hx-post="/tools/{{ t.name }}/remove" hx-target="body" hx-confirm="Remove the tool {{ t.name }}?">Remove</button>
+  </details>
+  {% else %}<p class="muted empty">None yet.</p>{% endfor %}
+  {% endif %}
+</section>
+<script>
+(function () {
+  var page = document.querySelector(".skills-page"), KEY = "prom-skills-view";
+  function show(v) {
+    page.dataset.view = v;
+    page.querySelectorAll("[data-view]").forEach(function (b) { b.classList.toggle("on", b.dataset.view === v); b.disabled = b.dataset.view === v; });
+    try { localStorage.setItem(KEY, v); } catch (e) {}
+  }
+  var saved = "cards"; try { saved = localStorage.getItem(KEY) || "cards"; } catch (e) {}
+  show(saved);
+  page.addEventListener("click", function (e) { var b = e.target.closest("[data-view]"); if (b) show(b.dataset.view); });
+  var add = document.getElementById("add-skill");
+  if (add) add.addEventListener("submit", function (e) {
+    e.preventDefault();
+    var btn = add.querySelector("button"); btn.disabled = true;
+    fetch("/api/v3/skills/add", { method: "POST", credentials: "same-origin", body: new FormData(add),
+          headers: { "X-CSRF-Token": document.body.dataset.csrf } })
+      .then(function (r) { return r.json().then(function (j) { return [r.ok, j]; }); })
+      .then(function (x) {
+        btn.disabled = false;
+        if (!x[0]) { promToast(x[1].error || "Couldn't add it.", true); return; }
+        location.href = "/v3/skills?said=" + encodeURIComponent(x[1].message);
+      });
+  });
+})();
+</script>
+{% endblock %}

@@ -45,6 +45,7 @@ def took(start: float, end: float) -> str:
 
 def register_pages(app: FastAPI, services, shell) -> None:
     store = services.store
+    register_skill_pages(app, services, shell)
 
     # ---- Tasks ---------------------------------------------------------------------------------------------------
     def task_rows(status: str, q: str, period: str) -> list[dict]:
@@ -164,3 +165,185 @@ def register_pages(app: FastAPI, services, shell) -> None:
                                              "outputs", "chat")}, ensure_ascii=False, indent=2, default=str)
         return JSONResponse(json.loads(body), headers={
             "Content-Disposition": f'attachment; filename="prometheus-task-{task_id}.json"'})
+
+
+# ---- Skills ---------------------------------------------------------------------------------------------------------
+# The built-in guides, grouped for the Skills page; skills added from GitHub are "From GitHub", the owner's own "Yours".
+# A SKILL.md may name its own group with a "category:" header line.
+SKILL_GROUPS = {
+    "coding": "Code", "explain-code": "Code", "understand-software": "Code",
+    "research": "Research and learning", "learning-roadmap": "Research and learning",
+    "file-sorting": "Files and media", "video": "Files and media",
+    "memory": "How Prometheus works", "models": "How Prometheus works", "task-planning": "How Prometheus works",
+}
+GITHUB_LINK = r"(?:https?://)?(?:www\.)?github\.com/([A-Za-z0-9-]{1,39}/[A-Za-z0-9._-]{1,100}?)(?:\.git)?/?(?:[#?].*)?"
+
+
+def skill_group(skill) -> str:
+    meta = skill.meta or {}
+    if meta.get("category"):
+        return meta["category"][:40].strip().capitalize()
+    if skill.source == "user":
+        return "From GitHub" if skill.name.startswith("repo-") else "Yours"
+    return SKILL_GROUPS.get(skill.name, "Other")
+
+
+def register_skill_pages(app: FastAPI, services, shell) -> None:
+    import re
+    import shutil
+    from pathlib import Path
+
+    from fastapi import Form
+
+    from prometheus.config import save_settings
+    from prometheus.features import set_skill_on, skill_on
+    from prometheus.skillbook import NAME, check
+
+    store = services.store
+    book = services.skills
+
+    def uses(name: str, limit: int = 20) -> list[dict]:
+        """When the planner or the Guide used this skill: its steps, newest first."""
+        rows = store._rows(
+            "SELECT s.id, s.task_id, s.goal, s.status, s.created, t.chat_id FROM steps s JOIN tasks t ON t.id = s.task_id "
+            "WHERE s.data LIKE ? ORDER BY s.id DESC LIMIT ?", (f'%"skill": "{name}"%', limit))
+        return [dict(r) for r in rows]
+
+    def card(s) -> dict:
+        meta = s.meta or {}
+        return {"name": s.name, "title": s.name.replace("-", " ").capitalize(), "description": s.description,
+                "group": skill_group(s), "source": s.source, "on": skill_on(services.settings, s.name),
+                "refs": s.references(), "meta": meta,
+                "version": meta.get("version", ""), "author": meta.get("author", ""),
+                "requires": meta.get("requires") or meta.get("dependencies") or "",
+                "permissions": meta.get("permissions") or meta.get("allowed-tools") or "",
+                "link": (re.search(r"github\.com/([\w.-]+/[\w.-]+)", s.description or "") or [None, ""])[1].rstrip(".")}
+
+    @app.get("/v3/skills")
+    def skills_page(request: Request, q: str = "", said: str = "", tab: str = "guides"):
+        from prometheus.agents import tools_agent
+        from prometheus.repo_of_day import RepoOfTheDay
+
+        cards = [card(s) for s in book.everything()]
+        if q.strip():
+            words = q.lower().split()
+            cards = [c for c in cards if all(w in f"{c['name']} {c['description']} {c['group']}".lower() for w in words)]
+        groups: dict[str, list] = {}
+        for c in sorted(cards, key=lambda c: (c["group"] in ("Other",), c["group"], c["name"])):
+            groups.setdefault(c["group"], []).append(c)
+        counts = {s.name: 0 for s in book.everything()}
+        for r in store._rows("SELECT data FROM steps WHERE data LIKE '%\"skill\": %'"):
+            try:
+                n = json.loads(r["data"]).get("skill")
+            except ValueError:
+                n = None
+            if n in counts:
+                counts[n] += 1
+        tab = tab if tab in ("guides", "github", "tools") else "guides"
+        return shell(request, "v3/skills.html", "skills", groups=groups, q=q, said=said[:500], tab=tab, counts=counts,
+                     total=len(counts), off=sum(1 for c in counts if not skill_on(services.settings, c)),
+                     user_folder=str(book.user), trending=RepoOfTheDay(services).todays(),
+                     own_tools=tools_agent.TOOLS.all() if tools_agent.TOOLS else [])
+
+    @app.get("/v3/skills/{name}")
+    def skill_page(request: Request, name: str, ref: str = ""):
+        s = book.get_any(name)
+        if s is None:
+            return shell(request, "v3/skill_missing.html", "skills", status_code=404)
+        text, shown = s.body, "SKILL.md"
+        if ref and ref != "SKILL.md":
+            try:
+                text, shown = book.reference(name, ref), ref
+            except ValueError:
+                pass
+        return shell(request, "v3/skill.html", "skills", s=card(s), text=text, shown=shown, uses=uses(name),
+                     titles=dict(store.chats()), checks=None)
+
+    def _no_skill():
+        return JSONResponse({"error": "No such skill."}, status_code=404)
+
+    @app.post("/api/v3/skills/{name}/switch")
+    def api_skill_switch(name: str, on: str = Form("")):
+        if book.get_any(name) is None:
+            return _no_skill()
+        set_skill_on(services.settings, name, bool(on))
+        save_settings(services.settings)
+        store.audit("user", "skill_switch", {"skill": name, "on": bool(on)})
+        return {"skill": name, "on": skill_on(services.settings, name)}
+
+    @app.post("/api/v3/skills/{name}/check")
+    def api_skill_check(name: str):
+        s = book.get_any(name)
+        if s is None:
+            return _no_skill()
+        results = check(s)
+        return {"skill": name, "ok": all(ok for ok, _ in results),
+                "results": [{"ok": ok, "text": text} for ok, text in results]}
+
+    @app.post("/api/v3/skills/{name}/try")
+    def api_skill_try(name: str, question: str = Form("")):
+        """Ask something with this skill, in a new chat (the planner is told which guide to follow)."""
+        from prometheus.memory.titles import quick_title
+
+        s = book.get_any(name)
+        if s is None:
+            return _no_skill()
+        if not skill_on(services.settings, name):
+            return JSONResponse({"error": "Switch this skill on first."}, status_code=409)
+        question = " ".join(question.split())[:1000]
+        if not question:
+            return JSONResponse({"error": "Type a question to try it with."}, status_code=400)
+        chat = store.create_chat(quick_title(question))
+        services.start_task(chat, f"Use the {name} skill: {question}")
+        store.audit("user", "skill_try", {"skill": name})
+        return {"chat_id": chat, "url": f"/c/{chat}"}
+
+    @app.post("/api/v3/skills/{name}/remove")
+    def api_skill_remove(name: str):
+        """Only skills you added can be removed (built-in ones can be switched off)."""
+        s = book.get_any(name)
+        if s is None:
+            return _no_skill()
+        if s.source != "user" or book.user is None or not NAME.match(name):
+            return JSONResponse({"error": "Built-in skills can't be removed; switch it off instead."}, status_code=409)
+        folder = Path(book.user) / name
+        if folder.is_symlink() or not folder.is_dir() or folder.resolve().parent != Path(book.user).resolve():
+            return JSONResponse({"error": "That skill's folder isn't where it should be, so it was left alone."},
+                                status_code=409)
+        shutil.rmtree(folder)
+        set_skill_on(services.settings, name, True)          # forget its switch too
+        save_settings(services.settings)
+        store.audit("user", "skill_remove", {"skill": name})
+        return {"removed": name}
+
+    @app.post("/api/v3/skills/add")
+    def api_skill_add(link: str = Form("")):
+        """Add a skill from a GitHub repository link: reads its README only; nothing is installed or run."""
+        from prometheus.repo_of_day import RepoOfTheDay, harmful
+
+        m = re.fullmatch(GITHUB_LINK, link.strip())
+        if not m:
+            return JSONResponse({"error": "Paste a GitHub repository link, like github.com/owner/name."}, status_code=400)
+        full = m.group(1)
+        rod = RepoOfTheDay(services)
+        info: dict = {}
+        try:
+            r = rod.http.get(f"https://api.github.com/repos/{full}", headers={"Accept": "application/vnd.github+json"})
+            if r.status_code == 404:
+                return JSONResponse({"error": f"GitHub has no public repository {full}."}, status_code=404)
+            if r.status_code == 200:
+                j = r.json()
+                full = j.get("full_name") or full
+                info = {"description": j.get("description") or "", "language": j.get("language") or "",
+                        "stars": j.get("stargazers_count") or 0}
+        except Exception:
+            info = {}
+        if harmful({"full_name": full, **info}):
+            return JSONResponse({"error": "That repository looks like it's about tracking people, other people's "
+                                          "accounts or attacks, so it wasn't added."}, status_code=409)
+        try:
+            said = rod.add({"repo": full, **info})
+        except Exception as e:
+            return JSONResponse({"error": f"Couldn't add {full}: {e}"[:300]}, status_code=502)
+        store.audit("user", "skill_add", {"repo": full})
+        return {"added": full, "message": said}

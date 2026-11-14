@@ -125,6 +125,18 @@ def set_agent_on(settings, agent: str, value: bool) -> None:
     settings.agents_off = off
 
 
+def skill_on(settings, name: str) -> bool:
+    """The owner's switch for this skill (Skills page). An off skill is never offered to the planner."""
+    return name not in (getattr(settings, "skills_off", None) or [])
+
+
+def set_skill_on(settings, name: str, value: bool) -> None:
+    off = [n for n in (getattr(settings, "skills_off", None) or []) if n != name]
+    if not value:
+        off.append(name)
+    settings.skills_off = off
+
+
 def feature_of(agent: str):
     """The Features switch this agent belongs to, if any."""
     return next((f for f in FEATURES if agent in f.agents), None)

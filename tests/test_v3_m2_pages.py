@@ -105,3 +105,125 @@ def test_actions_need_the_csrf_token(app_client):
     _, tid = _task(services.store)
     assert client.post(f"/api/v3/tasks/{tid}/delete").status_code in (403, 400)
     assert services.store.task(tid)
+
+
+# ---- Skills ---------------------------------------------------------------------------------------------------------
+def _user_skill(services, name="my-notes", body="# Notes\n\nHow I take notes.", refs=None):
+    folder = services.skills.user / name
+    (folder / "references").mkdir(parents=True, exist_ok=True)
+    (folder / "SKILL.md").write_text(f"---\nname: {name}\ndescription: Use when the owner asks how they like their "
+                                     f"notes written.\nversion: 1.2\nauthor: Me\n---\n{body}", encoding="utf-8")
+    for ref, text in (refs or {}).items():
+        (folder / "references" / ref).write_text(text, encoding="utf-8")
+    return folder
+
+
+def test_skills_page_groups_searches_and_shows_details(app_client):
+    client, services = app_client()
+    login(client)
+    _user_skill(services, refs={"style.md": "Short bullet points."})
+    page = client.get("/v3/skills").text
+    for part in ("Code", "Research and learning", "Yours", "My notes", "Built in", "Added by you", 'href="/v3/skills"'):
+        assert part in page, part
+    assert "My notes" in client.get("/v3/skills?q=notes").text and "Coding" not in client.get("/v3/skills?q=notes").text
+    detail = client.get("/v3/skills/my-notes").text
+    for part in ("How I take notes.", "1.2", "Me", "style.md", "Not used yet", "Check it", "Try it", "Remove"):
+        assert part in detail, part
+    assert "Short bullet points." in client.get("/v3/skills/my-notes?ref=style.md").text
+    assert 'id="skill-remove"' not in client.get("/v3/skills/research").text   # built-in: switch off, never delete
+    assert client.get("/v3/skills/nope").status_code == 404
+    assert client.get("/skills", follow_redirects=False).headers["location"] == "/v3/skills"
+    assert client.get("/skills?view=classic").status_code == 200
+
+
+def test_skill_switch_hides_it_from_the_planner(app_client):
+    client, services = app_client()
+    csrf = login(client)
+    h = {"X-CSRF-Token": csrf}
+    assert "research" in services.skills.catalog_text()
+    r = client.post("/api/v3/skills/research/switch", data={}, headers=h)
+    assert r.json() == {"skill": "research", "on": False}
+    assert "research" not in services.skills.catalog_text() and services.skills.get("research") is None
+    assert services.skills.get_any("research") is not None and "research" in services.settings.skills_off
+    assert client.post("/api/v3/skills/research/try", data={"question": "x"}, headers=h).status_code == 409
+    client.post("/api/v3/skills/research/switch", data={"on": "1"}, headers=h)
+    assert services.skills.get("research") is not None
+    assert client.post("/api/v3/skills/nope/switch", headers=h).status_code == 404
+
+
+def test_skill_check_finds_problems(app_client):
+    client, services = app_client()
+    csrf = login(client)
+    h = {"X-CSRF-Token": csrf}
+    assert client.post("/api/v3/skills/research/check", headers=h).json()["ok"] is True
+    folder = _user_skill(services, "big-one", body="x" * 25_000)
+    (folder / "references" / "script.py").write_text("print(1)")
+    res = client.post("/api/v3/skills/big-one/check", headers=h).json()
+    texts = " ".join(r["text"] for r in res["results"])
+    assert res["ok"] is False and "longer than" in texts and "script.py" in texts
+
+
+def test_skill_try_and_remove(app_client):
+    client, services = app_client()
+    csrf = login(client)
+    h = {"X-CSRF-Token": csrf}
+    folder = _user_skill(services)
+    assert client.post("/api/v3/skills/my-notes/try", data={"question": " "}, headers=h).status_code == 400
+    r = client.post("/api/v3/skills/my-notes/try", data={"question": "write today's notes"}, headers=h)
+    assert r.status_code == 200
+    cid = r.json()["chat_id"]
+    for _ in range(100):
+        if cid not in services.running and services.store.messages(cid):
+            break
+        time.sleep(0.05)
+    assert services.store.messages(cid)[0].text == "Use the my-notes skill: write today's notes"
+    assert client.post("/api/v3/skills/research/remove", headers=h).status_code == 409    # built in
+    assert client.post("/api/v3/skills/my-notes/remove", headers=h).json() == {"removed": "my-notes"}
+    assert not folder.exists() and services.skills.get_any("my-notes") is None
+
+
+def test_skill_use_is_recorded_and_listed(app_client):
+    client, services = app_client()
+    login(client)
+    st = services.store
+    cid = st.create_chat("x")
+    tid = st.create_task(cid, "research solar panels")
+    sid = st.add_step(tid, "research", "Find sources", {})
+    st.finish_step(sid, "done", "Found 5", {"skill": "research"})
+    st.set_task_status(tid, "done", "ok")
+    page = client.get("/v3/skills/research").text
+    assert "Find sources" in page and f"/v3/tasks/{tid}" in page
+    assert "used 1 time<" in client.get("/v3/skills").text.replace("\n", "")
+
+
+def test_add_skill_from_a_github_link(app_client, monkeypatch):
+    client, services = app_client()
+    csrf = login(client)
+    h = {"X-CSRF-Token": csrf}
+    from prometheus import repo_of_day
+
+    class Resp:
+        def __init__(self, code, data):
+            self.status_code, self._d = code, data
+
+        def json(self):
+            return self._d
+
+    class Http:
+        def get(self, url, headers=None):
+            if url.endswith("/readme"):
+                import base64
+                return Resp(200, {"content": base64.b64encode(b"# Tool\nIt sorts photos.").decode(), "encoding": "base64"})
+            if "missing/repo" in url:
+                return Resp(404, {})
+            return Resp(200, {"full_name": "someone/photo-sorter", "description": "Sorts photos by date",
+                              "language": "Python", "stargazers_count": 10})
+
+    real = repo_of_day.RepoOfTheDay.__init__
+    monkeypatch.setattr(repo_of_day.RepoOfTheDay, "__init__", lambda self, services, http=None: real(self, services, Http()))
+    assert client.post("/api/v3/skills/add", data={"link": "not a link"}, headers=h).status_code == 400
+    assert client.post("/api/v3/skills/add", data={"link": "github.com/missing/repo"}, headers=h).status_code == 404
+    r = client.post("/api/v3/skills/add", data={"link": "https://github.com/someone/photo-sorter.git"}, headers=h)
+    assert r.status_code == 200, r.text
+    assert services.skills.get_any("repo-someone-photo-sorter") is not None
+    assert "From GitHub" in client.get("/v3/skills").text

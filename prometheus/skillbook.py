@@ -20,6 +20,8 @@ class Skill:
     body: str
     folder: Path
     source: str  # "builtin" or "user"
+    meta: dict | None = None      # the other SKILL.md header lines (version, author, requires, permissions, category…)
+    truncated: bool = False       # the guide was longer than MAX_CHARS and was cut
 
     def references(self) -> list[str]:
         refs = self.folder / "references"
@@ -60,13 +62,16 @@ def _parse(folder: Path, source: str) -> Skill | None:
             meta[key.strip()] = value.strip().strip('"').strip("'")
     if meta.get("name") != folder.name or not meta.get("description"):
         return None
-    return Skill(folder.name, meta["description"][:300], body.lstrip("\n")[:MAX_CHARS], folder, source)
+    body = body.lstrip("\n")
+    extra = {k: v[:200] for k, v in meta.items() if k not in ("name", "description")}
+    return Skill(folder.name, meta["description"][:300], body[:MAX_CHARS], folder, source, extra, len(body) > MAX_CHARS)
 
 
 class SkillBook:
     def __init__(self, builtin: Path, user: Path | None = None):
         self.builtin = Path(builtin)
         self.user = Path(user) if user else None
+        self.is_off = lambda name: False     # set by the app: the owner's switches on the Skills page
 
     def _all(self) -> dict[str, Skill]:
         found: dict[str, Skill] = {}
@@ -81,19 +86,59 @@ class SkillBook:
                         found[skill.name] = skill   # user skills come second, so they win
         return found
 
-    def catalog(self) -> list[Skill]:
+    def everything(self) -> list[Skill]:
+        """Every skill, switched off or not (the Skills page)."""
         return sorted(self._all().values(), key=lambda s: s.name)
+
+    def catalog(self) -> list[Skill]:
+        """The skills the planner may use: switched-off ones are left out."""
+        return [s for s in self.everything() if not self.is_off(s.name)]
 
     def catalog_text(self) -> str:
         return "\n".join(f"- {s.name}: {s.description}" for s in self.catalog())
 
     def get(self, name: str) -> Skill | None:
+        skill = self._all().get(name)
+        return None if skill is None or self.is_off(skill.name) else skill
+
+    def get_any(self, name: str) -> Skill | None:
+        """A skill even if it's switched off (to show it, or switch it back on)."""
         return self._all().get(name)
 
     def reference(self, name: str, ref: str) -> str:
-        skill = self.get(name)
+        skill = self.get_any(name)
         if skill is None:
             raise ValueError(f"No such skill: {name}")
         if not REF.match(ref) or ref not in skill.references():
             raise ValueError(f"No such reference: {ref}")
         return (skill.folder / "references" / ref).read_text(encoding="utf-8-sig", errors="replace")[:MAX_CHARS]
+
+
+def check(skill: Skill) -> list[tuple[bool, str]]:
+    """A quick test-run of a skill's files, without any AI: what Prometheus will be able to read, and any problem."""
+    out = [(True, "The guide (SKILL.md) has a name and a description, so the planner can find it.")]
+    if len(skill.description) < 20:
+        out.append((False, "The description is very short: the planner may not know when to use it."))
+    if not skill.body.strip():
+        out.append((False, "The guide has no text after its header."))
+    elif skill.truncated:
+        out.append((False, f"The guide is longer than {MAX_CHARS:,} characters: only the start is read."))
+    else:
+        out.append((True, f"The guide is {len(skill.body):,} characters: all of it is read."))
+    refs = skill.references()
+    for name in refs:
+        try:
+            size = (skill.folder / "references" / name).stat().st_size
+            (skill.folder / "references" / name).read_text(encoding="utf-8-sig")
+            note = "" if size <= MAX_CHARS else f" (only the first {MAX_CHARS:,} characters are read)"
+            out.append((size <= MAX_CHARS, f"Reference {name} can be read{note}."))
+        except (OSError, UnicodeDecodeError):
+            out.append((False, f"Reference {name} can't be read as text."))
+    folder = skill.folder / "references"
+    if folder.is_dir():
+        skipped = [p.name for p in folder.iterdir() if p.name not in refs]
+        if skipped:
+            out.append((False, "Ignored (not plain .md files inside the skill): " + ", ".join(sorted(skipped)[:8])))
+    if not refs:
+        out.append((True, "No reference files: the guide alone is used."))
+    return out

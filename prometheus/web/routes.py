@@ -868,6 +868,11 @@ def register_routes(app: FastAPI, services: Services) -> None:
     def skills_page(request: Request):
         from prometheus.agents import tools_agent
 
+        if request.query_params.get("view") != "classic" and not PHONE.search(request.headers.get("user-agent", "")):
+            said = request.query_params.get("said", "")
+            return RedirectResponse("/v3/skills" + (f"?tab=github&said={__import__('urllib.parse').parse.quote(said)}"
+                                                    if said else ""), status_code=303)
+
         from prometheus.repo_of_day import RepoOfTheDay
 
         return page(request, "skills.html", skills=services.skills.catalog(), shown=None, text="",
@@ -903,6 +908,8 @@ def register_routes(app: FastAPI, services: Services) -> None:
         except ToolError:
             pass
         store.audit("user", "remove_tool", {"name": name})
+        if not PHONE.search(request.headers.get("user-agent", "")):
+            return RedirectResponse("/v3/skills?tab=tools", status_code=303)
         return skills_page(request)
 
     @app.get("/skills/{name}/{ref}", response_class=HTMLResponse)

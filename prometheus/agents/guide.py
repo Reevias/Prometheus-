@@ -26,6 +26,8 @@ class Guide(Agent):
         name = str(inputs.get("skill") or "").strip()
         question = str(inputs.get("question") or goal).strip()
         skill = book.get(name) if book else None
+        if skill is None and book is not None and book.get_any(name) is not None:
+            return StepResult("failed", f"The skill '{name}' is switched off on the Skills page.")
         if skill is None:
             known = ", ".join(s.name for s in book.catalog()) if book else "none"
             return StepResult("failed", f"There is no skill called '{name}'. Available skills: {known}.")

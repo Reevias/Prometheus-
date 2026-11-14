@@ -78,8 +78,9 @@ def test_list_the_top_repos_then_the_owner_picks(app_client, monkeypatch):
     import prometheus.repo_of_day as mod
 
     monkeypatch.setattr(mod, "RepoOfTheDay", lambda s, **kw: rod)
-    page = client.get("/skills").text
-    assert "Today's top repos on GitHub" in page and "Add to skills" in page and "good/llm-notes" in page
+    page = client.get("/v3/skills?tab=github").text                   # the new Skills page, "Add from GitHub" tab
+    assert "Today's top repositories" in page and 'hx-post="/skills/trending/add"' in page and "good/llm-notes" in page
+    assert "Today's top repos on GitHub" in client.get("/skills?view=classic").text
     n = names.index("good/llm-notes") + 1
     said = rod.answer(1, f"add repo {n}")
     assert "Added good/llm-notes" in said

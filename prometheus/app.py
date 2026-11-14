@@ -302,6 +302,8 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
     orchestrator.task_budget = max(0.01, min(float(settings.task_budget_usd), 10.0))
     services = Services(settings, home, store, policy, journal, files, permissions, approvals, budget, killswitch,
                         router, orchestrator, patcher, prompts, skills)
+    from prometheus.features import skill_on
+    skills.is_off = lambda name: not skill_on(services.settings, name)   # the Skills page's switches
     services.atomic_files = AtomicFiles(policy=policy, backup_dir=data / "backups")
     services.terminal = AsyncTerminal(policy=policy)
     services.archive = archive

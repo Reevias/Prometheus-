@@ -78,6 +78,7 @@ class Settings:
     code_brain: str = "auto"                    # who plans coding requests: auto (Ripple on OpenRouter), off, or a route entry
     features_off: list = field(default_factory=list)   # Settings → Features: the ones switched off
     agents_off: list = field(default_factory=list)     # Agents page: agents the owner switched off
+    skills_off: list = field(default_factory=list)     # Skills page: guides the owner switched off
     paused: bool = False                        # Stop everything: no background jobs or outside actions
     auto_update: bool = True
     auto_restart: bool = True              # after an update, restart by itself once nothing is running
