@@ -1103,8 +1103,10 @@ def register_routes(app: FastAPI, services: Services) -> None:
             buf = _io.BytesIO()
             img.save(buf, format="PNG")
             qr = _b64.b64encode(buf.getvalue()).decode()
-        return page(request, "phone.html", address=address, qr=qr,
-                    apk_url="https://github.com/Reevias/Prometheus-/releases/latest/download/Prometheus.apk")
+        apk = "https://github.com/Reevias/Prometheus-/releases/latest/download/Prometheus.apk"
+        if request.query_params.get("view") != "classic" and not PHONE.search(request.headers.get("user-agent", "")):
+            return shell(request, "v3/phone.html", "phone", address=address, qr=qr, apk_url=apk)
+        return page(request, "phone.html", address=address, qr=qr, apk_url=apk)
 
     @app.get("/costs", response_class=HTMLResponse)
     def costs(request: Request):

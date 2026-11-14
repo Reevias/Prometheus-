@@ -761,3 +761,6 @@ html[data-motion="reduced"] *, html[data-motion="reduced"] *::before { animation
                 border: 2px solid var(--base); box-shadow: 0 0 8px rgb(var(--orange-rgb) / 0.8); }
 .profile-menu .count { flex: none; min-width: 22px; text-align: center; font-size: 12px; border-radius: 999px; padding: 1px 7px;
                        background: rgb(var(--orange-rgb) / 0.2); color: var(--amber); }
+.phone-qr { display: flex; flex-direction: column; align-items: center; gap: 12px; text-align: center; }
+.phone-qr img { background: var(--text); padding: 12px; border-radius: 14px; }
+.steps-plain { margin: 0 0 12px; padding-left: 20px; line-height: 1.6; }
