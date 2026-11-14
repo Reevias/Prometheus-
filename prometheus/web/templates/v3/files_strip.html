@@ -1,15 +1,17 @@
 {% if files %}
 <div class="files-strip" aria-label="Files from this chat">
+  <h3 class="files-title">Files from this chat <span class="muted">{{ files|length }}</span></h3>
   {% for f in files %}
   <div class="outfile {{ 'gone' if not f.exists }}" title="{{ f.path }}">
     {% if f.image %}<button type="button" class="out-img" data-src="/api/v3/outputs/{{ f.id }}/file" data-name="{{ f.name }}" aria-label="Enlarge {{ f.name }}">
       <img src="/api/v3/outputs/{{ f.id }}/file" alt="{{ f.name }}" loading="lazy"></button>
     {% else %}<span class="ico">{{ (f.name.rsplit(".", 1)[-1] if "." in f.name else ("dir" if f.is_dir else "file"))[:4] }}</span>{% endif %}
-    <div class="meta"><b>{{ f.name }}{{ "/" if f.is_dir }}</b>
+    <div class="meta"><b>{{ f.name }}{{ "/" if f.is_dir }}</b>{% if f.size %}<small class="muted">{{ f.size }}</small>{% endif %}
       {% if f.exists %}<span class="out-actions">
         <button type="button" hx-post="/outputs/{{ f.id }}/open" hx-swap="none">Open</button>
         {% if not f.is_dir %}<button type="button" hx-post="/outputs/{{ f.id }}/folder" hx-swap="none">Folder</button>
-        <a href="/api/v3/outputs/{{ f.id }}/file?download=1" download>Download</a>{% endif %}
+        <a href="/api/v3/outputs/{{ f.id }}/file?download=1" download>Download</a>
+        <button type="button" class="danger" data-api="/api/v3/outputs/{{ f.id }}/recycle" data-confirm="Send {{ f.name }} to the Recycle Bin?">Delete</button>{% endif %}
       </span>{% else %}<span class="muted">not there any more</span>{% endif %}
     </div>
   </div>

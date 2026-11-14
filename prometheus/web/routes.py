@@ -176,10 +176,42 @@ def register_routes(app: FastAPI, services: Services) -> None:
         out = []
         for o in store.outputs(chat_id):
             p = Path(o["path"])
+            try:
+                size = p.stat().st_size if p.is_file() else None
+            except OSError:
+                size = None
             out.append({"id": o["id"], "name": p.name or o["path"], "path": o["path"], "kind": o.get("kind", ""),
-                        "is_dir": bool(o.get("is_dir")), "exists": p.exists(),
+                        "is_dir": bool(o.get("is_dir")), "exists": p.exists(), "size": human_size(size),
                         "image": p.suffix.lower() in IMAGE_TYPES and p.is_file()})
         return out
+
+    def human_size(n: int | None) -> str:
+        if n is None:
+            return ""
+        for unit in ("bytes", "KB", "MB", "GB"):
+            if n < 1024 or unit == "GB":
+                return f"{n} {unit}" if unit == "bytes" else f"{n:.1f} {unit}"
+            n /= 1024
+        return ""
+
+    @app.post("/api/v3/outputs/{output_id}/recycle")
+    def api_v3_output_recycle(output_id: int):
+        """Delete a file a chat made: it goes to the Recycle Bin (path rules checked again, undo in Activity)."""
+        from prometheus.agents.files import recycle_paths
+
+        item = store.output(output_id)
+        if item is None:
+            return JSONResponse({"error": "Not found."}, status_code=404)
+        if item.get("is_dir"):
+            return JSONResponse({"error": "Folders are left alone here: ask Prometheus in the chat."}, status_code=409)
+        if not Path(item["path"]).exists():
+            return JSONResponse({"error": "It's not there any more."}, status_code=409)
+        res = recycle_paths([item["path"]], services.policy, services.files, services.killswitch)
+        if res.status != "done" or "Skipped" in res.summary:
+            return JSONResponse({"error": "Couldn't delete it: " + res.summary.split("Skipped:")[-1].strip()[:200]},
+                                status_code=409)
+        store.audit("user", "recycle_output", {"output": output_id, "name": Path(item["path"]).name})
+        return {"ok": True, "message": "Sent to the Recycle Bin. Undo it in System → Activity."}
 
     @app.get("/c/{chat_id}/files", response_class=HTMLResponse)
     def v3_chat_files(request: Request, chat_id: int):

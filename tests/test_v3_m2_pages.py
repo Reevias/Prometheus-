@@ -421,3 +421,34 @@ def test_approvals_page_approve_reject_and_secret(app_client):
     assert client.post("/api/v3/approvals/999", data={"decision": "approve"}, headers=h).status_code == 404
     assert "Nothing is waiting" in client.get("/v3/approvals").text
     assert client.get("/approvals", follow_redirects=False).headers["location"] == "/v3/approvals"
+
+
+# ---- Chat files panel -----------------------------------------------------------------------------------------------
+def test_chat_files_show_size_and_delete_to_the_recycle_bin(app_client):
+    from pathlib import Path
+    client, services = app_client()
+    h = {"X-CSRF-Token": login(client)}
+    st = services.store
+    folder = Path(services.home) / "Documents"
+    folder.mkdir(parents=True, exist_ok=True)
+    made = folder / "report.txt"
+    made.write_text("x" * 2048)
+    cid = st.create_chat("Report")
+    st._write("INSERT INTO outputs (chat_id, path, kind, is_dir, created) VALUES (?, ?, 'file', 0, ?)",
+              (cid, str(made), time.time()))
+    oid = st.outputs(cid)[0]["id"]
+    strip = client.get(f"/c/{cid}/files").text
+    assert "report.txt" in strip and "2.0 KB" in strip and f"/api/v3/outputs/{oid}/recycle" in strip
+    binned = []
+    services.files.trash = lambda p: (binned.append(p), Path(p).unlink())
+    r = client.post(f"/api/v3/outputs/{oid}/recycle", headers=h)
+    assert r.status_code == 200, r.text
+    assert [Path(b).name for b in binned] == ["report.txt"]
+    assert not made.exists() and "not there any more" in client.get(f"/c/{cid}/files").text
+    assert client.post(f"/api/v3/outputs/{oid}/recycle", headers=h).status_code == 409
+    # outside the allowed places it's refused, even if recorded as an output
+    st._write("INSERT INTO outputs (chat_id, path, kind, is_dir, created) VALUES (?, ?, 'file', 0, ?)",
+              (cid, "/etc/hostname", time.time()))
+    bad = [o for o in st.outputs(cid) if o["path"] == "/etc/hostname"][0]["id"]
+    if Path("/etc/hostname").exists():
+        assert client.post(f"/api/v3/outputs/{bad}/recycle", headers=h).status_code == 409

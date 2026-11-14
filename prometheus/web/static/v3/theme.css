@@ -411,7 +411,7 @@ a { color: var(--amber); }
 .out-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .outfile .meta { min-width: 0; }
 .outfile .meta b { display: block; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.out-actions { display: flex; gap: 2px; }
+.out-actions { display: flex; flex-wrap: wrap; gap: 2px; }
 .out-actions button, .out-actions a { border: 0; background: none; color: var(--muted); font-size: 12px; padding: 2px 6px; border-radius: 6px; text-decoration: none; }
 .out-actions button:hover, .out-actions a:hover { color: var(--orange); background: rgb(var(--orange-rgb) / 0.08); }
 .lightbox { position: fixed; inset: 0; z-index: 80; background: rgb(var(--base-rgb) / 0.92); display: flex; flex-direction: column;
@@ -764,3 +764,19 @@ html[data-motion="reduced"] *, html[data-motion="reduced"] *::before { animation
 .phone-qr { display: flex; flex-direction: column; align-items: center; gap: 12px; text-align: center; }
 .phone-qr img { background: var(--text); padding: 12px; border-radius: 14px; }
 .steps-plain { margin: 0 0 12px; padding-left: 20px; line-height: 1.6; }
+
+/* ---- Chat files panel: on the side of the chat on wide windows, a strip above it otherwise ----------------- */
+.files-title { display: none; font-size: 13px; font-weight: 500; color: var(--muted); margin: 0 0 4px; }
+.outfile .meta small { display: block; font-size: 11px; }
+.out-actions button.danger:hover { color: var(--bad); background: rgb(var(--bad-rgb) / 0.08); }
+@media (min-width: 1500px) {
+  .chat:has(.files-strip) { display: grid; grid-template-columns: minmax(0, 1fr) 270px; grid-template-rows: minmax(0, 1fr) auto;
+                            column-gap: 22px; justify-items: center; align-items: stretch; }
+  .chat:has(.files-strip) .messages { grid-column: 1; grid-row: 1; }
+  .chat:has(.files-strip) .command { grid-column: 1; grid-row: 2; }
+  .chat:has(.files-strip) .chat-files { grid-column: 2; grid-row: 1 / 3; width: 100%; min-height: 0; overflow: auto; padding-top: 8px;
+                                        align-self: start; max-height: 100%; }
+  .chat:has(.files-strip) .files-strip { flex-direction: column; overflow: visible; }
+  .chat:has(.files-strip) .files-title { display: block; }
+  .chat:has(.files-strip) .outfile { max-width: none; }
+}
