@@ -1,6 +1,11 @@
 # Changelog
 
 ## Prometheus 3.0, M2.2 (on the prometheus-v3 branch, not released yet)
+- Memory: memories and facts (search, add, edit, delete; editing a fact keeps the old value as past), files and
+  pages (search inside your files, saved texts, and every file Prometheus made, across chats), how it answers you
+  (learned rules, earlier versions, task lessons), topics with their chats, and Privacy: pause remembering by itself,
+  leave a chat out (never remembered or searched; what it saved is removed), export everything as JSON, and forget
+  everything (now also the facts). Ctrl+K has Tasks, Skills, Memory and Search my files.
 - Skills: guides as cards or a list, grouped by type, with search; each skill's page shows its guide and reference
   files, version, author, what it needs, its permissions and every time it was used. Switch a skill off (the planner
   then never sees it), check it (what Prometheus can read, and any problem, without an AI), try it in a new chat,

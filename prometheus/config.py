@@ -79,6 +79,8 @@ class Settings:
     features_off: list = field(default_factory=list)   # Settings → Features: the ones switched off
     agents_off: list = field(default_factory=list)     # Agents page: agents the owner switched off
     skills_off: list = field(default_factory=list)     # Skills page: guides the owner switched off
+    memory_paused: bool = False                        # Memory → Privacy: save nothing from chats by itself
+    memory_off_chats: list = field(default_factory=list)  # Memory → Privacy: chats it never remembers or searches
     paused: bool = False                        # Stop everything: no background jobs or outside actions
     auto_update: bool = True
     auto_restart: bool = True              # after an update, restart by itself once nothing is running

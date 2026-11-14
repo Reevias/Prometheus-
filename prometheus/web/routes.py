@@ -788,6 +788,10 @@ def register_routes(app: FastAPI, services: Services) -> None:
 
     @app.get("/memory", response_class=HTMLResponse)
     def memory(request: Request, q: str = "", lesson: str = ""):
+        if request.query_params.get("view") != "classic" and not PHONE.search(request.headers.get("user-agent", "")) \
+                and not request.headers.get("HX-Request"):
+            return RedirectResponse("/v3/memory" + (f"?q={__import__('urllib.parse').parse.quote(q)}" if q else ""),
+                                    status_code=303)
         q = q.strip()[:200]
         found = store.recall(q, limit=30, kinds=("memory", "chat_note", "agent_note", "message")) if q else []
         passages = store.search_chunks(q, limit=10, include_private=True) if q else []

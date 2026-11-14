@@ -106,6 +106,10 @@ class ChatArchive:
 
     # -- keeping memory and files up to date -------------------------------------------
     def sync(self, chat_id: int) -> None:
+        if not self.allowed(chat_id):        # Memory → Privacy: paused, or this chat is left out
+            if self.left_out(chat_id):
+                self.drop(chat_id)
+            return
         with self._lock:
             title = self.store.chat_title(chat_id)
             runs = self.split(chat_id)
@@ -131,6 +135,19 @@ class ChatArchive:
                 self._write_index()
             except OSError:      # a locked or read-only file never stops the chat
                 pass
+
+    # set by the app from the owner's Memory → Privacy settings
+    allowed = staticmethod(lambda chat_id: True)
+    left_out = staticmethod(lambda chat_id: False)
+
+    def drop(self, chat_id: int) -> None:
+        """A chat the owner left out: its searchable parts and its file go (the chat itself stays)."""
+        with self._lock:
+            topics = [s["topic"] for s in self.store.segments(chat_id=chat_id)]
+            for _, doc_id in self.store.document_keys(f"chat:{chat_id}:").items():
+                self.store.delete_document(doc_id)
+            self.store.set_segments(chat_id, [])
+        self.forget(chat_id, topics)
 
     def forget(self, chat_id: int, topics: list[str]) -> None:
         """After a chat is deleted: remove its file and drop it from the topic files and the index."""

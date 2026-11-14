@@ -331,6 +331,34 @@
     });
   }
 
+  // ---- action buttons on the M2.2 pages: data-api="/api/..." posts, then reloads ----------------------------------
+  // data-confirm: ask first · data-prompt: ask for text (sent as data-field, default "text"; data-value prefills)
+  // data-type-confirm: the exact words to type · data-send='{"on":"1"}': extra fields · data-then: where to go after
+  document.addEventListener("click", function (e) {
+    var b = e.target.closest("[data-api]"); if (!b || b.disabled) return;
+    e.preventDefault();
+    var f = new FormData(), d = b.dataset;
+    if (d.confirm && !confirm(d.confirm)) return;
+    if (d.prompt) {
+      var v = prompt(d.prompt, d.value || ""); if (v === null) return;
+      f.append(d.field || "text", v);
+    }
+    if (d.typeConfirm) {
+      var t = prompt("Type “" + d.typeConfirm + "” to confirm."); if (t === null) return;
+      f.append("confirm", t.trim().toLowerCase());
+    }
+    if (d.send) { try { var extra = JSON.parse(d.send); Object.keys(extra).forEach(function (k) { f.append(k, extra[k]); }); } catch (x) {} }
+    b.disabled = true;
+    post(d.api, f).then(function (r) { return r.json().then(function (j) { return [r.ok, j]; }, function () { return [r.ok, {}]; }); })
+      .then(function (x) {
+        b.disabled = false;
+        if (!x[0]) { toast(x[1].error || "That didn't work.", true); return; }
+        if (x[1].message) { try { sessionStorage.setItem("prom-said", x[1].message); } catch (z) {} }
+        if (d.then) location.href = d.then; else location.reload();
+      }, function () { b.disabled = false; toast("Prometheus isn't answering. Is it still running?", true); });
+  });
+  try { var said = sessionStorage.getItem("prom-said"); if (said) { sessionStorage.removeItem("prom-said"); toast(said); } } catch (z) {}
+
   // ---- keyboard shortcuts --------------------------------------------------------------------------------
   document.addEventListener("keydown", function (e) {
     var mod = e.ctrlKey || e.metaKey;

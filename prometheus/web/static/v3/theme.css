@@ -692,3 +692,27 @@ html[data-motion="reduced"] *, html[data-motion="reduced"] *::before { animation
 .checks li { padding: 4px 0; font-size: 13.5px; }
 .checks li.ok { color: var(--ok); }
 .checks li.bad { color: var(--orange); }
+
+/* ---- Memory ---------------------------------------------------------------------------------------------- */
+.seg a { padding: 6px 12px; border-radius: 9px; font-size: 13px; color: var(--muted); text-decoration: none; }
+.seg a.on { background: rgb(var(--orange-rgb) / 0.14); color: var(--text); }
+.mem-list { display: flex; flex-direction: column; gap: 6px; max-width: 1000px; }
+.mem-row { display: flex; align-items: center; gap: 14px; padding: 11px 16px; border-radius: 12px;
+           background: rgb(var(--surface-rgb) / 0.55); border: 1px solid rgb(var(--text-rgb) / 0.05); }
+.mem-row > div:first-child { flex: 1; min-width: 0; }
+.mem-row p { margin: 0 0 3px; overflow-wrap: anywhere; }
+.mem-row small a { color: var(--muted); }
+.mem-row .row-actions { display: flex; gap: 6px; flex: none; opacity: 0.6; }
+.mem-row:hover .row-actions, .mem-row .row-actions:focus-within { opacity: 1; }
+.mem-row.past { opacity: 0.6; }
+.mem-person { max-width: 1000px; margin-bottom: 10px; }
+.mem-person summary { cursor: pointer; padding: 8px 2px; }
+.mem-person .mem-row { margin-top: 6px; }
+.mem-rules { max-width: 900px; line-height: 1.6; }
+.privacy { display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: 14px; max-width: 1100px; }
+.priv-card { padding: 18px 20px; border-radius: var(--r-md); background: rgb(var(--surface-rgb) / 0.55);
+             border: 1px solid rgb(var(--text-rgb) / 0.06); }
+.priv-card h2 { font-size: 17px; font-weight: 500; margin: 0 0 6px; }
+.priv-card .mem-list { margin: 10px 0; }
+.priv-card select { max-width: 280px; }
+.priv-card.danger-zone { border-color: rgb(var(--bad-rgb) / 0.3); }

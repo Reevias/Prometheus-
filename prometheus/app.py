@@ -210,6 +210,10 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
 
     memory_folder = Path(settings.memory_folder).expanduser() if settings.memory_folder else default_folder(home)
     archive = ChatArchive(store, memory_folder)
+    from prometheus.features import memory_collects
+
+    archive.allowed = lambda chat_id: memory_collects(settings, chat_id)      # replaced below by the live settings
+    archive.left_out = lambda chat_id: chat_id in (settings.memory_off_chats or [])
     store.listeners.append(archive.sync)
     threading.Thread(target=archive.sync_all, daemon=True).start()   # file away chats from older versions
     policy = PathPolicy(home=home, data_dir=data, code_dir=CODE_DIR, protected=(memory_folder,),
@@ -304,6 +308,8 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
                         router, orchestrator, patcher, prompts, skills)
     from prometheus.features import skill_on
     skills.is_off = lambda name: not skill_on(services.settings, name)   # the Skills page's switches
+    archive.allowed = lambda chat_id: memory_collects(services.settings, chat_id)       # Memory → Privacy
+    archive.left_out = lambda chat_id: chat_id in (services.settings.memory_off_chats or [])
     services.atomic_files = AtomicFiles(policy=policy, backup_dir=data / "backups")
     services.terminal = AsyncTerminal(policy=policy)
     services.archive = archive

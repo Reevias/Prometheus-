@@ -127,7 +127,7 @@ def test_rating_rewrites_and_nightly_learning(app_client):
     assert learned == ["Answer in at most three sentences unless asked for detail."]   # the password rule is dropped
     assert learn(services) == ""                                                       # nothing new
     assert "three sentences" in services.orchestrator._style()                          # used for every answer
-    mem = client.get("/memory").text
+    mem = client.get("/memory?view=classic").text
     assert "How Prometheus answers you" in mem and "three sentences" in mem
     client.post("/memory/lessons-reset", headers=h)
     assert current_rules(services.prompts.get("learned")) == []

@@ -147,5 +147,5 @@ def test_forget_everything_works_from_search_results(app_client):
     client, services = app_client()
     login(client)
     services.store.add_memory("tea")
-    page = client.get("/memory?q=tea").text
+    page = client.get("/memory?view=classic&q=tea").text
     assert 'hx-post="/memory/wipe"' in page and 'id="memory"' in page

@@ -227,3 +227,128 @@ def test_add_skill_from_a_github_link(app_client, monkeypatch):
     assert r.status_code == 200, r.text
     assert services.skills.get_any("repo-someone-photo-sorter") is not None
     assert "From GitHub" in client.get("/v3/skills").text
+
+
+# ---- Memory ---------------------------------------------------------------------------------------------------------
+def test_memory_page_tabs_and_search(app_client):
+    client, services = app_client()
+    login(client)
+    st = services.store
+    st.add_memory("My bike is a blue Trek", source="chat: Bikes")
+    services.orchestrator.facts.save("me", "college", "IIT Delhi", source="chat: Intro")
+    page = client.get("/v3/memory").text
+    for part in ("My bike is a blue Trek", "People and facts", "college", "IIT Delhi", 'href="/v3/memory"'):
+        assert part in page, part
+    assert "blue Trek" in client.get("/v3/memory?q=bike").text
+    for tab in ("files", "answers", "topics", "privacy"):
+        assert client.get(f"/v3/memory?tab={tab}").status_code == 200, tab
+    assert client.get("/memory", follow_redirects=False).headers["location"] == "/v3/memory"
+    assert "What Prometheus remembers about you" in client.get("/memory?view=classic").text
+
+
+def test_memory_add_edit_delete_and_secrets(app_client):
+    client, services = app_client()
+    h = {"X-CSRF-Token": login(client)}
+    st = services.store
+    mid = client.post("/api/v3/memory/add", data={"text": "I wake up at 7"}, headers=h).json()["id"]
+    assert client.post("/api/v3/memory/add", data={"text": "my password is hunter22"}, headers=h).status_code == 400
+    assert client.post(f"/api/v3/memory/{mid}/edit", data={"text": "I wake up at 6:30"}, headers=h).json()["ok"]
+    assert [m.text for m in st.memories()] == ["I wake up at 6:30"]
+    assert [h_.text for h_ in st.recall("6:30", kinds=("memory",))]                     # search sees the new text
+    assert not st.recall("wake up at 7", kinds=("memory",)) or "6:30" in st.recall("wake", kinds=("memory",))[0].text
+    assert client.post(f"/api/v3/memory/{mid}/edit", data={"text": " "}, headers=h).status_code == 400
+    assert client.post("/api/v3/memory/999/edit", data={"text": "x"}, headers=h).status_code == 404
+    client.post(f"/api/v3/memory/{mid}/delete", headers=h)
+    assert st.memories() == []
+
+
+def test_fact_edit_keeps_the_old_value_as_past(app_client):
+    client, services = app_client()
+    h = {"X-CSRF-Token": login(client)}
+    facts = services.orchestrator.facts
+    fid, _ = facts.save("me", "city", "Pune")
+    assert client.post(f"/api/v3/facts/{fid}/edit", data={"text": "Delhi"}, headers=h).json()["ok"]
+    now = [f.value for f in facts.about("me", past=False)]
+    assert now == ["Delhi"] and "Pune" in [f.value for f in facts.about("me")]
+    assert client.post(f"/api/v3/facts/{fid}/edit", data={"text": "Goa"}, headers=h).status_code == 404   # past now
+    new = [f.id for f in facts.about("me", past=False)][0]
+    client.post(f"/api/v3/facts/{new}/forget", headers=h)               # forgetting the new value brings back the old
+    assert [f.value for f in facts.about("me", past=False)] == ["Pune"]
+
+
+def test_pause_and_leave_out_stop_saving_by_itself(app_client):
+    client, services = app_client()
+    h = {"X-CSRF-Token": login(client)}
+    from prometheus.features import memory_collects
+    st = services.store
+    cid = st.create_chat("Diary")
+    assert memory_collects(services.settings, cid)
+    client.post("/api/v3/memory/pause", data={"on": "1"}, headers=h)
+    assert services.settings.memory_paused and not memory_collects(services.settings, cid)
+    client.post("/api/v3/memory/pause", data={}, headers=h)
+    assert memory_collects(services.settings, cid)
+    # the chat's searchable parts exist, then go when it's left out, and come back when included again
+    st.add_message(cid, "user", "my secret diary entry about the hackathon")
+    st.add_message(cid, "assistant", "Noted.")                                    # chats are filed after an answer
+    for _ in range(50):
+        if st.segments(chat_id=cid):
+            break
+        time.sleep(0.05)
+    assert st.segments(chat_id=cid)
+    assert client.post(f"/api/v3/memory/chats/{cid}/leave-out", data={"on": "1"}, headers=h).json()["left_out"]
+    assert st.segments(chat_id=cid) == [] and not st.document_keys(f"chat:{cid}:")
+    assert not memory_collects(services.settings, cid)
+    st.add_message(cid, "user", "another entry")                                  # still nothing saved
+    st.add_message(cid, "assistant", "Noted again.")
+    time.sleep(0.2)
+    assert st.segments(chat_id=cid) == []
+    assert "Diary" in client.get("/v3/memory?tab=privacy").text
+    client.post(f"/api/v3/memory/chats/{cid}/leave-out", data={}, headers=h)
+    assert st.segments(chat_id=cid)
+    assert client.post("/api/v3/memory/chats/9999/leave-out", data={"on": "1"}, headers=h).status_code == 404
+
+
+def test_paused_memory_saves_no_facts_by_itself(app_client):
+    client, services = app_client()
+    login(client)
+    services.settings.memory_paused = True
+    cid = services.store.create_chat("x")
+    tid = services.store.create_task(cid, "my sister Riya studies law")
+    services.orchestrator._save_facts(cid, tid, [{"subject": "Riya", "attribute": "studies", "value": "law"}])
+    assert services.orchestrator.facts.subjects() == []
+    services.settings.memory_paused = False
+    services.orchestrator._save_facts(cid, tid, [{"subject": "Riya", "attribute": "studies", "value": "law"}])
+    assert [s.lower() for s in services.orchestrator.facts.subjects()] == ["riya"]
+
+
+def test_memory_export_and_wipe(app_client):
+    client, services = app_client()
+    h = {"X-CSRF-Token": login(client)}
+    st = services.store
+    st.add_memory("I like chess")
+    services.orchestrator.facts.save("me", "game", "chess")
+    r = client.get("/api/v3/memory/export")
+    assert r.status_code == 200 and "attachment" in r.headers["content-disposition"]
+    data = r.json()
+    assert data["memories"][0]["text"] == "I like chess" and data["facts"][0]["value"] == "chess"
+    assert client.post("/api/v3/memory/wipe", data={"confirm": "yes"}, headers=h).status_code == 400
+    assert st.memories()
+    assert client.post("/api/v3/memory/wipe", data={"confirm": "forget everything"}, headers=h).json()["ok"]
+    assert st.memories() == [] and services.orchestrator.facts.about("me") == []
+
+
+def test_files_tab_searches_inside_files_and_lists_what_it_made(app_client, tmp_path):
+    client, services = app_client()
+    login(client)
+    st = services.store
+    st.add_document("file:notes.txt", "notes.txt", str(tmp_path / "notes.txt"), "Photosynthesis makes glucose from light.",
+                    private=True)
+    cid = st.create_chat("Charts")
+    out = tmp_path / "sales.png"
+    out.write_bytes(b"x")
+    st._write("INSERT INTO outputs (chat_id, path, kind, is_dir, created) VALUES (?, ?, 'image', 0, ?)",
+              (cid, str(out), time.time()))
+    page = client.get("/v3/memory?tab=files&q=glucose").text
+    assert "Photosynthesis" in page and "notes.txt" in page
+    made = client.get("/v3/memory?tab=files&show=made").text
+    assert "sales.png" in made and "Charts" in made and "Saved pages and files <" not in made

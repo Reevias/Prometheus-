@@ -332,6 +332,10 @@ class Orchestrator:
 
     def _save_facts(self, chat_id: int, task_id: int, facts: list[dict]) -> None:
         """Lasting facts from the owner's message are saved by themselves and listed under the answer."""
+        from prometheus.features import memory_collects
+
+        if not memory_collects(getattr(self, "settings", None), chat_id):   # Memory → Privacy
+            return
         title = dict(self.store.chats()).get(chat_id, "chat")
         noted, saved_ids = [], []
         for f in facts[:MAX_FACTS]:

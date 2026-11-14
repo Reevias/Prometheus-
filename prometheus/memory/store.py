@@ -528,6 +528,15 @@ class Store:
         return [Note(r["id"], r["text"], r["created"], r["source"])
                 for r in self._rows("SELECT * FROM memories ORDER BY id")]
 
+    def update_memory(self, memory_id: int, text: str) -> bool:
+        with self._lock:
+            cur = self._db.execute("UPDATE memories SET text = ? WHERE id = ?", (text, memory_id))
+            self._db.commit()
+        if cur.rowcount:
+            self._unindex("memory", memory_id)
+            self._index("memory", memory_id, text)
+        return cur.rowcount > 0
+
     def delete_memory(self, memory_id: int) -> None:
         self._write("DELETE FROM memories WHERE id = ?", (memory_id,))
         self._unindex("memory", memory_id)

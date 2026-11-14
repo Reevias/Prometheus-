@@ -153,8 +153,8 @@ def test_memory_page_lists_and_deletes_documents(app_client):
     client, services = app_client()
     csrf = login(client)
     doc = services.store.add_document("web:x", "Solar guide", "https://example.com/s", "Solar panels need sun.", False)
-    page = client.get("/memory")
+    page = client.get("/memory?view=classic")
     assert "Solar guide" in page.text
-    assert "Solar panels need sun" in client.get("/memory?q=solar").text
+    assert "Solar panels need sun" in client.get("/memory?view=classic&q=solar").text
     resp = client.post(f"/documents/{doc}/delete", headers={"X-CSRF-Token": csrf})
     assert resp.status_code == 200 and "Solar guide" not in resp.text

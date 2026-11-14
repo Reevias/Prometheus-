@@ -46,6 +46,7 @@ def took(start: float, end: float) -> str:
 def register_pages(app: FastAPI, services, shell) -> None:
     store = services.store
     register_skill_pages(app, services, shell)
+    register_memory_pages(app, services, shell)
 
     # ---- Tasks ---------------------------------------------------------------------------------------------------
     def task_rows(status: str, q: str, period: str) -> list[dict]:
@@ -347,3 +348,261 @@ def register_skill_pages(app: FastAPI, services, shell) -> None:
             return JSONResponse({"error": f"Couldn't add {full}: {e}"[:300]}, status_code=502)
         store.audit("user", "skill_add", {"repo": full})
         return {"added": full, "message": said}
+
+
+# ---- Memory ---------------------------------------------------------------------------------------------------------
+MEMORY_TABS = ("memories", "files", "answers", "topics", "privacy")
+KIND_LABEL = {"memory": "Memory", "chat_note": "Chat note", "agent_note": "Agent note", "message": "Message"}
+
+
+def register_memory_pages(app: FastAPI, services, shell) -> None:
+    import time as _t
+
+    from fastapi import Form
+
+    from prometheus.config import save_settings
+
+    store = services.store
+
+    def facts_view() -> dict:
+        facts = services.orchestrator.facts
+        people = []
+        for subject in facts.subjects():
+            rows = [dict(vars(f)) for f in facts.about(subject)]
+            people.append({"name": "You" if subject == "me" else subject.title(),
+                           "now": [f for f in rows if f["until"] is None],
+                           "past": [f for f in rows if f["until"] is not None]})
+        return {"people": people, "fact_changes": facts.changes()}
+
+    def off_chats() -> list[int]:
+        return list(services.settings.memory_off_chats or [])
+
+    def chat_of_message(ids: list[int]) -> dict[int, int]:
+        if not ids:
+            return {}
+        rows = store._rows(f"SELECT id, chat_id FROM messages WHERE id IN ({','.join('?' * len(ids))})", tuple(ids))
+        return {r["id"]: r["chat_id"] for r in rows}
+
+    def generated_files(q: str = "") -> list[dict]:
+        rows = store._rows("SELECT o.id, o.chat_id, o.path, o.kind, o.is_dir, o.created, COALESCE(c.title, '') AS chat "
+                           "FROM outputs o LEFT JOIN chats c ON c.id = o.chat_id ORDER BY o.id DESC LIMIT 300")
+        out = []
+        for r in rows:
+            name = str(r["path"]).replace("\\", "/").rstrip("/").split("/")[-1]
+            if q and q.lower() not in f"{name} {r['chat']}".lower():
+                continue
+            out.append({**dict(r), "name": name})
+        return out
+
+    @app.get("/v3/memory")
+    def memory_page(request: Request, tab: str = "memories", q: str = "", show: str = "", said: str = ""):
+        tab = tab if tab in MEMORY_TABS else "memories"
+        q = q.strip()[:200]
+        ctx: dict = {"tab": tab, "q": q, "said": said[:300], "show": show}
+        if tab == "memories":
+            found = []
+            if q:
+                hits = store.recall(q, limit=30, kinds=("memory", "chat_note", "agent_note", "message"))
+                owner = chat_of_message([h.ref_id for h in hits if h.kind == "message"])
+                left_out = set(off_chats())
+                found = [{"kind": KIND_LABEL.get(h.kind, h.kind), "text": h.text[:600], "source": h.source,
+                          "chat": owner.get(h.ref_id) if h.kind == "message" else None}
+                         for h in hits if not (h.kind == "message" and owner.get(h.ref_id) in left_out)]
+            ctx.update(memories=list(reversed(store.memories())), found=found, **facts_view())
+        elif tab == "files":
+            show = show if show in ("all", "pages", "made") else "all"
+            ctx["show"] = show
+            ctx["passages"] = ([{"title": c.title, "source": c.source, "private": c.private, "text": c.match[:500]}
+                                for c in store.search_chunks(q, limit=12, include_private=True, chats=False)]
+                               if q and show != "made" else [])
+            ctx["documents"] = [d for d in store.documents()
+                                if not q or q.lower() in f"{d.title} {d.source}".lower()] if show != "made" else []
+            ctx["made"] = generated_files(q) if show in ("all", "made") else []
+        elif tab == "answers":
+            from prometheus.learning import current_rules
+
+            try:
+                text, history = services.prompts.get("learned"), services.prompts.history("learned")[:8]
+            except (OSError, RuntimeError, ValueError):
+                text, history = "", []
+            ctx.update(rules=current_rules(text), history=history, task_lessons=store.lessons(50))
+        elif tab == "topics":
+            topics = store.topics()
+            chats = dict(store.chats())
+            for t in topics:
+                ids = list(dict.fromkeys(s["chat_id"] for s in store.segments(topic=t["topic"])))
+                t["chat_list"] = [(cid, chats.get(cid, "Chat")) for cid in ids if cid in chats][:12]
+            ctx.update(topics=topics, folder=str(services.archive.folder) if services.archive else "")
+        else:
+            everything = store.chats()
+            left = set(off_chats())
+            ctx.update(paused=bool(services.settings.memory_paused),
+                       left_out=[(cid, t) for cid, t in everything if cid in left],
+                       chats=[(cid, t) for cid, t in everything if cid not in left][:300],
+                       counts={"memories": len(store.memories()), "documents": len(store.documents(limit=100000)),
+                               "facts": sum(len(p["now"]) + len(p["past"]) for p in facts_view()["people"])})
+        return shell(request, "v3/memory.html", "memory", **ctx)
+
+    def ok(**kw):
+        return {"ok": True, **kw}
+
+    def bad(text: str, code: int = 400):
+        return JSONResponse({"error": text}, status_code=code)
+
+    @app.post("/api/v3/memory/add")
+    def api_memory_add(text: str = Form("")):
+        from prometheus.orchestrator.planner import SECRETISH
+
+        text = " ".join(text.split())[:1000]
+        if not text:
+            return bad("Type what Prometheus should remember.")
+        if SECRETISH.search(text):
+            return bad("That looks like a password or key: those go in Settings → AI models and keys, not in memory.")
+        mid = store.add_memory(text, source="added by you")
+        store.audit("user", "add_memory", {"id": mid})
+        return ok(id=mid)
+
+    @app.post("/api/v3/memory/{memory_id}/edit")
+    def api_memory_edit(memory_id: int, text: str = Form("")):
+        from prometheus.orchestrator.planner import SECRETISH
+
+        text = " ".join(text.split())[:1000]
+        if not text:
+            return bad("A memory can't be empty: delete it instead.")
+        if SECRETISH.search(text):
+            return bad("That looks like a password or key, so it wasn't saved.")
+        if not store.update_memory(memory_id, text):
+            return bad("That memory is gone.", 404)
+        store.audit("user", "edit_memory", {"id": memory_id})
+        return ok()
+
+    @app.post("/api/v3/memory/{memory_id}/delete")
+    def api_memory_delete(memory_id: int):
+        store.delete_memory(memory_id)
+        store.audit("user", "delete_memory", {"id": memory_id})
+        return ok()
+
+    @app.post("/api/v3/facts/{fact_id}/edit")
+    def api_fact_edit(fact_id: int, text: str = Form("")):
+        """A new value for a fact: the old one is kept as past, with its date (like saying 'change X to Y')."""
+        value = " ".join(text.split())[:300]
+        facts = services.orchestrator.facts
+        rows = store._rows("SELECT subject, attribute FROM facts WHERE id = ? AND until IS NULL", (fact_id,))
+        if not rows:
+            return bad("That fact is gone or already in the past.", 404)
+        if not value:
+            return bad("Type the new value, or forget it instead.")
+        facts.save(rows[0]["subject"], rows[0]["attribute"], value, source="edited by you")
+        store.audit("user", "edit_fact", {"id": fact_id})
+        return ok()
+
+    @app.post("/api/v3/facts/{fact_id}/forget")
+    def api_fact_forget(fact_id: int):
+        services.orchestrator.facts.forget(fact_id)
+        store.audit("user", "forget_fact", {"id": fact_id})
+        return ok()
+
+    @app.post("/api/v3/facts/changes/{change_id}/undo")
+    def api_fact_undo(change_id: int):
+        if not services.orchestrator.facts.undo_change(change_id):
+            return bad("Already undone.", 409)
+        store.audit("user", "undo_fact_change", {"id": change_id})
+        return ok()
+
+    @app.post("/api/v3/documents/{doc_id}/delete")
+    def api_document_delete(doc_id: int):
+        store.delete_document(doc_id)
+        store.audit("user", "delete_document", {"id": doc_id})
+        return ok()
+
+    @app.post("/api/v3/memory/learn")
+    def api_memory_learn():
+        from prometheus.learning import learn
+
+        try:
+            said = learn(services) or "Nothing new to learn yet: rate a few answers first."
+        except Exception as e:
+            said = f"Couldn't learn right now ({type(e).__name__}). It will try again tonight."
+        return ok(message=said)
+
+    @app.post("/api/v3/memory/lessons/reset")
+    def api_lessons_reset():
+        from prometheus.learning import HEADER
+
+        services.prompts.set("learned", HEADER + "(Reset by the owner.)\n", "Reset by the owner")
+        store.audit("user", "lessons_reset", {})
+        return ok(message="Cleared. Older versions can still be restored.")
+
+    @app.post("/api/v3/memory/lessons/{commit}/restore")
+    def api_lessons_restore(commit: str):
+        try:
+            services.prompts.rollback("learned", commit)
+        except (ValueError, RuntimeError):
+            return bad("That version couldn't be restored.", 409)
+        store.audit("user", "lessons_restored", {"commit": commit[:12]})
+        return ok(message="Restored that version.")
+
+    @app.post("/api/v3/task-lessons/{lesson_id}/delete")
+    def api_task_lesson_delete(lesson_id: int):
+        store.delete_lesson(lesson_id)
+        return ok()
+
+    @app.post("/api/v3/memory/pause")
+    def api_memory_pause(on: str = Form("")):
+        """on = paused: nothing is saved from chats by itself (what you ask it to remember still is)."""
+        services.settings.memory_paused = bool(on)
+        save_settings(services.settings)
+        store.audit("user", "memory_pause", {"paused": bool(on)})
+        return ok(paused=services.settings.memory_paused)
+
+    @app.post("/api/v3/memory/chats/{chat_id}/leave-out")
+    def api_memory_leave_out(chat_id: int, on: str = Form("")):
+        """on: this chat is never remembered or searched; its searchable parts and its file are removed now."""
+        if chat_id not in dict(store.chats()):
+            return bad("No such chat.", 404)
+        left = [c for c in off_chats() if c != chat_id] + ([chat_id] if on else [])
+        services.settings.memory_off_chats = left
+        save_settings(services.settings)
+        if services.archive is not None:
+            try:
+                services.archive.sync(chat_id)          # left out: drops its parts; back in: files it again
+            except Exception:
+                pass
+        store.audit("user", "memory_leave_out", {"chat": chat_id, "on": bool(on)})
+        return ok(left_out=chat_id in left)
+
+    @app.get("/api/v3/memory/export")
+    def api_memory_export():
+        """Everything Prometheus remembers about you, as one JSON file (file text itself stays on the laptop)."""
+        facts = services.orchestrator.facts
+        try:
+            rules = services.prompts.get("learned")
+        except (OSError, RuntimeError, ValueError):
+            rules = ""
+        body = {
+            "exported": _t.strftime("%Y-%m-%d %H:%M"),
+            "memories": [{"text": m.text, "source": m.source, "created": m.created} for m in store.memories()],
+            "facts": [dict(vars(f)) for s in facts.subjects() for f in facts.about(s)],
+            "how_to_answer": rules,
+            "task_lessons": store.lessons(1000),
+            "topics": store.topics(1000),
+            "documents": [{"title": d.title, "source": d.source, "private": d.private, "chars": d.chars}
+                          for d in store.documents(limit=100000)],
+        }
+        store.audit("user", "memory_export", {})
+        return JSONResponse(json.loads(json.dumps(body, default=str)), headers={
+            "Content-Disposition": f'attachment; filename="prometheus-memory-{_t.strftime("%Y-%m-%d")}.json"'})
+
+    @app.post("/api/v3/memory/wipe")
+    def api_memory_wipe(confirm: str = Form("")):
+        if confirm != "forget everything":
+            return bad("Type “forget everything” to confirm.")
+        store.wipe_memories()
+        for d in store.documents(limit=100000):
+            store.delete_document(d.id)
+        facts = services.orchestrator.facts
+        for s in facts.subjects():
+            for f in facts.about(s):
+                facts.forget(f.id)
+        store.audit("user", "wipe_memories", {})
+        return ok(message="Forgot everything: memories, facts and saved pages and files. Chats are kept.")

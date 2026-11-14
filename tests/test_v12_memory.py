@@ -116,7 +116,7 @@ def test_memory_page_search(app_client):
     login(client)
     services.store.add_memory("My accountant is Ravi")
     services.store.add_memory("I like tea")
-    page = client.get("/memory?q=accountant").text
+    page = client.get("/memory?view=classic&q=accountant").text
     assert "Ravi" in page and "I like tea" not in page
-    full = client.get("/memory").text
+    full = client.get("/memory?view=classic").text
     assert "Ravi" in full and "I like tea" in full and 'name="q"' in full

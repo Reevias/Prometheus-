@@ -1,0 +1,174 @@
+{% extends "v3/layout.html" %}
+{% from "v3/icons.html" import icon %}
+{% block title %}Memory · Prometheus{% endblock %}
+{% block topbar %}<b>Memory</b>{% endblock %}
+{% block content %}
+<section class="page memory-page">
+  <h1>Memory</h1>
+  <p class="muted lead">What Prometheus remembers about you, the files and pages it can search, and how it learned to answer you.
+    You can see, change or delete all of it.</p>
+  <div class="tabs" role="tablist">
+    {% for key, label in [("memories", "Memories and facts"), ("files", "Files and pages"), ("answers", "How it answers"), ("topics", "Topics"), ("privacy", "Privacy")] %}
+    <a role="tab" href="/v3/memory?tab={{ key }}" class="{{ 'on' if tab == key }}">{{ label }}</a>
+    {% endfor %}
+  </div>
+
+{% if tab == "memories" %}
+  <div class="task-filters">
+    <form method="get" action="/v3/memory"><input type="hidden" name="tab" value="memories">
+      <input class="search" type="search" name="q" value="{{ q }}" placeholder="Search everything it remembers" aria-label="Search memory"></form>
+    <button type="button" class="pill" data-api="/api/v3/memory/add" data-prompt="What should Prometheus remember?">{{ icon("plus") }}Remember something</button>
+  </div>
+  {% if q %}
+  <h2 class="section">Results for “{{ q }}”</h2>
+  <div class="mem-list">
+    {% for h in found %}<div class="mem-row"><div><p>{{ h.text }}</p><small class="muted">{{ h.kind }}{% if h.source %} · {{ h.source }}{% endif %}{% if h.chat %} · <a href="/c/{{ h.chat }}">open chat</a>{% endif %}</small></div></div>
+    {% else %}<p class="muted empty">Nothing found. Try fewer or different words, or search your files in Files and pages.</p>{% endfor %}
+  </div>
+  {% endif %}
+
+  <h2 class="section">Memories <span class="muted">{{ memories|length }}</span></h2>
+  <div class="mem-list">
+    {% for m in memories %}
+    <div class="mem-row">
+      <div><p>{{ m.text }}</p><small class="muted">{{ m.source or "saved" }} · {{ m.created|day }}</small></div>
+      <div class="row-actions">
+        <button type="button" data-api="/api/v3/memory/{{ m.id }}/edit" data-prompt="Change this memory" data-value="{{ m.text }}">Edit</button>
+        <button type="button" class="danger" data-api="/api/v3/memory/{{ m.id }}/delete" data-confirm="Delete this memory?">Delete</button>
+      </div>
+    </div>
+    {% else %}<p class="muted empty">Nothing yet. Say “remember …” in a chat, or use Remember something above.</p>{% endfor %}
+  </div>
+
+  <h2 class="section">People and facts</h2>
+  <p class="muted">Saved by themselves when you mention them in a chat (unless paused in Privacy). A changed fact keeps the old value, with its date.</p>
+  {% for p in people %}
+  <details class="mem-person" {{ "open" if loop.index <= 3 }}><summary><b>{{ p.name }}</b> <span class="muted">{{ p.now|length }} fact{{ "s" if p.now|length != 1 }}</span></summary>
+    {% for f in p.now %}
+    <div class="mem-row"><div><p><span class="muted">{{ f.attribute }}:</span> {{ f.value }}</p><small class="muted">since {{ f.created|day }}{% if f.source %} · {{ f.source }}{% endif %}</small></div>
+      <div class="row-actions">
+        <button type="button" data-api="/api/v3/facts/{{ f.id }}/edit" data-prompt="New value for “{{ f.attribute }}”" data-value="{{ f.value }}">Edit</button>
+        <button type="button" class="danger" data-api="/api/v3/facts/{{ f.id }}/forget" data-confirm="Forget this fact? If it replaced an older value, that one becomes current again.">Forget</button>
+      </div></div>
+    {% endfor %}
+    {% for f in p.past %}
+    <div class="mem-row past"><div><p><span class="muted">{{ f.attribute }}:</span> {{ f.value }}</p><small class="muted">until {{ (f.until or 0)|day }}</small></div>
+      <div class="row-actions"><button type="button" class="danger" data-api="/api/v3/facts/{{ f.id }}/forget" data-confirm="Forget this old fact?">Forget</button></div></div>
+    {% endfor %}
+  </details>
+  {% else %}<p class="muted empty">No facts yet. Tell Prometheus about yourself or the people in your life.</p>{% endfor %}
+  {% if fact_changes %}
+  <h2 class="section">Last tidy-up</h2>
+  <div class="mem-list">{% for c in fact_changes %}<div class="mem-row"><div><p>{{ c.text }}</p></div>
+    <div class="row-actions"><button type="button" data-api="/api/v3/facts/changes/{{ c.id }}/undo">Undo</button></div></div>{% endfor %}</div>
+  {% endif %}
+
+{% elif tab == "files" %}
+  <div class="task-filters">
+    <form method="get" action="/v3/memory" class="row-form"><input type="hidden" name="tab" value="files"><input type="hidden" name="show" value="{{ show }}">
+      <input class="search" type="search" name="q" value="{{ q }}" placeholder="Search inside your files and saved pages" aria-label="Search inside files"></form>
+    <div class="seg" role="group" aria-label="Show">
+      {% for key, label in [("all", "Everything"), ("pages", "Saved pages and files"), ("made", "Files Prometheus made")] %}
+      <a class="{{ 'on' if show == key }}" href="/v3/memory?tab=files&show={{ key }}{% if q %}&q={{ q|urlencode }}{% endif %}">{{ label }}</a>
+      {% endfor %}
+    </div>
+  </div>
+  {% if q and show != "made" %}
+  <h2 class="section">Inside your files for “{{ q }}”</h2>
+  <div class="mem-list">
+    {% for c in passages %}<div class="mem-row"><div><p>{{ c.text }}</p><small class="muted">{{ "your file" if c.private else "web page" }} · {{ c.title }}</small></div></div>
+    {% else %}<p class="muted empty">No passage matches. Folders to search are chosen in Settings → Search inside files.</p>{% endfor %}
+  </div>
+  {% endif %}
+  {% if show != "made" %}
+  <h2 class="section">Saved pages and files <span class="muted">{{ documents|length }}</span></h2>
+  <p class="muted">Long texts the agents read, split into small searchable parts. Your files' text stays on this laptop.</p>
+  <div class="mem-list">
+    {% for d in documents %}<div class="mem-row"><div><p>{{ d.title }}</p><small class="muted">{{ "your file" if d.private else "web page" }} · {{ d.source }} · {{ d.chunks }} part{{ "s" if d.chunks != 1 }} · {{ d.updated|day }}</small></div>
+      <div class="row-actions"><button type="button" class="danger" data-api="/api/v3/documents/{{ d.id }}/delete" data-confirm="Forget this saved text? The file itself isn't touched.">Forget</button></div></div>
+    {% else %}<p class="muted empty">{% if q %}None match.{% else %}Nothing saved yet.{% endif %}</p>{% endfor %}
+  </div>
+  {% endif %}
+  {% if show in ("all", "made") %}
+  <h2 class="section">Files Prometheus made <span class="muted">{{ made|length }}</span></h2>
+  <div class="mem-list">
+    {% for o in made %}<div class="mem-row"><div><p>{{ o.name }}{% if o.is_dir %} <span class="muted">(folder)</span>{% endif %}</p>
+      <small class="muted">{{ o.kind }} · <a href="/c/{{ o.chat_id }}">{{ o.chat or "Chat" }}</a> · {{ o.created|day }}</small></div>
+      {% if not o.is_dir %}<div class="row-actions"><a class="pill" href="/api/v3/outputs/{{ o.id }}/file" target="_blank" rel="noopener">Open</a>
+        <a class="pill" href="/api/v3/outputs/{{ o.id }}/file?download=1">Download</a></div>{% endif %}</div>
+    {% else %}<p class="muted empty">{% if q %}None match.{% else %}None yet.{% endif %}</p>{% endfor %}
+  </div>
+  {% endif %}
+
+{% elif tab == "answers" %}
+  <h2 class="section">How Prometheus answers you</h2>
+  <p class="muted">Learned from your 👍 and 👎 on answers, every night (or now). Every answer follows these.</p>
+  <ul class="mem-rules">{% for r in rules %}<li>{{ r }}</li>{% else %}<li class="muted">Nothing learned yet. Rate a few answers.</li>{% endfor %}</ul>
+  <div class="task-actions">
+    <button type="button" class="pill" data-api="/api/v3/memory/learn">{{ icon("bulb") }}Learn now</button>
+    <button type="button" class="pill danger" data-api="/api/v3/memory/lessons/reset" data-confirm="Forget what Prometheus learned about how to answer you? Older versions can be restored.">Reset</button>
+  </div>
+  {% if history|length > 1 %}
+  <h2 class="section">Earlier versions</h2>
+  <div class="mem-list">{% for commit, why in history[1:] %}<div class="mem-row"><div><p>{{ why }}</p></div>
+    <div class="row-actions"><button type="button" data-api="/api/v3/memory/lessons/{{ commit }}/restore" data-confirm="Go back to this version?">Restore</button></div></div>{% endfor %}</div>
+  {% endif %}
+  <h2 class="section">Lessons from tasks</h2>
+  <p class="muted">When a step failed and another way worked, Prometheus wrote it down and uses it for similar requests.</p>
+  <div class="mem-list">{% for l in task_lessons %}<div class="mem-row"><div><p>{{ "✓" if l.worked else "✗" }} {{ l.text }}</p></div>
+    <div class="row-actions"><button type="button" class="danger" data-api="/api/v3/task-lessons/{{ l.id }}/delete">Delete</button></div></div>
+  {% else %}<p class="muted empty">None yet.</p>{% endfor %}</div>
+
+{% elif tab == "topics" %}
+  <p class="muted">Every chat is split by topic, and chats about the same topic are linked.{% if folder %} All chats are also saved as files in <code>{{ folder }}</code>.{% endif %}</p>
+  <div class="mem-list">
+    {% for t in topics %}<div class="mem-row"><div><p><b>{{ t.topic }}</b> <span class="muted">{{ t.chats }} chat{{ "s" if t.chats != 1 }}</span></p>
+      <small class="muted">{% for cid, title in t.chat_list %}<a href="/c/{{ cid }}">{{ title }}</a>{{ " · " if not loop.last }}{% endfor %}</small></div></div>
+    {% else %}<p class="muted empty">No topics yet. They appear after your next chat.</p>{% endfor %}
+  </div>
+
+{% else %}
+  <div class="privacy">
+    <section class="priv-card">
+      <h2>Remembering by itself</h2>
+      <p class="muted">{% if paused %}Paused: nothing is saved from your chats by itself. What you ask it to remember (“remember …”) is still saved.{% else %}On: facts you mention and the parts of your chats are saved so Prometheus can use them later.{% endif %}</p>
+      {% if paused %}<button type="button" class="pill" data-api="/api/v3/memory/pause">Resume remembering</button>
+      {% else %}<button type="button" class="pill" data-api="/api/v3/memory/pause" data-send='{"on": "1"}'>Pause remembering</button>{% endif %}
+    </section>
+    <section class="priv-card">
+      <h2>Chats it leaves out</h2>
+      <p class="muted">A chat you leave out is never remembered or searched later; what it already saved from it is removed. The chat itself stays.</p>
+      <div class="mem-list">{% for cid, title in left_out %}<div class="mem-row"><div><p><a href="/c/{{ cid }}">{{ title }}</a></p></div>
+        <div class="row-actions"><button type="button" data-api="/api/v3/memory/chats/{{ cid }}/leave-out">Include again</button></div></div>
+      {% else %}<p class="muted">None.</p>{% endfor %}</div>
+      {% if chats %}
+      <form class="add-skill" id="leave-out-form"><select name="chat" aria-label="Chat to leave out">{% for cid, title in chats %}<option value="{{ cid }}">{{ title }}</option>{% endfor %}</select>
+        <button type="submit" class="pill">Leave this chat out</button></form>
+      {% endif %}
+    </section>
+    <section class="priv-card">
+      <h2>Take it with you</h2>
+      <p class="muted">{{ counts.memories }} memories, {{ counts.facts }} facts and {{ counts.documents }} saved pages and files (their titles), with how it learned to answer you, in one JSON file.</p>
+      <a class="pill" href="/api/v3/memory/export" download>{{ icon("doc") }}Export memory</a>
+    </section>
+    <section class="priv-card danger-zone">
+      <h2>Forget everything</h2>
+      <p class="muted">Deletes every memory, fact and saved page or file text. Your chats, tasks and files stay. This can't be undone.</p>
+      <button type="button" class="pill danger" data-api="/api/v3/memory/wipe" data-type-confirm="forget everything">Forget everything</button>
+    </section>
+  </div>
+{% endif %}
+</section>
+<script>
+(function () {
+  var f = document.getElementById("leave-out-form");
+  if (f) f.addEventListener("submit", function (e) {
+    e.preventDefault();
+    var id = f.querySelector("select").value, body = new FormData(); body.append("on", "1");
+    fetch("/api/v3/memory/chats/" + id + "/leave-out", { method: "POST", credentials: "same-origin", body: body,
+          headers: { "X-CSRF-Token": document.body.dataset.csrf } })
+      .then(function (r) { if (r.ok) location.reload(); else promToast("Couldn't leave that chat out.", true); });
+  });
+})();
+</script>
+{% endblock %}

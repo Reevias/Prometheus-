@@ -137,6 +137,14 @@ def set_skill_on(settings, name: str, value: bool) -> None:
     settings.skills_off = off
 
 
+def memory_collects(settings, chat_id: int | None = None) -> bool:
+    """May Prometheus save things from this chat by itself (facts, searchable chat parts, the chat's file)?
+    "Remember …" said by the owner is always saved; this covers only what it does without being asked."""
+    if getattr(settings, "memory_paused", False):
+        return False
+    return chat_id is None or chat_id not in (getattr(settings, "memory_off_chats", None) or [])
+
+
 def feature_of(agent: str):
     """The Features switch this agent belongs to, if any."""
     return next((f for f in FEATURES if agent in f.agents), None)
