@@ -1,8 +1,10 @@
+{% from "v3/icons.html" import icon %}
 {# The task list (cards or table: the same rows, styled by the page's data-view). Refreshes itself while one runs. #}
 <div class="task-list"{% if live %} hx-get="/v3/tasks" hx-include="#task-filters" hx-target="#task-list" hx-trigger="every 3s"{% endif %}>
 {% if rows %}
   <div class="task-head" aria-hidden="true"><span>Request</span><span>Status</span><span>Steps</span><span>Started</span><span>Took</span></div>
   {% for r in rows %}
+  <div class="task-wrap">
   <a class="task-row" href="/v3/tasks/{{ r.id }}">
     <span class="task-text">{{ r.text[:160] }}{% if r.text|length > 160 %}…{% endif %}<small>{{ r.chat }}</small></span>
     <span><span class="state s-{{ r.status }}">{% if r.live %}<i class="pulse" aria-hidden="true"></i>{% endif %}{{ r.label }}</span></span>
@@ -12,6 +14,9 @@
       <span class="num">{% if r.took %}took {{ r.took }}{% else %}—{% endif %}</span>
     </span>
   </a>
+  {% if not r.live %}<button type="button" class="task-del" title="Delete this task's record (the chat stays)" aria-label="Delete task"
+    data-api="/api/v3/tasks/{{ r.id }}/delete" data-confirm="Delete this task's record? Its chat stays.">{{ icon("close") }}</button>{% endif %}
+  </div>
   {% endfor %}
 {% else %}
   <p class="muted empty">{% if q or status != "all" or period != "all" %}No task matches these filters.{% else %}No tasks yet. Ask Prometheus something on Home and it shows up here.{% endif %}</p>

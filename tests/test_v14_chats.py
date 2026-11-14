@@ -121,7 +121,7 @@ def test_rename_delete_and_search_in_the_app(app_client):
     assert client.post(f"/chats/{cid}/delete", headers=h).status_code == 409   # busy chats are kept
     services.running.pop(cid)
     r = client.post(f"/chats/{cid}/delete", headers=h)
-    assert r.status_code == 204 and r.headers["HX-Redirect"] == "/" and cid not in dict(store.chats())
+    assert r.status_code == 204 and r.headers["HX-Redirect"] == "/v3/chats" and cid not in dict(store.chats())
 
 
 def test_rename_and_delete_need_csrf(app_client):

@@ -672,3 +672,29 @@ def test_connections_show_real_states_test_and_disconnect(app_client, tmp_path, 
     assert s.email_address == ""
     assert client.post("/api/v3/connections/nope/test", headers=h).status_code == 404
     assert client.post("/api/v3/connections/cloud/disconnect", headers=h).status_code == 409
+
+
+# ---- owner's fixes (14 Nov): delete a chat stays where you were; delete tasks from the list -----------------------
+def test_deleting_a_chat_stays_where_you_were(app_client):
+    client, services = app_client()
+    h = {"X-CSRF-Token": login(client)}
+    st = services.store
+    a, b = st.create_chat("One"), st.create_chat("Two")
+    r = client.post(f"/chats/{a}/delete", headers={**h, "HX-Request": "true",
+                                                    "HX-Current-URL": "http://127.0.0.1:8000/v3/chats"})
+    assert r.status_code == 204 and r.headers.get("HX-Refresh") == "true" and "HX-Redirect" not in r.headers
+    r = client.post(f"/chats/{b}/delete", headers={**h, "HX-Request": "true",
+                                                    "HX-Current-URL": f"http://127.0.0.1:8000/c/{b}"})
+    assert r.headers.get("HX-Redirect") == "/v3/chats"                 # from inside that chat: the chat list
+    assert a not in dict(st.chats()) and b not in dict(st.chats())
+
+
+def test_tasks_can_be_deleted_from_the_list(app_client):
+    client, services = app_client()
+    login(client)
+    _, tid = _task(services.store)
+    page = client.get("/v3/tasks").text
+    assert f'data-api="/api/v3/tasks/{tid}/delete"' in page and 'class="task-del"' in page
+    services.running[services.store.task(tid)["chat_id"]] = True
+    services.store.set_task_status(tid, "running")
+    assert f'data-api="/api/v3/tasks/{tid}/delete"' not in client.get("/v3/tasks").text   # not while it runs

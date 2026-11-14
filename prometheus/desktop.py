@@ -207,6 +207,36 @@ def work_area_bounds(screen_bounds, working_area) -> tuple[int, int, int, int]:
     return wx - bx, wy - by, ww, wh
 
 
+GWL_STYLE, WS_MINIMIZEBOX, WS_MAXIMIZEBOX, WS_SYSMENU = -16, 0x00020000, 0x00010000, 0x00080000
+SWP_FRAME_ONLY = 0x0001 | 0x0002 | 0x0004 | 0x0020        # no size, no move, no z-order, frame changed
+
+
+def minimisable_style(style: int) -> int:
+    """The window style that lets Windows minimise the window when its taskbar button is clicked (and Win+Down,
+    Win+Up and snapping work). A frameless window has none of these by default; no title bar is added."""
+    return (style | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_SYSMENU) & 0xFFFFFFFF
+
+
+def let_taskbar_minimise(hwnd: int) -> bool:
+    if sys.platform != "win32" or not hwnd:
+        return False
+    import ctypes
+    from ctypes import wintypes
+
+    user32 = ctypes.WinDLL("user32", use_last_error=True)
+    user32.GetWindowLongW.argtypes, user32.GetWindowLongW.restype = [wintypes.HWND, ctypes.c_int], ctypes.c_long
+    user32.SetWindowLongW.argtypes, user32.SetWindowLongW.restype = [wintypes.HWND, ctypes.c_int, ctypes.c_long], ctypes.c_long
+    user32.SetWindowPos.argtypes = [wintypes.HWND, wintypes.HWND, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
+                                    wintypes.UINT]
+    handle = wintypes.HWND(hwnd)
+    style = user32.GetWindowLongW(handle, GWL_STYLE) & 0xFFFFFFFF
+    new = minimisable_style(style)
+    if new != style:
+        user32.SetWindowLongW(handle, GWL_STYLE, ctypes.c_long(new - (1 << 32) if new >= 1 << 31 else new).value)
+        user32.SetWindowPos(handle, None, 0, 0, 0, 0, SWP_FRAME_ONLY)
+    return True
+
+
 def maximise_above_taskbar(window) -> bool:
     """Windows: a frameless window maximised by WinForms covers the whole screen, taskbar included. Limit "maximised"
     to the working area (again whenever the window moves to another monitor), then maximise. False elsewhere."""
@@ -229,6 +259,10 @@ def maximise_above_taskbar(window) -> bool:
             def attach():
                 fit()
                 form.LocationChanged += fit
+                try:
+                    let_taskbar_minimise(int(form.Handle.ToInt64()))   # taskbar click minimises it again
+                except Exception:
+                    pass
                 form.WindowState = WinForms.FormWindowState.Maximized
 
             form.Invoke(Action(attach))

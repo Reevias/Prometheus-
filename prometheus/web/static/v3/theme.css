@@ -837,3 +837,11 @@ html[data-motion="reduced"] *, html[data-motion="reduced"] *::before { animation
 .warn-text { color: var(--orange); }
 .conn-card p { margin: 0; font-size: 13.5px; overflow-wrap: anywhere; }
 .conn-setup { color: var(--orange); font-size: 12px; padding: 5px 9px; text-decoration: none; margin-left: auto; }
+.task-wrap { position: relative; }
+.task-del { position: absolute; right: 12px; bottom: 18px; border: 0; background: none; color: var(--muted); padding: 6px;
+            border-radius: 8px; display: grid; opacity: 0.55; cursor: pointer; }
+.task-wrap:hover .task-del, .task-del:focus-visible { opacity: 1; }
+.task-del:hover { color: var(--bad); background: rgb(var(--bad-rgb) / 0.1); }
+.task-del svg { width: 16px; height: 16px; stroke: currentColor; }
+.tasks-page[data-view=table] .task-row { padding-right: 48px; }
+.tasks-page[data-view=table] .task-del { bottom: auto; top: 50%; transform: translateY(-50%); right: 8px; }

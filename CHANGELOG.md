@@ -1,6 +1,8 @@
 # Changelog
 
 ## Prometheus 3.0, M2.2 (on the prometheus-v3 branch, not released yet)
+- Owner's fixes: delete a task straight from the Tasks list; deleting a chat keeps you where you were; clicking
+  Prometheus on the taskbar minimises it again (Win+Down, Win+Up and snapping work too).
 - Connections (in your menu): email, Google, calendar link, GitHub, Obsidian, the cloud copy and your other apps,
   each with its real state (connected, not connected, needs sign-in again, folder missing), Test (tries it for real
   and says what happened), Disconnect or switch off, and a link to connect it in Settings.

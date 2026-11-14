@@ -6,7 +6,7 @@ import threading
 import time
 from dataclasses import replace
 from pathlib import Path
-from urllib.parse import unquote
+from urllib.parse import unquote, urlsplit
 
 from fastapi import FastAPI, Form, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
@@ -613,7 +613,12 @@ def register_routes(app: FastAPI, services: Services) -> None:
             if services.archive:
                 services.archive.forget(chat_id, topics)
             store.audit("user", "delete_chat", {"chat_id": chat_id})
-        return Response(status_code=204, headers={"HX-Redirect": "/"})
+        # stay where you were: a list just refreshes; from inside that chat you go to the chat list (Home on phones)
+        here = urlsplit(request.headers.get("HX-Current-URL", "")).path
+        if here in (f"/c/{chat_id}", f"/chats/{chat_id}") or not here:
+            phone = PHONE.search(request.headers.get("user-agent", "")) or here.startswith("/chats/")
+            return Response(status_code=204, headers={"HX-Redirect": "/" if phone else "/v3/chats"})
+        return Response(status_code=204, headers={"HX-Refresh": "true"})
 
     @app.post("/messages/{message_id}/rate", response_class=HTMLResponse)
     def rate_message(request: Request, message_id: int, rating: str = Form(...)):
