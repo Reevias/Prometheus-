@@ -418,7 +418,7 @@ def test_safety_and_account_controls_are_in_the_new_look(app_client):
     login(client)
     page = client.get("/").text
     assert 'hx-post="/kill"' in page and ">Stop all<" in page
-    assert 'hx-post="/logout"' in page and 'href="/approvals"' in page
+    assert 'hx-post="/logout"' in page and 'href="/v3/approvals"' in page
     services.killswitch.trigger("test")
     page = client.get("/").text
     assert 'hx-post="/kill/reset"' in page and ">Resume<" in page

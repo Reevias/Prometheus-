@@ -27,7 +27,6 @@
   <details class="nav-more" {{ "open" if active in ("more", "approvals") }}>
     <summary>More</summary>
     <nav class="nav">
-      <a href="/approvals" class="{{ 'on' if active == 'approvals' }}">{{ icon("tasks") }}<span>Approvals</span>{% if pending %}<span class="count" title="{{ pending }} waiting">{{ pending }}</span>{% endif %}</a>
       <a href="/study">{{ icon("bulb") }}<span>Study</span></a>
       <a href="/plans">{{ icon("tasks") }}<span>Exams and deadlines</span></a>
       <a href="/money">{{ icon("chart") }}<span>Money</span></a>
@@ -40,6 +39,7 @@
     <div class="menu profile-menu" id="profile-menu" role="menu" hidden>
       <div class="menu-head"><span class="avatar small" aria-hidden="true">{{ (owner[:1] or "P") | upper }}</span>
         <span>{{ owner or "Prometheus" }}</span></div>
+      <a href="/v3/approvals" role="menuitem">{{ icon("tasks") }}<span>Approvals</span>{% if pending %}<span class="count" title="{{ pending }} waiting">{{ pending }}</span>{% endif %}</a>
       <a href="/settings" role="menuitem">{{ icon("settings") }}<span>Settings</span><kbd>Ctrl+,</kbd></a>
       <a href="/settings#appearance" role="menuitem">{{ icon("bulb") }}<span>Appearance</span></a>
       <a href="/settings#voice" role="menuitem">{{ icon("mic") }}<span>Voice</span></a>
@@ -55,7 +55,7 @@
     <div class="profile">
       <button type="button" class="profile-btn" id="profile-btn" aria-haspopup="menu" aria-expanded="false"
               aria-controls="profile-menu" title="Your menu">
-        <span class="avatar" aria-hidden="true">{{ (owner[:1] or "P") | upper }}</span>
+        <span class="avatar" aria-hidden="true">{{ (owner[:1] or "P") | upper }}{% if pending %}<i class="avatar-badge" title="{{ pending }} approval{{ 's' if pending != 1 }} waiting"></i>{% endif %}</span>
         <span class="profile-name{{ ' unnamed' if not owner }}">{{ owner or "Add your name" }}</span>
       </button>
       <a class="icon-btn {{ 'on' if active == 'settings' }}" href="/settings" title="Settings (Ctrl+,)" aria-label="Settings">{{ icon("settings") }}</a>

@@ -730,6 +730,8 @@ def register_routes(app: FastAPI, services: Services) -> None:
 
     @app.get("/approvals", response_class=HTMLResponse)
     def approvals(request: Request):
+        if request.query_params.get("view") != "classic" and not PHONE.search(request.headers.get("user-agent", "")):
+            return RedirectResponse("/v3/approvals", status_code=303)
         return page(request, "approvals.html", approvals=store.big_approvals(), result="")
 
     @app.post("/approvals/{approval_id}", response_class=HTMLResponse)

@@ -744,3 +744,20 @@ html[data-motion="reduced"] *, html[data-motion="reduced"] *::before { animation
            border-bottom: 1px solid rgb(var(--text-rgb) / 0.05); align-items: baseline; }
 .log-row .num { color: var(--muted); font-variant-numeric: tabular-nums; }
 .log-row small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---- Approvals ------------------------------------------------------------------------------------------- */
+.appr-list { display: flex; flex-direction: column; gap: 12px; max-width: 1000px; }
+.appr-card { padding: 16px 18px; border-radius: var(--r-md); background: rgb(var(--surface-rgb) / 0.6);
+             border: 1px solid rgb(var(--orange-rgb) / 0.3); }
+.appr-head { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; margin-bottom: 8px; }
+.appr-card p.wrap { overflow-wrap: anywhere; }
+.appr-secret { display: flex; flex-direction: column; gap: 6px; margin: 10px 0; font-size: 14px; }
+.appr-secret input { padding: 10px 12px; border-radius: 10px; border: 1px solid rgb(var(--text-rgb) / 0.14);
+                     background: rgb(var(--base-rgb) / 0.8); color: var(--text); max-width: 420px; }
+.pill.ok { color: var(--ok); }
+.pill.ok:hover { border-color: rgb(var(--ok-rgb) / 0.6); }
+.avatar { position: relative; }
+.avatar-badge { position: absolute; top: 0; right: 0; width: 11px; height: 11px; border-radius: 50%; background: var(--orange);
+                border: 2px solid var(--base); box-shadow: 0 0 8px rgb(var(--orange-rgb) / 0.8); }
+.profile-menu .count { flex: none; min-width: 22px; text-align: center; font-size: 12px; border-radius: 999px; padding: 1px 7px;
+                       background: rgb(var(--orange-rgb) / 0.2); color: var(--amber); }

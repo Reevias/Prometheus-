@@ -48,6 +48,7 @@ def register_pages(app: FastAPI, services, shell) -> None:
     register_skill_pages(app, services, shell)
     register_memory_pages(app, services, shell)
     register_system_pages(app, services, shell)
+    register_approval_pages(app, services, shell)
 
     # ---- Tasks ---------------------------------------------------------------------------------------------------
     def task_rows(status: str, q: str, period: str) -> list[dict]:
@@ -743,4 +744,33 @@ def register_system_pages(app: FastAPI, services, shell) -> None:
         except Exception as e:
             return JSONResponse({"error": f"Couldn't undo it: {type(e).__name__}."}, status_code=500)
         store.audit("user", "undo", {"what": item["summary"][:120]})
+        return {"ok": True, "message": said}
+
+
+# ---- Approvals (in your menu) ----------------------------------------------------------------------------------------
+def register_approval_pages(app: FastAPI, services, shell) -> None:
+    from fastapi import Form
+
+    store = services.store
+
+    @app.get("/v3/approvals")
+    def approvals_page(request: Request):
+        waiting = store.big_approvals()
+        done = [dict(r) for r in store._rows(
+            "SELECT id, kind, summary, status, created FROM approvals WHERE status != 'pending' ORDER BY id DESC LIMIT 30")]
+        return shell(request, "v3/approvals.html", "approvals", waiting=waiting, done=done)
+
+    @app.post("/api/v3/approvals/{approval_id}")
+    def api_approval_decide(approval_id: int, decision: str = Form(...), secret: str = Form("")):
+        try:
+            item = store.approval(approval_id)
+        except KeyError:
+            return JSONResponse({"error": "That request is gone."}, status_code=404)
+        if decision not in ("approve", "reject"):
+            return JSONResponse({"error": "Approve or reject."}, status_code=400)
+        if item.status != "pending":
+            return JSONResponse({"error": f"Already {item.status}."}, status_code=409)
+        said = services.approvals.resolve(approval_id, approved=decision == "approve", secret=secret[:200])
+        if said == "Type the password first.":
+            return JSONResponse({"error": said}, status_code=400)
         return {"ok": True, "message": said}

@@ -394,3 +394,30 @@ def test_activity_lists_undoes_and_logs(app_client):
     assert client.post("/api/v3/activity/undo", data={"source": "files", "id": "nope"}, headers=h).status_code == 404
     assert client.post("/api/v3/activity/undo", data={"source": "x", "id": "1"}, headers=h).status_code == 400
     assert client.get("/history", follow_redirects=False).headers["location"] == "/v3/system?tab=activity"
+
+
+# ---- Approvals ------------------------------------------------------------------------------------------------------
+def test_approvals_page_approve_reject_and_secret(app_client):
+    import json as _json
+    client, services = app_client()
+    h = {"X-CSRF-Token": login(client)}
+    got = []
+    services.approvals.register("wifi_password", lambda payload, secret: got.append(secret) or "Connected",
+                                needs_secret=True)
+    services.approvals.register("demo", lambda payload, secret: got.append("demo") or "Did the demo")
+    wifi = services.approvals.request("wifi_password", "Wi-Fi password for Office-5G", {"ssid": "Office-5G"},
+                                      secret_label="Wi-Fi password")
+    demo = services.approvals.request("demo", "Run the demo", {"path": "C:/Users/me/demo"})
+    page = client.get("/v3/approvals").text
+    assert "Wi-Fi password for Office-5G" in page and 'type="password"' in page and "C:/Users/me/demo" in page
+    assert 'class="avatar-badge"' in page and 'href="/v3/approvals"' in page                 # badge in your menu
+    assert client.post(f"/api/v3/approvals/{wifi}", data={"decision": "approve"}, headers=h).status_code == 400
+    r = client.post(f"/api/v3/approvals/{wifi}", data={"decision": "approve", "secret": "pass-123456"}, headers=h)
+    assert r.status_code == 200 and got == ["pass-123456"] and "pass-123456" not in r.text
+    assert "pass-123456" not in _json.dumps(services.store.audit_log())
+    assert client.post(f"/api/v3/approvals/{wifi}", data={"decision": "approve"}, headers=h).status_code == 409
+    assert client.post(f"/api/v3/approvals/{demo}", data={"decision": "reject"}, headers=h).status_code == 200
+    assert "demo" not in got and services.store.approval(demo).status != "pending"
+    assert client.post("/api/v3/approvals/999", data={"decision": "approve"}, headers=h).status_code == 404
+    assert "Nothing is waiting" in client.get("/v3/approvals").text
+    assert client.get("/approvals", follow_redirects=False).headers["location"] == "/v3/approvals"

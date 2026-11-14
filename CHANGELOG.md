@@ -1,6 +1,9 @@
 # Changelog
 
 ## Prometheus 3.0, M2.2 (on the prometheus-v3 branch, not released yet)
+- Approvals moved into your menu (click your name), with the number waiting and an orange dot on your picture
+  when something waits. The new page shows what each one is about, takes passwords straight to Windows, and lists
+  what you decided lately.
 - System: the laptop's live readings, Prometheus's own memory use, each AI model (ready, resting, not set up),
   background jobs ("Running" only when really running), spending and About. Activity is a tab: everything you can
   undo (file changes, reminders, saved facts, events, setting changes; email can't be unsent) and the full log,
