@@ -30,8 +30,9 @@ def test_feature_pages(app_client):
 def test_menu_lists_every_page(app_client):
     client, services = app_client()
     login(client)
-    html = client.get("/settings").text                       # the new screen: sidebar, with More for the rest
-    for href in ("/study", "/money", "/plans", "/v3/approvals", "/v3/memory", "/settings#costs", "/phone", "/v3/system", "/v3/skills", "/v3/tasks"):
+    html = client.get("/settings").text                       # the new screen: 9 sidebar links + your menu
+    for href in ("/v3/research", "/v3/automations", "/v3/approvals", "/v3/memory", "/settings#ai", "/phone", "/v3/system",
+                 "/v3/skills", "/v3/tasks", "/v3/agents"):
         assert f'href="{href}"' in html, href
     classic = client.get("/settings?view=classic").text      # the classic screen keeps its drawer (until M2.4)
     assert 'class="menu-btn"' in classic and 'id="drawer"' in classic

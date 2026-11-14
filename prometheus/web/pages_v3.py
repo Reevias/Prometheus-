@@ -50,6 +50,7 @@ def register_pages(app: FastAPI, services, shell) -> None:
     register_system_pages(app, services, shell)
     register_approval_pages(app, services, shell)
     register_automation_pages(app, services, shell)
+    register_research_pages(app, services, shell)
 
     # ---- Tasks ---------------------------------------------------------------------------------------------------
     def task_rows(status: str, q: str, period: str) -> list[dict]:
@@ -934,3 +935,336 @@ def register_automation_pages(app: FastAPI, services, shell) -> None:
         save_settings(s)
         store.audit("user", "remove_watch_folder", {"path": path[:200]})
         return {"ok": True}
+
+
+# ---- Research (three modes: Research · Study · Money) ----------------------------------------------------------------
+RESEARCH_MODES = {
+    "research": {"label": "Research", "chat": "Research", "agent": "", "placeholder": "What should Prometheus research?",
+                 "prompts": ["Compare ", "Explain the latest on ", "Find sources about ", "Summarise what experts say about "]},
+    "study": {"label": "Study", "chat": "", "agent": "study", "placeholder": "What are you studying?",
+              "prompts": ["Make flashcards from ", "Quiz me on ", "My exam on ", "Explain simply: "]},
+    "money": {"label": "Money", "chat": "Money", "agent": "money", "placeholder": "Ask about your spending",
+              "prompts": ["How much did I spend on ", "I spent ", "Set a budget of ", "Where did my money go this week?"]},
+}
+
+
+def register_research_pages(app: FastAPI, services, shell) -> None:
+    import webbrowser
+
+    from fastapi import Form
+    from fastapi.responses import Response
+
+    from prometheus.agents.research import site_of
+
+    store = services.store
+
+    def chat_for(mode: str) -> int:
+        if mode == "study":
+            return services.briefing.study_chat() if services.briefing is not None else _named("Study")
+        return _named(RESEARCH_MODES[mode]["chat"])
+
+    def _named(title: str) -> int:
+        for cid, t in store.chats():
+            if t == title:
+                return cid
+        cid = store.create_chat(title)
+        store.rename_chat(cid, title, by="user")
+        return cid
+
+    def kv_list(key: str) -> list:
+        v = store.kv_get(key, []) or []
+        return v if isinstance(v, list) else []
+
+    def sources() -> list[dict]:
+        pinned, excluded = [int(i) for i in kv_list("research_pinned")], set(kv_list("research_excluded"))
+        rows = store._rows("SELECT d.id, d.title, d.source, d.updated, (SELECT text FROM chunks c WHERE c.doc_id = d.id "
+                           "AND c.parent_id IS NULL ORDER BY seq LIMIT 1) AS first FROM documents d "
+                           "WHERE d.key LIKE 'web:%' ORDER BY d.updated DESC LIMIT 60")
+        out = []
+        for r in rows:
+            site = site_of(r["source"])
+            out.append({"id": r["id"], "title": r["title"], "url": r["source"], "site": site, "updated": r["updated"],
+                        "snippet": " ".join((r["first"] or "").split())[:200], "pinned": r["id"] in pinned,
+                        "excluded": site in excluded})
+        return sorted(out, key=lambda s: (not s["pinned"], s["excluded"]))
+
+    def history(q: str) -> list[dict]:
+        """Past research: tasks that used the Research agent (any chat), newest first."""
+        args: tuple = ()
+        where = "EXISTS (SELECT 1 FROM steps s WHERE s.task_id = t.id AND s.agent = 'research')"
+        if q:
+            where += " AND (t.text LIKE ? OR t.answer LIKE ?)"
+            args = (f"%{q}%", f"%{q}%")
+        rows = store._rows(f"SELECT t.id, t.chat_id, t.text, t.status, t.created FROM tasks t WHERE {where} "
+                           "ORDER BY t.id DESC LIMIT 40", args)
+        out = []
+        for r in rows:
+            n = 0
+            for s in store.steps(r["id"]):
+                n += len((s.data or {}).get("sources", []) or [])
+            out.append({**dict(r), "sources": n})
+        return out
+
+    @app.get("/v3/research")
+    def research_page(request: Request, mode: str = "research", q: str = ""):
+        mode = mode if mode in RESEARCH_MODES else "research"
+        cid = chat_for(mode)
+        recent = [m for m in store.messages(cid) if m.role in ("user", "assistant")][-4:]
+        ctx: dict = {"mode": mode, "modes": RESEARCH_MODES, "m": RESEARCH_MODES[mode], "chat_id": cid,
+                     "recent": recent, "q": q.strip()[:100]}
+        if mode == "research":
+            ctx.update(sources=sources(), history=history(ctx["q"]), excluded=kv_list("research_excluded"))
+        elif mode == "study":
+            ctx.update(study_view())
+        else:
+            ctx.update(money_view())
+        return shell(request, "v3/research.html", "research", **ctx)
+
+    def study_view() -> dict:
+        import time as _t
+        from datetime import date as _date
+
+        from prometheus.agents import assignments_agent, exams_agent, study_agent
+        from prometheus.assignments import _when
+
+        st, tr, ex = study_agent.STUDY, assignments_agent.TRACKER, exams_agent.EXAMS
+        decks = st.decks() if st else []
+        exams = []
+        for p in (ex.plans() if ex else []):
+            days = ex.days(p["id"])
+            today = next((d for d in days if d["day"] == ex.today().isoformat()), None)
+            left = (_date.fromisoformat(p["exam_date"]) - ex.today()).days
+            exams.append({"exam": p["exam"], "date": p["exam_date"], "left": left,
+                          "today": ", ".join(today["topics"]) if today else "", "done": sum(1 for d in days if d["done"]),
+                          "total": len(days)})
+        deadlines = [{**a, "when": _when(a["due"]), "soon": a["due"] - _t.time() < 3 * 86400}
+                     for a in (tr.upcoming(60) if tr else [])]
+        return {"decks": decks, "due_total": sum(d.get("due") or 0 for d in decks), "exams": exams,
+                "deadlines": deadlines, "study_ready": st is not None}
+
+    def money_view() -> dict:
+        import time as _t
+
+        from prometheus.agents import money_agent
+
+        m = money_agent.MONEY
+        if m is None:
+            return {"money_ready": False}
+        now = _t.time()
+        by = m.by_category(m.month_start(now))
+        budgets = services.settings.money_budgets or {}
+        top = max(list(by.values()) + [b for b in budgets.values() if b] + [1])
+        cats = []
+        for name, amount in sorted(by.items(), key=lambda kv: -kv[1]):
+            b = budgets.get(name)
+            cats.append({"name": name, "amount": amount, "budget": b, "pct": min(100, round(100 * amount / (b or top))),
+                         "over": bool(b and amount >= b), "near": bool(b and amount >= 0.8 * b)})
+        recent = [dict(r) for r in store._rows("SELECT * FROM spending ORDER BY created DESC LIMIT 20")]
+        return {"money_ready": True, "cats": cats, "spent": recent, "total": sum(by.values()),
+                "today": sum(r["amount"] for r in m._since(m.day_start(now))), "month_name": _t.strftime("%B %Y"),
+                "email_set": bool(services.settings.email_address)}
+
+    def bad(text: str, code: int = 400):
+        return JSONResponse({"error": text}, status_code=code)
+
+    # -- research sources --------------------------------------------------------------------------------------------
+    def doc(doc_id: int) -> dict | None:
+        rows = store._rows("SELECT id, source, title FROM documents WHERE id = ? AND key LIKE 'web:%'", (doc_id,))
+        return dict(rows[0]) if rows else None
+
+    @app.post("/api/v3/research/sources/{doc_id}/pin")
+    def api_source_pin(doc_id: int, on: str = Form("")):
+        if doc(doc_id) is None:
+            return bad("That source is gone.", 404)
+        pinned = [int(i) for i in kv_list("research_pinned") if int(i) != doc_id]
+        if on:
+            if len(pinned) >= 3:
+                return bad("Up to 3 pinned sources: unpin one first.", 409)
+            pinned.append(doc_id)
+        store.kv_set("research_pinned", pinned)
+        return {"ok": True, "message": "Pinned: research will read it first." if on else "Unpinned."}
+
+    @app.post("/api/v3/research/sources/{doc_id}/exclude")
+    def api_source_exclude(doc_id: int, on: str = Form("")):
+        d = doc(doc_id)
+        if d is None:
+            return bad("That source is gone.", 404)
+        site = site_of(d["source"])
+        if not site:
+            return bad("That source has no website to leave out.")
+        sites = [s for s in kv_list("research_excluded") if s != site] + ([site] if on else [])
+        store.kv_set("research_excluded", sites)
+        if on:
+            store.kv_set("research_pinned", [i for i in kv_list("research_pinned") if int(i) != doc_id])
+        store.audit("user", "research_exclude", {"site": site, "on": bool(on)})
+        return {"ok": True, "message": f"Research won't use {site} any more." if on else f"{site} can be used again."}
+
+    @app.post("/api/v3/research/sites/{site}/include")
+    def api_site_include(site: str):
+        store.kv_set("research_excluded", [s for s in kv_list("research_excluded") if s != site])
+        return {"ok": True}
+
+    @app.post("/api/v3/research/sources/{doc_id}/open")
+    def api_source_open(doc_id: int):
+        """Open a source in the laptop's browser (the address is checked first)."""
+        from prometheus.agents.opener import SAFE_URL
+
+        d = doc(doc_id)
+        if d is None:
+            return bad("That source is gone.", 404)
+        url = d["source"]
+        if not (url.startswith("https://") or url.startswith("http://")) or not SAFE_URL.match(url):
+            return bad("That address doesn't look safe to open.", 409)
+        webbrowser.open(url)
+        return {"ok": True, "message": "Opened in your browser."}
+
+    @app.post("/api/v3/research/sources/add")
+    def api_source_add(url: str = Form("")):
+        """Add your own source: the page is read once, saved for searching, and pinned."""
+        import httpx
+
+        from prometheus.agents.research import UnsafeURL, check_url, fetch_text
+
+        url = url.strip()[:500]
+        if not url.startswith(("https://", "http://")):
+            url = "https://" + url
+        try:
+            check_url(url)
+            with httpx.Client(timeout=20.0, headers={"User-Agent": "Prometheus (personal assistant)"}) as http:
+                text = fetch_text(url, http)
+        except UnsafeURL:
+            return bad("That address isn't allowed (only public web pages).", 409)
+        except httpx.HTTPError:
+            return bad("Couldn't read that page. Is the address right?", 502)
+        if not text or len(text.strip()) < 200:
+            return bad("That page has too little text to use as a source.", 409)
+        title = " ".join(text.strip().splitlines()[0].split())[:120] if text.strip() else url
+        doc_id = store.add_document(f"web:{url}", title or url, url, text, private=False)
+        pinned = [int(i) for i in kv_list("research_pinned") if int(i) != doc_id][-2:] + [doc_id]
+        store.kv_set("research_pinned", pinned)
+        store.audit("user", "research_source_add", {"url": url[:200]})
+        return {"ok": True, "message": "Added and pinned: research will read it first."}
+
+    @app.get("/api/v3/research/{task_id}/export")
+    def api_research_export(task_id: int, fmt: str = "md"):
+        """A research answer as Markdown, PDF, Word or HTML."""
+        import re as _re
+
+        t = store.task(task_id)
+        if not t or not t.get("answer"):
+            return bad("No answer to save yet.", 404)
+        title = t["text"][:80]
+        body = f"# {title}\n\n{t['answer']}\n"
+        safe = _re.sub(r"[^\w .-]", "_", title)[:60].strip() or "research"
+        if fmt == "pdf":
+            from prometheus.actions.pdf import markdown_pdf
+            data, media, ext = markdown_pdf(body, title), "application/pdf", "pdf"
+        elif fmt == "docx":
+            from prometheus.agents.files import word_document
+            data = word_document(body)
+            media, ext = "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "docx"
+        elif fmt == "html":
+            from html import escape
+
+            from prometheus.web.render import render_message
+            data = (f"<!doctype html><meta charset=utf-8><title>{escape(title)}</title><body style=\"max-width:760px;"
+                    f"margin:40px auto;font-family:system-ui;line-height:1.6\"><h1>{escape(title)}</h1>"
+                    f"{render_message(t['answer'])}</body>").encode()
+            media, ext = "text/html", "html"
+        else:
+            data, media, ext = body.encode(), "text/markdown", "md"
+        return Response(data, media_type=media, headers={"Content-Disposition": f'attachment; filename="{safe}.{ext}"'})
+
+    # -- study ---------------------------------------------------------------------------------------------------------
+    @app.post("/api/v3/study/quiz")
+    def api_study_quiz(deck: str = Form("")):
+        from prometheus.agents import study_agent
+
+        if study_agent.STUDY is None:
+            return bad("Study isn't set up on this copy.", 409)
+        cid = chat_for("study")
+        store.add_message(cid, "user", f"Quiz me on {deck}".strip())
+        store.add_message(cid, "assistant", study_agent.STUDY.start_quiz(cid, deck[:80]), "instant")
+        return {"ok": True, "url": f"/c/{cid}"}
+
+    @app.post("/api/v3/study/make")
+    def api_study_make(text: str = Form("")):
+        """Make flashcards from a file: runs in the Study chat (the file is read with the usual path rules)."""
+        path = text.strip().strip('"')[:400]
+        if not path:
+            return bad("Type the file's path, like C:\\Users\\you\\Documents\\notes.pdf.")
+        cid = chat_for("study")
+        if cid in services.running:
+            return bad("The Study chat is busy. Try again in a moment.", 409)
+        services.start_task(cid, f"make flashcards from {path}")
+        return {"ok": True, "message": "Making the cards: follow it in the Study chat.", "url": f"/c/{cid}"}
+
+    @app.post("/api/v3/deadlines/add")
+    def api_deadline_add(text: str = Form("")):
+        from prometheus.agents import assignments_agent
+
+        tr = assignments_agent.TRACKER
+        if tr is None:
+            return bad("Deadlines aren't set up on this copy.", 409)
+        said = tr.tell(" ".join(text.split())[:160])
+        if said is None:
+            return bad("I couldn't tell what or when. Try “Physics lab report due Friday 5pm”.")
+        return {"ok": True, "message": said}
+
+    @app.post("/api/v3/deadlines/{deadline_id}/done")
+    def api_deadline_done(deadline_id: int):
+        rows = store._rows("SELECT title FROM assignments WHERE id = ?", (deadline_id,))
+        if not rows:
+            return bad("It's gone.", 404)
+        store._write("UPDATE assignments SET done = 1 WHERE id = ?", (deadline_id,))
+        for r in store.reminders():
+            if rows[0]["title"] in r["text"]:
+                store.cancel_reminder(r["id"])
+        return {"ok": True, "message": f"Marked {rows[0]['title']} as done."}
+
+    # -- money ---------------------------------------------------------------------------------------------------------
+    @app.post("/api/v3/money/add")
+    def api_money_add(text: str = Form("")):
+        """'250 lunch' or 'lunch 250'."""
+        import re as _re
+
+        from prometheus.agents import money_agent
+
+        if money_agent.MONEY is None:
+            return bad("Money isn't set up on this copy.", 409)
+        m = _re.search(r"(\d[\d,]*(?:\.\d+)?)", text.replace("₹", ""))
+        what = " ".join(_re.sub(r"(₹\s*)?\d[\d,]*(?:\.\d+)?", " ", text).split())[:40]
+        if not m or not what:
+            return bad("Type the amount and what it was for, like “250 lunch”.")
+        value = float(m.group(1).replace(",", ""))
+        if not 0 < value < 10_000_000:
+            return bad("That amount doesn't look right.")
+        money_agent.MONEY.add(value, what, said=text[:200])
+        return {"ok": True, "message": f"Added ₹{value:,.0f} on {what}."}
+
+    @app.post("/api/v3/money/scan")
+    def api_money_scan():
+        from prometheus.agents import money_agent
+        from prometheus.agents.email_agent import mailbox
+
+        if not services.settings.email_address:
+            return bad("Connect your email in Settings first.", 409)
+        try:
+            added = money_agent.MONEY.scan_email(mailbox(), days=7)
+        except Exception as e:
+            return bad(f"Couldn't read your email ({type(e).__name__}).", 502)
+        return {"ok": True, "message": f"Found {added} new bank or UPI alert(s)."}
+
+    @app.post("/api/v3/money/excel")
+    def api_money_excel():
+        from prometheus.agents import money_agent
+
+        path = money_agent.MONEY.write_excel(services.home / "Documents" / "Prometheus Money")
+        try:
+            if services.laptop is not None:
+                import os as _os
+
+                _os.startfile(str(path))           # our own sheet, made just now
+        except Exception:
+            pass
+        return {"ok": True, "message": f"Saved {path.name} in Documents/Prometheus Money."}

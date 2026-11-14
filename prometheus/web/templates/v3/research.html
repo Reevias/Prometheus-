@@ -1,0 +1,176 @@
+{% extends "v3/layout.html" %}
+{% from "v3/icons.html" import icon %}
+{% block title %}{{ m.label }} · Prometheus{% endblock %}
+{% block topbar %}<b>Research</b>{% endblock %}
+{% block content %}
+<section class="page research-page" data-mode="{{ mode }}">
+  <div class="tabs" role="tablist">
+    {% for key, info in modes.items() %}
+    <a role="tab" href="/v3/research?mode={{ key }}" class="{{ 'on' if mode == key }}">{{ info.label }}</a>
+    {% endfor %}
+  </div>
+
+  <form class="ask-box" id="ask-box" data-chat="{{ chat_id }}">
+    {% if m.agent %}<span class="agent-chip" id="agent-chip" data-agent="{{ m.agent }}" title="Only this agent answers. Remove it to let Prometheus choose.">@{{ m.agent }}
+      <button type="button" aria-label="Let Prometheus choose the agent" id="chip-x">×</button></span>{% endif %}
+    <input name="text" id="ask-text" placeholder="{{ m.placeholder }}" autocomplete="off" aria-label="{{ m.placeholder }}" required>
+    <button type="submit" class="pill" id="ask-go" disabled>{{ icon("send") }}Ask</button>
+  </form>
+  <div class="quick-row">{% for p in m.prompts %}<button type="button" class="chip small" data-fill="{{ p }}">{{ p.strip() }}</button>{% endfor %}</div>
+
+  {% if recent %}
+  <div class="mode-chat">
+    <div class="mode-chat-head"><b>{{ m.label }} chat</b><a href="/c/{{ chat_id }}">Open the whole chat</a></div>
+    {% for msg in recent %}<div class="mc-row {{ msg.role }}"><small class="muted">{{ "You" if msg.role == "user" else "Prometheus" }} · {{ msg.created|clock }}</small>
+      <div>{% if msg.role == "user" %}{{ msg.text[:300] }}{% else %}{{ (msg.text[:600] ~ ("…" if msg.text|length > 600 else ""))|md }}{% endif %}</div></div>{% endfor %}
+  </div>
+  {% endif %}
+
+{% if mode == "research" %}
+  <div class="research-cols">
+    <div>
+      <h2 class="section">Past research</h2>
+      <form method="get" action="/v3/research" class="task-filters"><input type="hidden" name="mode" value="research">
+        <input class="search" type="search" name="q" value="{{ q }}" placeholder="Search past research" aria-label="Search past research"></form>
+      <div class="mem-list">
+        {% for h in history %}
+        <div class="mem-row"><div><p><a href="/v3/tasks/{{ h.id }}">{{ h.text[:140] }}</a></p>
+          <small class="muted">{{ h.created|day }} {{ h.created|clock }} · {{ h.sources }} source{{ "s" if h.sources != 1 }} · <a href="/c/{{ h.chat_id }}">chat</a></small></div>
+          <div class="row-actions export-row">
+            {% for fmt, label in [("md", "MD"), ("pdf", "PDF"), ("docx", "Word"), ("html", "HTML")] %}<a href="/api/v3/research/{{ h.id }}/export?fmt={{ fmt }}" download title="Save as {{ label }}">{{ label }}</a>{% endfor %}
+            <button type="button" class="danger" data-api="/api/v3/tasks/{{ h.id }}/delete" data-confirm="Delete this research from the history? Its chat stays.">Delete</button>
+          </div></div>
+        {% else %}<p class="muted empty">{% if q %}Nothing matches.{% else %}No research yet. Ask something above: answers come with numbered sources.{% endif %}</p>{% endfor %}
+      </div>
+    </div>
+    <aside class="sources-side">
+      <h2 class="section">Sources <span class="muted">{{ sources|length }}</span></h2>
+      <form class="add-source" id="add-source"><input name="url" id="add-url" placeholder="Add your own: a web address" aria-label="Add a source by its web address" required>
+        <button type="submit" class="pill" id="add-go" disabled>{{ icon("plus") }}Add</button></form>
+      <p class="muted small">Pinned sources (up to 3) are read first for every research question. Left-out sites are never used.</p>
+      {% for s in sources %}
+      <div class="source-card {{ 'pinned' if s.pinned }} {{ 'excluded' if s.excluded }}">
+        <b>{{ s.title[:90] }}</b>
+        <small class="muted">{{ s.site }}{% if s.pinned %} · pinned{% endif %}{% if s.excluded %} · left out{% endif %}</small>
+        {% if s.snippet %}<p>{{ s.snippet }}</p>{% endif %}
+        <div class="row-actions">
+          <button type="button" data-api="/api/v3/research/sources/{{ s.id }}/open">Open</button>
+          {% if not s.excluded %}<button type="button" data-api="/api/v3/research/sources/{{ s.id }}/pin" {% if not s.pinned %}data-send='{"on": "1"}'{% endif %}>{{ "Unpin" if s.pinned else "Pin" }}</button>{% endif %}
+          <button type="button" data-api="/api/v3/research/sources/{{ s.id }}/exclude" {% if not s.excluded %}data-send='{"on": "1"}' data-confirm="Never use {{ s.site }} for research?"{% endif %}>{{ "Use again" if s.excluded else "Leave out site" }}</button>
+          <button type="button" class="danger" data-api="/api/v3/documents/{{ s.id }}/delete" data-confirm="Forget this saved page?">Forget</button>
+        </div>
+      </div>
+      {% else %}<p class="muted">No sources yet: they're saved as Prometheus researches.</p>{% endfor %}
+      {% for site in excluded %}{% if not sources|selectattr("site", "equalto", site)|list %}
+      <div class="source-card excluded"><b>{{ site }}</b><small class="muted">left out</small>
+        <div class="row-actions"><button type="button" data-api="/api/v3/research/sites/{{ site }}/include">Use again</button></div></div>
+      {% endif %}{% endfor %}
+    </aside>
+  </div>
+
+{% elif mode == "study" %}
+  <div class="sys-grid">
+    <section class="sys-card">
+      <h2>Flashcards <small class="muted">{{ due_total }} due</small></h2>
+      <div class="mem-list">{% for d in decks %}<div class="mem-row"><div><p>{{ d.deck }}</p><small class="muted">{{ d.n }} card{{ "s" if d.n != 1 }} · {{ d.due or 0 }} due</small></div>
+        <div class="row-actions"><button type="button" data-quiz="{{ d.deck }}">Quiz me</button></div></div>
+      {% else %}<p class="muted">No decks yet. Say “make flashcards from &lt;a file&gt;”.</p>{% endfor %}</div>
+      {% if decks %}<button type="button" class="pill" data-quiz="">{{ icon("bulb") }}Quiz me on everything due</button>{% endif %}
+      <button type="button" class="pill" data-api="/api/v3/study/make" data-prompt="Which file? (its full path, e.g. C:\Users\you\Documents\notes.pdf)">{{ icon("doc") }}Make cards from a file</button>
+      <p class="muted small">Quiz PDFs and card settings: <a href="/study?view=classic">the full study page</a>.</p>
+    </section>
+    <section class="sys-card">
+      <h2>Exams</h2>
+      <div class="mem-list">{% for e in exams %}<div class="mem-row"><div><p>{{ e.exam }} <span class="muted">· {{ e.left }} day{{ "s" if e.left != 1 }} to go</span></p>
+        <small class="muted">{{ e.date }} · {{ e.done }}/{{ e.total }} days done{% if e.today %} · today: {{ e.today }}{% endif %}</small></div></div>
+      {% else %}<p class="muted">No exam plans. Say “my maths exam is on 20 March” and give the syllabus.</p>{% endfor %}</div>
+    </section>
+    <section class="sys-card">
+      <h2>Deadlines</h2>
+      <div class="mem-list">{% for a in deadlines %}<div class="mem-row"><div><p>{{ a.title }}</p><small class="muted">{{ a.when }}{% if a.soon %} · soon{% endif %}</small></div>
+        <div class="row-actions"><button type="button" data-api="/api/v3/deadlines/{{ a.id }}/done">Done</button></div></div>
+      {% else %}<p class="muted">Nothing due.</p>{% endfor %}</div>
+      <button type="button" class="pill" data-api="/api/v3/deadlines/add" data-prompt="What's due, and when? (e.g. “Physics lab report due Friday 5pm”)">{{ icon("plus") }}Add a deadline</button>
+    </section>
+  </div>
+
+{% else %}
+  {% if not money_ready %}<p class="muted empty">Money isn't set up on this copy.</p>{% else %}
+  <div class="sys-grid">
+    <section class="sys-card">
+      <h2>{{ month_name }}</h2>
+      <div class="sys-gauges">
+        <div class="sys-gauge"><b>₹{{ "{:,.0f}".format(total) }}</b><span>this month</span></div>
+        <div class="sys-gauge"><b>₹{{ "{:,.0f}".format(today) }}</b><span>today</span></div>
+      </div>
+      <div class="task-actions">
+        <button type="button" class="pill" data-api="/api/v3/money/add" data-prompt="What did you spend? (e.g. “250 lunch”)">{{ icon("plus") }}Add spending</button>
+        {% if email_set %}<button type="button" class="pill" data-api="/api/v3/money/scan">Read bank alerts</button>{% endif %}
+        <button type="button" class="pill" data-api="/api/v3/money/excel">{{ icon("doc") }}Excel sheet</button>
+      </div>
+      <p class="muted small">Budgets per category: <a href="/settings#money-tracker">Settings → Money tracker</a>.</p>
+    </section>
+    <section class="sys-card">
+      <h2>By category</h2>
+      {% for c in cats %}<div class="money-cat"><div class="money-cat-head"><span>{{ c.name }}</span>
+        <span class="{{ 'bad-text' if c.over else 'warn-text' if c.near else 'muted' }}">₹{{ "{:,.0f}".format(c.amount) }}{% if c.budget %} of ₹{{ "{:,.0f}".format(c.budget) }}{% endif %}</span></div>
+        <div class="cost-meter"><span style="width:{{ c.pct }}%" class="{{ 'bad' if c.over else 'warn' if c.near else '' }}"></span></div></div>
+      {% else %}<p class="muted">Nothing spent this month yet.</p>{% endfor %}
+    </section>
+    <section class="sys-card">
+      <h2>Latest</h2>
+      <div class="mem-list">{% for r in spent %}<div class="mem-row"><div><p>₹{{ "{:,.0f}".format(r.amount) }} · {{ r.merchant or r.kind }} <span class="muted">· {{ r.category }}</span></p>
+        <small class="muted">{{ r.created|day }} {{ r.created|clock }}</small></div></div>
+      {% else %}<p class="muted">Nothing yet.</p>{% endfor %}</div>
+    </section>
+  </div>
+  {% endif %}
+{% endif %}
+</section>
+<script>
+(function () {
+  var csrf = document.body.dataset.csrf, form = document.getElementById("ask-box"), input = document.getElementById("ask-text");
+  var chip = document.getElementById("agent-chip"), x = document.getElementById("chip-x");
+  var go = document.getElementById("ask-go");
+  function ready() { go.disabled = !input.value.trim(); }          // nothing to ask: the button waits
+  input.addEventListener("input", ready);
+  if (x) x.addEventListener("click", function () { chip.remove(); chip = null; input.focus(); });
+  document.querySelectorAll("[data-fill]").forEach(function (b) {
+    b.addEventListener("click", function () { input.value = b.dataset.fill; ready(); input.focus(); });
+  });
+  var addUrl = document.getElementById("add-url"), addGo = document.getElementById("add-go");
+  if (addUrl) addUrl.addEventListener("input", function () { addGo.disabled = !addUrl.value.trim(); });
+  form.addEventListener("submit", function (e) {
+    e.preventDefault();
+    var text = input.value.trim(); if (!text) return;
+    var f = new FormData();
+    f.append("text", (chip ? "@" + chip.dataset.agent + " " : "") + text);
+    f.append("chat_id", form.dataset.chat);
+    fetch("/api/v3/send", { method: "POST", credentials: "same-origin", body: f, headers: { "X-CSRF-Token": csrf } })
+      .then(function (r) { return r.json().then(function (j) { return [r.ok, j]; }); })
+      .then(function (x) { if (x[0] && x[1].url) location.href = x[1].url; else promToast(x[1].error || "Couldn't send it.", true); });
+  });
+  document.querySelectorAll("[data-quiz]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      var f = new FormData(); f.append("deck", b.dataset.quiz);
+      fetch("/api/v3/study/quiz", { method: "POST", credentials: "same-origin", body: f, headers: { "X-CSRF-Token": csrf } })
+        .then(function (r) { return r.json().then(function (j) { return [r.ok, j]; }); })
+        .then(function (x) { if (x[0]) location.href = x[1].url; else promToast(x[1].error || "Couldn't start the quiz.", true); });
+    });
+  });
+  var add = document.getElementById("add-source");
+  if (add) add.addEventListener("submit", function (e) {
+    e.preventDefault();
+    var btn = addGo; btn.disabled = true;
+    fetch("/api/v3/research/sources/add", { method: "POST", credentials: "same-origin", body: new FormData(add), headers: { "X-CSRF-Token": csrf } })
+      .then(function (r) { return r.json().then(function (j) { return [r.ok, j]; }); })
+      .then(function (x) {
+        btn.disabled = !addUrl.value.trim();
+        if (!x[0]) { promToast(x[1].error || "Couldn't add it.", true); return; }
+        try { sessionStorage.setItem("prom-said", x[1].message); } catch (z) {}
+        location.reload();
+      });
+  });
+})();
+</script>
+{% endblock %}

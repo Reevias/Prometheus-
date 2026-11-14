@@ -968,6 +968,9 @@ def register_routes(app: FastAPI, services: Services) -> None:
 
     @app.get("/study", response_class=HTMLResponse)
     def study_page(request: Request, notice: str = "", error: str = ""):
+        if request.query_params.get("view") != "classic" and not PHONE.search(request.headers.get("user-agent", "")) \
+                and request.method == "GET" and not request.headers.get("HX-Request"):
+            return RedirectResponse("/v3/research?mode=study", status_code=303)          # its new home (M2.2)
         import json as _json
         import time as _t
 
@@ -1012,6 +1015,9 @@ def register_routes(app: FastAPI, services: Services) -> None:
 
     @app.get("/money", response_class=HTMLResponse)
     def money_page(request: Request, notice: str = "", error: str = ""):
+        if request.query_params.get("view") != "classic" and not PHONE.search(request.headers.get("user-agent", "")) \
+                and request.method == "GET" and not request.headers.get("HX-Request"):
+            return RedirectResponse("/v3/research?mode=money", status_code=303)          # its new home (M2.2)
         import time as _t
 
         from prometheus.agents import money_agent
@@ -1079,6 +1085,9 @@ def register_routes(app: FastAPI, services: Services) -> None:
 
     @app.get("/plans", response_class=HTMLResponse)
     def plans_page(request: Request, notice: str = "", error: str = ""):
+        if request.query_params.get("view") != "classic" and not PHONE.search(request.headers.get("user-agent", "")) \
+                and request.method == "GET" and not request.headers.get("HX-Request"):
+            return RedirectResponse("/v3/research?mode=study", status_code=303)          # its new home (M2.2)
         import time as _t
         from datetime import date as _date
 

@@ -531,3 +531,110 @@ def test_watcher_switches_and_folders(app_client):
     assert client.post("/api/v3/watchers/folders/remove", data={"path": "C:/Users/me/Downloads"}, headers=h).json()["ok"]
     assert s.watch_folders == []
     assert client.post("/api/v3/watchers/folders/remove", data={"path": "x"}, headers=h).status_code == 404
+
+
+# ---- Research (three modes) -------------------------------------------------------------------------------------------
+def _research_task(st, question="solar panels in India", answer="Solar is growing [1].\n\nSources:\n[1] https://example.org/solar"):
+    cid = st.create_chat("Research")
+    tid = st.create_task(cid, question)
+    sid = st.add_step(tid, "research", "Search the web", {"query": question})
+    st.finish_step(sid, "done", answer, {"sources": ["https://example.org/solar"]})
+    st.set_task_status(tid, "done", answer)
+    return tid
+
+
+def test_research_modes_render_with_their_own_chats(app_client):
+    client, services = app_client()
+    login(client)
+    st = services.store
+    _research_task(st)
+    page = client.get("/v3/research").text
+    for part in ("Research", "Study", "Money", "solar panels in India", "1 source", "Word", 'href="/v3/research"'):
+        assert part in page, part
+    study = client.get("/v3/research?mode=study").text
+    assert "@study" in study and "Flashcards" in study and "Deadlines" in study
+    money = client.get("/v3/research?mode=money").text
+    assert "@money" in money
+    titles = [t for _, t in st.chats()]
+    assert "Research" in titles and "Money" in titles
+    assert "solar" in client.get("/v3/research?q=solar").text and "solar panels" not in client.get("/v3/research?q=zzz").text
+
+
+def test_research_export_formats(app_client):
+    client, services = app_client()
+    login(client)
+    tid = _research_task(services.store)
+    md = client.get(f"/api/v3/research/{tid}/export?fmt=md")
+    assert md.status_code == 200 and "Solar is growing" in md.text and "attachment" in md.headers["content-disposition"]
+    assert client.get(f"/api/v3/research/{tid}/export?fmt=pdf").content[:4] == b"%PDF"
+    assert client.get(f"/api/v3/research/{tid}/export?fmt=docx").content[:2] == b"PK"            # a Word file is a zip
+    html = client.get(f"/api/v3/research/{tid}/export?fmt=html").text
+    assert "<h1>solar panels in India</h1>" in html and "<script" not in html
+    assert client.get("/api/v3/research/9999/export").status_code == 404
+
+
+def test_research_sources_pin_exclude_and_the_agent_follows(app_client):
+    client, services = app_client()
+    h = {"X-CSRF-Token": login(client)}
+    st = services.store
+    a = st.add_document("web:https://www.bbc.co.uk/solar", "BBC on solar", "https://www.bbc.co.uk/solar",
+                        "Solar panels in India grew fast in 2025. " * 40, private=False)
+    b = st.add_document("web:https://example.org/x", "Example", "https://example.org/x", "Other text. " * 60, private=False)
+    assert "BBC on solar" in client.get("/v3/research").text
+    assert client.post(f"/api/v3/research/sources/{a}/pin", data={"on": "1"}, headers=h).json()["ok"]
+    assert st.kv_get("research_pinned") == [a]
+    r = client.post(f"/api/v3/research/sources/{b}/exclude", data={"on": "1"}, headers=h)
+    assert r.json()["ok"] and st.kv_get("research_excluded") == ["example.org"]
+    # the agent: pinned page first, excluded site skipped
+    from prometheus.agents.research import Research as ResearchAgent, pinned_pages, site_of
+    assert site_of("https://www.bbc.co.uk/news") == "bbc.co.uk"
+    ctx = services.orchestrator.make_context(st.create_task(st.create_chat("x"), "q"), 0)
+    pages = pinned_pages(ctx, "solar panels India")
+    assert pages and pages[0][0] == "https://www.bbc.co.uk/solar"
+    agent = ResearchAgent()
+    agent.search = lambda q, n: [{"url": "https://example.org/y", "title": "skip me"}]
+    fetched = []
+    import prometheus.agents.research as R
+    real = R.fetch_text
+    R.fetch_text = lambda url, http: fetched.append(url) or "text"
+    try:
+        from prometheus.models.fake import FakeProvider
+        services.router.providers["fake"] = FakeProvider(["Answer [1]"], name="fake")
+        res = agent.run("solar panels India", {"query": "solar panels India"}, ctx)
+    finally:
+        R.fetch_text = real
+    assert fetched == [] and res.data["sources"] == ["https://www.bbc.co.uk/solar"]
+    # limits and include again
+    for i in range(3):
+        d = st.add_document(f"web:https://p{i}.org/", f"P{i}", f"https://p{i}.org/", "words " * 80, private=False)
+        client.post(f"/api/v3/research/sources/{d}/pin", data={"on": "1"}, headers=h)
+    assert len(st.kv_get("research_pinned")) == 3
+    client.post("/api/v3/research/sites/example.org/include", headers=h)
+    assert st.kv_get("research_excluded") == []
+    assert client.post("/api/v3/research/sources/99999/pin", data={"on": "1"}, headers=h).status_code == 404
+
+
+def test_add_own_source_refuses_private_addresses(app_client):
+    client, services = app_client()
+    h = {"X-CSRF-Token": login(client)}
+    r = client.post("/api/v3/research/sources/add", data={"url": "http://127.0.0.1:8000/secret"}, headers=h)
+    assert r.status_code == 409
+    r = client.post("/api/v3/research/sources/add", data={"url": "http://192.168.1.1/"}, headers=h)
+    assert r.status_code == 409
+
+
+def test_study_and_money_actions(app_client):
+    client, services = app_client()
+    h = {"X-CSRF-Token": login(client)}
+    from prometheus.agents import assignments_agent, money_agent
+    if money_agent.MONEY is not None:
+        assert client.post("/api/v3/money/add", data={"text": "250 lunch"}, headers=h).json()["ok"]
+        assert client.post("/api/v3/money/add", data={"text": "lunch"}, headers=h).status_code == 400
+        assert "250" in client.get("/v3/research?mode=money").text
+    if assignments_agent.TRACKER is not None:
+        r = client.post("/api/v3/deadlines/add", data={"text": "Physics lab report due Friday 5pm"}, headers=h)
+        assert r.status_code == 200, r.text
+        page = client.get("/v3/research?mode=study").text
+        assert "Physics lab report" in page
+        did = services.store._rows("SELECT id FROM assignments WHERE title LIKE '%Physics%'")[0]["id"]
+        assert client.post(f"/api/v3/deadlines/{did}/done", headers=h).json()["ok"]

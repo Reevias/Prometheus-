@@ -1,6 +1,12 @@
 # Changelog
 
 ## Prometheus 3.0, M2.2 (on the prometheus-v3 branch, not released yet)
+- Research: one page with three modes, each with its own ask box, chat and quick prompts. Research: past research
+  (search, delete, save as Markdown, PDF, Word or HTML) and sources (open, pin up to 3 so research reads them first,
+  leave a site out so it's never used, add your own page). Study (@study): flashcards and quizzes, cards from a file,
+  exams, deadlines. Money (@money): this month and today, by category with budgets, latest spending, add, read bank
+  alerts, Excel. The sidebar is now 9 links (Home, Agents, Chats, Skills, Tasks, Memory, Automations, System,
+  Research); the old Study, Money and Exams pages open their mode.
 - Automations: reminders and standing goals as cards (repeats, next time, when it last ran and how a goal's
   last run went); new reminder or goal, pause and resume (a passed time rolls to the next one), edit, change time,
   run a goal now (schedule unchanged), delete. Watchers: battery, disk and CPU switches, watched folders, latest alerts.

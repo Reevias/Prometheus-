@@ -11,6 +11,7 @@
   ("memory", "Memory", "/v3/memory"),
   ("automations", "Automations", "/v3/automations"),
   ("system", "System", "/v3/system"),
+  ("research", "Research", "/v3/research"),
 ] %}
 <aside class="sidebar" aria-label="Main menu">
   <div class="brand">
@@ -24,16 +25,6 @@
        title="{{ label }}{% if loop.index <= 10 %} (Ctrl+{{ loop.index % 10 }}){% endif %}">{{ icon(key) }}<span>{{ label }}</span></a>
     {% endfor %}
   </nav>
-  {# Pages from 2.x that get their place in the new sections in M2.2; reachable meanwhile, nothing is lost. #}
-  <details class="nav-more" {{ "open" if active in ("more", "approvals") }}>
-    <summary>More</summary>
-    <nav class="nav">
-      <a href="/study">{{ icon("bulb") }}<span>Study</span></a>
-      <a href="/plans">{{ icon("tasks") }}<span>Exams and deadlines</span></a>
-      <a href="/money">{{ icon("chart") }}<span>Money</span></a>
-      <a href="/settings#costs">{{ icon("system") }}<span>Costs</span></a>
-    </nav>
-  </details>
   <div class="sidebar-foot">
     {# your menu: opens upward from your name, like a desktop app's account menu #}
     <div class="menu profile-menu" id="profile-menu" role="menu" hidden>
