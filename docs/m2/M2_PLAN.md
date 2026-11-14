@@ -32,9 +32,9 @@ difference goes on a list the owner approves.
 right panel. Fluid between 1366×768 and 3840×2160 plus ultrawide; sidebar and right panel collapse progressively
 on narrow windows; multi-monitor with different resolutions.
 
-**Sidebar** — expanded with icons and labels by default, collapsible to icons (labels never lost). 14 items: Home,
-Agents, Skills, Tasks, Projects, Memory, Automations, Research, Integrations, System, Chats, Files, Activity,
-Settings. Active item: orange left bar, orange-tinted fill, orange text and icon. Profile at the bottom (the
+**Sidebar** — expanded with icons and labels by default, collapsible to icons (labels never lost). Items as
+decided for M2.2 (see "M2.2 decisions" below): Home, Agents, Chats, Skills, Tasks, Memory, Automations, System,
+Research, plus the gear for Settings; Projects joins in M2.3. Active item: orange left bar, orange-tinted fill, orange text and icon. Profile at the bottom (the
 owner's name from Settings, asked on first run), gear for Settings, bell with unread badge, last 20 notifications in
 a dropdown, toasts. Ctrl+1…Ctrl+0 jump to the first ten; arrow keys move through items; visible focus outlines.
 
@@ -111,14 +111,42 @@ diagnostics, credits). Existing 2.x settings move into these categories; nothing
 - **Memory** — search, inspect, edit, delete items; export; privacy: pause collection, clear all, exclude chats.
 - **Automations** — today's reminders, recurring jobs and watchers as cards (name, next run, last result, history);
   pause/resume, edit, delete, run now; approval setting per automation; failures as a toast + Windows notification.
-- **Research** — chat-style with a sources sidebar, or split view (question, sources, report); web search with
+- **Research** — one page with three modes (Research · Study · Money; see "M2.2 decisions"). Research mode: chat-style with a sources sidebar, or split view (question, sources, report); web search with
   numbered citations, file-based research, multi-step with a visible plan; source cards (title, domain, snippet),
   pin/exclude/add own, open in browser; export Markdown, PDF, Word, HTML; searchable, deletable history.
-- **Integrations** — cards only for real connectors (Gmail, Google Calendar, email, GitHub, Obsidian, phone, MCP,
+- **Integrations** (in the profile menu as **Connections**, not a sidebar page) — cards only for real connectors (Gmail, Google Calendar, email, GitHub, Obsidian, phone, MCP,
   …): connected / disconnected / needs re-login; connect, disconnect, permissions, test, error with a fix
   suggestion; confirm before sending or writing; every action logged.
-- **System** — live telemetry detail, health of each service, costs, logs.
-- **Chats**, **Files** (search inside files, generated outputs), **Activity** (history with undo, audit log).
+- **System** — live telemetry detail, health of each service, About, logs; **Activity** as a tab (file changes with
+  undo, audit log). Costs moved to Settings → AI models and keys.
+- **Chats** with each chat's generated files on its side. **Files** has no page of its own (see "M2.2 decisions").
+
+### M2.2 decisions (owner, 14 Nov 2026)
+These replace the 14-item sidebar and the separate Files, Activity and Integrations pages. Existing features are moved,
+not added, so the scope freeze holds.
+
+- **Sidebar (9 links + gear):** Home · Agents · Chats · Skills · Tasks · Memory · Automations · System · Research ·
+  ⚙ Settings. Projects is added when M2.3 builds it.
+- **Research:** one page, three modes (Research · Study · Money). Each mode has its own ask box, its own chat (the
+  Study, Research and Money chats that exist today) and its own panels with real data (decks and exam dates from the
+  study agent, spendings from the money agent, sources from the documents table). The mode pre-selects the agent,
+  shown as an editable chip (Study → `@study`, Money → `@money`, Research → the planner chooses), using M2.2's `@`
+  mechanism enforced in code. Each mode keeps its quick-prompt row. Research mode keeps citations, source cards and
+  export as described above.
+- **Profile menu:** Approvals (with badge), Phone, **Connections** (= Integrations: connected / disconnected / needs
+  re-login; connect, disconnect, test). **Costs** lives inside AI models and keys.
+- **Files:** a chat's generated files sit on the side of that chat (name, size, open, download, delete); search
+  inside files lives in Memory next to the documents list, and in Ctrl+K as "Search my files"; all generated files
+  across chats are a "Files" filter in that Memory documents view.
+- **Automations:** the honest version: reminders and watchers that really exist; on/off and delete.
+- **Activity:** file changes with undo plus the audit log, as a tab inside System.
+- **System:** live telemetry, services, About, Activity tab.
+- **Memory privacy:** pause collection, clear all and exclude chats are built in the Memory step (not deferred to M8).
+- **Old addresses:** `/money`, `/plans`, `/costs`, `/files`, `/study` redirect to their new homes until M2.4, then are
+  deleted with the old screens.
+- **Build order:** Skills → Memory (+ file search and documents view) → Tasks → Activity → Approvals → chat files
+  panel → Phone → System → Costs in Settings → Automations → Research modes → sidebar relinked + redirects. One commit
+  per step, tests green each time. (Agents is already built.)
 
 ## M2.3 — New basics (don't exist yet)
 - **Projects** — cards (name, last activity, files, task progress, agents); workspace tabs: files, chats, tasks,

@@ -10,6 +10,7 @@
 
 ## Prometheus 3.0, M2.1 (on the prometheus-v3 branch, not released yet)
 - Docs: added the Friday Mark 2 research (compared with our plan; the 8 better ideas F1–F8 are added inside M3, M4, M5 and M8; no code copied, nothing built yet).
+- Docs: M2.2 decisions written into the M2 plan (9 sidebar links + gear; Research with Research, Study and Money modes; Files in chats and Memory; Activity in System; Approvals, Phone, Connections in your menu).
 - Docs: `docs/PLAN.md` now shows the status of every step (59 steps; M0 and M1 done, M2 in progress).
 - Fixed: every test run on GitHub failed since the taskbar fix (the dependency check didn't know about pywebview's Windows part).
 - Docs: one plan, `docs/PLAN.md` (vision, design, M0–M10 split into steps), replaces the old roadmap, master plan and the M2 "later milestones" table.
