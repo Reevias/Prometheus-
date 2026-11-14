@@ -1,6 +1,9 @@
 # Changelog
 
 ## Prometheus 3.0, M2.2 (on the prometheus-v3 branch, not released yet)
+- Docs: the README now says plainly what is released (v2.3 on `main`) and what is still only a plan, with the M0-M10 table and honest status. It also lists the 38 real agents and the 10 real skills, and names model types instead of a model list that goes stale.
+- Docs: removed the M2 architecture, test report and completion report (they described files, APIs and test counts this repo does not have), the stale handoff, the old plan (`plan-v1.md`) and the PDF copy of `docs/missing.md`. The two root-level audit reports moved into `docs/reports/`.
+- Removed two colour tokens from `tokens.css` that nothing used (`--muted-rgb`, `--r-sm`).
 - Agents page: every agent as a card (what it does, what it may use, when it last ran), grouped like Features, with a detail panel (description, tools and which ones ask you first, last runs with links to their chats) and a list of agents running right now. Status is only what's really true: Running, Waiting for approval, Idle, Off, Off in Features or Stopped.
 - Switch any agent off or on. Prometheus then never plans with it, and refuses it if it's asked for anyway.
 - Pick the agent yourself: start a message with `@` and its name (`@research solar panels`). Typing `@` in the command bar lists the agents. Only that agent can be used for that message (checked in code, not just asked).
