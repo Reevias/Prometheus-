@@ -180,6 +180,8 @@ class Store:
                 self._db.execute("ALTER TABLE messages ADD COLUMN private INTEGER NOT NULL DEFAULT 0")
                 # Answers saved before this existed may hold details from personal files: treat them all as private.
                 self._db.execute("UPDATE messages SET private = 1 WHERE role = 'assistant'")
+            if "finished" not in {r["name"] for r in self._db.execute("PRAGMA table_info(tasks)")}:
+                self._db.execute("ALTER TABLE tasks ADD COLUMN finished REAL NOT NULL DEFAULT 0")
             if "topic" not in {r["name"] for r in self._db.execute("PRAGMA table_info(messages)")}:
                 self._db.execute("ALTER TABLE messages ADD COLUMN topic TEXT NOT NULL DEFAULT ''")
             if "chat_id" not in {r["name"] for r in self._db.execute("PRAGMA table_info(costs)")}:
@@ -542,7 +544,37 @@ class Store:
         )
 
     def set_task_status(self, task_id: int, status: str, answer: str = "") -> None:
-        self._write("UPDATE tasks SET status = ?, answer = ? WHERE id = ?", (status, answer, task_id))
+        finished = 0.0 if status in ("new", "running") else time.time()
+        self._write("UPDATE tasks SET status = ?, answer = ?, finished = ? WHERE id = ?", (status, answer, finished, task_id))
+
+    def list_tasks(self, statuses: tuple[str, ...] = (), q: str = "", since: float = 0.0, limit: int = 300) -> list[dict]:
+        """Tasks newest first, with their chat's title and how many steps they took (the Tasks page)."""
+        where, args = ["t.created >= ?"], [since]
+        if statuses:
+            where.append(f"t.status IN ({','.join('?' * len(statuses))})")
+            args += list(statuses)
+        if q:
+            where.append("(t.text LIKE ? ESCAPE '\\' OR t.answer LIKE ? ESCAPE '\\')")
+            like = "%" + q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+            args += [like, like]
+        rows = self._rows(
+            "SELECT t.id, t.chat_id, t.text, t.status, t.created, t.finished, COALESCE(c.title, '') AS chat, "
+            "(SELECT COUNT(*) FROM steps s WHERE s.task_id = t.id) AS steps "
+            f"FROM tasks t LEFT JOIN chats c ON c.id = t.chat_id WHERE {' AND '.join(where)} "
+            "ORDER BY t.id DESC LIMIT ?", (*args, limit))
+        return [dict(r) for r in rows]
+
+    def task_status_counts(self) -> dict[str, int]:
+        return {r["status"]: r["n"] for r in self._rows("SELECT status, COUNT(*) AS n FROM tasks GROUP BY status")}
+
+    def delete_task(self, task_id: int) -> bool:
+        """Removes a task's record, steps and notes; the chat and its messages stay."""
+        with self._lock:
+            cur = self._db.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
+            self._db.execute("DELETE FROM steps WHERE task_id = ?", (task_id,))
+            self._db.execute("DELETE FROM agent_notes WHERE task_id = ?", (task_id,))
+            self._db.commit()
+            return cur.rowcount > 0
 
     def task(self, task_id: int) -> dict:
         rows = self._rows("SELECT * FROM tasks WHERE id = ?", (task_id,))

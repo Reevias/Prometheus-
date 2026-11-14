@@ -1,0 +1,27 @@
+{% extends "v3/layout.html" %}
+{% block title %}Task · Prometheus{% endblock %}
+{% block topbar %}<a class="crumb" href="/v3/tasks">Tasks</a><span class="muted">/</span><b>#{{ t.id }}</b>{% endblock %}
+{% block content %}
+<section class="page task-page">
+  <div id="task-detail">{% include "v3/task_detail.html" %}</div>
+</section>
+<script>
+document.addEventListener("click", function (e) {
+  var b = e.target.closest("[data-task]"); if (!b) return;
+  var act = b.dataset.task, id = b.dataset.id;
+  if (act === "delete" && !confirm("Delete this task's record (its steps and notes)? The chat stays.")) return;
+  b.disabled = true;
+  fetch("/api/v3/tasks/" + id + "/" + act, { method: "POST", credentials: "same-origin",
+        headers: { "X-CSRF-Token": document.body.dataset.csrf } })
+    .then(function (r) { return r.json().then(function (j) { return [r.ok, j]; }); })
+    .then(function (x) {
+      var ok = x[0], j = x[1];
+      if (!ok) { window.promToast && promToast(j.error || "That didn't work.", true); b.disabled = false; return; }
+      if (act === "retry" && j.url) { location.href = j.url; return; }
+      if (act === "delete") { location.href = "/v3/tasks"; return; }
+      window.promToast && promToast(j.message || "Done.");
+      htmx.ajax("GET", "/v3/tasks/" + id, { target: "#task-detail" });
+    });
+});
+</script>
+{% endblock %}

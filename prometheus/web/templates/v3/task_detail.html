@@ -1,0 +1,55 @@
+{% from "v3/icons.html" import icon %}
+<div class="task-detail"{% if t.live %} hx-get="/v3/tasks/{{ t.id }}" hx-target="#task-detail" hx-trigger="every 2s"{% endif %}>
+  <div class="task-title">
+    <h1>{{ t.text[:200] }}{% if t.text|length > 200 %}…{% endif %}</h1>
+    <span class="state s-{{ t.status }}">{% if t.live %}<i class="pulse" aria-hidden="true"></i>{% endif %}{{ t.label }}</span>
+  </div>
+  <dl class="facts task-facts">
+    <dt>Chat</dt><dd><a href="/c/{{ t.chat_id }}">{{ t.chat }}</a></dd>
+    <dt>Started</dt><dd>{{ t.created|day }} {{ t.created|clock }}</dd>
+    {% if t.finished %}<dt>Finished</dt><dd>{{ t.finished|day }} {{ t.finished|clock }} · took {{ t.took }}</dd>{% endif %}
+    <dt>Steps</dt><dd>{{ t.steps|length }}</dd>
+    {% if t.status == "paused" %}<dt>Resumes</dt><dd>{{ "By itself when the AI limit resets" if t.resume_booked else "Not booked: retry it yourself" }}</dd>{% endif %}
+  </dl>
+  <div class="task-actions">
+    {% if t.live or t.status == "paused" %}
+    <button type="button" class="pill" data-task="stop" data-id="{{ t.id }}">{{ icon("stop") }}{{ "Stop" if t.live else "Cancel resuming" }}</button>
+    {% endif %}
+    {% if not t.live %}
+    <button type="button" class="pill" data-task="retry" data-id="{{ t.id }}" title="Ask the same thing again in its chat">{{ icon("send") }}Run again</button>
+    {% endif %}
+    <a class="pill" href="/api/v3/tasks/{{ t.id }}/export" download>{{ icon("doc") }}Save record</a>
+    {% if not t.live %}
+    <button type="button" class="pill danger" data-task="delete" data-id="{{ t.id }}">{{ icon("close") }}Delete</button>
+    {% endif %}
+  </div>
+
+  <h2 class="section">Timeline</h2>
+  <ol class="timeline">
+    <li class="tl-item"><span class="tl-time">{{ t.created|clock }}</span><div><b>You asked</b><p>{{ t.text }}</p></div></li>
+    {% for s in t.steps %}
+    <li class="tl-item step {{ s.status }}"><span class="tl-time">{{ s.at|clock }}</span>
+      <div>
+        <b>{{ s.agent|title }}</b> <span class="muted">· {{ s.goal }}</span> <span class="state s-{{ s.status }}">{{ s.status }}</span>
+        {% if s.inputs %}<details><summary>What it used</summary><pre class="io">{{ s.inputs|tojson(indent=2) }}</pre></details>{% endif %}
+        {% if s.result %}<p class="tl-result">{{ s.result[:1500] }}{% if s.result|length > 1500 %}…{% endif %}</p>{% endif %}
+      </div>
+    </li>
+    {% endfor %}
+    {% if t.live %}<li class="tl-item"><span class="tl-time"></span><div class="muted"><i class="pulse" aria-hidden="true"></i> Working…</div></li>{% endif %}
+    {% if not t.live and t.status not in ("new", "running") %}
+    <li class="tl-item"><span class="tl-time">{{ t.finished|clock }}</span><div><b>{{ t.label }}</b>
+      {% if t.answer %}<div class="tl-answer">{{ t.answer|md }}</div>{% endif %}</div></li>
+    {% endif %}
+  </ol>
+
+  {% if t.outputs %}
+  <h2 class="section">What it made</h2>
+  <div class="rows">{% for o in t.outputs if not o.is_dir %}<a href="/api/v3/outputs/{{ o.id }}/file" target="_blank" rel="noopener">{{ o.path.replace("\\", "/").split("/")[-1] }}<span>{{ o.kind }}</span></a>{% endfor %}</div>
+  {% endif %}
+
+  {% if t.notes %}
+  <h2 class="section">Notes the agents left each other</h2>
+  <ul class="plain notes">{% for agent, text in t.notes %}<li><b>{{ agent|replace("_", " ")|title }}</b> <span class="muted">{{ text }}</span></li>{% endfor %}</ul>
+  {% endif %}
+</div>

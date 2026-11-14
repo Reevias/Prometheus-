@@ -7,7 +7,7 @@
   ("agents", "Agents", "/v3/agents"),
   ("chats", "Chats", "/v3/chats"),
   ("skills", "Skills", "/skills"),
-  ("tasks", "Tasks", "/plans"),
+  ("tasks", "Tasks", "/v3/tasks"),
   ("memory", "Memory", "/memory"),
   ("activity", "Activity", "/history"),
 ] %}
@@ -29,6 +29,7 @@
     <nav class="nav">
       <a href="/approvals" class="{{ 'on' if active == 'approvals' }}">{{ icon("tasks") }}<span>Approvals</span>{% if pending %}<span class="count" title="{{ pending }} waiting">{{ pending }}</span>{% endif %}</a>
       <a href="/study">{{ icon("bulb") }}<span>Study</span></a>
+      <a href="/plans">{{ icon("tasks") }}<span>Exams and deadlines</span></a>
       <a href="/money">{{ icon("chart") }}<span>Money</span></a>
       <a href="/costs">{{ icon("system") }}<span>Costs</span></a>
       <a href="/phone">{{ icon("monitor") }}<span>Get it on your phone</span></a>

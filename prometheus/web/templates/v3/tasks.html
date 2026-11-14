@@ -1,0 +1,43 @@
+{% extends "v3/layout.html" %}
+{% from "v3/icons.html" import icon %}
+{% block title %}Tasks · Prometheus{% endblock %}
+{% block topbar %}<b>Tasks</b>{% endblock %}
+{% block content %}
+<section class="page tasks-page">
+  <h1>Tasks</h1>
+  <p class="muted lead">Everything you asked Prometheus to do, newest first. Open one to see each step, what it used and what it made.</p>
+  <form class="task-filters" id="task-filters" hx-get="/v3/tasks" hx-target="#task-list" hx-trigger="input changed delay:300ms from:input, change"
+        hx-push-url="true" hx-include="this">
+    <input class="search" type="search" name="q" value="{{ q }}" placeholder="Search tasks and answers" aria-label="Search tasks and answers">
+    <div class="seg" role="radiogroup" aria-label="Status">
+      <label class="{{ 'on' if status == 'all' }}"><input type="radio" name="status" value="all" {{ 'checked' if status == 'all' }}>All <span>{{ total }}</span></label>
+      {% for key, (label, _) in STATUS_GROUPS.items() %}
+      <label class="{{ 'on' if status == key }}"><input type="radio" name="status" value="{{ key }}" {{ 'checked' if status == key }}>{{ label }} <span>{{ groups[key] }}</span></label>
+      {% endfor %}
+    </div>
+    <select name="period" aria-label="When">{% for key, (label, _) in PERIODS.items() %}<option value="{{ key }}" {{ 'selected' if period == key }}>{{ label }}</option>{% endfor %}</select>
+    <div class="view-toggle" role="group" aria-label="Show as">
+      <button type="button" data-view="cards" title="Cards">{{ icon("grid") }}</button>
+      <button type="button" data-view="table" title="Table">{{ icon("list") }}</button>
+    </div>
+  </form>
+  <div id="task-list">{% include "v3/tasks_list.html" %}</div>
+</section>
+<script>
+(function () {
+  var page = document.querySelector(".tasks-page"), KEY = "prom-tasks-view";
+  function show(v) {
+    page.dataset.view = v;
+    page.querySelectorAll("[data-view]").forEach(function (b) { b.classList.toggle("on", b.dataset.view === v); b.disabled = b.dataset.view === v; });
+    try { localStorage.setItem(KEY, v); } catch (e) {}
+  }
+  var saved = "cards"; try { saved = localStorage.getItem(KEY) || "cards"; } catch (e) {}
+  show(saved);
+  page.addEventListener("click", function (e) { var b = e.target.closest("[data-view]"); if (b) show(b.dataset.view); });
+  page.addEventListener("change", function (e) {          // the status chips light up as you pick one
+    if (e.target.name !== "status") return;
+    page.querySelectorAll(".seg label").forEach(function (l) { l.classList.toggle("on", l.querySelector("input").checked); });
+  });
+})();
+</script>
+{% endblock %}

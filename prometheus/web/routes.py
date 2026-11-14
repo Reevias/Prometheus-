@@ -2118,3 +2118,6 @@ def register_routes(app: FastAPI, services: Services) -> None:
             result = f"The practice tests couldn't run: {type(e).__name__}."
         store.audit("user", "practice_run", {})
         return HTMLResponse(f'<p class="muted" style="margin:0">{__import__("html").escape(result)}</p>')
+
+    from prometheus.web.pages_v3 import register_pages
+    register_pages(app, services, shell)            # M2.2: Tasks and the other new-look pages

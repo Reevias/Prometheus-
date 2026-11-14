@@ -1,0 +1,19 @@
+{# The task list (cards or table: the same rows, styled by the page's data-view). Refreshes itself while one runs. #}
+<div class="task-list"{% if live %} hx-get="/v3/tasks" hx-include="#task-filters" hx-target="#task-list" hx-trigger="every 3s"{% endif %}>
+{% if rows %}
+  <div class="task-head" aria-hidden="true"><span>Request</span><span>Status</span><span>Steps</span><span>Started</span><span>Took</span></div>
+  {% for r in rows %}
+  <a class="task-row" href="/v3/tasks/{{ r.id }}">
+    <span class="task-text">{{ r.text[:160] }}{% if r.text|length > 160 %}…{% endif %}<small>{{ r.chat }}</small></span>
+    <span><span class="state s-{{ r.status }}">{% if r.live %}<i class="pulse" aria-hidden="true"></i>{% endif %}{{ r.label }}</span></span>
+    <span class="task-meta">
+      <span class="num">{{ r.steps }} step{{ "s" if r.steps != 1 }}</span>
+      <span class="num">{{ r.created|day }} {{ r.created|clock }}</span>
+      <span class="num">{% if r.took %}took {{ r.took }}{% else %}—{% endif %}</span>
+    </span>
+  </a>
+  {% endfor %}
+{% else %}
+  <p class="muted empty">{% if q or status != "all" or period != "all" %}No task matches these filters.{% else %}No tasks yet. Ask Prometheus something on Home and it shows up here.{% endif %}</p>
+{% endif %}
+</div>

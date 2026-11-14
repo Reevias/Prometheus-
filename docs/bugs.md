@@ -2,11 +2,12 @@
 
 Every bug found and fixed, newest first, so the count is always exact. Add a line for each new one.
 
-**Total fixed: 55** (as of 14 November 2026)
+**Total fixed: 56** (as of 14 November 2026)
 
-## 14 November 2026 (1)
+## 14 November 2026 (2)
 | # | Bug | Fixed by |
 |---|---|---|
+| 56 | The new menu's "Tasks" opened Exams and deadlines, not Prometheus's tasks | a real Tasks page; Exams and deadlines is under More |
 | 55 | Every test run on GitHub failed since the taskbar fix (the dependency check didn't know `System` comes with pywebview on Windows) | `System` listed as provided by pywebview's Windows backend in `scripts/m0_baseline.py` |
 
 ## 13 November 2026 (5)

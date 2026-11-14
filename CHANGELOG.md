@@ -7,6 +7,9 @@
 - Agents page: every agent as a card (what it does, what it may use, when it last ran), grouped like Features, with a detail panel (description, tools and which ones ask you first, last runs with links to their chats) and a list of agents running right now. Status is only what's really true: Running, Waiting for approval, Idle, Off, Off in Features or Stopped.
 - Switch any agent off or on. Prometheus then never plans with it, and refuses it if it's asked for anyway.
 - Pick the agent yourself: start a message with `@` and its name (`@research solar panels`). Typing `@` in the command bar lists the agents. Only that agent can be used for that message (checked in code, not just asked).
+- Tasks: everything you asked, as cards or a table; filter by status (running, paused, done, failed, stopped) and
+  time, search requests and answers; each task's timeline (steps, what each used, results, notes between agents,
+  files it made, the answer, how long it took); stop, cancel a paused one, run again, save the record, delete.
 
 ## Prometheus 3.0, M2.1 (on the prometheus-v3 branch, not released yet)
 - Docs: added the Friday Mark 2 research (compared with our plan; the 8 better ideas F1–F8 are added inside M3, M4, M5 and M8; no code copied, nothing built yet).
