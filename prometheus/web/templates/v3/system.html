@@ -1,0 +1,127 @@
+{% extends "v3/layout.html" %}
+{% from "v3/icons.html" import icon %}
+{% block title %}System · Prometheus{% endblock %}
+{% block topbar %}<b>System</b>{% endblock %}
+{% block content %}
+<section class="page system-page">
+  <h1>System</h1>
+  <p class="muted lead">How this laptop and Prometheus are doing, right now, and everything Prometheus did (with undo).</p>
+  <div class="tabs" role="tablist">
+    <a role="tab" href="/v3/system" class="{{ 'on' if tab == 'overview' }}">Overview</a>
+    <a role="tab" href="/v3/system?tab=activity" class="{{ 'on' if tab == 'activity' }}">Activity</a>
+  </div>
+
+{% if tab == "overview" %}
+  {% if stopped %}<p class="notice bad-notice">Everything is stopped (Stop all){% if stop_reason %}: {{ stop_reason }}{% endif %}. Press Resume at the top to carry on.</p>{% endif %}
+  <div class="sys-grid">
+    <section class="sys-card wide">
+      <h2>This laptop <small class="muted" id="sys-live">live</small></h2>
+      <div class="sys-gauges" id="sys-gauges">
+        <div class="sys-gauge" data-key="cpu"><b>—</b><span>CPU</span></div>
+        <div class="sys-gauge" data-key="ram"><b>—</b><span>Memory</span></div>
+        <div class="sys-gauge" data-key="disk"><b>—</b><span>Disk</span></div>
+        <div class="sys-gauge" data-key="gpu" hidden><b>—</b><span>GPU</span></div>
+        <div class="sys-gauge" data-key="temp" hidden><b>—</b><span>CPU heat</span></div>
+      </div>
+      <dl class="facts" id="sys-facts">
+        <dt>Memory used</dt><dd data-f="ram">—</dd>
+        <dt>Disk free</dt><dd data-f="disk">—</dd>
+        <dt>Network</dt><dd data-f="net">—</dd>
+        <dt>Laptop on for</dt><dd data-f="uptime">—</dd>
+      </dl>
+      <p class="muted small">Only readings Windows really gives are shown; anything it can't read is left out.</p>
+    </section>
+
+    <section class="sys-card">
+      <h2>Prometheus itself</h2>
+      <dl class="facts">
+        <dt>Memory it uses</dt><dd>{{ me.ram_mb ~ " MB" if me.ram_mb is defined else "Can't read" }}</dd>
+        <dt>Threads</dt><dd>{{ me.threads if me.threads is defined else "—" }}</dd>
+        <dt>Running since</dt><dd>{% if me.since %}{{ me.since|day }} {{ me.since|clock }}{% else %}—{% endif %}</dd>
+        <dt>Waiting for you</dt><dd><a href="/approvals">{{ pending }} approval{{ "s" if pending != 1 }}</a></dd>
+        <dt>Paid AI this month</dt><dd>${{ "%.2f"|format(budget.spent) }} of ${{ "%.2f"|format(budget.cap) }}</dd>
+        {% if updated %}<dt>Update</dt><dd>{{ updated }}</dd>{% endif %}
+      </dl>
+    </section>
+
+    <section class="sys-card">
+      <h2>AI models</h2>
+      <div class="svc-list">{% for m in models %}
+        <div class="svc"><span class="dot {{ 'ok' if m.state == 'Ready' else 'warn' if m.state == 'Resting' else '' }}"></span>
+          <span>{{ m.name }}{% if m.local %} <small class="muted">on this laptop</small>{% endif %}</span>
+          <small class="muted">{{ m.state }}{% if m.resting %} · {{ m.minutes_left }} min{% if m.reason %} · {{ m.reason[:80] }}{% endif %}{% endif %}</small></div>
+      {% else %}<p class="muted">No AI set up yet: Settings → AI models and keys.</p>{% endfor %}</div>
+    </section>
+
+    <section class="sys-card">
+      <h2>Background jobs</h2>
+      <div class="svc-list">{% for j in jobs %}
+        <div class="svc"><span class="dot {{ 'ok' if j.state == 'Running' else '' }}"></span><span>{{ j.label }}</span><small class="muted">{{ j.state }}</small></div>
+      {% endfor %}</div>
+    </section>
+
+    <section class="sys-card">
+      <h2>About</h2>
+      <dl class="facts">
+        <dt>Prometheus</dt><dd>{{ about.version }}</dd>
+        <dt>Python</dt><dd>{{ about.python }}</dd>
+        <dt>System</dt><dd>{{ about.os }} ({{ about.machine }})</dd>
+        <dt>Data folder</dt><dd class="wrap">{{ about.data }}</dd>
+      </dl>
+      <p class="muted small">Open source (MIT). Licences of bundled parts: Settings → About.</p>
+    </section>
+  </div>
+  <script>
+  (function () {
+    function pct(v) { return v == null ? null : Math.round(v) + "%"; }
+    function speed(k) { return k == null ? "—" : (k >= 1024 ? (k / 1024).toFixed(1) + " MB/s" : Math.round(k) + " KB/s"); }
+    function set(key, val) {
+      var g = document.querySelector('.sys-gauge[data-key="' + key + '"]'); if (!g) return;
+      if (val == null) { if (key === "gpu" || key === "temp") g.hidden = true; else g.querySelector("b").textContent = "—"; return; }
+      g.hidden = false; g.querySelector("b").textContent = val;
+    }
+    function fact(k, v) { var d = document.querySelector('[data-f="' + k + '"]'); if (d) d.textContent = v; }
+    function tick() {
+      if (document.visibilityState !== "visible") return;
+      fetch("/api/v3/telemetry", { credentials: "same-origin" }).then(function (r) { return r.json(); }).then(function (t) {
+        set("cpu", pct(t.cpu)); set("ram", t.ram ? pct(t.ram.percent) : null); set("disk", t.disk ? pct(t.disk.percent) : null);
+        set("gpu", t.gpu && t.gpu.percent != null ? pct(t.gpu.percent) : null); set("temp", t.temp_c != null ? Math.round(t.temp_c) + "°C" : null);
+        fact("ram", t.ram ? (t.ram.used_gb != null ? t.ram.used_gb.toFixed(1) + " / " + t.ram.total_gb.toFixed(1) + " GB" : "—") : "—");
+        fact("disk", t.disk ? t.disk.free_gb + " of " + t.disk.total_gb + " GB" : "—");
+        fact("net", t.net ? "↓ " + speed(t.net.down_kbps) + "  ↑ " + speed(t.net.up_kbps) : "measuring…");
+        var u = t.uptime_seconds; fact("uptime", u == null ? "—" : Math.floor(u / 3600) + " h " + Math.floor(u % 3600 / 60) + " min");
+      }).catch(function () {});
+    }
+    tick(); setInterval(tick, 2000);
+  })();
+  </script>
+
+{% else %}
+  <h2 class="section">Things you can undo</h2>
+  <p class="muted">What Prometheus changed: files it moved or made, reminders, saved facts, calendar events and setting changes. Sent email can't be unsent.</p>
+  <div class="mem-list">
+    {% for r in runs %}
+    <div class="mem-row {{ 'past' if r.undone }}"><div><p>{{ r.summary|capitalize }}</p>
+      <small class="muted">files · {{ r.count }} change{{ "s" if r.count != 1 }} in {{ r.root }} · {{ r.created|day }} {{ r.created|clock }}{% if r.undone %} · undone{% elif r.active %} · still running{% endif %}</small></div>
+      {% if not r.undone and not r.active and r.count %}<div class="row-actions"><button type="button" data-api="/api/v3/activity/undo" data-send='{"source": "files", "id": "{{ r.id }}"}' data-confirm="Put these files back?">{{ "Retry undo" if r.last_undo else "Undo" }}</button></div>{% endif %}
+    </div>
+    {% endfor %}
+    {% for r in log %}
+    <div class="mem-row {{ 'past' if r.undone }}"><div><p>{{ r.summary|capitalize }}</p>
+      <small class="muted">{{ r.kind|replace("_", " ") }} · {{ r.created|day }} {{ r.created|clock }}{% if r.undone %} · undone{% elif r.kind == "email" %} · can't be unsent{% endif %}</small></div>
+      {% if r.can_undo %}<div class="row-actions"><button type="button" data-api="/api/v3/activity/undo" data-send='{"source": "log", "id": "{{ r.id }}"}' data-confirm="Undo this?">Undo</button></div>{% endif %}
+    </div>
+    {% endfor %}
+    {% if not runs and not log %}<p class="muted empty">Nothing yet.</p>{% endif %}
+  </div>
+
+  <h2 class="section">Log <span class="muted">newest first</span></h2>
+  <form method="get" action="/v3/system" class="task-filters"><input type="hidden" name="tab" value="activity">
+    <input class="search" type="search" name="q" value="{{ q }}" placeholder="Search the log" aria-label="Search the log"></form>
+  <div class="log-table">
+    {% for a in audit %}<div class="log-row"><span class="num">{{ a.at|day }} {{ a.at|clock }}</span><b>{{ a.who }}</b><span>{{ a.what }}</span><small class="muted">{{ a.detail }}</small></div>
+    {% else %}<p class="muted empty">{% if q %}Nothing matches.{% else %}Nothing logged yet.{% endif %}</p>{% endfor %}
+  </div>
+{% endif %}
+</section>
+{% endblock %}

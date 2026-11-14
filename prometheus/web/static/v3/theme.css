@@ -716,3 +716,31 @@ html[data-motion="reduced"] *, html[data-motion="reduced"] *::before { animation
 .priv-card .mem-list { margin: 10px 0; }
 .priv-card select { max-width: 280px; }
 .priv-card.danger-zone { border-color: rgb(var(--bad-rgb) / 0.3); }
+
+/* ---- System ---------------------------------------------------------------------------------------------- */
+.sys-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 14px; max-width: 1100px; }
+.sys-card { padding: 18px 20px; border-radius: var(--r-md); background: rgb(var(--surface-rgb) / 0.55);
+            border: 1px solid rgb(var(--text-rgb) / 0.06); }
+.sys-card.wide { grid-column: 1 / -1; }
+.sys-card h2 { font-size: 17px; font-weight: 500; margin: 0 0 12px; display: flex; align-items: baseline; gap: 10px; }
+.sys-card h2 small { font-size: 12px; }
+.sys-card .facts { margin-top: 4px; }
+.sys-card .facts dd.wrap { overflow-wrap: anywhere; }
+.page .small { font-size: 12px; }
+.sys-gauges { display: flex; flex-wrap: wrap; gap: 14px; margin-bottom: 10px; }
+.sys-gauge { flex: 1 1 120px; padding: 14px 16px; border-radius: 14px; background: rgb(var(--base-rgb) / 0.55);
+         border: 1px solid rgb(var(--orange-rgb) / 0.18); display: flex; flex-direction: column; gap: 4px; }
+.sys-gauge b { font-size: 28px; font-weight: 400; font-variant-numeric: tabular-nums; color: var(--amber); }
+.sys-gauge span { color: var(--muted); font-size: 13px; }
+.svc-list { display: flex; flex-direction: column; gap: 8px; }
+.svc { display: grid; grid-template-columns: 10px 1fr auto; align-items: center; gap: 10px; font-size: 14px; }
+.svc small { text-align: right; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: rgb(var(--muted-rgb) / 0.5); }
+.dot.ok { background: var(--ok); box-shadow: 0 0 6px rgb(var(--ok-rgb) / 0.6); }
+.dot.warn { background: var(--orange); }
+.notice.bad-notice { background: rgb(var(--bad-rgb) / 0.08); border-color: rgb(var(--bad-rgb) / 0.35); }
+.log-table { max-width: 1100px; display: flex; flex-direction: column; }
+.log-row { display: grid; grid-template-columns: 130px 120px 220px 1fr; gap: 12px; padding: 7px 10px; font-size: 13px;
+           border-bottom: 1px solid rgb(var(--text-rgb) / 0.05); align-items: baseline; }
+.log-row .num { color: var(--muted); font-variant-numeric: tabular-nums; }
+.log-row small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

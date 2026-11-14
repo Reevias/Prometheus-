@@ -1120,6 +1120,8 @@ def register_routes(app: FastAPI, services: Services) -> None:
 
     @app.get("/history", response_class=HTMLResponse)
     def history(request: Request):
+        if request.query_params.get("view") != "classic" and not PHONE.search(request.headers.get("user-agent", "")):
+            return RedirectResponse("/v3/system?tab=activity", status_code=303)       # Activity is a tab of System
         return page(request, "history.html", runs=services.journal.runs(), result="")
 
     @app.post("/history/{run_id}/undo", response_class=HTMLResponse)

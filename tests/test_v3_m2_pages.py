@@ -352,3 +352,45 @@ def test_files_tab_searches_inside_files_and_lists_what_it_made(app_client, tmp_
     assert "Photosynthesis" in page and "notes.txt" in page
     made = client.get("/v3/memory?tab=files&show=made").text
     assert "sales.png" in made and "Charts" in made and "Saved pages and files <" not in made
+
+
+# ---- System and Activity ------------------------------------------------------------------------------------------
+def test_system_overview_shows_only_real_states(app_client):
+    client, services = app_client()
+    login(client)
+    page = client.get("/v3/system").text
+    for part in ("This laptop", "Prometheus itself", "AI models", "Background jobs", "About", "fake", 'href="/v3/system"'):
+        assert part in page, part
+    from prometheus.web.pages_v3 import plain_action
+    assert plain_action("delete_task") == "Deleted task" and plain_action("skill_switch") == "Skill switch"
+    # a job whose thread isn't alive is never called Running
+    import threading
+    alive = {t.name for t in threading.enumerate()}
+    if "prometheus-briefing" not in alive:
+        assert "Morning briefing</span><small class=\"muted\">Running" not in page.replace("\n", "")
+
+
+def test_activity_lists_undoes_and_logs(app_client):
+    client, services = app_client()
+    h = {"X-CSRF-Token": login(client)}
+    st = services.store
+    from prometheus import undo
+    rid = st.add_reminder(st.create_chat("r"), "call mum", time.time() + 3600)
+    if rid is not None:
+        undo.record(st, "reminder", "a reminder to call mum", {"id": rid})
+    undo.record(st, "email", "an email to Ravi", {})
+    st.audit("user", "delete_task", {"task": 3})
+    page = client.get("/v3/system?tab=activity").text
+    assert "An email to ravi" in page and "can't be unsent" in page and "Deleted task" in page
+    assert "Deleted task" in client.get("/v3/system?tab=activity&q=delete").text
+    assert "Deleted task" not in client.get("/v3/system?tab=activity&q=zzz").text
+    log_id = st._rows("SELECT id FROM undo_log WHERE kind = 'email'")[0]["id"]
+    r = client.post("/api/v3/activity/undo", data={"source": "log", "id": str(log_id)}, headers=h)
+    assert r.status_code == 200 and "can't be unsent" in r.json()["message"]
+    if rid is not None:
+        rem_id = st._rows("SELECT id FROM undo_log WHERE kind = 'reminder'")[0]["id"]
+        assert client.post("/api/v3/activity/undo", data={"source": "log", "id": str(rem_id)}, headers=h).json()["ok"]
+        assert client.post("/api/v3/activity/undo", data={"source": "log", "id": str(rem_id)}, headers=h).status_code == 409
+    assert client.post("/api/v3/activity/undo", data={"source": "files", "id": "nope"}, headers=h).status_code == 404
+    assert client.post("/api/v3/activity/undo", data={"source": "x", "id": "1"}, headers=h).status_code == 400
+    assert client.get("/history", follow_redirects=False).headers["location"] == "/v3/system?tab=activity"

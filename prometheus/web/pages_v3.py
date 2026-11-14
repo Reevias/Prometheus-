@@ -47,6 +47,7 @@ def register_pages(app: FastAPI, services, shell) -> None:
     store = services.store
     register_skill_pages(app, services, shell)
     register_memory_pages(app, services, shell)
+    register_system_pages(app, services, shell)
 
     # ---- Tasks ---------------------------------------------------------------------------------------------------
     def task_rows(status: str, q: str, period: str) -> list[dict]:
@@ -606,3 +607,140 @@ def register_memory_pages(app: FastAPI, services, shell) -> None:
                 facts.forget(f.id)
         store.audit("user", "wipe_memories", {})
         return ok(message="Forgot everything: memories, facts and saved pages and files. Chats are kept.")
+
+
+# ---- System (with Activity) -------------------------------------------------------------------------------------------
+# Background jobs and the name of the thread each runs in: "Running" is shown only when that thread is really alive.
+BACKGROUND = [("Reminders and alarms", "prometheus-reminders", "reminders"),
+              ("Watchers (folders, prices, pages)", "prometheus-watchers", "watchers"),
+              ("Daily jobs (learning, tidy-up, repos of the day)", "prometheus-daily", "daily"),
+              ("Morning briefing", "prometheus-briefing", "briefing"),
+              ("Resuming paused tasks", "prometheus-resumer", "resumer"),
+              ("Cloud copy sync", "prometheus-sync", "sync"),
+              ("Voice", "prometheus-voice", "voice")]
+ACTION_WORDS = {"delete": "Deleted", "add": "Added", "edit": "Edited", "forget": "Forgot", "undo": "Undid",
+                "switch": "Switched", "remove": "Removed", "retry": "Ran again", "stop": "Stopped", "cancel": "Cancelled",
+                "wipe": "Wiped", "export": "Exported", "try": "Tried", "pause": "Paused"}
+
+
+def plain_action(action: str) -> str:
+    """'delete_task' → 'Deleted task', 'skill_switch' → 'Skill switch'."""
+    words = action.split("_")
+    if words and words[0] in ACTION_WORDS:
+        return " ".join([ACTION_WORDS[words[0]]] + words[1:])
+    return " ".join(words).capitalize()
+
+
+def register_system_pages(app: FastAPI, services, shell) -> None:
+    import os
+    import platform
+    import sys
+    import threading
+
+    from fastapi import Form
+
+    store = services.store
+
+    def alive(thread_name: str) -> bool:
+        return any(t.name == thread_name and t.is_alive() for t in threading.enumerate())
+
+    def overview() -> dict:
+        from prometheus.config import data_dir
+        from prometheus.launcher import version
+
+        models = []
+        for m in services.router.status_detail():
+            state = ("Resting" if m["resting"] else "Ready" if m["available"] else "Not set up")
+            models.append({**m, "state": state})
+        models.sort(key=lambda m: (m["state"] != "Ready", m["state"] != "Resting", m["name"]))   # usable ones first
+        jobs = []
+        for label, thread, attr in BACKGROUND:
+            obj = getattr(services, attr, None)
+            state = "Off" if obj is None else ("Running" if alive(thread) else "Set up, not running")
+            if attr == "voice" and obj is not None and not alive(thread):
+                try:
+                    state = "Off" if obj.state() == "off" else state       # voice is off until you switch it on
+                except Exception:
+                    pass
+            jobs.append({"label": label, "state": state})
+        me = {}
+        try:
+            import psutil
+
+            p = psutil.Process(os.getpid())
+            me = {"ram_mb": round(p.memory_info().rss / 1048576), "threads": p.num_threads(),
+                  "since": p.create_time()}
+        except Exception:
+            pass
+        b = services.budget.state()
+        ks = services.killswitch
+        return {"models": models, "jobs": jobs, "me": me, "budget": b,
+                "stopped": bool(ks.is_set), "stop_reason": getattr(ks, "reason", ""),
+                "pending": len(store.big_approvals()), "updated": getattr(services.updater, "updated", "") or "",
+                "about": {"version": version(), "python": platform.python_version(),
+                          "os": f"{platform.system()} {platform.release()}", "data": str(data_dir()),
+                          "machine": platform.machine(), "pid": os.getpid(), "exe": sys.executable}}
+
+    def activity(q: str) -> dict:
+        from prometheus import undo
+
+        undo._ready(store)
+        log = [dict(r) for r in store._rows("SELECT * FROM undo_log ORDER BY id DESC LIMIT 60")]
+        for r in log:
+            r["can_undo"] = not r["undone"] and r["kind"] != "email"
+        runs = []
+        journal = getattr(services, "journal", None)
+        if journal is not None:
+            for r in journal.runs()[:60]:
+                r["summary"] = undo._describe_run(r, journal)
+                runs.append(r)
+        where, args = "", ()
+        if q:
+            where, args = "WHERE action LIKE ? OR detail LIKE ?", (f"%{q}%", f"%{q}%")
+        audit = []
+        for r in store._rows(f"SELECT * FROM audit_log {where} ORDER BY id DESC LIMIT 200", args):
+            try:
+                detail = json.loads(r["detail"])
+            except ValueError:
+                detail = {}
+            text = ", ".join(f"{k}: {v}" for k, v in detail.items() if not isinstance(v, (dict, list)))[:200]
+            audit.append({"who": "You" if r["actor"] == "user" else r["actor"].replace("_", " ").title(),
+                          "what": plain_action(r["action"]), "detail": text, "at": r["created"]})
+        return {"log": log, "runs": runs, "audit": audit}
+
+    @app.get("/v3/system")
+    def system_page(request: Request, tab: str = "overview", q: str = ""):
+        tab = tab if tab in ("overview", "activity") else "overview"
+        q = q.strip()[:100]
+        ctx = overview() if tab == "overview" else activity(q)
+        return shell(request, "v3/system.html", "system", tab=tab, q=q, **ctx)
+
+    @app.post("/api/v3/activity/undo")
+    def api_activity_undo(source: str = Form(...), id: str = Form(...)):
+        """Undo one thing from the Activity list (file changes, reminders, saved facts, events, setting changes)."""
+        from prometheus import undo
+
+        if source == "files":
+            journal = getattr(services, "journal", None)
+            run = next((r for r in (journal.runs() if journal else []) if r["id"] == id), None)
+            if run is None:
+                return JSONResponse({"error": "Those file changes aren't in the history any more."}, status_code=404)
+            if run.get("active"):
+                return JSONResponse({"error": "It's still running: wait until it finishes."}, status_code=409)
+            item = {"source": "files", "id": id, "summary": undo._describe_run(run, journal)}
+        elif source == "log" and id.isdigit():
+            undo._ready(store)
+            rows = store._rows("SELECT * FROM undo_log WHERE id = ?", (int(id),))
+            if not rows:
+                return JSONResponse({"error": "That isn't in the history."}, status_code=404)
+            if rows[0]["undone"]:
+                return JSONResponse({"error": "That was already undone."}, status_code=409)
+            item = {"source": "log", "id": int(id), "summary": rows[0]["summary"]}
+        else:
+            return JSONResponse({"error": "Unknown item."}, status_code=400)
+        try:
+            said = undo.perform(services, item)
+        except Exception as e:
+            return JSONResponse({"error": f"Couldn't undo it: {type(e).__name__}."}, status_code=500)
+        store.audit("user", "undo", {"what": item["summary"][:120]})
+        return {"ok": True, "message": said}

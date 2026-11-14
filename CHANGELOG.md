@@ -1,6 +1,10 @@
 # Changelog
 
 ## Prometheus 3.0, M2.2 (on the prometheus-v3 branch, not released yet)
+- System: the laptop's live readings, Prometheus's own memory use, each AI model (ready, resting, not set up),
+  background jobs ("Running" only when really running), spending and About. Activity is a tab: everything you can
+  undo (file changes, reminders, saved facts, events, setting changes; email can't be unsent) and the full log,
+  searchable. The menu's Activity link became System.
 - Memory: memories and facts (search, add, edit, delete; editing a fact keeps the old value as past), files and
   pages (search inside your files, saved texts, and every file Prometheus made, across chats), how it answers you
   (learned rules, earlier versions, task lessons), topics with their chats, and Privacy: pause remembering by itself,
