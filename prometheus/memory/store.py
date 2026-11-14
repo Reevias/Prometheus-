@@ -180,6 +180,8 @@ class Store:
                 self._db.execute("ALTER TABLE messages ADD COLUMN private INTEGER NOT NULL DEFAULT 0")
                 # Answers saved before this existed may hold details from personal files: treat them all as private.
                 self._db.execute("UPDATE messages SET private = 1 WHERE role = 'assistant'")
+            if "last_fired" not in {r["name"] for r in self._db.execute("PRAGMA table_info(reminders)")}:
+                self._db.execute("ALTER TABLE reminders ADD COLUMN last_fired REAL NOT NULL DEFAULT 0")
             if "finished" not in {r["name"] for r in self._db.execute("PRAGMA table_info(tasks)")}:
                 self._db.execute("ALTER TABLE tasks ADD COLUMN finished REAL NOT NULL DEFAULT 0")
             if "topic" not in {r["name"] for r in self._db.execute("PRAGMA table_info(messages)")}:
@@ -260,12 +262,42 @@ class Store:
 
     def reminder_fired(self, reminder_id: int, next_due: float | None) -> None:
         if next_due is None:
-            self._write("UPDATE reminders SET state = 'done' WHERE id = ?", (reminder_id,))
+            self._write("UPDATE reminders SET state = 'done', last_fired = ? WHERE id = ?", (time.time(), reminder_id))
         else:
-            self._write("UPDATE reminders SET due = ? WHERE id = ?", (next_due, reminder_id))
+            self._write("UPDATE reminders SET due = ?, last_fired = ? WHERE id = ?", (next_due, time.time(), reminder_id))
+
+    def automations(self) -> list[dict]:
+        """Reminders and standing goals that are waiting or paused (the Automations page)."""
+        return [dict(r) for r in self._rows("SELECT * FROM reminders WHERE state IN ('waiting', 'paused') ORDER BY due")]
+
+    def set_reminder_state(self, reminder_id: int, state: str, due: float | None = None) -> bool:
+        with self._lock:
+            if due is None:
+                cur = self._db.execute("UPDATE reminders SET state = ? WHERE id = ? AND state IN ('waiting', 'paused')",
+                                       (state, reminder_id))
+            else:
+                cur = self._db.execute("UPDATE reminders SET state = ?, due = ? WHERE id = ? AND state IN "
+                                       "('waiting', 'paused')", (state, due, reminder_id))
+            self._db.commit()
+            return cur.rowcount > 0
+
+    def edit_reminder(self, reminder_id: int, text: str | None = None, due: float | None = None,
+                      repeat: str | None = None) -> bool:
+        sets, args = [], []
+        for col, val in (("text", text), ("due", due), ("repeat", repeat)):
+            if val is not None:
+                sets.append(f"{col} = ?")
+                args.append(val)
+        if not sets:
+            return False
+        with self._lock:
+            cur = self._db.execute(f"UPDATE reminders SET {', '.join(sets)} WHERE id = ? AND state IN ('waiting', 'paused')",
+                                   (*args, reminder_id))
+            self._db.commit()
+            return cur.rowcount > 0
 
     def cancel_reminder(self, reminder_id: int) -> bool:
-        rows = self._rows("SELECT id FROM reminders WHERE id = ? AND state = 'waiting'", (reminder_id,))
+        rows = self._rows("SELECT id FROM reminders WHERE id = ? AND state IN ('waiting', 'paused')", (reminder_id,))
         if rows:
             self._write("UPDATE reminders SET state = 'cancelled' WHERE id = ?", (reminder_id,))
         return bool(rows)

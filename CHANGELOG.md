@@ -1,6 +1,9 @@
 # Changelog
 
 ## Prometheus 3.0, M2.2 (on the prometheus-v3 branch, not released yet)
+- Automations: reminders and standing goals as cards (repeats, next time, when it last ran and how a goal's
+  last run went); new reminder or goal, pause and resume (a passed time rolls to the next one), edit, change time,
+  run a goal now (schedule unchanged), delete. Watchers: battery, disk and CPU switches, watched folders, latest alerts.
 - Costs moved into Settings → AI models → Costs (this month against your limit, the last 30 days, by model and by chat).
 - Chat files: on wide windows a chat's files sit beside it (a strip above it on narrower ones), with their size;
   Delete sends a file to the Recycle Bin (undo in System → Activity). The Phone page is in the new look, in your menu.

@@ -1,0 +1,99 @@
+{% extends "v3/layout.html" %}
+{% from "v3/icons.html" import icon %}
+{% block title %}Automations · Prometheus{% endblock %}
+{% block topbar %}<b>Automations</b>{% endblock %}
+{% block content %}
+<section class="page automations-page">
+  <h1>Automations</h1>
+  <p class="muted lead">Things Prometheus does by itself: reminders that ring, goals it runs on a schedule, and watchers that speak up.
+    {% if not running %}<b>The reminder clock isn't running right now</b>, so nothing rings until Prometheus restarts.{% endif %}</p>
+
+  <div class="task-filters">
+    <button type="button" class="pill" id="add-reminder">{{ icon("plus") }}New reminder</button>
+    <button type="button" class="pill" id="add-goal">{{ icon("automations") }}New goal</button>
+    <span class="muted small">Or just say it in a chat: “remind me every day at 8 to drink water”, “every Friday at 6pm, tidy Downloads”.</span>
+  </div>
+
+  <h2 class="section">Scheduled <span class="muted">{{ items|length }}</span></h2>
+  <div class="auto-grid">
+  {% for a in items %}
+    <div class="auto-card {{ 'paused' if a.state == 'paused' }}">
+      <div class="skill-top"><b>{{ a.text }}</b>
+        <span class="state {{ 's-paused' if a.state == 'paused' else 's-done' }}">{{ "Paused" if a.state == "paused" else "On" }}</span></div>
+      <dl class="facts auto-facts">
+        <dt>Kind</dt><dd>{{ a.kind_label }} <span class="muted">{{ "(runs it as a task)" if a.kind == "goal" else "(rings and says it)" }}</span></dd>
+        <dt>Repeats</dt><dd>{{ a.repeat_label }}</dd>
+        <dt>Next</dt><dd>{{ "—" if a.state == "paused" else a.next }}</dd>
+        <dt>Last ran</dt><dd>{% if a.last_fired %}{{ a.last_fired|day }} {{ a.last_fired|clock }}{% else %}Not yet{% endif %}
+          {% if a.last %} · <a href="/v3/tasks/{{ a.last.id }}">{{ a.last.label }}</a>{% endif %}</dd>
+        {% if a.chat %}<dt>Chat</dt><dd><a href="/c/{{ a.chat_id }}">{{ a.chat }}</a></dd>{% endif %}
+      </dl>
+      <div class="row-actions">
+        {% if a.state == "paused" %}<button type="button" data-api="/api/v3/automations/{{ a.id }}/pause">Resume</button>
+        {% else %}<button type="button" data-api="/api/v3/automations/{{ a.id }}/pause" data-send='{"on": "1"}'>Pause</button>{% endif %}
+        {% if a.kind == "goal" %}<button type="button" data-api="/api/v3/automations/{{ a.id }}/run" data-confirm="Run this goal now? Its schedule stays the same.">Run now</button>{% endif %}
+        <button type="button" data-api="/api/v3/automations/{{ a.id }}/edit" data-prompt="Change what it says or does" data-value="{{ a.text }}">Edit</button>
+        <button type="button" data-api="/api/v3/automations/{{ a.id }}/when" data-prompt="When? (e.g. “tomorrow at 8am”, “every weekday at 7pm”)">Change time</button>
+        <button type="button" class="danger" data-api="/api/v3/automations/{{ a.id }}/delete" data-confirm="Delete this {{ a.kind_label|lower }}?">Delete</button>
+      </div>
+    </div>
+  {% else %}<p class="muted empty">Nothing scheduled. Add a reminder or a goal above.</p>{% endfor %}
+  </div>
+
+  <h2 class="section">Watchers</h2>
+  <div class="sys-grid">
+    <section class="sys-card">
+      <h2>This laptop</h2>
+      {% for key, label, about, on in switches %}
+      <label class="switch-row"><input type="checkbox" data-watch="{{ key }}" {{ "checked" if on }}>
+        <span>{{ label }} <small class="muted">· {{ about }}</small></span></label>
+      {% endfor %}
+    </section>
+    <section class="sys-card">
+      <h2>Folders</h2>
+      <p class="muted small">New files in a watched folder can start a goal (e.g. “file new PDFs into Documents/PDFs”).</p>
+      <div class="mem-list">{% for f in folders %}<div class="mem-row"><div><p>{{ f.path }}</p><small class="muted">{{ f.goal or "just tell me" }}</small></div>
+        <div class="row-actions"><button type="button" class="danger" data-api="/api/v3/watchers/folders/remove" data-send='{{ {"path": f.path}|tojson }}' data-confirm="Stop watching this folder?">Stop</button></div></div>
+      {% else %}<p class="muted">None.</p>{% endfor %}</div>
+      <a class="pill" href="/settings#watchers">{{ icon("plus") }}Watch a folder</a>
+    </section>
+    <section class="sys-card">
+      <h2>Latest alerts</h2>
+      <div class="mem-list">{% for m in alerts %}<div class="mem-row"><div><p>{{ m.text[:200] }}</p><small class="muted">{{ m.created|day }} {{ m.created|clock }}</small></div></div>
+      {% else %}<p class="muted">None yet.</p>{% endfor %}</div>
+      {% if alerts_chat %}<a class="pill" href="/c/{{ alerts_chat }}">Open the alerts chat</a>{% endif %}
+    </section>
+  </div>
+</section>
+<script>
+(function () {
+  var csrf = document.body.dataset.csrf;
+  function post(url, body) {
+    return fetch(url, { method: "POST", credentials: "same-origin", body: body, headers: { "X-CSRF-Token": csrf } })
+      .then(function (r) { return r.json().then(function (j) { return [r.ok, j]; }); });
+  }
+  function add(kind) {
+    var text = prompt(kind === "goal" ? "What should Prometheus do? (e.g. “tidy my Downloads folder”)" : "What should it remind you of?");
+    if (!text || !text.trim()) return;
+    var when = prompt("When? (e.g. “tomorrow at 8am”, “every day at 7pm”, “every weekday at 9”)");
+    if (!when || !when.trim()) return;
+    var f = new FormData(); f.append("text", text); f.append("when", when); f.append("kind", kind);
+    post("/api/v3/automations/add", f).then(function (x) {
+      if (!x[0]) { promToast(x[1].error || "Couldn't add it.", true); return; }
+      try { sessionStorage.setItem("prom-said", x[1].message); } catch (e) {}
+      location.reload();
+    });
+  }
+  document.getElementById("add-reminder").addEventListener("click", function () { add("reminder"); });
+  document.getElementById("add-goal").addEventListener("click", function () { add("goal"); });
+  document.querySelectorAll("[data-watch]").forEach(function (box) {
+    box.addEventListener("change", function () {
+      var f = new FormData(); if (box.checked) f.append("on", "1");
+      post("/api/v3/watchers/" + box.dataset.watch, f).then(function (x) {
+        if (x[0]) promToast(box.checked ? "On." : "Off."); else { box.checked = !box.checked; promToast(x[1].error || "Couldn't change it.", true); }
+      });
+    });
+  });
+})();
+</script>
+{% endblock %}

@@ -45,6 +45,8 @@ COMMANDS: List[Dict[str, str]] = [
      "description": "The guides Prometheus follows"},
     {"command": "/memory", "label": "Memory", "group": "Go", "kind": "go", "value": "/v3/memory",
      "description": "What it remembers about you"},
+    {"command": "/automations", "label": "Automations", "group": "Go", "kind": "go", "value": "/v3/automations",
+     "description": "Reminders, scheduled goals and watchers"},
     {"command": "/files", "label": "Search my files", "group": "Go", "kind": "go", "value": "/v3/memory?tab=files",
      "description": "Search inside your files, and the files Prometheus made"},
     {"command": "/settings", "label": "Settings", "group": "Go", "kind": "go", "value": "/settings",

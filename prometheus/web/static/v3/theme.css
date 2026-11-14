@@ -791,3 +791,12 @@ html[data-motion="reduced"] *, html[data-motion="reduced"] *::before { animation
 .cost-bars div { flex: 1; height: 100%; display: flex; align-items: flex-end; }
 .cost-bars span { display: block; width: 100%; min-height: 2px; background: rgb(var(--orange-rgb) / 0.7); border-radius: 3px 3px 0 0; }
 .cost-table dt { font-size: 13px; }
+
+/* ---- Automations ----------------------------------------------------------------------------------------- */
+.auto-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 12px; max-width: 1100px; }
+.auto-card { display: flex; flex-direction: column; gap: 8px; padding: 14px 16px; border-radius: var(--r-md);
+             background: rgb(var(--surface-rgb) / 0.55); border: 1px solid rgb(var(--text-rgb) / 0.06); }
+.auto-card.paused { opacity: 0.7; }
+.auto-card .row-actions { opacity: 1; flex-wrap: wrap; }
+.auto-facts { margin: 0; }
+.auto-facts dd { text-align: left; font-family: var(--font); }

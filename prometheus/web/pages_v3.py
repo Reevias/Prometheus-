@@ -49,6 +49,7 @@ def register_pages(app: FastAPI, services, shell) -> None:
     register_memory_pages(app, services, shell)
     register_system_pages(app, services, shell)
     register_approval_pages(app, services, shell)
+    register_automation_pages(app, services, shell)
 
     # ---- Tasks ---------------------------------------------------------------------------------------------------
     def task_rows(status: str, q: str, period: str) -> list[dict]:
@@ -774,3 +775,162 @@ def register_approval_pages(app: FastAPI, services, shell) -> None:
         if said == "Type the password first.":
             return JSONResponse({"error": said}, status_code=400)
         return {"ok": True, "message": said}
+
+
+# ---- Automations -----------------------------------------------------------------------------------------------------
+REPEAT_LABEL = {"": "Once", "daily": "Every day", "weekly": "Every week", "weekdays": "Every weekday"}
+WATCH_SWITCHES = [("watch_battery", "Battery low", "Says so when the battery drops below 20%."),
+                  ("watch_disk", "Disk almost full", "Says so when the main drive is over 90% full."),
+                  ("watch_cpu", "CPU busy", "Says so when the CPU is over 90% for 5 minutes.")]
+AUTOMATIONS_CHAT = "Automations"
+
+
+def register_automation_pages(app: FastAPI, services, shell) -> None:
+    from fastapi import Form
+
+    from prometheus.config import save_settings
+    from prometheus.reminders import WhenError, describe, next_time, parse_when
+
+    store = services.store
+
+    def chat_named(title: str, create: bool = False) -> int:
+        for cid, t in store.chats():
+            if t == title:
+                return cid
+        if not create:
+            return 0
+        cid = store.create_chat(title)
+        store.rename_chat(cid, title, by="user")
+        return cid
+
+    def last_result(r: dict) -> dict | None:
+        """A goal's latest run: the newest task with its words in its chat."""
+        if r.get("kind") != "goal":
+            return None
+        rows = store._rows("SELECT id, status, created FROM tasks WHERE chat_id = ? AND text = ? ORDER BY id DESC LIMIT 1",
+                           (r["chat_id"], r["text"]))
+        if not rows:
+            return None
+        from prometheus.web.pages_v3 import STATUS_LABEL
+        t = dict(rows[0])
+        return {**t, "label": STATUS_LABEL.get(t["status"], t["status"].title())}
+
+    @app.get("/v3/automations")
+    def automations_page(request: Request):
+        now = time.time()
+        titles = dict(store.chats())
+        items = []
+        for r in store.automations():
+            items.append({**r, "kind_label": "Goal" if r.get("kind") == "goal" else "Reminder",
+                          "repeat_label": REPEAT_LABEL.get(r.get("repeat") or "", r.get("repeat") or "Once"),
+                          "next": describe(r["due"], now) if r["due"] > now else "now (it was due while paused or off)",
+                          "chat": titles.get(r["chat_id"], ""), "last": last_result(r)})
+        s = services.settings
+        alerts_id = chat_named("Prometheus alerts")
+        alerts = [m for m in store.messages(alerts_id)][-8:][::-1] if alerts_id else []
+        return shell(request, "v3/automations.html", "automations", items=items,
+                     switches=[(k, label, about, bool(getattr(s, k, False))) for k, label, about in WATCH_SWITCHES],
+                     folders=list(s.watch_folders or []), alerts=alerts, alerts_chat=alerts_id,
+                     running="prometheus-reminders" in {t.name for t in __import__("threading").enumerate()})
+
+    def bad(text: str, code: int = 400):
+        return JSONResponse({"error": text}, status_code=code)
+
+    def item(reminder_id: int) -> dict | None:
+        rows = store._rows("SELECT * FROM reminders WHERE id = ? AND state IN ('waiting', 'paused')", (reminder_id,))
+        return dict(rows[0]) if rows else None
+
+    @app.post("/api/v3/automations/add")
+    def api_automation_add(text: str = Form(""), when: str = Form(""), kind: str = Form("reminder")):
+        text = " ".join(text.split())[:300]
+        if not text:
+            return bad("Say what it should remind you of, or do.")
+        try:
+            w = parse_when(when)
+        except WhenError as e:
+            return bad(str(e) or "I couldn't tell when. Try “tomorrow at 8am” or “every day at 7pm”.")
+        kind = "goal" if kind == "goal" else "reminder"
+        rid = store.add_reminder(chat_named(AUTOMATIONS_CHAT, create=True), text, w.due, w.repeat, kind)
+        store.audit("user", "add_automation", {"id": rid, "kind": kind})
+        return {"ok": True, "message": f"Added: {text}, {REPEAT_LABEL.get(w.repeat, w.repeat).lower()}, next {describe(w.due)}."}
+
+    @app.post("/api/v3/automations/{reminder_id}/pause")
+    def api_automation_pause(reminder_id: int, on: str = Form("")):
+        r = item(reminder_id)
+        if r is None:
+            return bad("It's gone.", 404)
+        if on:
+            store.set_reminder_state(reminder_id, "paused")
+            store.audit("user", "pause_automation", {"id": reminder_id})
+            return {"ok": True, "message": "Paused: it won't run until you resume it."}
+        due, now = r["due"], time.time()
+        while due <= now and r.get("repeat"):
+            nxt = next_time(due, r["repeat"])
+            if nxt is None:
+                break
+            due = nxt
+        store.set_reminder_state(reminder_id, "waiting", due)
+        store.audit("user", "resume_automation", {"id": reminder_id})
+        return {"ok": True, "message": "Resumed." + (" Its time had passed, so it runs within a minute." if due <= now else "")}
+
+    @app.post("/api/v3/automations/{reminder_id}/edit")
+    def api_automation_edit(reminder_id: int, text: str = Form("")):
+        text = " ".join(text.split())[:300]
+        if not text:
+            return bad("It needs some words: delete it instead.")
+        if not store.edit_reminder(reminder_id, text=text):
+            return bad("It's gone.", 404)
+        store.audit("user", "edit_automation", {"id": reminder_id})
+        return {"ok": True}
+
+    @app.post("/api/v3/automations/{reminder_id}/when")
+    def api_automation_when(reminder_id: int, text: str = Form("")):
+        try:
+            w = parse_when(text)
+        except WhenError as e:
+            return bad(str(e) or "I couldn't tell when. Try “tomorrow at 8am” or “every weekday at 7”.")
+        if not store.edit_reminder(reminder_id, due=w.due, repeat=w.repeat):
+            return bad("It's gone.", 404)
+        store.audit("user", "edit_automation", {"id": reminder_id})
+        return {"ok": True, "message": f"Next: {describe(w.due)} ({REPEAT_LABEL.get(w.repeat, w.repeat).lower()})."}
+
+    @app.post("/api/v3/automations/{reminder_id}/run")
+    def api_automation_run(reminder_id: int):
+        """Run a standing goal now; its schedule doesn't change."""
+        r = item(reminder_id)
+        if r is None:
+            return bad("It's gone.", 404)
+        if r.get("kind") != "goal":
+            return bad("Only goals can run now; a reminder just rings at its time.", 409)
+        if r["chat_id"] in services.running:
+            return bad("Its chat is busy right now. Try again in a moment.", 409)
+        services.start_task(r["chat_id"], r["text"])
+        store.audit("user", "run_automation", {"id": reminder_id})
+        return {"ok": True, "message": "Running it now: follow it in Tasks or its chat."}
+
+    @app.post("/api/v3/automations/{reminder_id}/delete")
+    def api_automation_delete(reminder_id: int):
+        if not store.cancel_reminder(reminder_id):
+            return bad("It's gone.", 404)
+        store.audit("user", "delete_automation", {"id": reminder_id})
+        return {"ok": True}
+
+    @app.post("/api/v3/watchers/{key}")
+    def api_watcher_switch(key: str, on: str = Form("")):
+        if key not in {k for k, _, _ in WATCH_SWITCHES}:
+            return bad("Unknown watcher.", 404)
+        setattr(services.settings, key, bool(on))
+        save_settings(services.settings)
+        store.audit("user", "switch_watcher", {"watcher": key, "on": bool(on)})
+        return {"ok": True}
+
+    @app.post("/api/v3/watchers/folders/remove")
+    def api_watch_folder_remove(path: str = Form("")):
+        s = services.settings
+        kept = [f for f in (s.watch_folders or []) if f.get("path") != path]
+        if len(kept) == len(s.watch_folders or []):
+            return bad("That folder isn't watched.", 404)
+        s.watch_folders = kept
+        save_settings(s)
+        store.audit("user", "remove_watch_folder", {"path": path[:200]})
+        return {"ok": True}

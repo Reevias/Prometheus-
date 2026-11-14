@@ -463,3 +463,71 @@ def test_costs_live_in_settings(app_client):
     assert 'id="costs"' in page and "claude-sonnet" in page and "Physics notes" in page and "$0.0123" in page
     assert client.get("/costs", follow_redirects=False).headers["location"] == "/settings#costs"
     assert "What paid AI has cost" in client.get("/costs?view=classic").text
+
+
+# ---- Automations ----------------------------------------------------------------------------------------------------
+def test_automations_add_pause_resume_edit_run_delete(app_client):
+    client, services = app_client()
+    h = {"X-CSRF-Token": login(client)}
+    st = services.store
+    r = client.post("/api/v3/automations/add", data={"text": "drink water", "when": "every day at 8am"}, headers=h)
+    assert r.status_code == 200, r.text
+    assert client.post("/api/v3/automations/add", data={"text": "x", "when": "whenever"}, headers=h).status_code == 400
+    client.post("/api/v3/automations/add", data={"text": "tidy Downloads", "when": "tomorrow at 9", "kind": "goal"}, headers=h)
+    page = client.get("/v3/automations").text
+    for part in ("drink water", "Every day", "tidy Downloads", "Goal", "Run now", 'href="/v3/automations"'):
+        assert part in page, part
+    water = [a for a in st.automations() if a["text"] == "drink water"][0]
+    goal = [a for a in st.automations() if a["text"] == "tidy Downloads"][0]
+    # pause: the clock skips it; resume: a passed time rolls to the next one
+    client.post(f"/api/v3/automations/{water['id']}/pause", data={"on": "1"}, headers=h)
+    st._write("UPDATE reminders SET due = ? WHERE id = ?", (time.time() - 3 * 86400, water["id"]))
+    assert all(r["id"] != water["id"] for r in st.reminders_due(time.time()))
+    assert "Paused" in client.get("/v3/automations").text
+    client.post(f"/api/v3/automations/{water['id']}/pause", data={}, headers=h)
+    resumed = [a for a in st.automations() if a["id"] == water["id"]][0]
+    assert resumed["state"] == "waiting" and resumed["due"] > time.time()
+    # edit words and time
+    assert client.post(f"/api/v3/automations/{water['id']}/edit", data={"text": "drink 2 glasses"}, headers=h).json()["ok"]
+    assert client.post(f"/api/v3/automations/{water['id']}/when", data={"text": "every weekday at 7pm"}, headers=h).json()["ok"]
+    changed = [a for a in st.automations() if a["id"] == water["id"]][0]
+    assert changed["text"] == "drink 2 glasses" and changed["repeat"] == "weekdays"
+    # run now: goals only, schedule unchanged
+    assert client.post(f"/api/v3/automations/{water['id']}/run", headers=h).status_code == 409
+    before = goal["due"]
+    assert client.post(f"/api/v3/automations/{goal['id']}/run", headers=h).json()["ok"]
+    for _ in range(100):
+        if goal["chat_id"] not in services.running and st.list_tasks(q="tidy Downloads"):
+            break
+        time.sleep(0.05)
+    assert st.list_tasks(q="tidy Downloads") and [a for a in st.automations() if a["id"] == goal["id"]][0]["due"] == before
+    # delete
+    assert client.post(f"/api/v3/automations/{water['id']}/delete", headers=h).json()["ok"]
+    assert client.post(f"/api/v3/automations/{water['id']}/delete", headers=h).status_code == 404
+
+
+def test_reminder_firing_records_when_it_ran(app_client):
+    client, services = app_client()
+    login(client)
+    st = services.store
+    cid = st.create_chat("r")
+    rid = st.add_reminder(cid, "stretch", time.time() - 5, "daily")
+    services.reminders.tick()
+    row = [a for a in st.automations() if a["id"] == rid][0]
+    assert row["last_fired"] > 0 and row["due"] > time.time()
+
+
+def test_watcher_switches_and_folders(app_client):
+    client, services = app_client()
+    h = {"X-CSRF-Token": login(client)}
+    s = services.settings
+    client.post("/api/v3/watchers/watch_cpu", data={"on": "1"}, headers=h)
+    assert s.watch_cpu is True
+    client.post("/api/v3/watchers/watch_battery", data={}, headers=h)
+    assert s.watch_battery is False
+    assert client.post("/api/v3/watchers/password", data={"on": "1"}, headers=h).status_code == 404
+    s.watch_folders = [{"path": "C:/Users/me/Downloads", "goal": "file PDFs"}]
+    assert "C:/Users/me/Downloads" in client.get("/v3/automations").text
+    assert client.post("/api/v3/watchers/folders/remove", data={"path": "C:/Users/me/Downloads"}, headers=h).json()["ok"]
+    assert s.watch_folders == []
+    assert client.post("/api/v3/watchers/folders/remove", data={"path": "x"}, headers=h).status_code == 404

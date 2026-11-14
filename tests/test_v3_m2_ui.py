@@ -90,7 +90,8 @@ def test_sidebar_links_all_lead_to_real_pages(app_client):
         r = client.get(href)
         assert r.status_code == 200, href
     labels = re.findall(r"<span>([^<]+)</span></a>", nav)
-    assert "Projects" not in labels and "Automations" not in labels   # not built yet: hidden, not dead
+    assert "Projects" not in labels                                     # not built yet (M2.3): hidden, not dead
+    assert "Automations" in labels and "System" in labels               # built in M2.2
 
 
 def test_send_starts_a_chat_and_shows_the_answer(app_client):
