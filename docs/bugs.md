@@ -2,7 +2,12 @@
 
 Every bug found and fixed, newest first, so the count is always exact. Add a line for each new one.
 
-**Total fixed: 54** (as of 13 November 2026)
+**Total fixed: 55** (as of 14 November 2026)
+
+## 14 November 2026 (1)
+| # | Bug | Fixed by |
+|---|---|---|
+| 55 | Every test run on GitHub failed since the taskbar fix (the dependency check didn't know `System` comes with pywebview on Windows) | `System` listed as provided by pywebview's Windows backend in `scripts/m0_baseline.py` |
 
 ## 13 November 2026 (5)
 | # | Bug | Fixed by |
