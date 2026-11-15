@@ -910,3 +910,65 @@ html[data-motion="reduced"] *, html[data-motion="reduced"] *::before { animation
 .project-files { border-top: 1px solid rgb(var(--text-rgb) / 0.08); margin-top: 4px; padding-top: 6px; max-height: 240px; overflow: auto; }
 .project-files small { display: block; padding: 2px 12px 4px; }
 #import-label { cursor: pointer; }
+
+/* ---- phones (M2.4): one column, the menu slides out, no right panel ---------------------------------------- */
+.menu-btn, .drawer-shade { display: none; }
+@media (max-width: 700px) {
+  .app { grid-template-columns: 0 minmax(0, 1fr) 0; height: 100dvh; }
+  .app .sidebar { position: fixed; z-index: 60; top: 0; bottom: 0; left: 0; width: min(300px, 86vw); grid-row: auto;
+                  transform: translateX(-105%); transition: transform .2s ease; box-shadow: 0 0 60px rgb(var(--shadow-rgb) / 0.6);
+                  background: var(--base); overflow-y: auto; }
+  .app.drawer-open .sidebar { transform: none; }
+  .app.drawer-open .drawer-shade { display: block; position: fixed; inset: 0; z-index: 55; background: rgb(var(--shadow-rgb) / 0.5); }
+  .app .sidebar .brand-text, .app .sidebar .nav a span, .app .sidebar .profile-name { display: initial; }
+  .app .sidebar .nav a { justify-content: flex-start; padding: 11px 14px; }
+  .app .sidebar .collapse { display: none; }
+  .menu-btn { display: grid; flex: none; }
+  .rpanel, #panel-toggle, .win { display: none !important; }
+  .topbar { padding: 0 8px; gap: 6px; }
+  .topbar-title { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .topbar-title canvas { display: none; }
+  .stopall { padding: 5px 9px; font-size: 12px; }
+  .page { padding: 6px 14px 90px; }
+  .page h1 { font-size: 24px; }
+  .page .lead { font-size: 14px; }
+  .chat { padding: 0 10px 12px; }
+  .hero-sphere { height: 30vh; }
+  .quick, .recent { display: none; }
+  .command { width: 100%; }
+  .bar { flex-wrap: wrap; gap: 6px; padding: 8px 10px; align-items: center; }
+  .bar textarea { order: -1; flex: 1 0 100%; font-size: 16px; padding: 8px 4px; }
+  .bar .plus, .bar .mic, .bar .send { width: 40px; height: 40px; }
+  .bar .send { margin-left: auto; }
+  .model-chip { flex: 1 1 0; min-width: 0; max-width: none; }
+  .task-filters { gap: 8px; }
+  .task-filters .search, .search { width: 100%; }
+  .tasks-page[data-view=table] .task-head, .tasks-page[data-view=table] .task-row { grid-template-columns: minmax(0, 1fr) 90px; }
+  .tasks-page[data-view=table] .task-meta { display: none; }
+  .board { grid-template-columns: repeat(5, 78vw); }
+  .research-cols, .privacy, .sys-grid, .auto-grid, .skill-grid { grid-template-columns: 1fr; }
+  .privacy .priv-card, .sys-card { min-width: 0; }
+  .log-row { grid-template-columns: 1fr; gap: 2px; }
+  .mem-row { flex-wrap: wrap; }
+  .mem-row .row-actions { opacity: 1; }
+  .toasts { left: 12px; right: 12px; bottom: 12px; }
+  .toast { max-width: none; }
+  .profile-menu { width: min(280px, 80vw); }
+  .msg.user .actions { opacity: 1; }
+}
+.mic.talk.on { background: rgb(var(--orange-rgb) / 0.25); box-shadow: 0 0 18px rgb(var(--orange-rgb) / 0.6); }
+
+/* ---- chat: live controls (reader, browser) and notes (moved from the old chat screen) --------------------- */
+.chat-live { width: min(860px, 100%); }
+.live-card { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 10px 14px; margin: 4px 0 8px; border-radius: 12px;
+             background: rgb(var(--surface-rgb) / 0.75); border: 1px solid rgb(var(--orange-rgb) / 0.35); }
+.reader-card { flex-direction: column; align-items: stretch; }
+.reader-card p { margin: 0; }
+.reader-now { font-size: 15px; line-height: 1.5; }
+.live-card .row-actions { opacity: 1; flex-wrap: wrap; }
+.notes-pop { min-width: 300px; max-width: 420px; }
+.note-row { display: flex; gap: 8px; align-items: flex-start; padding: 6px 10px; font-size: 13.5px; }
+.note-row span { flex: 1; }
+.note-row button { width: auto; padding: 0 6px; }
+.mini-head { font-size: 13px; font-weight: 500; color: var(--muted); margin: 14px 0 6px; }
+@media (min-width: 1500px) { .chat:has(.files-strip) .chat-live { grid-column: 1; grid-row: 1; align-self: start; z-index: 3; } }

@@ -834,3 +834,66 @@ def test_todays_repos_use_json_actions(app_client, monkeypatch):
     assert client.post("/api/v3/skills/trending/1/add", headers=h).json()["ok"]
     assert client.post("/api/v3/skills/trending/9/add", headers=h).status_code == 409
     assert "today's 10" in client.post("/api/v3/skills/trending/refresh", headers=h).json()["message"]
+
+
+# ---- M2.4: Devices tab ---------------------------------------------------------------------------------------------
+def test_devices_tab_shows_only_what_can_be_read(app_client, monkeypatch):
+    client, services = app_client()
+    h = {"X-CSRF-Token": login(client)}
+    page = client.get("/v3/system?tab=devices").text
+    assert "This laptop" in page and "Cloud copy" in page and "Not set up" in page and "Phone control" in page
+    assert client.post("/api/v3/devices/cloud/check", headers=h).status_code == 409          # nothing set up: no guess
+    assert client.post("/api/v3/devices/phone/check", headers=h).status_code == 409
+    assert client.post("/api/v3/devices/fridge/check", headers=h).status_code == 404
+    services.settings.cloud_url = "http://100.64.0.9:8000"
+    import httpx
+
+    class R:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"app": "prometheus"}
+
+    monkeypatch.setattr(httpx, "get", lambda url, timeout=0: R())
+    r = client.post("/api/v3/devices/cloud/check", headers=h)
+    assert r.status_code == 200 and "online" in r.json()["message"]
+    monkeypatch.setattr(httpx, "get", lambda url, timeout=0: (_ for _ in ()).throw(httpx.ConnectError("x")))
+    assert client.post("/api/v3/devices/cloud/check", headers=h).status_code == 502
+
+
+# ---- M2.4: features moved over from the old screens ---------------------------------------------------------------
+def test_chat_notes_reader_browser_and_anki_in_the_new_look(app_client, monkeypatch):
+    client, services = app_client()
+    h = {"X-CSRF-Token": login(client)}
+    st = services.store
+    cid = st.create_chat("Notes")
+    assert client.post(f"/api/v3/chats/{cid}/notes", data={"text": "use metric units"}, headers=h).json()["ok"]
+    page = client.get(f"/c/{cid}").text
+    assert "use metric units" in page and 'id="notes-btn"' in page
+    nid = st.chat_notes(cid)[0].id
+    assert client.post(f"/api/v3/chats/{cid}/notes/{nid}/delete", headers=h).json()["ok"] and st.chat_notes(cid) == []
+    # nothing being read, no browser: the live strip is empty and the controls refuse plainly
+    live = client.get(f"/c/{cid}/live").text
+    assert "Reading:" not in live and "Take over" not in live
+    assert client.post("/api/v3/reader/pause", headers=h).status_code == 409
+    from prometheus.voice import reader as _reader
+
+    class R:
+        calls = []
+        def status(self):
+            return {"state": "reading", "title": "Chapter 2", "index": 0, "total": 3, "before": "", "now": "Cells divide.",
+                    "after": "Then…", "speed": 1.0}
+        def pause(self):
+            R.calls.append("pause")
+    monkeypatch.setattr(_reader, "CURRENT", R())
+    live = client.get(f"/c/{cid}/live").text
+    assert "Reading: Chapter 2" in live and "Cells divide." in live and "/api/v3/reader/pause" in live
+    assert client.post("/api/v3/reader/pause", headers=h).json()["ok"] and R.calls == ["pause"]
+    assert client.post("/api/v3/reader/dance", headers=h).status_code == 404
+    from prometheus.agents import study_agent
+    if study_agent.STUDY is not None:
+        study_agent.STUDY.add("physics", "Unit of force?", "newton")
+        assert "Export to Anki" in client.get("/v3/research?mode=study").text
+        r = client.post("/api/v3/study/export", data={"deck": "physics"}, headers=h)
+        assert r.status_code == 200 and "Anki" in r.json()["message"]

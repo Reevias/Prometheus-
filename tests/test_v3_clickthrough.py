@@ -162,7 +162,7 @@ def test_every_control_does_something_and_nothing_breaks(live, browser):
     page.wait_for_url(base + "/")
     for path in ("/", "/v3/chats", f"/c/{chat}", "/v3/agents", "/v3/agents?show=code", "/v3/tasks", "/v3/tasks/1",
                  "/v3/skills", "/v3/skills/research", "/v3/skills?tab=tools", "/v3/memory", "/v3/memory?tab=files",
-                 "/v3/memory?tab=answers", "/v3/memory?tab=topics", "/v3/system", "/v3/system?tab=activity", "/v3/approvals",
+                 "/v3/memory?tab=answers", "/v3/memory?tab=topics", "/v3/system", "/v3/system?tab=devices", "/v3/system?tab=activity", "/v3/approvals",
                  "/v3/automations", "/v3/research", "/v3/research?mode=study", "/v3/research?mode=money",
                  "/v3/connections", "/v3/tasks?view=board", "/v3/tasks?view=timeline", "/v3/tasks?view=table",
                  "/v3/automations/new", "/v3/projects", "/v3/projects/1", "/v3/projects/1?tab=chats",
@@ -192,3 +192,35 @@ def test_every_control_does_something_and_nothing_breaks(live, browser):
     assert not errors, errors
     assert not server_errors, server_errors
     assert not problems, "\n".join(problems)
+
+
+def test_phone_width_fits(live, browser):
+    """M2.4: at phone width, the command bar's buttons sit on one row under the text box, nothing runs off the
+    side, the right panel is gone, and the menu button opens the sidebar as a drawer."""
+    base, chat = live
+    page = browser.new_page(viewport={"width": 360, "height": 740})
+    page.goto(base + "/login")
+    page.fill("input[name=password]", PASSWORD)
+    page.press("input[name=password]", "Enter")
+    page.wait_for_url(base + "/")
+    for path in ("/", f"/c/{chat}"):
+        page.goto(base + path)
+        # the test has no voice and one short AI name: add a mic and a long name, as on the laptop
+        page.evaluate("() => { if (!document.querySelector('#mic')) document.querySelector('#send').insertAdjacentHTML"
+                      "('beforebegin', '<button type=\"button\" class=\"mic\" id=\"mic\">m</button>'); }")
+        page.evaluate("() => { var c = document.querySelector('#model-chip'); if (!c) { document.querySelector('#send')"
+                      ".insertAdjacentHTML('beforebegin', '<select class=\"model-chip\" id=\"model-chip\"></select>');"
+                      " c = document.querySelector('#model-chip'); } c.add(new Option('Gemini 2.5 Flash (Google, free)')); }")
+        tops = page.evaluate("() => ['#plus', '#model-chip', '#mic', '#send'].map(s => document.querySelector(s))"
+                             ".filter(Boolean).map(e => Math.round(e.getBoundingClientRect().top))")
+        assert max(tops) - min(tops) < 12, (path, tops)        # one row (the chip is shorter, so it sits a little lower)
+        assert page.evaluate("() => document.documentElement.scrollWidth <= innerWidth + 1"), path
+        assert not page.is_visible(".rpanel")
+    for path in ("/v3/tasks", "/v3/system?tab=devices", "/v3/projects", "/v3/automations", "/v3/research"):
+        page.goto(base + path)
+        assert page.evaluate("() => document.documentElement.scrollWidth <= innerWidth + 1"), path
+    page.goto(base + "/")
+    assert page.evaluate("() => document.querySelector('.sidebar').getBoundingClientRect().right <= 0")
+    page.click("#menu-btn")
+    page.wait_for_timeout(300)
+    assert page.evaluate("() => document.querySelector('.sidebar').getBoundingClientRect().left >= 0")

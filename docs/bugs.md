@@ -2,7 +2,13 @@
 
 Every bug found and fixed, newest first, so the count is always exact. Add a line for each new one.
 
-**Total fixed: 64** (as of 15 November 2026)
+**Total fixed: 66** (as of 15 November 2026)
+
+## 15 November 2026, M2.4 (2)
+| # | Bug | Fixed by |
+|---|---|---|
+| 66 | Phone width: the send button fell onto a third row of the ask box (the AI picker was too wide to share the row) | the picker shrinks to fit; a phone-width browser test checks the row |
+| 65 | Reader buttons in a chat failed with a server error when the reader wasn't running or lacked a control | each control is looked up only when pressed, and refused plainly when nothing is being read |
 
 ## 15 November 2026 (6)
 From the M2.2 audit (F1-F4). F3 checked: Topics come from a chat's searchable parts, which are removed when the chat

@@ -130,7 +130,7 @@ def register_routes(app: FastAPI, services: Services) -> None:
         from prometheus.projects import chat_project
 
         return shell(request, "v3/chat.html", "chats", chat_id=chat_id, chat_title=store.chat_title(chat_id),
-                     project=chat_project(store, chat_id), messages=msgs, ratings=store.ratings_for(chat_id), asks=store.asks_for_chat(chat_id),
+                     project=chat_project(store, chat_id), notes=store.chat_notes(chat_id), messages=msgs, ratings=store.ratings_for(chat_id), asks=store.asks_for_chat(chat_id),
                      busy=busy, doing=current_step(chat_id) if busy else "", steps_by=steps_for(chat_id, msgs),
                      live_steps=running_steps(chat_id) if busy else [])
 

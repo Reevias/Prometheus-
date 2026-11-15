@@ -1,5 +1,15 @@
 # Changelog
 
+## Prometheus 3.0, M2.4 (on the prometheus-v3 branch, not released yet)
+- Phones get the new look: the menu opens from a button at the top left as a drawer, the right panel is gone, the ask
+  box puts its buttons under the text, and pages stack into one column. Hold-to-talk and spoken answers where the
+  phone's browser supports them; turn on notifications from the bell.
+- System → **Devices**: the health of each device, as far as Prometheus can really read it: this laptop (live CPU,
+  memory, disk), the cloud copy (Check now asks it for real) and the phone (notifications on, and its battery when
+  phone control is set up).
+- Moved from the old screens into the new ones: the reader's controls and the browser's Stop in a chat, chat notes,
+  quiz sheets and Export to Anki in Study, and Research's "To project".
+
 ## Prometheus 3.0, M2.3 (on the prometheus-v3 branch, not released yet)
 - Projects (in the menu after Chats): a folder, its chats, notes and your instructions together. New project (its files
   go in Documents\Prometheus Projects\<name>) or from a folder you choose (it must be a place Prometheus may use).

@@ -582,3 +582,73 @@
   });
   if (input && input.autofocus) input.focus();
 })();
+
+// ---- phones (M2.4): the new look on a phone ------------------------------------------------------------------
+// The menu slides out; the right panel is gone (device health is in System → Devices); the mic uses the phone's own
+// speech recognition (hold to talk) and reads the answer out; notifications and "add to home screen" work as before.
+(function () {
+  var phone = window.matchMedia("(max-width: 700px)"), touch = window.matchMedia("(pointer: coarse)");
+  var app = document.getElementById("app"), btn = document.getElementById("menu-btn"), shade = document.getElementById("drawer-shade");
+  function drawer(open) {
+    if (!app) return;
+    app.classList.toggle("drawer-open", open);
+    if (shade) shade.hidden = !open;
+    if (btn) btn.setAttribute("aria-expanded", String(open));
+  }
+  if (btn) btn.addEventListener("click", function () { drawer(!app.classList.contains("drawer-open")); });
+  if (shade) shade.addEventListener("click", function () { drawer(false); });
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape") drawer(false); });
+  document.querySelectorAll("#sidebar .nav a").forEach(function (a) { a.addEventListener("click", function () { drawer(false); }); });
+  phone.addEventListener("change", function () { if (!phone.matches) drawer(false); });
+
+  if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(function () {});
+  var csrf = document.body.dataset.csrf;
+  var nb = document.getElementById("notify-btn");
+  if (nb && touch.matches && "PushManager" in window) {
+    nb.hidden = false;
+    nb.addEventListener("click", function () {
+      Notification.requestPermission().then(function (perm) {
+        if (perm !== "granted") { window.promToast && promToast("Notifications are off for this browser.", true); return; }
+        return navigator.serviceWorker.ready.then(function (reg) {
+          return fetch("/push/key", { credentials: "same-origin" }).then(function (r) { return r.text(); }).then(function (key) {
+            var raw = atob(key.replace(/-/g, "+").replace(/_/g, "/") + "==".slice(0, (4 - key.length % 4) % 4));
+            return reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: Uint8Array.from(raw, function (c) { return c.charCodeAt(0); }) });
+          }).then(function (sub) {
+            return fetch("/push/subscribe", { method: "POST", credentials: "same-origin", body: JSON.stringify(sub),
+                         headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf } });
+          }).then(function (r) { window.promToast && promToast(r.ok ? "Notifications are on for this phone." : "Couldn't turn them on.", !r.ok); });
+        });
+      }).catch(function () { window.promToast && promToast("This browser can't show notifications. Add Prometheus to the home screen first.", true); });
+    });
+  }
+
+  // hold to talk, on touch screens: the phone listens (the laptop's microphone is far away)
+  var Rec = window.SpeechRecognition || window.webkitSpeechRecognition, talk = document.getElementById("talk");
+  var lapMic = document.getElementById("mic");
+  if (talk && touch.matches && Rec) {
+    talk.hidden = false;
+    if (lapMic) lapMic.hidden = true;
+    var rec = null;
+    talk.addEventListener("pointerdown", function (e) {
+      e.preventDefault();
+      rec = new Rec(); rec.lang = "en-IN"; rec.interimResults = false; rec.maxAlternatives = 1;
+      talk.classList.add("on");
+      rec.onresult = function (ev) {
+        var text = ev.results[0][0].transcript, form = document.getElementById("command"), box = document.getElementById("command-input");
+        if (!form || !box) return;
+        box.value = text; box.dispatchEvent(new Event("input")); window.promSpeakNext = true; form.requestSubmit();
+      };
+      rec.onend = function () { talk.classList.remove("on"); };
+      rec.start();
+    });
+    ["pointerup", "pointerleave", "pointercancel"].forEach(function (n) { talk.addEventListener(n, function () { if (rec) rec.stop(); }); });
+  }
+  // the answer to a spoken question is read out loud on the phone
+  document.body.addEventListener("htmx:afterSwap", function () {
+    if (!window.promSpeakNext || !("speechSynthesis" in window)) return;
+    var msgs = document.querySelectorAll("#messages .msg.assistant"), last = msgs[msgs.length - 1];
+    if (!last || last.dataset.spoken || document.querySelector("#messages .working")) return;
+    last.dataset.spoken = "1"; window.promSpeakNext = false;
+    var u = new SpeechSynthesisUtterance(last.innerText.slice(0, 600)); u.lang = "en-IN"; speechSynthesis.speak(u);
+  });
+})();

@@ -93,6 +93,7 @@ def register_pages(app: FastAPI, services, shell) -> None:
     register_connection_pages(app, services, shell)
     register_builder_pages(app, services, shell)
     register_project_pages(app, services, shell)
+    register_switchover_pages(app, services, shell)
 
     # ---- Tasks ---------------------------------------------------------------------------------------------------
     def task_rows(status: str, q: str, period: str) -> list[dict]:
@@ -824,12 +825,60 @@ def register_system_pages(app: FastAPI, services, shell) -> None:
                           "what": plain_action(r["action"]), "detail": text, "at": r["created"]})
         return {"log": log, "runs": runs, "audit": audit}
 
+    def devices() -> dict:
+        """Each device and only what Prometheus can really read about it (M2.4: health of all your devices)."""
+        s = services.settings
+        subs = 0
+        try:
+            subs = len(store._rows("SELECT endpoint FROM push_subs"))
+        except Exception:
+            pass
+        since = float(store.kv_get("sync_since", 0) or 0)
+        return {"cloud_url": (s.cloud_url or "").rstrip("/"), "sync_status": store.kv_get("sync_status", "") or "",
+                "synced": since, "phone_target": getattr(s, "phone_target", "") or "", "push_devices": subs,
+                "role": getattr(s, "role", "laptop")}
+
     @app.get("/v3/system")
     def system_page(request: Request, tab: str = "overview", q: str = ""):
-        tab = tab if tab in ("overview", "activity") else "overview"
+        tab = tab if tab in ("overview", "activity", "devices") else "overview"
         q = q.strip()[:100]
-        ctx = overview() if tab == "overview" else activity(q)
+        ctx = activity(q) if tab == "activity" else devices() if tab == "devices" else overview()
         return shell(request, "v3/system.html", "system", tab=tab, q=q, **ctx)
+
+    @app.post("/api/v3/devices/{which}/check")
+    def api_device_check(which: str):
+        """Check a device now: the cloud copy answers (and how fast), or the phone's battery over wireless debugging."""
+        import httpx
+
+        s = services.settings
+        if which == "cloud":
+            url = (s.cloud_url or "").rstrip("/")
+            if not url:
+                return JSONResponse({"error": "No cloud copy is set up."}, status_code=409)
+            started = time.monotonic()
+            try:
+                r = httpx.get(f"{url}/healthz", timeout=6.0)
+                r.raise_for_status()
+                ok = r.json().get("app") == "prometheus"
+            except Exception as e:
+                return JSONResponse({"error": f"The cloud copy didn't answer ({type(e).__name__}). Is Tailscale on?"},
+                                    status_code=502)
+            ms = round((time.monotonic() - started) * 1000)
+            if not ok:
+                return JSONResponse({"error": "Something answered at that address, but it isn't Prometheus."}, status_code=502)
+            return {"ok": True, "message": f"The cloud copy is online (answered in {ms} ms)."}
+        if which == "phone":
+            target = getattr(s, "phone_target", "") or ""
+            if not target:
+                return JSONResponse({"error": "Phone control isn't set up (Settings → Phone control)."}, status_code=409)
+            try:
+                from prometheus.connectors.android import Phone
+                said = Phone(target).battery()
+            except Exception as e:
+                return JSONResponse({"error": f"Couldn't reach the phone ({type(e).__name__}). Is wireless debugging on?"},
+                                    status_code=502)
+            return {"ok": True, "message": said}
+        return JSONResponse({"error": "Unknown device."}, status_code=404)
 
     @app.post("/api/v3/activity/undo")
     def api_activity_undo(source: str = Form(...), id: str = Form(...)):
@@ -1158,7 +1207,7 @@ def register_research_pages(app: FastAPI, services, shell) -> None:
         deadlines = [{**a, "when": _when(a["due"]), "soon": a["due"] - _t.time() < 3 * 86400}
                      for a in (tr.upcoming(60) if tr else [])]
         return {"decks": decks, "due_total": sum(d.get("due") or 0 for d in decks), "exams": exams,
-                "deadlines": deadlines, "study_ready": st is not None}
+                "deadlines": deadlines, "study_ready": st is not None, "sheets": quiz_sheets(services)}
 
     def money_view() -> dict:
         import time as _t
@@ -1904,3 +1953,96 @@ def register_project_pages(app: FastAPI, services, shell) -> None:
             return {"project": None, "files": []}
         return {"project": p["name"], "files": [{"rel": f["rel"], "path": f["path"]} for f in pj.files(p, 60)
                                                 if not f["dir"]][:30]}
+
+
+# ---- M2.4: what only the old screens had, moved into the new look -----------------------------------------------------
+def quiz_sheets(services) -> list[dict]:
+    """The quiz sheets (PDFs) the study agent made, newest first (Research → Study)."""
+    from prometheus.agents import study_agent
+
+    st, out = study_agent.STUDY, []
+    if st is not None and st.folder is not None and st.folder.exists():
+        for pth in sorted(st.folder.glob("Quiz *.pdf"), key=lambda x: -x.stat().st_mtime)[:20]:
+            rows = services.store._rows("SELECT id FROM outputs WHERE path = ? ORDER BY id DESC LIMIT 1", (str(pth),))
+            out.append({"name": pth.stem, "id": rows[0]["id"] if rows else 0, "when": pth.stat().st_mtime})
+    return out
+
+def register_switchover_pages(app: FastAPI, services, shell) -> None:
+    import threading
+    import time as _t
+
+    from fastapi import Form
+
+    store = services.store
+
+    def bad(text: str, code: int = 400):
+        return JSONResponse({"error": text}, status_code=code)
+
+    @app.get("/c/{chat_id}/live")
+    def chat_live(request: Request, chat_id: int):
+        """Controls that appear above a chat only while something is going on: the document reader (read aloud) and
+        the browser Prometheus is driving."""
+        from prometheus.voice import reader as _reader
+
+        r = _reader.CURRENT
+        reading = r.status() if r is not None else None
+        b = services.browser
+        browser = {"started": bool(b is not None and b._thread is not None and b._thread.is_alive()),
+                   "paused": bool(b and b.paused)}
+        return shell(request, "v3/chat_live.html", "chats", r=reading if reading and reading.get("state") != "off" else None,
+                     browser=browser, chat_id=chat_id)
+
+    @app.post("/api/v3/reader/{action}")
+    def api_reader(action: str):
+        from prometheus.voice import reader as _reader
+
+        r = _reader.CURRENT
+        if r is None or not getattr(r, "active", lambda: True)():
+            return bad("Nothing is being read now.", 409)
+        act = {"pause": lambda: r.pause(), "continue": lambda: r.resume(), "back": lambda: r.move(-1),
+               "skip": lambda: r.move(1), "slower": lambda: r.set_speed(False), "faster": lambda: r.set_speed(True),
+               "stop": lambda: r.stop(),
+               "explain": lambda: threading.Thread(target=r.explain, daemon=True).start()}.get(action)
+        if act is None:
+            return bad("Unknown control.", 404)
+        act()
+        return {"ok": True}
+
+    @app.post("/api/v3/browser/toggle")
+    def api_browser_toggle():
+        b = services.browser
+        if b is None:
+            return bad("The browser isn't running.", 409)
+        b.paused = not b.paused
+        store.audit("user", "browser_takeover", {"paused": b.paused})
+        return {"ok": True, "message": "You're driving: Prometheus waits." if b.paused else "Handed back to Prometheus."}
+
+    @app.post("/api/v3/chats/{chat_id}/notes")
+    def api_chat_note_add(chat_id: int, text: str = Form("")):
+        if chat_id not in dict(store.chats()):
+            return bad("No such chat.", 404)
+        text = " ".join(text.split())[:500]
+        if not text:
+            return bad("The note is empty.")
+        store.add_chat_note(chat_id, text)
+        return {"ok": True}
+
+    @app.post("/api/v3/chats/{chat_id}/notes/{note_id}/delete")
+    def api_chat_note_delete(chat_id: int, note_id: int):
+        if not any(n.id == note_id for n in store.chat_notes(chat_id)):
+            return bad("That note is gone.", 404)
+        store.delete_chat_note(note_id)
+        return {"ok": True}
+
+    @app.post("/api/v3/study/export")
+    def api_study_export(deck: str = Form("")):
+        """A deck as a file Anki can import (saved in Documents/Prometheus Study)."""
+        from prometheus.agents import study_agent
+
+        if study_agent.STUDY is None:
+            return bad("Study isn't set up on this copy.", 409)
+        if not deck.strip():
+            return bad("Choose a deck.")
+        path = study_agent.STUDY.export_anki(deck.strip()[:80], services.home / "Documents" / "Prometheus Study")
+        return {"ok": True, "message": f"Saved {path.name} in Documents/Prometheus Study. In Anki: File → Import."}
+

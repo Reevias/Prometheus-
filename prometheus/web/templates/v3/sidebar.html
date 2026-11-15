@@ -14,7 +14,7 @@
   ("system", "System", "/v3/system"),
   ("research", "Research", "/v3/research"),
 ] %}
-<aside class="sidebar" aria-label="Main menu">
+<aside class="sidebar" id="sidebar" aria-label="Main menu">
   <div class="brand">
     <canvas data-sphere="mini" aria-hidden="true"></canvas>
     <div class="brand-text"><div class="brand-name">PROMETHEUS</div></div>
@@ -36,6 +36,7 @@
       <a href="/settings#appearance" role="menuitem">{{ icon("bulb") }}<span>Appearance</span></a>
       <a href="/settings#voice" role="menuitem">{{ icon("mic") }}<span>Voice</span></a>
       <a href="/settings#ai" role="menuitem">{{ icon("agents") }}<span>AI models and keys</span></a>
+      <button type="button" role="menuitem" id="notify-btn" hidden>{{ icon("bell") }}<span>Turn on phone notifications</span></button>
       <a href="/phone" role="menuitem">{{ icon("monitor") }}<span>Get it on your phone</span></a>
       <a href="/v3/connections" role="menuitem">{{ icon("integrations") }}<span>Connections</span></a>
       <a href="/settings#about" role="menuitem">{{ icon("keyboard") }}<span>Keyboard shortcuts</span></a>

@@ -74,11 +74,15 @@
     <section class="sys-card">
       <h2>Flashcards <small class="muted">{{ due_total }} due</small></h2>
       <div class="mem-list">{% for d in decks %}<div class="mem-row"><div><p>{{ d.deck }}</p><small class="muted">{{ d.n }} card{{ "s" if d.n != 1 }} · {{ d.due or 0 }} due</small></div>
-        <div class="row-actions"><button type="button" data-quiz="{{ d.deck }}">Quiz me</button></div></div>
+        <div class="row-actions"><button type="button" data-quiz="{{ d.deck }}">Quiz me</button>
+          <button type="button" data-api="/api/v3/study/export" data-send='{{ {"deck": d.deck}|tojson }}'>Export to Anki</button></div></div>
       {% else %}<p class="muted">No decks yet. Say “make flashcards from &lt;a file&gt;”.</p>{% endfor %}</div>
       {% if decks %}<button type="button" class="pill" data-quiz="">{{ icon("bulb") }}Quiz me on everything due</button>{% endif %}
       <button type="button" class="pill" data-api="/api/v3/study/make" data-prompt="Which file? (its full path, e.g. C:\Users\you\Documents\notes.pdf)">{{ icon("doc") }}Make cards from a file</button>
-      <p class="muted small">Quiz PDFs and card settings: <a href="/study?view=classic">the full study page</a>.</p>
+      {% if sheets %}<h3 class="mini-head">Quiz sheets</h3>
+      <div class="mem-list">{% for p in sheets %}<div class="mem-row"><div><p>{{ p.name }}</p><small class="muted">{{ p.when|day }} {{ p.when|clock }}</small></div>
+        {% if p.id %}<div class="row-actions"><a class="pill" href="/api/v3/outputs/{{ p.id }}/file" target="_blank" rel="noopener">Open</a></div>{% endif %}</div>{% endfor %}</div>{% endif %}
+      <p class="muted small">Card settings (cloud AI for study, Anki folder): <a href="/settings#study-coach">Settings → Study coach</a>.</p>
     </section>
     <section class="sys-card">
       <h2>Exams</h2>

@@ -8,6 +8,7 @@
   <p class="muted lead">How this laptop and Prometheus are doing, right now, and everything Prometheus did (with undo).</p>
   <div class="tabs" role="tablist">
     <a role="tab" href="/v3/system" class="{{ 'on' if tab == 'overview' }}">Overview</a>
+    <a role="tab" href="/v3/system?tab=devices" class="{{ 'on' if tab == 'devices' }}">Devices</a>
     <a role="tab" href="/v3/system?tab=activity" class="{{ 'on' if tab == 'activity' }}">Activity</a>
   </div>
 
@@ -93,6 +94,52 @@
       }).catch(function () {});
     }
     tick(); setInterval(tick, 2000);
+  })();
+  </script>
+
+{% elif tab == "devices" %}
+  <p class="muted">The health of each of your devices, as far as Prometheus can really read it. Nothing here is guessed.</p>
+  <div class="sys-grid">
+    <section class="sys-card">
+      <h2>This laptop <small class="muted">{{ "this copy" if role != "cloud" else "" }}</small></h2>
+      <div class="sys-gauges" id="sys-gauges">
+        <div class="sys-gauge" data-key="cpu"><b>—</b><span>CPU</span></div>
+        <div class="sys-gauge" data-key="ram"><b>—</b><span>Memory</span></div>
+        <div class="sys-gauge" data-key="disk"><b>—</b><span>Disk</span></div>
+      </div>
+      <p class="muted small">Live; more on the Overview tab.</p>
+    </section>
+    <section class="sys-card">
+      <h2>Cloud copy</h2>
+      {% if cloud_url %}
+      <dl class="facts"><dt>Address</dt><dd class="wrap">{{ cloud_url }}</dd>
+        <dt>Last sync</dt><dd>{% if synced %}{{ synced|day }} {{ synced|clock }}{% else %}Not yet{% endif %}</dd>
+        {% if sync_status %}<dt>Note</dt><dd class="wrap">{{ sync_status }}</dd>{% endif %}</dl>
+      <button type="button" class="pill" data-api="/api/v3/devices/cloud/check" data-then="/v3/system?tab=devices">Check now</button>
+      {% else %}<p class="muted">Not set up. It keeps Prometheus running for your phone when this laptop is off.</p>
+      <a class="pill" href="/settings#safety-check">Set it up</a>{% endif %}
+    </section>
+    <section class="sys-card">
+      <h2>Phone</h2>
+      <dl class="facts">
+        <dt>Notifications</dt><dd>{{ push_devices }} device{{ "s" if push_devices != 1 }} turned on</dd>
+        <dt>Phone control</dt><dd>{{ "Set up" if phone_target else "Not set up" }}</dd>
+      </dl>
+      {% if phone_target %}<button type="button" class="pill" data-api="/api/v3/devices/phone/check" data-then="/v3/system?tab=devices">Check battery</button>
+      {% else %}<p class="muted small">Prometheus can read the phone's battery only with phone control (wireless debugging) on: Settings → Phone control.</p>{% endif %}
+      <a class="pill" href="/phone">Get it on your phone</a>
+    </section>
+  </div>
+  <script>
+  (function () {
+    function tick() {
+      if (document.visibilityState !== "visible") return;
+      fetch("/api/v3/telemetry", { credentials: "same-origin" }).then(function (r) { return r.json(); }).then(function (t) {
+        var v = { cpu: t.cpu, ram: t.ram && t.ram.percent, disk: t.disk && t.disk.percent };
+        Object.keys(v).forEach(function (k) { var g = document.querySelector('.sys-gauge[data-key="' + k + '"] b'); if (g) g.textContent = v[k] == null ? "—" : Math.round(v[k]) + "%"; });
+      }).catch(function () {});
+    }
+    tick(); setInterval(tick, 3000);
   })();
   </script>
 

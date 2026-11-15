@@ -9,6 +9,9 @@
   <link rel="icon" type="image/png" href="/static/favicon.png">
   <link rel="manifest" href="/manifest.webmanifest">
   <meta name="theme-color" content="#0B0B10">
+  <link rel="apple-touch-icon" href="/static/icon-192.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
   <meta name="htmx-config" content='{"responseHandling": [{"code": "204", "swap": false}, {"code": "[23]..", "swap": true}, {"code": "[45]..", "swap": true, "error": true}]}'>
   <script>try{localStorage.setItem("prom-quality", "{{ ui.sphere if ui else 'auto' }}")}catch(e){}</script>
   <link rel="stylesheet" href="/static/v3/tokens.css">
@@ -21,7 +24,9 @@
 <body data-csrf="{{ csrf }}" data-page="{{ active }}" hx-headers='{"X-CSRF-Token": "{{ csrf }}"}'>
 <div class="app" id="app">
   {% include "v3/sidebar.html" %}
+  <div class="drawer-shade" id="drawer-shade" hidden></div>
   <header class="topbar pywebview-drag-region">
+    <button type="button" class="icon-btn menu-btn" id="menu-btn" aria-label="Open the menu" aria-controls="sidebar" aria-expanded="false">{{ icon("list") }}</button>
     <div class="topbar-title" style="position: relative">{% block topbar %}{% endblock %}</div>
     <div class="topbar-tools">
       {% if stopped %}<button type="button" class="stopall resume" hx-post="/kill/reset" hx-swap="none" hx-on::after-request="location.reload()"

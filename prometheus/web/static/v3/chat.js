@@ -132,4 +132,10 @@
   // export menu in the top bar
   var exp = document.getElementById("export"), menu = document.getElementById("export-menu");
   if (exp) exp.addEventListener("click", function (e) { e.stopPropagation(); menu.hidden = !menu.hidden; exp.setAttribute("aria-expanded", String(!menu.hidden)); });
+  // notes for this chat (moved from the old chat screen, M2.4)
+  var nb = document.getElementById("notes-btn"), pop = document.getElementById("notes-pop");
+  if (nb && pop) {
+    nb.addEventListener("click", function (e) { e.stopPropagation(); pop.hidden = !pop.hidden; nb.setAttribute("aria-expanded", String(!pop.hidden)); });
+    pop.addEventListener("click", function (e) { e.stopPropagation(); });
+  }
 })();

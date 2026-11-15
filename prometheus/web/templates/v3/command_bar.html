@@ -23,6 +23,7 @@
     </select>
     {% endif %}
     {% if has_voice %}<button type="button" class="mic" id="mic" title="Speak a command (Ctrl+M)" aria-label="Speak a command">{{ icon("mic") }}</button>{% endif %}
+    <button type="button" class="mic talk" id="talk" hidden title="Hold to talk" aria-label="Hold to talk">{{ icon("mic") }}</button>
     <button type="submit" class="send" id="send" title="Send (Enter)" aria-label="Send">{{ icon("send") }}</button>
   </div>
 </form>
