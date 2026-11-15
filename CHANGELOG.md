@@ -10,6 +10,8 @@
 - **The old screens are gone.** Everything they did has a place in the new look (checklist:
   `docs/m2/M2_4_SWITCHOVER.md`); their old addresses take you to the new place, so bookmarks, notifications and the
   phone app keep working. The light theme is retired (the new look is dark only).
+- Bug hunt before the merge (an independent review; 14 fixes, see `docs/bugs.md`). Safety: an imported project's
+  instructions and chats are outside text until you edit them; approving an automation runs it as it is now.
 - Moved from the old screens into the new ones: the reader's controls and the browser's Stop in a chat, chat notes,
   quiz sheets and Export to Anki in Study, and Research's "To project".
 

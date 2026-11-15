@@ -164,7 +164,10 @@ not added, so the scope freeze holds.
   low, disk almost full, CPU busy), reminding or doing a task, each with "ask me first" (owner's choice per
   automation; without it, risky steps still ask; fully unattended stays M10).
 
-## M2.4 — Switch-over
+## M2.4 — Switch-over — **done (15 Nov 2026)**; checklist `docs/m2/M2_4_SWITCHOVER.md`, report `docs/reports/M2_REPORT.md`.
+Phones get the new screens (owner: no right panel on phones; device health in System → Devices). No release: the
+version stays 2.3.0 until M10 (owner). The owner's laptop run is still to come.
+
 New GUI becomes the only GUI; old templates, routes and static files are deleted once every feature they offered is
 reachable in the new one (checked against a feature list); tests updated; native Windows CI and a run on the owner's
 laptop; merge `prometheus-v3` into `main`; release.
