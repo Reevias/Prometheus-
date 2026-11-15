@@ -100,6 +100,11 @@ def register_pages(app: FastAPI, services, shell) -> None:
             r["label"] = STATUS_LABEL.get(r["status"], r["status"].title())
             r["live"] = r["status"] in ("new", "running") and r["chat_id"] in services.running
             r["took"] = took(r["created"], r["finished"])
+        if any(r["status"] == "paused" for r in rows):
+            from prometheus.orchestrator.planner import paused_runs
+            kept = paused_runs(store)
+            for r in rows:
+                r["resumable"] = r["status"] == "paused" and str(r["id"]) in kept
         return rows
 
     @app.get("/v3/tasks")
