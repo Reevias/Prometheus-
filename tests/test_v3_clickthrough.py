@@ -224,3 +224,52 @@ def test_phone_width_fits(live, browser):
     page.click("#menu-btn")
     page.wait_for_timeout(300)
     assert page.evaluate("() => document.querySelector('.sidebar').getBoundingClientRect().left >= 0")
+
+
+def test_chat_notes_add_and_delete(live, browser):
+    """Review M2.4 #1: the Notes popover's buttons must reach the shared button handler (they did nothing)."""
+    base, chat = live
+    page = browser.new_page(viewport={"width": 1400, "height": 900})
+    page.goto(base + "/login")
+    page.fill("input[name=password]", PASSWORD)
+    page.press("input[name=password]", "Enter")
+    page.wait_for_url(base + "/")
+    page.goto(f"{base}/c/{chat}")
+    page.once("dialog", lambda d: d.accept("buy milk"))
+    page.click("#notes-btn")
+    page.click("#notes-pop [data-api$='/notes']")
+    page.wait_for_load_state("networkidle")
+    page.wait_for_timeout(500)
+    page.click("#notes-btn")
+    assert "buy milk" in page.inner_text("#notes-pop")
+    page.once("dialog", lambda d: d.accept())
+    page.click("#notes-pop .note-row button")
+    page.wait_for_load_state("networkidle")
+    page.wait_for_timeout(500)
+    assert "buy milk" not in page.content()
+
+
+def test_hold_to_talk_from_home_reads_the_answer_out(live, browser):
+    """Review M2.4 #6: a question spoken on Home opens a new chat; its answer must still be read out loud."""
+    base, chat = live
+    ctx = browser.new_context(viewport={"width": 390, "height": 844}, has_touch=True, is_mobile=True)
+    ctx.add_init_script("""
+      window.__spoken = [];
+      window.SpeechRecognition = function () { var r = this;
+        this.start = function () { setTimeout(function () { r.onresult({ results: [[{ transcript: "hello there" }]] }); if (r.onend) r.onend(); }, 50); };
+        this.stop = function () {}; };
+      window.SpeechSynthesisUtterance = function (t) { this.text = t; };
+      Object.defineProperty(window, "speechSynthesis", { value: { speak: function (u) {
+        var a = JSON.parse(sessionStorage.getItem("spoken") || "[]"); a.push(u.text); sessionStorage.setItem("spoken", JSON.stringify(a)); } } });
+    """)
+    page = ctx.new_page()
+    page.goto(base + "/login")
+    page.fill("input[name=password]", PASSWORD)
+    page.press("input[name=password]", "Enter")
+    page.wait_for_url(base + "/")
+    page.dispatch_event("#talk", "pointerdown")
+    page.wait_for_url(lambda u: "/c/" in u, timeout=10000)
+    page.wait_for_function("() => JSON.parse(sessionStorage.getItem('spoken') || '[]').length > 0", timeout=15000)
+    spoken = page.evaluate("() => JSON.parse(sessionStorage.getItem('spoken'))")
+    assert len(spoken) == 1 and "answer" in spoken[0]
+    ctx.close()

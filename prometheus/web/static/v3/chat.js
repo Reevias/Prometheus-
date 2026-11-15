@@ -136,6 +136,7 @@
   var nb = document.getElementById("notes-btn"), pop = document.getElementById("notes-pop");
   if (nb && pop) {
     nb.addEventListener("click", function (e) { e.stopPropagation(); pop.hidden = !pop.hidden; nb.setAttribute("aria-expanded", String(!pop.hidden)); });
-    pop.addEventListener("click", function (e) { e.stopPropagation(); });
+    // keep it open when clicking inside, but let its buttons reach the shared data-api handler
+    pop.addEventListener("click", function (e) { if (!e.target.closest("[data-api]")) e.stopPropagation(); });
   }
 })();

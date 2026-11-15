@@ -24,6 +24,10 @@ CHAT_PASSAGE_CHARS = 1200
 KNOWN_TOPICS = 40
 NAME_UNTIL = 2             # the planner may improve a chat's name during its first two requests
 HISTORY_CHARS = 1500
+# chat messages that carry outside text (file names from watched folders, a project file someone sent you): replayed to
+# the model marked as outside text, never as the owner's own words (M2.4 review)
+OUTSIDE_MESSAGES = {"imported": "a chat imported from a project file", "automation": "an automation (names of new files)",
+                    "watcher": "a watcher (names of new files)"}
 SUMMARY_EVERY = 10
 MAX_REMEMBER = 3
 MAX_FACTS = 6
@@ -346,7 +350,10 @@ class Orchestrator:
         turns = []
         for m in recent:
             if m.role in ("user", "assistant"):
-                turns.append({"role": m.role, "content": (PRIVATE_PLACEHOLDER if m.private else m.text)[:HISTORY_CHARS]})
+                content = (PRIVATE_PLACEHOLDER if m.private else m.text)[:HISTORY_CHARS]
+                if m.model in OUTSIDE_MESSAGES and not m.private:
+                    content = untrusted(content, OUTSIDE_MESSAGES[m.model])
+                turns.append({"role": m.role, "content": content})
         while turns and turns[0]["role"] != "user":
             turns.pop(0)
         summary = self._summarise_older(chat_id, older) if older else ""

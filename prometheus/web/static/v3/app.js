@@ -148,6 +148,11 @@
     }).then(function (rj) {
       var r = rj[0], j = rj[1];
       if (!r.ok) { toast(j.error || "Couldn't send that.", true); return; }
+      if (window.promSpeakNext) {          // spoken on the phone: read out the answer that comes after this (M2.4)
+        window.promSpeakNext = false;
+        var seen = String(j.chat_id) === String(chatId) ? document.querySelectorAll("#messages .msg.assistant").length : 0;
+        try { sessionStorage.setItem("prom-speak", seen + ":" + j.chat_id); } catch (e) {}
+      }
       if (String(j.chat_id) === String(chatId)) { setBusy(true); if (window.htmx) htmx.trigger("#messages", "refresh"); refreshMessages(); }
       else location.href = j.url;
     }).catch(function () { toast("Prometheus isn't answering. Is it still running?", true); })
@@ -636,7 +641,9 @@
       rec.onresult = function (ev) {
         var text = ev.results[0][0].transcript, form = document.getElementById("command"), box = document.getElementById("command-input");
         if (!form || !box) return;
-        box.value = text; box.dispatchEvent(new Event("input")); window.promSpeakNext = true; form.requestSubmit();
+        // like pressing Enter: sent now, or queued while Prometheus is still answering (never stops the answer)
+        box.value = text; box.dispatchEvent(new Event("input")); window.promSpeakNext = true;
+        box.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
       };
       rec.onend = function () { talk.classList.remove("on"); };
       rec.start();
@@ -644,11 +651,17 @@
     ["pointerup", "pointerleave", "pointercancel"].forEach(function (n) { talk.addEventListener(n, function () { if (rec) rec.stop(); }); });
   }
   // the answer to a spoken question is read out loud on the phone
-  document.body.addEventListener("htmx:afterSwap", function () {
-    if (!window.promSpeakNext || !("speechSynthesis" in window)) return;
-    var msgs = document.querySelectorAll("#messages .msg.assistant"), last = msgs[msgs.length - 1];
-    if (!last || last.dataset.spoken || document.querySelector("#messages .working")) return;
-    last.dataset.spoken = "1"; window.promSpeakNext = false;
+  // (only a new answer in the chat it was sent to, after it has finished; also after Home opened a new chat)
+  function speakNew() {
+    var want; try { want = sessionStorage.getItem("prom-speak"); } catch (e) { return; }
+    if (!want || !("speechSynthesis" in window)) return;
+    var m = document.getElementById("messages"), parts = want.split(":");
+    if (!m || String(m.dataset.chat) !== parts[1] || m.querySelector(".working")) return;
+    var msgs = m.querySelectorAll(".msg.assistant"), last = msgs[msgs.length - 1];
+    if (!last || msgs.length <= +parts[0]) return;
+    try { sessionStorage.removeItem("prom-speak"); } catch (e) {}
     var u = new SpeechSynthesisUtterance(last.innerText.slice(0, 600)); u.lang = "en-IN"; speechSynthesis.speak(u);
-  });
+  }
+  document.body.addEventListener("htmx:afterSwap", speakNew);
+  speakNew();
 })();

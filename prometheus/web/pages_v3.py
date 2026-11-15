@@ -234,6 +234,10 @@ def register_pages(app: FastAPI, services, shell) -> None:
                                 status_code=409)
         if t["chat_id"] not in dict(store.chats()):
             return JSONResponse({"error": "Its chat was deleted, so it can't run there again."}, status_code=409)
+        from prometheus import resume as _resume
+        for item in _resume._queue(store):        # it was waiting to try again by itself after an AI limit: run it
+            if item["chat_id"] == t["chat_id"] and item["text"] == t["text"]:      # now instead, never twice
+                _resume._without(store, item["id"])
         services.start_task(t["chat_id"], t["text"])
         store.audit("user", "retry_task", {"task": task_id})
         return {"chat_id": t["chat_id"], "url": f"/c/{t['chat_id']}"}
@@ -1659,8 +1663,10 @@ def register_builder_pages(app: FastAPI, services, shell) -> None:
         ask = ask_first not in ("0", "") and action == "do"          # "0" = just run; missing = ask first (safe)
         if when == "event":
             if event == "new_file":
+                from prometheus.agents.files import resolve_place
+
                 try:
-                    folder_path = services.policy.check_read(Path(folder.strip()))
+                    folder_path = services.policy.check_read(resolve_place(folder, Path(services.home)))     # quotes, "Downloads"
                 except Exception:
                     return bad("Step 1: Prometheus may not look in that folder. Add it in Settings → Places Prometheus "
                                "may use first.", 409)
@@ -1762,7 +1768,7 @@ def register_project_pages(app: FastAPI, services, shell) -> None:
     def card(p: dict) -> dict:
         ts = pj.tasks(store, p["id"])
         done = sum(1 for t in ts if t["status"] in ("done", "instant", "phone"))
-        fs = pj.files(p, limit=1000)
+        fs = pj.files(p, limit=1000, policy=services.policy)
         return {**p, "chats": len(pj.chats(store, p["id"])), "tasks_done": done, "tasks_total": len(ts),
                 "files": sum(1 for f in fs if not f["dir"]), "agents": [a for a, _ in pj.agents_used(store, p["id"])][:4],
                 "last": pj.last_activity(store, p["id"]) or p["created"], "folder_ok": Path(p["folder"]).is_dir()}
@@ -1780,7 +1786,7 @@ def register_project_pages(app: FastAPI, services, shell) -> None:
         tab = tab if tab in PROJECT_TABS else "files"
         ctx: dict = {"p": card(p), "tab": tab}
         if tab == "files":
-            ctx["files"] = pj.files(p)
+            ctx["files"] = pj.files(p, policy=services.policy)
         elif tab == "chats":
             ctx["chats"] = pj.chats(store, project_id)
             ctx["others"] = [(cid, t) for cid, t in store.chats() if not pj.chat_project(store, cid)][:200]
@@ -1808,11 +1814,13 @@ def register_project_pages(app: FastAPI, services, shell) -> None:
         return {"ok": True, "url": f"/v3/projects/{pid}", "message": f"Made the project. Its files: {pj.get(store, pid)['folder']}"}
 
     @app.post("/api/v3/projects/{project_id}/edit")
-    def api_project_edit(project_id: int, name: str = Form(None), about: str = Form(None)):
+    async def api_project_edit(project_id: int, request: Request):
         if live(project_id) is None:
             return bad("No such project.", 404)
+        form = await request.form()                  # read directly: an emptied box must clear, not count as missing
+        name, about = form.get("name"), form.get("about")
         try:
-            pj.update(store, project_id, name, about)
+            pj.update(store, project_id, None if name is None else str(name), None if about is None else str(about))
         except pj.ProjectError as e:
             return bad(str(e))
         return {"ok": True, "message": "Saved."}
@@ -1849,6 +1857,8 @@ def register_project_pages(app: FastAPI, services, shell) -> None:
         if live(project_id) is None or chat_id not in dict(store.chats()):
             return bad("No such project or chat.", 404)
         on = "" if on == "0" else on                     # "0" = take it out
+        if not on and (pj.chat_project(store, chat_id) or {}).get("id") != project_id:
+            return bad("That chat isn't in this project.")
         pj.set_chat_project(store, chat_id, project_id if on else 0)
         return {"ok": True, "message": "Added to the project." if on else "Taken out of the project (the chat stays)."}
 
@@ -1901,9 +1911,12 @@ def register_project_pages(app: FastAPI, services, shell) -> None:
         p = pj.get(store, project_id)
         if p is None:
             return bad("No such project.", 404)
-        name = _re.sub(r"[^\w .-]", "_", p["name"])[:60] or "project"
-        return Response(pj.export_zip(store, project_id), media_type="application/zip",
-                        headers={"Content-Disposition": f'attachment; filename="{name} (Prometheus project).zip"'})
+        from urllib.parse import quote
+
+        full = f"{p['name'][:60]} (Prometheus project).zip"
+        plain = _re.sub(r"[^A-Za-z0-9 ._()-]", "_", full)     # for old browsers; the real (e.g. Hindi) name below
+        return Response(pj.export_zip(store, project_id, services.policy), media_type="application/zip",
+                        headers={"Content-Disposition": f"attachment; filename=\"{plain}\"; filename*=UTF-8''{quote(full)}"})
 
     @app.post("/api/v3/projects/import")
     async def api_project_import(file: UploadFile = File(...)):
@@ -1931,7 +1944,7 @@ def register_project_pages(app: FastAPI, services, shell) -> None:
         root = services.policy.root_for(folder)
         if root is None or not folder.is_dir():
             return bad("The project's folder isn't there or isn't allowed any more.", 409)
-        base = _re.sub(r'[\\/:*?"<>|]', " ", t["text"])[:60].strip(" .") or "Research"
+        base = pj.safe_name(t["text"][:60]) or "Research"          # no line breaks or reserved Windows names
         target, n = folder / f"{base}.md", 2
         while target.exists():
             target, n = folder / f"{base} ({n}).md", n + 1
@@ -1951,7 +1964,7 @@ def register_project_pages(app: FastAPI, services, shell) -> None:
         p = pj.chat_project(store, chat_id)
         if p is None:
             return {"project": None, "files": []}
-        return {"project": p["name"], "files": [{"rel": f["rel"], "path": f["path"]} for f in pj.files(p, 60)
+        return {"project": p["name"], "files": [{"rel": f["rel"], "path": f["path"]} for f in pj.files(p, 60, policy=services.policy)
                                                 if not f["dir"]][:30]}
 
 

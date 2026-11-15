@@ -134,8 +134,10 @@ def run(services, r: dict, detail: dict | None = None, by_hand: bool = False) ->
                 pass
         said = "Reminded you."
     elif r["ask_first"] and not by_hand:
+        # the rule is read again when you say yes (an edit, pause or delete in the meantime counts); "task" is shown
         services.approvals.request(APPROVAL_KIND, f"Run your automation “{r['name']}”? ({why})",
-                                   {"rule": r["id"], "chat": cid, "text": task_text(r, detail)})
+                                   {"rule": r["id"], "chat": cid, "task": task_text(r, detail),
+                                    "files": [str(p) for p in detail.get("files", [])][:20]})
         said = "Asked you first (see Approvals)."
     elif cid in services.running:
         said = "Skipped: the Automations chat was busy."
@@ -168,11 +170,28 @@ def _norm(path: str) -> str:
 
 
 def approved(services, payload: dict) -> str:
-    """After your yes on the Approvals page: run the automation's task in the Automations chat."""
-    cid = int(payload.get("chat") or chat_id(services.store))
+    """After your yes on the Approvals page: run the automation as it is now (it may have changed while it waited)."""
+    store = services.store
+    if payload.get("rule"):
+        r = rule(store, int(payload["rule"]))
+        if r is None:
+            return "That automation was deleted while it waited, so nothing ran."
+        if not r["enabled"]:
+            return "That automation is paused, so nothing ran."
+        text = task_text(r, {"files": payload.get("files") or []})
+        cid = chat_id(store)
+    elif payload.get("reminder"):
+        rows = store._rows("SELECT * FROM reminders WHERE id = ?", (int(payload["reminder"]),))
+        if not rows or rows[0]["state"] == "cancelled":
+            return "That scheduled goal was deleted while it waited, so nothing ran."
+        if rows[0]["state"] == "paused":
+            return "That scheduled goal is paused, so nothing ran."
+        text, cid = rows[0]["text"], int(rows[0]["chat_id"])
+    else:
+        return "This approval is from an older version; run it again from Automations."
     if cid in services.running:
-        return "The Automations chat is busy right now; run it again from Automations in a moment."
-    services.start_task(cid, str(payload.get("text") or ""))
+        return "The chat it runs in is busy right now; press Run now on Automations in a moment."
+    services.start_task(cid, text)
     return "Started it (see Tasks)."
 
 
@@ -181,7 +200,7 @@ def goal_needs_yes(services, r: dict) -> bool:
     if not r.get("ask_first") or r.get("kind") != "goal":
         return False
     services.approvals.request(APPROVAL_KIND, f"Run your scheduled goal “{clean(r['text'], 80)}”?",
-                               {"chat": r["chat_id"], "text": r["text"]})
+                               {"reminder": r["id"], "chat": r["chat_id"], "task": r["text"]})
     return True
 
 

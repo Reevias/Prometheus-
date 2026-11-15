@@ -2,7 +2,27 @@
 
 Every bug found and fixed, newest first, so the count is always exact. Add a line for each new one.
 
-**Total fixed: 66** (as of 15 November 2026)
+**Total fixed: 80** (as of 15 November 2026)
+
+## 15 November 2026, M2.4 bug hunt (14)
+An independent review of M2.3 and M2.4 before the merge. Each fix has a test that failed before it.
+
+| # | Bug | Fixed by |
+|---|---|---|
+| 80 | Run again on a task waiting to retry after an AI limit ran it now and again later | Run again takes it off the retry list |
+| 79 | A project folder that couldn't be made gave a server error | a plain message |
+| 78 | Windows-reserved names with an ending (con.txt) and line breaks could reach project and report file names | names are cleaned the same way everywhere |
+| 77 | A project's file list wasn't really newest first in big folders, and could list places Prometheus may not use | looks at more files before sorting; blocked places left out |
+| 76 | A too-big project file said "not a project" | it says it's too big |
+| 75 | File names from a watched folder, kept in the Automations chat, reached later requests as ordinary text | replayed marked as outside text, never obeyed |
+| 74 | Hold to talk while Prometheus was answering stopped the answer; a question spoken on Home was never read out | spoken questions queue like Enter; the new answer is read out, also in a new chat |
+| 73 | Folder boxes refused Explorer's "Copy as path" (quotes) and bare names like Downloads | read like Settings' places |
+| 72 | A chat could be taken out of a project it wasn't in | refused |
+| 71 | Emptying a project's instructions didn't clear them (and an empty rename said Saved) | an emptied box clears; a rename needs a name |
+| 70 | Downloading a project with a Hindi name failed (server error) | the file name is sent the standard way for any language |
+| 69 | Approving an automation ran the text from when it asked, even if you had edited, paused or deleted it since; the card didn't show what it would do | it reads the automation again at your yes, and the card shows it |
+| 68 | An imported project's instructions, notes and chats were treated as the owner's own words | they are outside text until you edit the instructions yourself |
+| 67 | Notes in a chat: Add and Delete did nothing (the popup swallowed the clicks) | the buttons reach the shared handler; a browser test adds and deletes a note |
 
 ## 15 November 2026, M2.4 (2)
 | # | Bug | Fixed by |

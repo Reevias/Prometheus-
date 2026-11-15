@@ -88,7 +88,7 @@ def test_new_file_automation_fires_from_the_watcher(app_client, tmp_path):
     w.check_folders()
     asked = [a for a in st.big_approvals() if a.kind == auto.APPROVAL_KIND]
     assert len(asked) == 1 and "Tidy PDFs" in asked[0].summary and started == []      # asks first by default
-    assert "lecture.pdf" in asked[0].payload["text"] and "<untrusted" in asked[0].payload["text"]
+    assert "lecture.pdf" in asked[0].payload["task"] and "<untrusted" in asked[0].payload["task"]
     rule = auto.rules(st)[0]
     client.post(f"/api/v3/automations/rules/{rule['id']}/ask", data={}, headers=h)    # now: just run
     (inbox / "notes.pdf").write_bytes(b"%PDF")
