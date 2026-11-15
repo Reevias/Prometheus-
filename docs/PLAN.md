@@ -4,7 +4,7 @@ The one plan for Prometheus 3.0, approved by the owner (13 Nov 2026), status upd
 M2's detailed steps: [`docs/m2/M2_PLAN.md`](m2/M2_PLAN.md). Friday Mark 2 comparison:
 [`docs/reports/FRIDAY_MARK2_RESEARCH.md`](reports/FRIDAY_MARK2_RESEARCH.md).
 
-**11 milestones, 59 steps.** Done: M0, M1 (10 steps). In progress: M2 (2 of 5 steps built, M2.2 started).
+**11 milestones, 60 steps.** Done: M0, M1 (10 steps). In progress: M2 (M2.0-M2.2 built; M2.3, M2.4 to go).
 Not started: M3 to M10.
 
 Status words: **Done** = built, tested, audited and accepted · **Built** = code and tests are in, waiting for the
@@ -21,12 +21,12 @@ already written down elsewhere in the repo, missing from the old roadmap.
 | M3 Orchestration and model routing | 6 | Not started |
 | M4 Repository-to-skill | 7 | Not started |
 | M5 Many agents | 6 | Not started |
-| M6 Runtime / Cloudroom | 4 | Not started |
+| M6 Runtime / Cloudroom | 5 | Not started |
 | M7 Security hardening | 5 | Not started |
 | M8 Memory engine | 7 | Not started |
 | M9 Evaluation and release | 6 | Not started |
 | M10 Autonomy | 3 | Reserved until M0–M9 are done |
-| **Total** | **59** | |
+| **Total** | **60** | |
 
 ## Locked rules (every milestone)
 1. **Windows first.** Tested on native Windows CI (GitHub's Windows machines, not the owner's laptop); if it couldn't
@@ -56,7 +56,7 @@ A personal AI operating system with a reliable agent engine at its core:
 - **Agent engine:** tools, task graphs and recovery.
 - **Skills:** packages used through slash commands, showing detail only when needed.
 - **Projects and memory:** context that lasts across sessions and remembers where each fact came from.
-- **Device control:** desktop, browser and Android, only with permission.
+- **Device control:** desktop, browser and phone (Android, iPhone through mobile-mcp), only with permission.
 - **Where tasks run:** the laptop first; Cloudroom (cloud) optional.
 - **Trust:** least privilege, approvals, audit log, undo and a global STOP ALL.
 
@@ -142,7 +142,7 @@ Study: `execution/engine.py`, `parallel_executor.py`, `series_executor.py`, `sta
 `subagent_registry.py`, `memory_aware_executor.py`.
 Exit gate: parallel, cancel and restart tests; memory stays within the laptop's limit; Windows CI; audit.
 
-## M6 Runtime / Cloudroom — Not started · 4 steps
+## M6 Runtime / Cloudroom — Not started · 5 steps
 - **M6.1** ExecutionRuntime: one way to run tasks; LocalRuntime (the laptop) is the default.
 - **M6.2** Optional Cloudroom sandboxes: move a running task, receipts and request IDs, events in order, recovery
   after failures.
@@ -150,8 +150,15 @@ Exit gate: parallel, cancel and restart tests; memory stays within the laptop's 
   laptop before upload; the laptop copy stays the main one; works offline. Includes the notes of chats left out in
   Memory → Privacy, stored privately so they can be referred to later (owner, 15 Nov).
 - **M6.4** Control PC.
+- **M6.5** Phone control through **mobile-mcp only** (github.com/mobile-next/mobile-mcp, Apache-2.0, checked 15 Nov):
+  run as a separate MCP server through Prometheus's existing "Other apps" connection, not copied into the code. It
+  replaces Prometheus's own adb phone-control code (removed in this step, after mobile-mcp does everything it did).
+  Every tap, typed text or app change asks you first; reading the screen is allowed after a one-time yes. Needs
+  Node.js and Google's Android platform tools on the laptop (the installer checks for them). Credits list it with its
+  licence; licence and version re-checked before building (owner, 15 Nov).
 
-Exit gate: disconnect/reconnect tests; works offline; encryption tests; Windows CI; audit.
+Exit gate: disconnect/reconnect tests; works offline; encryption tests; phone control works on the owner's phone
+through mobile-mcp with approvals; Windows CI; audit.
 
 ## M7 Security hardening — Not started · 5 steps
 - **M7.1** Full per-project permissions, enforcing the tool scopes from M3.2.
