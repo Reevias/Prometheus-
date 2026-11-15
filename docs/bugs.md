@@ -11,6 +11,8 @@ any chat, so there is nothing to filter.
 
 | # | Bug | Fixed by |
 |---|---|---|
+| 64 | Automation builder: choosing "Just run" sent an empty value, which the server read as missing, so it asked first anyway | "Just run" sends 0; a test covers it |
+| 63 | Automation builder: an automation made without the ask-first field would just run (unsafe default) | missing means ask first |
 | 62 | The evening revision post test failed whenever it ran after 20:00 (the planner starts a plan tomorrow that late, so it found no study day "today") | the test pins the planner's clock to midday and picks a post time that can't fall before midnight |
 | 61 | A chat left out in Memory → Privacy still showed its notes in Memory search, and Prometheus (and other AI apps through MCP) still used them | one filter in the store's recall: notes, agent notes and messages from left-out chats are hidden everywhere; including the chat again brings them back |
 | 60 | Skills → GitHub tab: Add and Get today's list now swapped a whole page into the body | JSON actions like the other new pages |

@@ -154,12 +154,15 @@ not added, so the scope freeze holds.
 - **Projects** — cards (name, last activity, files, task progress, agents); workspace tabs: files, chats, tasks,
   agents, memory notes, settings; create blank or from a folder; import/export; delete to a restorable trash;
   research reports saved into projects; project files in the `+` menu. Projects goes after Chats in the menu (owner,
-  15 Nov 2026).
+  15 Nov 2026). **Built (15 Nov 2026):** files in Documents\Prometheus Projects\<name> (or a chosen allowed folder),
+  Prometheus's records in its database (owner: "a merge of the two"); trash 30 days; deleting never touches files.
 - **Task runner** — **built (15 Nov 2026):** Pause and Carry on a running task (it stops at the next safe point and
   keeps only the steps it hasn't run — owner chose "stop at once"; a step already talking to an AI finishes first
   because it can't be cut in half safely), Board and Timeline views on the Tasks page. Kanban is read-only on
   purpose: the state belongs to Prometheus, so nothing drags.
-- **Automation builder** — one-time, recurring and conditional (on today's watcher triggers), with approvals.
+- **Automation builder** — **built (15 Nov 2026):** one-time, recurring and conditional (new file in a folder, battery
+  low, disk almost full, CPU busy), reminding or doing a task, each with "ask me first" (owner's choice per
+  automation; without it, risky steps still ask; fully unattended stays M10).
 
 ## M2.4 — Switch-over
 New GUI becomes the only GUI; old templates, routes and static files are deleted once every feature they offered is

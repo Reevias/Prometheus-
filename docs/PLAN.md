@@ -4,7 +4,7 @@ The one plan for Prometheus 3.0, approved by the owner (13 Nov 2026), status upd
 M2's detailed steps: [`docs/m2/M2_PLAN.md`](m2/M2_PLAN.md). Friday Mark 2 comparison:
 [`docs/reports/FRIDAY_MARK2_RESEARCH.md`](reports/FRIDAY_MARK2_RESEARCH.md).
 
-**11 milestones, 60 steps.** Done: M0, M1 (10 steps). In progress: M2 (M2.0-M2.2 built; M2.3, M2.4 to go).
+**11 milestones, 60 steps.** Done: M0, M1 (10 steps). In progress: M2 (M2.0-M2.3 built; M2.4 to go).
 Not started: M3 to M10.
 
 Status words: **Done** = built, tested, audited and accepted · **Built** = code and tests are in, waiting for the
@@ -91,7 +91,7 @@ Windows and Linux. Met.
 | M2.0 | Groundwork: main brought into v3; the first M2's made-up values replaced by real ones; roadmap fixed (now this file); click-through test of every control on Windows | Done |
 | M2.1 | Look, Home, chat, window: colours, sidebar, orbital sphere, command bar, `/` and Ctrl+K palettes, attachments, chats (highlighting, tables, maths, diagrams, export), quick actions, right panel with real readings, mic and waveform, Settings in the new look, window that remembers its place and hides to the tray | Built (waiting for the owner's laptop check and the audit) |
 | M2.2 | Pages for what already exists: Agents (built: real status, on/off per agent, `@agent`), Skills, Tasks, Memory (with file search and privacy), Automations, System (with Activity tab), Research (three modes: Research, Study, Money), chat files panel; Approvals, Phone and Connections in the profile menu; Costs in AI models and keys; old addresses redirected. Sidebar: 9 links + gear (details in `docs/m2/M2_PLAN.md`, "M2.2 decisions") | Built 14 Nov (waiting for the owner's laptop check and the audit) |
-| M2.3 | New basics: Projects, task runner (pause/resume, Kanban, timeline), automation builder | Not started |
+| M2.3 | New basics: Projects, task runner (pause/resume, Kanban, timeline), automation builder | Built 15 Nov (waiting for the owner's laptop check) |
 | M2.4 | Switch-over: new screens become the only ones, old ones deleted, audit, merge into main, release | Not started |
 
 Exit gate: click-through test passes on Windows; every 2.x feature reachable; M2 audit; the owner's sign-off.
