@@ -38,7 +38,7 @@
         <dt>Memory it uses</dt><dd>{{ me.ram_mb ~ " MB" if me.ram_mb is defined else "Can't read" }}</dd>
         <dt>Threads</dt><dd>{{ me.threads if me.threads is defined else "—" }}</dd>
         <dt>Running since</dt><dd>{% if me.since %}{{ me.since|day }} {{ me.since|clock }}{% else %}—{% endif %}</dd>
-        <dt>Waiting for you</dt><dd><a href="/approvals">{{ pending }} approval{{ "s" if pending != 1 }}</a></dd>
+        <dt>Waiting for you</dt><dd><a href="/v3/approvals">{{ pending }} approval{{ "s" if pending != 1 }}</a></dd>
         <dt>Paid AI this month</dt><dd>${{ "%.2f"|format(budget.spent) }} of ${{ "%.2f"|format(budget.cap) }}</dd>
         {% if updated %}<dt>Update</dt><dd>{{ updated }}</dd>{% endif %}
       </dl>

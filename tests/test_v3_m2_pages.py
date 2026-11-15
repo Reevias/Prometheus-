@@ -698,3 +698,65 @@ def test_tasks_can_be_deleted_from_the_list(app_client):
     services.running[services.store.task(tid)["chat_id"]] = True
     services.store.set_task_status(tid, "running")
     assert f'data-api="/api/v3/tasks/{tid}/delete"' not in client.get("/v3/tasks").text   # not while it runs
+
+
+# ---- M2.2 audit fixes (15 Nov) ----------------------------------------------------------------------------------------
+def test_a_left_out_chat_is_never_recalled_anywhere(app_client):
+    """The audit's case: a diary chat left out of memory still showed its note in Memory search and to the planner."""
+    client, services = app_client()
+    h = {"X-CSRF-Token": login(client)}
+    st = services.store
+    diary, other = st.create_chat("Diary"), st.create_chat("Other")
+    st.add_chat_note(diary, "The hackathon is on Friday")
+    tid = st.create_task(diary, "plan the hackathon")
+    st.add_agent_note(tid, "research", "hackathon venue is the library")
+    st.add_message(diary, "user", "my hackathon idea is a plant watering bot")
+    st.add_chat_note(other, "The hackathon team is Riya and Sam")
+    kinds = ("memory", "chat_note", "agent_note", "message")
+    assert len(st.recall("hackathon", limit=20, kinds=kinds)) == 4
+    client.post(f"/api/v3/memory/chats/{diary}/leave-out", data={"on": "1"}, headers=h)
+    left = st.recall("hackathon", limit=20, kinds=kinds)
+    assert [r.text for r in left] == ["The hackathon team is Riya and Sam"]          # only the other chat's note
+    # Memory search on the new page, and what the planner reads, are both clean
+    page = client.get("/v3/memory?q=hackathon").text
+    assert "Riya and Sam" in page and "Friday" not in page and "library" not in page and "watering" not in page
+    assert all("Friday" not in r.text for r in st.recall("hackathon", limit=8, kinds=("memory", "chat_note")))
+    # hidden, not deleted: including the chat again brings them back
+    client.post(f"/api/v3/memory/chats/{diary}/leave-out", data={}, headers=h)
+    assert len(st.recall("hackathon", limit=20, kinds=kinds)) == 4
+    # Chats page search still finds the chat itself (owner's choice)
+    client.post(f"/api/v3/memory/chats/{diary}/leave-out", data={"on": "1"}, headers=h)
+    assert "Diary" in client.get("/v3/chats?q=watering").text
+
+
+def test_system_waiting_link_goes_straight_to_approvals(app_client):
+    client, _ = app_client()
+    login(client)
+    page = client.get("/v3/system").text
+    assert 'href="/v3/approvals">0 approvals' in page and 'href="/approvals"' not in page
+
+
+def test_todays_repos_use_json_actions(app_client, monkeypatch):
+    client, services = app_client()
+    h = {"X-CSRF-Token": login(client)}
+    from prometheus import repo_of_day
+
+    class Fake:
+        def __init__(self, services, http=None):
+            pass
+
+        def todays(self):
+            return {"date": "2026-11-15", "repos": [{"full_name": "a/b", "stars_today": 5, "description": "x"}]}
+
+        def add_numbers(self, ns):
+            return "Added a/b to the skill library." if ns == [1] else "There's no number 9 on today's list (it has 1)."
+
+        def suggest(self):
+            return "Here are today's 10 repositories."
+
+    monkeypatch.setattr(repo_of_day, "RepoOfTheDay", Fake)
+    page = client.get("/v3/skills?tab=github").text
+    assert 'data-api="/api/v3/skills/trending/1/add"' in page and 'hx-target="body"' not in page
+    assert client.post("/api/v3/skills/trending/1/add", headers=h).json()["ok"]
+    assert client.post("/api/v3/skills/trending/9/add", headers=h).status_code == 409
+    assert "today's 10" in client.post("/api/v3/skills/trending/refresh", headers=h).json()["message"]

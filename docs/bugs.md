@@ -2,17 +2,18 @@
 
 Every bug found and fixed, newest first, so the count is always exact. Add a line for each new one.
 
-**Total fixed: 58** (as of 14 November 2026)
+**Total fixed: 61** (as of 15 November 2026)
 
-## Found, not fixed yet (15 November 2026): 4
-Audit of the M2.2 build (full test suite green: 1214 passed, 44 skipped). Listed here so nothing is lost; not counted in "total fixed" until they're fixed.
+## 15 November 2026 (3)
+From the M2.2 audit (F1-F4). F3 checked: Topics come from a chat's searchable parts, which are removed when the chat
+is left out, so the tab is already clean; "How it answers" holds general rules and task lessons that aren't tied to
+any chat, so there is nothing to filter.
 
-| # | Bug | Where |
+| # | Bug | Fixed by |
 |---|---|---|
-| F4 | A chat left out in Memory → Privacy still shows its notes in Memory search: `chat_note` and `agent_note` hits aren't filtered, only `message` hits are | web/pages_v3.py ~411-415 |
-| F3 | Memory's Topics and Answers tabs aren't filtered by left-out chats | web/pages_v3.py ~434-440 |
-| F2 | System → Activity: the "Waiting for you" link goes to `/approvals` instead of `/v3/approvals` (an extra redirect) | templates/v3/system.html:41 |
-| F1 | Skills → GitHub tab: "Add" and "Get today's list now" post to the old `/skills/trending/*` with `hx-target="body"`, so a whole page is swapped into `<body>` (works, but not a proper swap) | templates/v3/skills.html:53, 57 |
+| 61 | A chat left out in Memory → Privacy still showed its notes in Memory search, and Prometheus (and other AI apps through MCP) still used them | one filter in the store's recall: notes, agent notes and messages from left-out chats are hidden everywhere; including the chat again brings them back |
+| 60 | Skills → GitHub tab: Add and Get today's list now swapped a whole page into the body | JSON actions like the other new pages |
+| 59 | System's "Waiting for you" link went to the old /approvals (an extra redirect) | links to /v3/approvals |
 
 ## 14 November 2026 (4)
 | # | Bug | Fixed by |

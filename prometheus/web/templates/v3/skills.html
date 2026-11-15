@@ -50,11 +50,11 @@
         {% if r.sensitive %}<span class="state s-failed">about tracking, accounts or security</span>{% endif %}
         <p class="muted">{{ r.description or "No description." }}</p></div>
       {% if r.added %}<span class="state s-done">Added</span>{% else %}
-      <form hx-post="/skills/trending/add" hx-target="body"><input type="hidden" name="n" value="{{ loop.index }}"><button type="submit" class="pill">Add</button></form>{% endif %}
+      <button type="button" class="pill" data-api="/api/v3/skills/trending/{{ loop.index }}/add" data-then="/v3/skills?tab=github">Add</button>{% endif %}
     </div>
   {% else %}<p class="muted">No list yet: it arrives every evening.</p>{% endfor %}
   </div>
-  <form hx-post="/skills/trending/refresh" hx-target="body" style="margin-top:12px"><button type="submit" class="pill">Get today's list now</button></form>
+  <button type="button" class="pill" style="margin-top:12px" data-api="/api/v3/skills/trending/refresh" data-then="/v3/skills?tab=github">Get today's list now</button>
 
   {% else %}
   <p class="muted">Small Python tools Prometheus wrote for jobs that come back. Each ran only after you approved its code,

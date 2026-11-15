@@ -79,7 +79,7 @@ def test_list_the_top_repos_then_the_owner_picks(app_client, monkeypatch):
 
     monkeypatch.setattr(mod, "RepoOfTheDay", lambda s, **kw: rod)
     page = client.get("/v3/skills?tab=github").text                   # the new Skills page, "Add from GitHub" tab
-    assert "Today's top repositories" in page and 'hx-post="/skills/trending/add"' in page and "good/llm-notes" in page
+    assert "Today's top repositories" in page and 'data-api="/api/v3/skills/trending/' in page and "good/llm-notes" in page
     assert "Today's top repos on GitHub" in client.get("/skills?view=classic").text
     n = names.index("good/llm-notes") + 1
     said = rod.answer(1, f"add repo {n}")

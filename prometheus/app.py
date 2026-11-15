@@ -310,6 +310,7 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
     skills.is_off = lambda name: not skill_on(services.settings, name)   # the Skills page's switches
     archive.allowed = lambda chat_id: memory_collects(services.settings, chat_id)       # Memory → Privacy
     archive.left_out = lambda chat_id: chat_id in (services.settings.memory_off_chats or [])
+    store.hidden_chats = lambda: set(services.settings.memory_off_chats or [])     # never recalled anywhere
     services.atomic_files = AtomicFiles(policy=policy, backup_dir=data / "backups")
     services.terminal = AsyncTerminal(policy=policy)
     services.archive = archive

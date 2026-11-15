@@ -147,7 +147,8 @@ Exit gate: parallel, cancel and restart tests; memory stays within the laptop's 
 - **M6.2** Optional Cloudroom sandboxes: move a running task, receipts and request IDs, events in order, recovery
   after failures.
 - **M6.3** Free Cloudroom storage of Prometheus and its knowledge (repo knowledge, backups, sync): encrypted on the
-  laptop before upload; the laptop copy stays the main one; works offline.
+  laptop before upload; the laptop copy stays the main one; works offline. Includes the notes of chats left out in
+  Memory → Privacy, stored privately so they can be referred to later (owner, 15 Nov).
 - **M6.4** Control PC.
 
 Exit gate: disconnect/reconnect tests; works offline; encryption tests; Windows CI; audit.

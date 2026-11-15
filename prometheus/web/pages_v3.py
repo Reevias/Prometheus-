@@ -322,6 +322,25 @@ def register_skill_pages(app: FastAPI, services, shell) -> None:
         store.audit("user", "skill_remove", {"skill": name})
         return {"removed": name}
 
+    @app.post("/api/v3/skills/trending/{n}/add")
+    def api_trending_add(n: int):
+        """Add number n from today's list of top repositories (reads its README only)."""
+        from prometheus.repo_of_day import RepoOfTheDay
+
+        said = RepoOfTheDay(services).add_numbers([n])
+        store.audit("user", "repo_added", {"n": n})
+        failed = said.startswith(("There's no", "Couldn't"))
+        return JSONResponse({"error": said[:300]}, status_code=409) if failed else {"ok": True, "message": said[:300]}
+
+    @app.post("/api/v3/skills/trending/refresh")
+    def api_trending_refresh():
+        from prometheus.repo_of_day import RepoOfTheDay
+
+        try:
+            return {"ok": True, "message": RepoOfTheDay(services).suggest()[:300] or "Today's list is ready."}
+        except Exception:
+            return JSONResponse({"error": "I couldn't reach GitHub trending just now. Try again in a bit."}, status_code=502)
+
     @app.post("/api/v3/skills/add")
     def api_skill_add(link: str = Form("")):
         """Add a skill from a GitHub repository link: reads its README only; nothing is installed or run."""

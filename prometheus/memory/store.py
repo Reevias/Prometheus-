@@ -157,6 +157,7 @@ class Store:
         self._lock = threading.RLock()
         self._db = sqlite3.connect(str(path), check_same_thread=False)
         self.listeners = []    # called with (chat_id) after an answer is saved, e.g. the chat archive
+        self.hidden_chats = lambda: set()   # set by the app: chats left out in Memory → Privacy (never recalled)
         self.embedder = None   # optional: turns text into vectors for meaning-based search (local Ollama only)
         self._db.row_factory = sqlite3.Row
         with self._lock:
@@ -833,7 +834,10 @@ class Store:
             return []
         now = time.time()
         out = []
+        hidden = set(self.hidden_chats() or ())
         for r in rows:
+            if hidden and self._chat_of(r["kind"], int(r["ref_id"])) in hidden:
+                continue                      # a left-out chat: its notes and messages are kept but never used
             found = self._lookup(r["kind"], int(r["ref_id"]))
             if found is None:
                 continue
@@ -843,6 +847,16 @@ class Store:
             out.append(Recalled(r["kind"], int(r["ref_id"]), text, source, created, score))
         out.sort(key=lambda h: h.score, reverse=True)
         return out[:limit]
+
+    def _chat_of(self, kind: str, ref_id: int) -> int | None:
+        """The chat a recalled item came from (None for memories, which belong to no chat)."""
+        sql = {"chat_note": "SELECT chat_id FROM chat_notes WHERE id = ?",
+               "message": "SELECT chat_id FROM messages WHERE id = ?",
+               "agent_note": "SELECT t.chat_id FROM agent_notes a JOIN tasks t ON t.id = a.task_id WHERE a.id = ?"}.get(kind)
+        if sql is None:
+            return None
+        rows = self._rows(sql, (ref_id,))
+        return int(rows[0][0]) if rows else None
 
     # -- search -------------------------------------------------------------
     def search(self, query: str, limit: int = 20) -> list[SearchHit]:

@@ -1,6 +1,9 @@
 # Changelog
 
 ## Prometheus 3.0, M2.2 (on the prometheus-v3 branch, not released yet)
+- Privacy fix (audit): a chat you leave out of memory is now hidden everywhere: Memory search, Prometheus's own
+  answers and other AI apps never see its notes or messages. Include it again and they come back. The chat stays in
+  your chat list and Chats search.
 - Owner's fixes: delete a task straight from the Tasks list; deleting a chat keeps you where you were; clicking
   Prometheus on the taskbar minimises it again (Win+Down, Win+Up and snapping work too).
 - Connections (in your menu): email, Google, calendar link, GitHub, Obsidian, the cloud copy and your other apps,

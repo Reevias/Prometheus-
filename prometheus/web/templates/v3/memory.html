@@ -137,7 +137,7 @@
     </section>
     <section class="priv-card">
       <h2>Chats it leaves out</h2>
-      <p class="muted">A chat you leave out is never remembered or searched later; what it already saved from it is removed. The chat itself stays.</p>
+      <p class="muted">A chat you leave out is never used again: its notes are hidden from search and from Prometheus's answers (and its searchable copy is removed). Include it again and its notes come back. The chat itself stays in your chat list.</p>
       <div class="mem-list">{% for cid, title in left_out %}<div class="mem-row"><div><p><a href="/c/{{ cid }}">{{ title }}</a></p></div>
         <div class="row-actions"><button type="button" data-api="/api/v3/memory/chats/{{ cid }}/leave-out">Include again</button></div></div>
       {% else %}<p class="muted">None.</p>{% endfor %}</div>
