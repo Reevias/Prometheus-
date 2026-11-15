@@ -1,0 +1,73 @@
+{% extends "v3/layout.html" %}
+{% from "v3/icons.html" import icon %}
+{% block title %}{{ s.title }} · Skills · Prometheus{% endblock %}
+{% block topbar %}<a class="crumb" href="/v3/skills">Skills</a><span class="muted">/</span><b>{{ s.title }}</b>{% endblock %}
+{% block content %}
+<section class="page skill-page" data-skill="{{ s.name }}">
+  <div class="task-title"><h1>{{ s.title }}</h1><span class="state {{ 's-done' if s.on else '' }}">{{ "On" if s.on else "Off" }}</span></div>
+  <p class="lead">{{ s.description }}</p>
+  <label class="switch-row"><input type="checkbox" id="skill-on" {{ "checked" if s.on }}>
+    <span>Prometheus may use this skill{% if not s.on %} <span class="muted">(off: the planner never sees it)</span>{% endif %}</span></label>
+  <dl class="facts task-facts">
+    <dt>Group</dt><dd>{{ s.group }}</dd>
+    <dt>Source</dt><dd>{{ "Added by you" if s.source == "user" else "Built into Prometheus" }}{% if s.link %} · github.com/{{ s.link }}{% endif %}</dd>
+    <dt>Version</dt><dd>{{ s.version or "Not stated" }}</dd>
+    <dt>Author</dt><dd>{{ s.author or ("Prometheus" if s.source == "builtin" else "Not stated") }}</dd>
+    <dt>Needs</dt><dd>{{ s.requires or "Nothing extra: it's a text guide" }}</dd>
+    <dt>Permissions</dt><dd>{{ s.permissions or "None of its own: it only guides agents, who ask you before risky steps" }}</dd>
+    <dt>Used</dt><dd>{{ uses|length }}{% if uses|length >= 20 %}+{% endif %} time{{ "s" if uses|length != 1 }}</dd>
+  </dl>
+  <div class="task-actions">
+    <button type="button" class="pill" id="skill-check">{{ icon("tasks") }}Check it</button>
+    {% if s.on %}<button type="button" class="pill" id="skill-try">{{ icon("send") }}Try it</button>{% endif %}
+    {% if s.source == "user" %}<button type="button" class="pill danger" id="skill-remove">{{ icon("close") }}Remove</button>{% endif %}
+  </div>
+  <ul class="plain checks" id="skill-checks" hidden></ul>
+
+  <h2 class="section">Files</h2>
+  <div class="tabs small">
+    <a href="/v3/skills/{{ s.name }}" class="{{ 'on' if shown == 'SKILL.md' }}">SKILL.md</a>
+    {% for r in s.refs %}<a href="/v3/skills/{{ s.name }}?ref={{ r }}" class="{{ 'on' if shown == r }}">{{ r }}</a>{% endfor %}
+  </div>
+  <div class="skill-text">{{ text|md }}</div>
+
+  <h2 class="section">When it was used</h2>
+  {% if uses %}
+  <div class="rows">{% for u in uses %}<a href="/v3/tasks/{{ u.task_id }}">{{ u.goal }}<span>{{ titles.get(u.chat_id, "Chat") }} · {{ u.created|day }} {{ u.created|clock }} · {{ u.status }}</span></a>{% endfor %}</div>
+  {% else %}<p class="muted">Not used yet.</p>{% endif %}
+</section>
+<script>
+(function () {
+  var name = document.querySelector(".skill-page").dataset.skill, csrf = document.body.dataset.csrf;
+  function post(path, body) {
+    return fetch("/api/v3/skills/" + name + "/" + path, { method: "POST", credentials: "same-origin", body: body || new FormData(),
+                 headers: { "X-CSRF-Token": csrf } }).then(function (r) { return r.json().then(function (j) { return [r.ok, j]; }); });
+  }
+  document.getElementById("skill-on").addEventListener("change", function (e) {
+    var f = new FormData(); if (e.target.checked) f.append("on", "1");
+    post("switch", f).then(function (x) { if (x[0]) location.reload(); else { e.target.checked = !e.target.checked; promToast(x[1].error || "Couldn't change it.", true); } });
+  });
+  document.getElementById("skill-check").addEventListener("click", function () {
+    post("check").then(function (x) {
+      var ul = document.getElementById("skill-checks"); ul.innerHTML = ""; ul.hidden = false;
+      (x[1].results || []).forEach(function (r) {
+        var li = document.createElement("li"); li.className = r.ok ? "ok" : "bad";
+        li.textContent = (r.ok ? "✓ " : "! ") + r.text; ul.appendChild(li);
+      });
+      promToast(x[1].ok ? "All good: Prometheus can read all of it." : "Found something to fix.", !x[1].ok);
+    });
+  });
+  var tryBtn = document.getElementById("skill-try");
+  if (tryBtn) tryBtn.addEventListener("click", function () {
+    var q = prompt("What should Prometheus do with this skill?"); if (!q || !q.trim()) return;
+    var f = new FormData(); f.append("question", q);
+    post("try", f).then(function (x) { if (x[0]) location.href = x[1].url; else promToast(x[1].error || "Couldn't start it.", true); });
+  });
+  var rm = document.getElementById("skill-remove");
+  if (rm) rm.addEventListener("click", function () {
+    if (!confirm("Remove this skill? Its folder is deleted; you can add it again later.")) return;
+    post("remove").then(function (x) { if (x[0]) location.href = "/v3/skills"; else promToast(x[1].error || "Couldn't remove it.", true); });
+  });
+})();
+</script>
+{% endblock %}

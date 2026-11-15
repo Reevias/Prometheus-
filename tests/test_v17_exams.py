@@ -40,20 +40,26 @@ def test_plan_checkin_and_moving_missed_topics(make_ctx):
     assert "Physics: 5 day(s) to go" in ex.show(pid)
 
 
-def test_agent_and_evening_post(app_client):
+def test_agent_and_evening_post(app_client, monkeypatch):
     _, services = app_client()
     from prometheus.agents import exams_agent
     from prometheus.agents.exams_agent import ExamsAgent
 
+    # A plan made from 20:00 on starts tomorrow (no revision at night), so pin the planner's clock to midday:
+    # the test then has a study day today whatever hour it is run at.
+    t = time.localtime()
+    noon = time.mktime((t.tm_year, t.tm_mon, t.tm_mday, 12, 0, 0, 0, 0, -1))
+    monkeypatch.setattr(exams_agent.EXAMS, "clock", lambda: noon)
     ctx = services.orchestrator.make_context(services.store.create_task(services.store.create_chat("c"), "x"), 0)
     res = ExamsAgent().run("x", {"action": "plan", "exam": "Maths", "date": "in 10 days",
                                  "topics": "Algebra\nCalculus\nProbability\nVectors"}, ctx)
     assert res.status == "done" and "Algebra" in res.summary and "each day" in res.summary.lower()
     clock = services.briefing
     clock.notify = None
-    services.settings.exam_study_time = time.strftime("%H:%M", time.localtime(time.time() - 60))
-    services.settings.exam_checkin_time = time.strftime("%H:%M", time.localtime(time.time() - 60))
-    assert clock.exam_posts(time.time(), "2026-11-11") == ["exam_post", "exam_ask"]
+    at = time.strftime("%H:%M", time.localtime(max(time.time() - 60, noon - 12 * 3600)))
+    services.settings.exam_study_time = at
+    services.settings.exam_checkin_time = at
+    assert clock.exam_posts(time.time(), date.today().isoformat()) == ["exam_post", "exam_ask"]
     chat = clock.study_chat()
     assert "Did you finish" in services.store.messages(chat)[-1].text
     out = services.orchestrator.run(chat, "yes all done")

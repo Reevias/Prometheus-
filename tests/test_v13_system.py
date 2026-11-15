@@ -184,9 +184,9 @@ def test_secret_goes_to_handler_but_is_never_stored(app_client):
                                 needs_secret=True)
     aid = services.approvals.request("wifi_password", "Wi-Fi password needed for Office-5G", {"ssid": "Office-5G"},
                                      secret_label="Wi-Fi password")
-    page = client.get("/approvals").text
+    page = client.get("/v3/approvals").text
     assert 'type="password"' in page and "Wi-Fi password" in page
-    resp = client.post(f"/approvals/{aid}", data={"decision": "approve", "secret": "my-wifi-pass-1"}, headers=h)
+    resp = client.post(f"/api/v3/approvals/{aid}", data={"decision": "approve", "secret": "my-wifi-pass-1"}, headers=h)
     assert resp.status_code == 200 and got == ["my-wifi-pass-1"]
     assert "my-wifi-pass-1" not in resp.text
     assert "my-wifi-pass-1" not in json.dumps(services.store.audit_log())

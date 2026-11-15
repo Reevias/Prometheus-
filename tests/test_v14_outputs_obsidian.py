@@ -105,13 +105,14 @@ def test_outputs_panel_and_buttons(app_client, monkeypatch):
     f = services.home / "notes.txt"
     f.write_text("x")
     services.store.add_output(task, str(f), "created")
-    page = client.get(f"/chats/{cid}").text
-    assert "Outputs" in page and f"/chats/{cid}/outputs" in page
-    panel = client.get(f"/chats/{cid}/outputs").text
-    assert "notes.txt" in panel and "created" in panel and "Show in folder" in panel
+    oid = services.store.outputs(cid)[0]["id"]
+    page = client.get(f"/c/{cid}").text                                         # v3 chat: the files strip
+    assert f'hx-get="/c/{cid}/files"' in page
+    panel = client.get(f"/c/{cid}/files").text
+    assert "Files from this chat" in panel and "notes.txt" in panel
+    assert f"/outputs/{oid}/open" in panel and f"/outputs/{oid}/folder" in panel
     opened = []
     monkeypatch.setattr(opener, "system_open", opened.append)
-    oid = services.store.outputs(cid)[0]["id"]
     assert client.post(f"/outputs/{oid}/open", headers=h).status_code == 200 and opened == [str(f)]
     assert client.post(f"/outputs/{oid}/open").status_code == 403                  # needs CSRF
     assert client.post("/outputs/999/open", headers=h).status_code == 404
@@ -134,11 +135,8 @@ def test_connect_obsidian_needs_password(app_client):
 def test_theme_toggle_and_text_select(app_client):
     client, services = app_client()
     login(client)
-    page = client.get("/").text
-    assert "theme-toggle" in page and 'localStorage.getItem("prom-theme")' in page
-    assert "prom-theme" in client.get("/login").text
-    css = client.get("/static/style.css").text
-    assert 'html[data-theme="light"]' in css
+    # The old light/dark toggle was retired on purpose with the classic screens: the v3 look is dark only.
+    assert "theme-toggle" not in client.get("/").text
     import inspect
 
     import prometheus.desktop as d

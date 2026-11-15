@@ -1,0 +1,2060 @@
+"""M2.2: the new-look pages for what Prometheus already does (Tasks first; the others join one by one)."""
+from __future__ import annotations
+
+import json
+import time
+
+from fastapi import FastAPI, Request, UploadFile
+from fastapi.responses import JSONResponse
+
+# What the owner sees for each stored task status. "new" is a request that hasn't started its first step yet.
+STATUS_GROUPS = {
+    "running": ("Running", ("new", "running")),
+    "paused": ("Paused", ("paused",)),
+    "done": ("Done", ("done", "instant", "phone")),
+    "failed": ("Failed", ("failed", "interrupted")),
+    "stopped": ("Stopped", ("stopped",)),
+}
+STATUS_LABEL = {"new": "Starting", "running": "Running", "paused": "Paused", "done": "Done", "instant": "Done",
+                "phone": "Done", "failed": "Failed", "interrupted": "Interrupted", "stopped": "Stopped"}
+PERIODS = {"today": ("Today", 1), "week": ("7 days", 7), "month": ("30 days", 30), "all": ("All time", 0)}
+
+
+def since_for(period: str, now: float | None = None) -> float:
+    days = PERIODS.get(period, PERIODS["all"])[1]
+    if not days:
+        return 0.0
+    now = time.time() if now is None else now
+    if days == 1:                                   # "today": from midnight, local time
+        t = time.localtime(now)
+        return time.mktime((t.tm_year, t.tm_mon, t.tm_mday, 0, 0, 0, 0, 0, -1))
+    return now - days * 86400
+
+
+def took(start: float, end: float) -> str:
+    """'4 s', '2 min 5 s', '1 h 3 min'; empty when it never finished."""
+    if not start or not end or end < start:
+        return ""
+    secs = int(end - start)
+    if secs < 60:
+        return f"{secs} s"
+    if secs < 3600:
+        return f"{secs // 60} min {secs % 60} s"
+    return f"{secs // 3600} h {(secs % 3600) // 60} min"
+
+
+# ---- Tasks page views: cards and table are the same rows styled two ways; board and timeline are their own ----
+TASK_VIEWS = {"cards": "v3/tasks_list.html", "table": "v3/tasks_list.html",
+              "board": "v3/tasks_board.html", "timeline": "v3/tasks_timeline.html"}
+STATUS_OF_GROUP = {s: key for key, (_, statuses) in STATUS_GROUPS.items() for s in statuses}
+
+
+def board_of(rows: list[dict]) -> list[dict]:
+    """The same rows as five columns of cards (Running, Paused, Done, Failed, Stopped)."""
+    return [{"key": key, "label": label, "cards": [r for r in rows if r["status"] in statuses]}
+            for key, (label, statuses) in STATUS_GROUPS.items()]
+
+
+def timeline_window(period: str, rows: list[dict], now: float | None = None) -> tuple[float, float]:
+    """The stretch of time the timeline shows: the chosen period, or the last two weeks of tasks."""
+    now = time.time() if now is None else now
+    start = since_for(period, now)
+    if not start:
+        newest = max((r["created"] for r in rows), default=0.0)
+        start = min(now - 14 * 86400, newest - 86400) if newest else now - 14 * 86400
+    return start, now
+
+
+def timeline_bars(rows: list[dict], start: float, end: float, now: float | None = None) -> list[dict]:
+    """One bar per task that overlaps the window: where it began and how long it took (still running: up to now)."""
+    now = time.time() if now is None else now
+    span = max(end - start, 1.0)
+    out = []
+    for r in sorted(rows, key=lambda r: (r["created"], r["id"])):
+        began = max(float(r["created"] or 0.0), start)
+        ended = min(float(r["finished"] or now) if r["status"] not in ("new", "running") else now, end)
+        if ended < start or began > end:
+            continue
+        out.append({**r, "group": STATUS_OF_GROUP.get(r["status"], "failed"),
+                    "left": round((began - start) / span * 100, 3),
+                    "width": round(max((ended - began) / span * 100, 0.35), 3),
+                    "began": began, "ended": ended, "how": took(began, ended) or "just now"})
+    return out[:80]
+
+
+def register_pages(app: FastAPI, services, shell) -> None:
+    store = services.store
+    register_skill_pages(app, services, shell)
+    register_memory_pages(app, services, shell)
+    register_system_pages(app, services, shell)
+    register_approval_pages(app, services, shell)
+    register_automation_pages(app, services, shell)
+    register_research_pages(app, services, shell)
+    register_connection_pages(app, services, shell)
+    register_builder_pages(app, services, shell)
+    register_project_pages(app, services, shell)
+    register_switchover_pages(app, services, shell)
+
+    # ---- Tasks ---------------------------------------------------------------------------------------------------
+    def task_rows(status: str, q: str, period: str) -> list[dict]:
+        statuses = STATUS_GROUPS[status][1] if status in STATUS_GROUPS else ()
+        rows = store.list_tasks(statuses, q.strip()[:200], since_for(period))
+        for r in rows:
+            r["label"] = STATUS_LABEL.get(r["status"], r["status"].title())
+            r["live"] = r["status"] in ("new", "running") and r["chat_id"] in services.running
+            r["took"] = took(r["created"], r["finished"])
+        if any(r["status"] == "paused" for r in rows):
+            from prometheus.orchestrator.planner import paused_runs
+            kept = paused_runs(store)
+            for r in rows:
+                r["resumable"] = r["status"] == "paused" and str(r["id"]) in kept
+        return rows
+
+    @app.get("/v3/tasks")
+    def tasks_page(request: Request, status: str = "all", q: str = "", period: str = "all", view: str = "cards"):
+        status = status if status in STATUS_GROUPS else "all"
+        period = period if period in PERIODS else "all"
+        view = view if view in TASK_VIEWS else "cards"
+        counts = store.task_status_counts()
+        groups = {k: sum(counts.get(s, 0) for s in v[1]) for k, v in STATUS_GROUPS.items()}
+        rows = task_rows(status, q, period)
+        start, end = timeline_window(period, rows)
+        ctx = dict(rows=rows, status=status, q=q, period=period, groups=groups, total=sum(counts.values()),
+                   STATUS_GROUPS=STATUS_GROUPS, PERIODS=PERIODS, live=any(r["live"] for r in rows),
+                   view=view, part=TASK_VIEWS[view], board=board_of(rows),
+                   bars=timeline_bars(rows, start, end), span=(start, end))
+        if request.headers.get("HX-Request") and request.headers.get("HX-Target") == "task-list":
+            return shell(request, TASK_VIEWS[view], "tasks", **ctx)
+        return shell(request, "v3/tasks.html", "tasks", **ctx)
+
+    def task_detail(task_id: int) -> dict | None:
+        from prometheus.orchestrator.planner import paused_run
+
+        t = store.task(task_id)
+        if not t:
+            return None
+        end = t.get("finished") or 0.0
+        steps = []
+        for s in store.steps(task_id):
+            steps.append({"agent": s.agent.replace("_", " "), "goal": s.goal, "status": s.status,
+                          "inputs": s.inputs, "result": s.result, "at": s.created,
+                          "data": {k: v for k, v in (s.data or {}).items() if k in ("path", "paths", "url", "model")}})
+        outputs = [dict(o) for o in store._rows(
+            "SELECT id, path, kind, is_dir, created FROM outputs WHERE chat_id = ? AND created >= ? AND created <= ? "
+            "ORDER BY id", (t["chat_id"], t["created"], end or time.time()))]
+        return {**t, "label": STATUS_LABEL.get(t["status"], t["status"].title()),
+                "live": t["status"] in ("new", "running") and t["chat_id"] in services.running,
+                "pausing": t["chat_id"] in services.orchestrator.pausing,
+                "took": took(t["created"], end), "steps": steps, "notes": store.agent_notes(task_id),
+                "outputs": outputs, "chat": store.chat_title(t["chat_id"]) or "Chat",
+                "resumable": t["status"] == "paused" and paused_run(store, task_id) is not None,
+                "resume_booked": t["status"] == "paused" and _resume_booked(t["chat_id"])}
+
+    def _resume_booked(chat_id: int) -> bool:
+        try:
+            from prometheus.resume import _queue
+            return any(i.get("chat_id") == chat_id for i in _queue(store))
+        except Exception:
+            return False
+
+    @app.get("/v3/tasks/{task_id}")
+    def task_page(request: Request, task_id: int):
+        t = task_detail(task_id)
+        if t is None:
+            return shell(request, "v3/tasks_missing.html", "tasks", status_code=404)
+        if request.headers.get("HX-Request") and request.headers.get("HX-Target") == "task-detail":
+            return shell(request, "v3/task_detail.html", "tasks", t=t)
+        return shell(request, "v3/task.html", "tasks", t=t)
+
+    def _gone():
+        return JSONResponse({"error": "That task is gone."}, status_code=404)
+
+    @app.post("/api/v3/tasks/{task_id}/stop")
+    def api_task_stop(task_id: int):
+        """Stops a running task (its chat's reply), or cancels a paused one so it won't resume by itself."""
+        t = store.task(task_id)
+        if not t:
+            return _gone()
+        if t["status"] in ("new", "running") and t["chat_id"] in services.running:
+            services.orchestrator.request_stop(t["chat_id"])
+            store.audit("user", "stop_task", {"task": task_id})
+            return {"stopping": task_id, "message": "Stopping after the current step."}
+        if t["status"] == "paused":
+            from prometheus import resume
+            from prometheus.orchestrator.planner import drop_paused_run
+
+            resume.cancel(store, t["chat_id"])
+            drop_paused_run(store, task_id)          # nothing kept to carry on with now
+            store.set_task_status(task_id, "stopped", t.get("answer") or "")
+            store.audit("user", "cancel_task", {"task": task_id})
+            return {"stopped": task_id, "message": "Cancelled: it won't resume by itself."}
+        return JSONResponse({"error": "That task isn't running."}, status_code=409)
+
+    @app.post("/api/v3/tasks/{task_id}/pause")
+    def api_task_pause(task_id: int):
+        """Pauses a running task: it stops at the next safe point and keeps the steps it hasn't run."""
+        t = store.task(task_id)
+        if not t:
+            return _gone()
+        if t["status"] in ("new", "running") and t["chat_id"] in services.running:
+            services.orchestrator.request_pause(t["chat_id"])
+            store.audit("user", "pause_task", {"task": task_id})
+            return {"pausing": task_id, "message": "Pausing: it stops at the next safe point and keeps what's left."}
+        return JSONResponse({"error": "That task isn't running."}, status_code=409)
+
+    @app.post("/api/v3/tasks/{task_id}/resume")
+    def api_task_resume(task_id: int):
+        """Carries on a task the owner paused, from the step it stopped at."""
+        from prometheus.orchestrator.planner import paused_run
+
+        t = store.task(task_id)
+        if not t:
+            return _gone()
+        if t["status"] != "paused":
+            return JSONResponse({"error": "Only a paused task can carry on."}, status_code=409)
+        if t["chat_id"] in services.running:
+            return JSONResponse({"error": "Prometheus is already working in that chat."}, status_code=409)
+        if t["chat_id"] not in dict(store.chats()):
+            return JSONResponse({"error": "Its chat was deleted, so it can't carry on there."}, status_code=409)
+        if paused_run(store, task_id) is None:
+            return JSONResponse({"error": "That one has nothing kept to carry on with: run it again instead."},
+                                status_code=409)
+        services.resume_task(task_id)
+        store.audit("user", "resume_task", {"task": task_id})
+        return {"resumed": task_id, "message": "Carrying on from where it stopped."}
+
+    @app.post("/api/v3/tasks/{task_id}/retry")
+    def api_task_retry(task_id: int):
+        """Runs the same request again, in its chat (a new task; the old one is kept)."""
+        t = store.task(task_id)
+        if not t:
+            return _gone()
+        if t["chat_id"] in services.running:
+            return JSONResponse({"error": "Prometheus is still answering in that chat. Wait, or stop it."},
+                                status_code=409)
+        if t["chat_id"] not in dict(store.chats()):
+            return JSONResponse({"error": "Its chat was deleted, so it can't run there again."}, status_code=409)
+        from prometheus import resume as _resume
+        for item in _resume._queue(store):        # it was waiting to try again by itself after an AI limit: run it
+            if item["chat_id"] == t["chat_id"] and item["text"] == t["text"]:      # now instead, never twice
+                _resume._without(store, item["id"])
+        services.start_task(t["chat_id"], t["text"])
+        store.audit("user", "retry_task", {"task": task_id})
+        return {"chat_id": t["chat_id"], "url": f"/c/{t['chat_id']}"}
+
+    @app.post("/api/v3/tasks/{task_id}/delete")
+    def api_task_delete(task_id: int):
+        t = store.task(task_id)
+        if not t:
+            return _gone()
+        if t["status"] in ("new", "running") and t["chat_id"] in services.running:
+            return JSONResponse({"error": "Stop it first: it's still running."}, status_code=409)
+        if t["status"] == "paused":
+            from prometheus import resume
+            from prometheus.orchestrator.planner import drop_paused_run
+
+            resume.cancel(store, t["chat_id"])
+            drop_paused_run(store, task_id)
+        store.delete_task(task_id)
+        store.audit("user", "delete_task", {"task": task_id, "text": t["text"][:200]})
+        return {"deleted": task_id}
+
+    @app.get("/api/v3/tasks/{task_id}/export")
+    def api_task_export(task_id: int):
+        """A task's record (request, steps, notes, answer) as JSON, for keeping or sharing."""
+        t = task_detail(task_id)
+        if t is None:
+            return _gone()
+        body = json.dumps({k: t[k] for k in ("id", "text", "status", "created", "finished", "answer", "steps", "notes",
+                                             "outputs", "chat")}, ensure_ascii=False, indent=2, default=str)
+        return JSONResponse(json.loads(body), headers={
+            "Content-Disposition": f'attachment; filename="prometheus-task-{task_id}.json"'})
+
+
+# ---- Skills ---------------------------------------------------------------------------------------------------------
+# The built-in guides, grouped for the Skills page; skills added from GitHub are "From GitHub", the owner's own "Yours".
+# A SKILL.md may name its own group with a "category:" header line.
+SKILL_GROUPS = {
+    "coding": "Code", "explain-code": "Code", "understand-software": "Code",
+    "research": "Research and learning", "learning-roadmap": "Research and learning",
+    "file-sorting": "Files and media", "video": "Files and media",
+    "memory": "How Prometheus works", "models": "How Prometheus works", "task-planning": "How Prometheus works",
+}
+GITHUB_LINK = r"(?:https?://)?(?:www\.)?github\.com/([A-Za-z0-9-]{1,39}/[A-Za-z0-9._-]{1,100}?)(?:\.git)?/?(?:[#?].*)?"
+
+
+def skill_group(skill) -> str:
+    meta = skill.meta or {}
+    if meta.get("category"):
+        return meta["category"][:40].strip().capitalize()
+    if skill.source == "user":
+        return "From GitHub" if skill.name.startswith("repo-") else "Yours"
+    return SKILL_GROUPS.get(skill.name, "Other")
+
+
+def register_skill_pages(app: FastAPI, services, shell) -> None:
+    import re
+    import shutil
+    from pathlib import Path
+
+    from fastapi import Form
+
+    from prometheus.config import save_settings
+    from prometheus.features import set_skill_on, skill_on
+    from prometheus.skillbook import NAME, check
+
+    store = services.store
+    book = services.skills
+
+    def uses(name: str, limit: int = 20) -> list[dict]:
+        """When the planner or the Guide used this skill: its steps, newest first."""
+        rows = store._rows(
+            "SELECT s.id, s.task_id, s.goal, s.status, s.created, t.chat_id FROM steps s JOIN tasks t ON t.id = s.task_id "
+            "WHERE s.data LIKE ? ORDER BY s.id DESC LIMIT ?", (f'%"skill": "{name}"%', limit))
+        return [dict(r) for r in rows]
+
+    def card(s) -> dict:
+        meta = s.meta or {}
+        return {"name": s.name, "title": s.name.replace("-", " ").capitalize(), "description": s.description,
+                "group": skill_group(s), "source": s.source, "on": skill_on(services.settings, s.name),
+                "refs": s.references(), "meta": meta,
+                "version": meta.get("version", ""), "author": meta.get("author", ""),
+                "requires": meta.get("requires") or meta.get("dependencies") or "",
+                "permissions": meta.get("permissions") or meta.get("allowed-tools") or "",
+                "link": (re.search(r"github\.com/([\w.-]+/[\w.-]+)", s.description or "") or [None, ""])[1].rstrip(".")}
+
+    @app.get("/v3/skills")
+    def skills_page(request: Request, q: str = "", said: str = "", tab: str = "guides"):
+        from prometheus.agents import tools_agent
+        from prometheus.repo_of_day import RepoOfTheDay
+
+        cards = [card(s) for s in book.everything()]
+        if q.strip():
+            words = q.lower().split()
+            cards = [c for c in cards if all(w in f"{c['name']} {c['description']} {c['group']}".lower() for w in words)]
+        groups: dict[str, list] = {}
+        for c in sorted(cards, key=lambda c: (c["group"] in ("Other",), c["group"], c["name"])):
+            groups.setdefault(c["group"], []).append(c)
+        counts = {s.name: 0 for s in book.everything()}
+        for r in store._rows("SELECT data FROM steps WHERE data LIKE '%\"skill\": %'"):
+            try:
+                n = json.loads(r["data"]).get("skill")
+            except ValueError:
+                n = None
+            if n in counts:
+                counts[n] += 1
+        tab = tab if tab in ("guides", "github", "tools") else "guides"
+        return shell(request, "v3/skills.html", "skills", groups=groups, q=q, said=said[:500], tab=tab, counts=counts,
+                     total=len(counts), off=sum(1 for c in counts if not skill_on(services.settings, c)),
+                     user_folder=str(book.user), trending=RepoOfTheDay(services).todays(),
+                     own_tools=tools_agent.TOOLS.all() if tools_agent.TOOLS else [])
+
+    @app.get("/v3/skills/{name}")
+    def skill_page(request: Request, name: str, ref: str = ""):
+        s = book.get_any(name)
+        if s is None:
+            return shell(request, "v3/skill_missing.html", "skills", status_code=404)
+        text, shown = s.body, "SKILL.md"
+        if ref and ref != "SKILL.md":
+            try:
+                text, shown = book.reference(name, ref), ref
+            except ValueError:
+                pass
+        return shell(request, "v3/skill.html", "skills", s=card(s), text=text, shown=shown, uses=uses(name),
+                     titles=dict(store.chats()), checks=None)
+
+    def _no_skill():
+        return JSONResponse({"error": "No such skill."}, status_code=404)
+
+    @app.post("/api/v3/skills/{name}/switch")
+    def api_skill_switch(name: str, on: str = Form("")):
+        if book.get_any(name) is None:
+            return _no_skill()
+        set_skill_on(services.settings, name, bool(on))
+        save_settings(services.settings)
+        store.audit("user", "skill_switch", {"skill": name, "on": bool(on)})
+        return {"skill": name, "on": skill_on(services.settings, name)}
+
+    @app.post("/api/v3/skills/{name}/check")
+    def api_skill_check(name: str):
+        s = book.get_any(name)
+        if s is None:
+            return _no_skill()
+        results = check(s)
+        return {"skill": name, "ok": all(ok for ok, _ in results),
+                "results": [{"ok": ok, "text": text} for ok, text in results]}
+
+    @app.post("/api/v3/skills/{name}/try")
+    def api_skill_try(name: str, question: str = Form("")):
+        """Ask something with this skill, in a new chat (the planner is told which guide to follow)."""
+        from prometheus.memory.titles import quick_title
+
+        s = book.get_any(name)
+        if s is None:
+            return _no_skill()
+        if not skill_on(services.settings, name):
+            return JSONResponse({"error": "Switch this skill on first."}, status_code=409)
+        question = " ".join(question.split())[:1000]
+        if not question:
+            return JSONResponse({"error": "Type a question to try it with."}, status_code=400)
+        chat = store.create_chat(quick_title(question))
+        services.start_task(chat, f"Use the {name} skill: {question}")
+        store.audit("user", "skill_try", {"skill": name})
+        return {"chat_id": chat, "url": f"/c/{chat}"}
+
+    @app.post("/api/v3/skills/{name}/remove")
+    def api_skill_remove(name: str):
+        """Only skills you added can be removed (built-in ones can be switched off)."""
+        s = book.get_any(name)
+        if s is None:
+            return _no_skill()
+        if s.source != "user" or book.user is None or not NAME.match(name):
+            return JSONResponse({"error": "Built-in skills can't be removed; switch it off instead."}, status_code=409)
+        folder = Path(book.user) / name
+        if folder.is_symlink() or not folder.is_dir() or folder.resolve().parent != Path(book.user).resolve():
+            return JSONResponse({"error": "That skill's folder isn't where it should be, so it was left alone."},
+                                status_code=409)
+        shutil.rmtree(folder)
+        set_skill_on(services.settings, name, True)          # forget its switch too
+        save_settings(services.settings)
+        store.audit("user", "skill_remove", {"skill": name})
+        return {"removed": name}
+
+    @app.post("/api/v3/skills/trending/{n}/add")
+    def api_trending_add(n: int):
+        """Add number n from today's list of top repositories (reads its README only)."""
+        from prometheus.repo_of_day import RepoOfTheDay
+
+        said = RepoOfTheDay(services).add_numbers([n])
+        store.audit("user", "repo_added", {"n": n})
+        failed = said.startswith(("There's no", "Couldn't"))
+        return JSONResponse({"error": said[:300]}, status_code=409) if failed else {"ok": True, "message": said[:300]}
+
+    @app.post("/api/v3/skills/trending/refresh")
+    def api_trending_refresh():
+        from prometheus.repo_of_day import RepoOfTheDay
+
+        try:
+            return {"ok": True, "message": RepoOfTheDay(services).suggest()[:300] or "Today's list is ready."}
+        except Exception:
+            return JSONResponse({"error": "I couldn't reach GitHub trending just now. Try again in a bit."}, status_code=502)
+
+    @app.post("/api/v3/skills/add")
+    def api_skill_add(link: str = Form("")):
+        """Add a skill from a GitHub repository link: reads its README only; nothing is installed or run."""
+        from prometheus.repo_of_day import RepoOfTheDay, harmful
+
+        m = re.fullmatch(GITHUB_LINK, link.strip())
+        if not m:
+            return JSONResponse({"error": "Paste a GitHub repository link, like github.com/owner/name."}, status_code=400)
+        full = m.group(1)
+        rod = RepoOfTheDay(services)
+        info: dict = {}
+        try:
+            r = rod.http.get(f"https://api.github.com/repos/{full}", headers={"Accept": "application/vnd.github+json"})
+            if r.status_code == 404:
+                return JSONResponse({"error": f"GitHub has no public repository {full}."}, status_code=404)
+            if r.status_code == 200:
+                j = r.json()
+                full = j.get("full_name") or full
+                info = {"description": j.get("description") or "", "language": j.get("language") or "",
+                        "stars": j.get("stargazers_count") or 0}
+        except Exception:
+            info = {}
+        if harmful({"full_name": full, **info}):
+            return JSONResponse({"error": "That repository looks like it's about tracking people, other people's "
+                                          "accounts or attacks, so it wasn't added."}, status_code=409)
+        try:
+            said = rod.add({"repo": full, **info})
+        except Exception as e:
+            return JSONResponse({"error": f"Couldn't add {full}: {e}"[:300]}, status_code=502)
+        store.audit("user", "skill_add", {"repo": full})
+        return {"added": full, "message": said}
+
+
+# ---- Memory ---------------------------------------------------------------------------------------------------------
+MEMORY_TABS = ("memories", "files", "answers", "topics", "privacy")
+KIND_LABEL = {"memory": "Memory", "chat_note": "Chat note", "agent_note": "Agent note", "message": "Message"}
+
+
+def register_memory_pages(app: FastAPI, services, shell) -> None:
+    import time as _t
+
+    from fastapi import Form
+
+    from prometheus.config import save_settings
+
+    store = services.store
+
+    def facts_view() -> dict:
+        facts = services.orchestrator.facts
+        people = []
+        for subject in facts.subjects():
+            rows = [dict(vars(f)) for f in facts.about(subject)]
+            people.append({"name": "You" if subject == "me" else subject.title(),
+                           "now": [f for f in rows if f["until"] is None],
+                           "past": [f for f in rows if f["until"] is not None]})
+        return {"people": people, "fact_changes": facts.changes()}
+
+    def off_chats() -> list[int]:
+        return list(services.settings.memory_off_chats or [])
+
+    def chat_of_message(ids: list[int]) -> dict[int, int]:
+        if not ids:
+            return {}
+        rows = store._rows(f"SELECT id, chat_id FROM messages WHERE id IN ({','.join('?' * len(ids))})", tuple(ids))
+        return {r["id"]: r["chat_id"] for r in rows}
+
+    def generated_files(q: str = "") -> list[dict]:
+        rows = store._rows("SELECT o.id, o.chat_id, o.path, o.kind, o.is_dir, o.created, COALESCE(c.title, '') AS chat "
+                           "FROM outputs o LEFT JOIN chats c ON c.id = o.chat_id ORDER BY o.id DESC LIMIT 300")
+        out = []
+        for r in rows:
+            name = str(r["path"]).replace("\\", "/").rstrip("/").split("/")[-1]
+            if q and q.lower() not in f"{name} {r['chat']}".lower():
+                continue
+            out.append({**dict(r), "name": name})
+        return out
+
+    @app.get("/v3/memory")
+    def memory_page(request: Request, tab: str = "memories", q: str = "", show: str = "", said: str = ""):
+        tab = tab if tab in MEMORY_TABS else "memories"
+        q = q.strip()[:200]
+        ctx: dict = {"tab": tab, "q": q, "said": said[:300], "show": show}
+        if tab == "memories":
+            found = []
+            if q:
+                hits = store.recall(q, limit=30, kinds=("memory", "chat_note", "agent_note", "message"))
+                owner = chat_of_message([h.ref_id for h in hits if h.kind == "message"])
+                left_out = set(off_chats())
+                found = [{"kind": KIND_LABEL.get(h.kind, h.kind), "text": h.text[:600], "source": h.source,
+                          "chat": owner.get(h.ref_id) if h.kind == "message" else None}
+                         for h in hits if not (h.kind == "message" and owner.get(h.ref_id) in left_out)]
+            ctx.update(memories=list(reversed(store.memories())), found=found, **facts_view())
+        elif tab == "files":
+            show = show if show in ("all", "pages", "made") else "all"
+            ctx["show"] = show
+            ctx["passages"] = ([{"title": c.title, "source": c.source, "private": c.private, "text": c.match[:500]}
+                                for c in store.search_chunks(q, limit=12, include_private=True, chats=False)]
+                               if q and show != "made" else [])
+            ctx["documents"] = [d for d in store.documents()
+                                if not q or q.lower() in f"{d.title} {d.source}".lower()] if show != "made" else []
+            ctx["made"] = generated_files(q) if show in ("all", "made") else []
+        elif tab == "answers":
+            from prometheus.learning import current_rules
+
+            try:
+                text, history = services.prompts.get("learned"), services.prompts.history("learned")[:8]
+            except (OSError, RuntimeError, ValueError):
+                text, history = "", []
+            ctx.update(rules=current_rules(text), history=history, task_lessons=store.lessons(50))
+        elif tab == "topics":
+            topics = store.topics()
+            chats = dict(store.chats())
+            for t in topics:
+                ids = list(dict.fromkeys(s["chat_id"] for s in store.segments(topic=t["topic"])))
+                t["chat_list"] = [(cid, chats.get(cid, "Chat")) for cid in ids if cid in chats][:12]
+            ctx.update(topics=topics, folder=str(services.archive.folder) if services.archive else "")
+        else:
+            everything = store.chats()
+            left = set(off_chats())
+            ctx.update(paused=bool(services.settings.memory_paused),
+                       left_out=[(cid, t) for cid, t in everything if cid in left],
+                       chats=[(cid, t) for cid, t in everything if cid not in left][:300],
+                       counts={"memories": len(store.memories()), "documents": len(store.documents(limit=100000)),
+                               "facts": sum(len(p["now"]) + len(p["past"]) for p in facts_view()["people"])})
+        return shell(request, "v3/memory.html", "memory", **ctx)
+
+    def ok(**kw):
+        return {"ok": True, **kw}
+
+    def bad(text: str, code: int = 400):
+        return JSONResponse({"error": text}, status_code=code)
+
+    @app.post("/api/v3/memory/add")
+    def api_memory_add(text: str = Form("")):
+        from prometheus.orchestrator.planner import SECRETISH
+
+        text = " ".join(text.split())[:1000]
+        if not text:
+            return bad("Type what Prometheus should remember.")
+        if SECRETISH.search(text):
+            return bad("That looks like a password or key: those go in Settings → AI models and keys, not in memory.")
+        mid = store.add_memory(text, source="added by you")
+        store.audit("user", "add_memory", {"id": mid})
+        return ok(id=mid)
+
+    @app.post("/api/v3/memory/{memory_id}/edit")
+    def api_memory_edit(memory_id: int, text: str = Form("")):
+        from prometheus.orchestrator.planner import SECRETISH
+
+        text = " ".join(text.split())[:1000]
+        if not text:
+            return bad("A memory can't be empty: delete it instead.")
+        if SECRETISH.search(text):
+            return bad("That looks like a password or key, so it wasn't saved.")
+        if not store.update_memory(memory_id, text):
+            return bad("That memory is gone.", 404)
+        store.audit("user", "edit_memory", {"id": memory_id})
+        return ok()
+
+    @app.post("/api/v3/memory/{memory_id}/delete")
+    def api_memory_delete(memory_id: int):
+        store.delete_memory(memory_id)
+        store.audit("user", "delete_memory", {"id": memory_id})
+        return ok()
+
+    @app.post("/api/v3/facts/{fact_id}/edit")
+    def api_fact_edit(fact_id: int, text: str = Form("")):
+        """A new value for a fact: the old one is kept as past, with its date (like saying 'change X to Y')."""
+        value = " ".join(text.split())[:300]
+        facts = services.orchestrator.facts
+        rows = store._rows("SELECT subject, attribute FROM facts WHERE id = ? AND until IS NULL", (fact_id,))
+        if not rows:
+            return bad("That fact is gone or already in the past.", 404)
+        if not value:
+            return bad("Type the new value, or forget it instead.")
+        facts.save(rows[0]["subject"], rows[0]["attribute"], value, source="edited by you")
+        store.audit("user", "edit_fact", {"id": fact_id})
+        return ok()
+
+    @app.post("/api/v3/facts/{fact_id}/forget")
+    def api_fact_forget(fact_id: int):
+        services.orchestrator.facts.forget(fact_id)
+        store.audit("user", "forget_fact", {"id": fact_id})
+        return ok()
+
+    @app.post("/api/v3/facts/changes/{change_id}/undo")
+    def api_fact_undo(change_id: int):
+        if not services.orchestrator.facts.undo_change(change_id):
+            return bad("Already undone.", 409)
+        store.audit("user", "undo_fact_change", {"id": change_id})
+        return ok()
+
+    @app.post("/api/v3/documents/{doc_id}/delete")
+    def api_document_delete(doc_id: int):
+        store.delete_document(doc_id)
+        store.audit("user", "delete_document", {"id": doc_id})
+        return ok()
+
+    @app.post("/api/v3/memory/learn")
+    def api_memory_learn():
+        from prometheus.learning import learn
+
+        try:
+            said = learn(services) or "Nothing new to learn yet: rate a few answers first."
+        except Exception as e:
+            said = f"Couldn't learn right now ({type(e).__name__}). It will try again tonight."
+        return ok(message=said)
+
+    @app.post("/api/v3/memory/lessons/reset")
+    def api_lessons_reset():
+        from prometheus.learning import HEADER
+
+        services.prompts.set("learned", HEADER + "(Reset by the owner.)\n", "Reset by the owner")
+        store.audit("user", "lessons_reset", {})
+        return ok(message="Cleared. Older versions can still be restored.")
+
+    @app.post("/api/v3/memory/lessons/{commit}/restore")
+    def api_lessons_restore(commit: str):
+        try:
+            services.prompts.rollback("learned", commit)
+        except (ValueError, RuntimeError):
+            return bad("That version couldn't be restored.", 409)
+        store.audit("user", "lessons_restored", {"commit": commit[:12]})
+        return ok(message="Restored that version.")
+
+    @app.post("/api/v3/task-lessons/{lesson_id}/delete")
+    def api_task_lesson_delete(lesson_id: int):
+        store.delete_lesson(lesson_id)
+        return ok()
+
+    @app.post("/api/v3/memory/pause")
+    def api_memory_pause(on: str = Form("")):
+        """on = paused: nothing is saved from chats by itself (what you ask it to remember still is)."""
+        services.settings.memory_paused = bool(on)
+        save_settings(services.settings)
+        store.audit("user", "memory_pause", {"paused": bool(on)})
+        return ok(paused=services.settings.memory_paused)
+
+    @app.post("/api/v3/memory/chats/{chat_id}/leave-out")
+    def api_memory_leave_out(chat_id: int, on: str = Form("")):
+        """on: this chat is never remembered or searched; its searchable parts and its file are removed now."""
+        if chat_id not in dict(store.chats()):
+            return bad("No such chat.", 404)
+        left = [c for c in off_chats() if c != chat_id] + ([chat_id] if on else [])
+        services.settings.memory_off_chats = left
+        save_settings(services.settings)
+        if services.archive is not None:
+            try:
+                services.archive.sync(chat_id)          # left out: drops its parts; back in: files it again
+            except Exception:
+                pass
+        store.audit("user", "memory_leave_out", {"chat": chat_id, "on": bool(on)})
+        return ok(left_out=chat_id in left)
+
+    @app.get("/api/v3/memory/export")
+    def api_memory_export():
+        """Everything Prometheus remembers about you, as one JSON file (file text itself stays on the laptop)."""
+        facts = services.orchestrator.facts
+        try:
+            rules = services.prompts.get("learned")
+        except (OSError, RuntimeError, ValueError):
+            rules = ""
+        body = {
+            "exported": _t.strftime("%Y-%m-%d %H:%M"),
+            "memories": [{"text": m.text, "source": m.source, "created": m.created} for m in store.memories()],
+            "facts": [dict(vars(f)) for s in facts.subjects() for f in facts.about(s)],
+            "how_to_answer": rules,
+            "task_lessons": store.lessons(1000),
+            "topics": store.topics(1000),
+            "documents": [{"title": d.title, "source": d.source, "private": d.private, "chars": d.chars}
+                          for d in store.documents(limit=100000)],
+        }
+        store.audit("user", "memory_export", {})
+        return JSONResponse(json.loads(json.dumps(body, default=str)), headers={
+            "Content-Disposition": f'attachment; filename="prometheus-memory-{_t.strftime("%Y-%m-%d")}.json"'})
+
+    @app.post("/api/v3/memory/wipe")
+    def api_memory_wipe(confirm: str = Form("")):
+        if confirm != "forget everything":
+            return bad("Type “forget everything” to confirm.")
+        store.wipe_memories()
+        for d in store.documents(limit=100000):
+            store.delete_document(d.id)
+        facts = services.orchestrator.facts
+        for s in facts.subjects():
+            for f in facts.about(s):
+                facts.forget(f.id)
+        store.audit("user", "wipe_memories", {})
+        return ok(message="Forgot everything: memories, facts and saved pages and files. Chats are kept.")
+
+
+# ---- System (with Activity) -------------------------------------------------------------------------------------------
+# Background jobs and the name of the thread each runs in: "Running" is shown only when that thread is really alive.
+BACKGROUND = [("Reminders and alarms", "prometheus-reminders", "reminders"),
+              ("Watchers (folders, prices, pages)", "prometheus-watchers", "watchers"),
+              ("Daily jobs (learning, tidy-up, repos of the day)", "prometheus-daily", "daily"),
+              ("Morning briefing", "prometheus-briefing", "briefing"),
+              ("Resuming paused tasks", "prometheus-resumer", "resumer"),
+              ("Cloud copy sync", "prometheus-sync", "sync"),
+              ("Voice", "prometheus-voice", "voice")]
+ACTION_WORDS = {"delete": "Deleted", "add": "Added", "edit": "Edited", "forget": "Forgot", "undo": "Undid",
+                "switch": "Switched", "remove": "Removed", "retry": "Ran again", "stop": "Stopped", "cancel": "Cancelled",
+                "wipe": "Wiped", "export": "Exported", "try": "Tried", "pause": "Paused"}
+
+
+def plain_action(action: str) -> str:
+    """'delete_task' → 'Deleted task', 'skill_switch' → 'Skill switch'."""
+    words = action.split("_")
+    if words and words[0] in ACTION_WORDS:
+        return " ".join([ACTION_WORDS[words[0]]] + words[1:])
+    return " ".join(words).capitalize()
+
+
+def register_system_pages(app: FastAPI, services, shell) -> None:
+    import os
+    import platform
+    import sys
+    import threading
+
+    from fastapi import Form
+
+    store = services.store
+
+    def alive(thread_name: str) -> bool:
+        return any(t.name == thread_name and t.is_alive() for t in threading.enumerate())
+
+    def overview() -> dict:
+        from prometheus.config import data_dir
+        from prometheus.launcher import version
+
+        models = []
+        for m in services.router.status_detail():
+            state = ("Resting" if m["resting"] else "Ready" if m["available"] else "Not set up")
+            models.append({**m, "state": state})
+        models.sort(key=lambda m: (m["state"] != "Ready", m["state"] != "Resting", m["name"]))   # usable ones first
+        jobs = []
+        for label, thread, attr in BACKGROUND:
+            obj = getattr(services, attr, None)
+            state = "Off" if obj is None else ("Running" if alive(thread) else "Set up, not running")
+            if attr == "voice" and obj is not None and not alive(thread):
+                try:
+                    state = "Off" if obj.state() == "off" else state       # voice is off until you switch it on
+                except Exception:
+                    pass
+            jobs.append({"label": label, "state": state})
+        me = {}
+        try:
+            import psutil
+
+            p = psutil.Process(os.getpid())
+            me = {"ram_mb": round(p.memory_info().rss / 1048576), "threads": p.num_threads(),
+                  "since": p.create_time()}
+        except Exception:
+            pass
+        b = services.budget.state()
+        ks = services.killswitch
+        return {"models": models, "jobs": jobs, "me": me, "budget": b,
+                "stopped": bool(ks.is_set), "stop_reason": getattr(ks, "reason", ""),
+                "pending": len(store.big_approvals()), "updated": getattr(services.updater, "updated", "") or "",
+                "about": {"version": version(), "python": platform.python_version(),
+                          "os": f"{platform.system()} {platform.release()}", "data": str(data_dir()),
+                          "machine": platform.machine(), "pid": os.getpid(), "exe": sys.executable}}
+
+    def activity(q: str) -> dict:
+        from prometheus import undo
+
+        undo._ready(store)
+        log = [dict(r) for r in store._rows("SELECT * FROM undo_log ORDER BY id DESC LIMIT 60")]
+        for r in log:
+            r["can_undo"] = not r["undone"] and r["kind"] != "email"
+        runs = []
+        journal = getattr(services, "journal", None)
+        if journal is not None:
+            for r in journal.runs()[:60]:
+                r["summary"] = undo._describe_run(r, journal)
+                runs.append(r)
+        where, args = "", ()
+        if q:
+            where, args = "WHERE action LIKE ? OR detail LIKE ?", (f"%{q}%", f"%{q}%")
+        audit = []
+        for r in store._rows(f"SELECT * FROM audit_log {where} ORDER BY id DESC LIMIT 200", args):
+            try:
+                detail = json.loads(r["detail"])
+            except ValueError:
+                detail = {}
+            text = ", ".join(f"{k}: {v}" for k, v in detail.items() if not isinstance(v, (dict, list)))[:200]
+            audit.append({"who": "You" if r["actor"] == "user" else r["actor"].replace("_", " ").title(),
+                          "what": plain_action(r["action"]), "detail": text, "at": r["created"]})
+        return {"log": log, "runs": runs, "audit": audit}
+
+    def devices() -> dict:
+        """Each device and only what Prometheus can really read about it (M2.4: health of all your devices)."""
+        s = services.settings
+        subs = 0
+        try:
+            subs = len(store._rows("SELECT endpoint FROM push_subs"))
+        except Exception:
+            pass
+        since = float(store.kv_get("sync_since", 0) or 0)
+        return {"cloud_url": (s.cloud_url or "").rstrip("/"), "sync_status": store.kv_get("sync_status", "") or "",
+                "synced": since, "phone_target": getattr(s, "phone_target", "") or "", "push_devices": subs,
+                "role": getattr(s, "role", "laptop")}
+
+    @app.get("/v3/system")
+    def system_page(request: Request, tab: str = "overview", q: str = ""):
+        tab = tab if tab in ("overview", "activity", "devices") else "overview"
+        q = q.strip()[:100]
+        ctx = activity(q) if tab == "activity" else devices() if tab == "devices" else overview()
+        return shell(request, "v3/system.html", "system", tab=tab, q=q, **ctx)
+
+    @app.post("/api/v3/devices/{which}/check")
+    def api_device_check(which: str):
+        """Check a device now: the cloud copy answers (and how fast), or the phone's battery over wireless debugging."""
+        import httpx
+
+        s = services.settings
+        if which == "cloud":
+            url = (s.cloud_url or "").rstrip("/")
+            if not url:
+                return JSONResponse({"error": "No cloud copy is set up."}, status_code=409)
+            started = time.monotonic()
+            try:
+                r = httpx.get(f"{url}/healthz", timeout=6.0)
+                r.raise_for_status()
+                ok = r.json().get("app") == "prometheus"
+            except Exception as e:
+                return JSONResponse({"error": f"The cloud copy didn't answer ({type(e).__name__}). Is Tailscale on?"},
+                                    status_code=502)
+            ms = round((time.monotonic() - started) * 1000)
+            if not ok:
+                return JSONResponse({"error": "Something answered at that address, but it isn't Prometheus."}, status_code=502)
+            return {"ok": True, "message": f"The cloud copy is online (answered in {ms} ms)."}
+        if which == "phone":
+            target = getattr(s, "phone_target", "") or ""
+            if not target:
+                return JSONResponse({"error": "Phone control isn't set up (Settings → Phone control)."}, status_code=409)
+            try:
+                from prometheus.connectors.android import Phone
+                said = Phone(target).battery()
+            except Exception as e:
+                return JSONResponse({"error": f"Couldn't reach the phone ({type(e).__name__}). Is wireless debugging on?"},
+                                    status_code=502)
+            return {"ok": True, "message": said}
+        return JSONResponse({"error": "Unknown device."}, status_code=404)
+
+    @app.post("/api/v3/activity/undo")
+    def api_activity_undo(source: str = Form(...), id: str = Form(...)):
+        """Undo one thing from the Activity list (file changes, reminders, saved facts, events, setting changes)."""
+        from prometheus import undo
+
+        if source == "files":
+            journal = getattr(services, "journal", None)
+            run = next((r for r in (journal.runs() if journal else []) if r["id"] == id), None)
+            if run is None:
+                return JSONResponse({"error": "Those file changes aren't in the history any more."}, status_code=404)
+            if run.get("active"):
+                return JSONResponse({"error": "It's still running: wait until it finishes."}, status_code=409)
+            item = {"source": "files", "id": id, "summary": undo._describe_run(run, journal)}
+        elif source == "log" and id.isdigit():
+            undo._ready(store)
+            rows = store._rows("SELECT * FROM undo_log WHERE id = ?", (int(id),))
+            if not rows:
+                return JSONResponse({"error": "That isn't in the history."}, status_code=404)
+            if rows[0]["undone"]:
+                return JSONResponse({"error": "That was already undone."}, status_code=409)
+            item = {"source": "log", "id": int(id), "summary": rows[0]["summary"]}
+        else:
+            return JSONResponse({"error": "Unknown item."}, status_code=400)
+        try:
+            said = undo.perform(services, item)
+        except Exception as e:
+            return JSONResponse({"error": f"Couldn't undo it: {type(e).__name__}."}, status_code=500)
+        store.audit("user", "undo", {"what": item["summary"][:120]})
+        return {"ok": True, "message": said}
+
+
+# ---- Approvals (in your menu) ----------------------------------------------------------------------------------------
+def register_approval_pages(app: FastAPI, services, shell) -> None:
+    from fastapi import Form
+
+    store = services.store
+
+    @app.get("/v3/approvals")
+    def approvals_page(request: Request):
+        waiting = store.big_approvals()
+        done = [dict(r) for r in store._rows(
+            "SELECT id, kind, summary, status, created FROM approvals WHERE status != 'pending' ORDER BY id DESC LIMIT 30")]
+        return shell(request, "v3/approvals.html", "approvals", waiting=waiting, done=done)
+
+    @app.post("/api/v3/approvals/{approval_id}")
+    def api_approval_decide(approval_id: int, decision: str = Form(...), secret: str = Form("")):
+        try:
+            item = store.approval(approval_id)
+        except KeyError:
+            return JSONResponse({"error": "That request is gone."}, status_code=404)
+        if decision not in ("approve", "reject"):
+            return JSONResponse({"error": "Approve or reject."}, status_code=400)
+        if item.status != "pending":
+            return JSONResponse({"error": f"Already {item.status}."}, status_code=409)
+        said = services.approvals.resolve(approval_id, approved=decision == "approve", secret=secret[:200])
+        if said == "Type the password first.":
+            return JSONResponse({"error": said}, status_code=400)
+        return {"ok": True, "message": said}
+
+
+# ---- Automations -----------------------------------------------------------------------------------------------------
+REPEAT_LABEL = {"": "Once", "daily": "Every day", "weekly": "Every week", "weekdays": "Every weekday"}
+WATCH_SWITCHES = [("watch_battery", "Battery low", "Says so when the battery drops below 20%."),
+                  ("watch_disk", "Disk almost full", "Says so when the main drive is over 90% full."),
+                  ("watch_cpu", "CPU busy", "Says so when the CPU is over 90% for 5 minutes.")]
+AUTOMATIONS_CHAT = "Automations"
+
+
+def register_automation_pages(app: FastAPI, services, shell) -> None:
+    from fastapi import Form
+
+    from prometheus.config import save_settings
+    from prometheus.reminders import WhenError, describe, next_time, parse_when
+
+    store = services.store
+
+    def chat_named(title: str, create: bool = False) -> int:
+        for cid, t in store.chats():
+            if t == title:
+                return cid
+        if not create:
+            return 0
+        cid = store.create_chat(title)
+        store.rename_chat(cid, title, by="user")
+        return cid
+
+    def last_result(r: dict) -> dict | None:
+        """A goal's latest run: the newest task with its words in its chat."""
+        if r.get("kind") != "goal":
+            return None
+        rows = store._rows("SELECT id, status, created FROM tasks WHERE chat_id = ? AND text = ? ORDER BY id DESC LIMIT 1",
+                           (r["chat_id"], r["text"]))
+        if not rows:
+            return None
+        from prometheus.web.pages_v3 import STATUS_LABEL
+        t = dict(rows[0])
+        return {**t, "label": STATUS_LABEL.get(t["status"], t["status"].title())}
+
+    @app.get("/v3/automations")
+    def automations_page(request: Request):
+        now = time.time()
+        titles = dict(store.chats())
+        items = []
+        for r in store.automations():
+            items.append({**r, "kind_label": "Goal" if r.get("kind") == "goal" else "Reminder",
+                          "repeat_label": REPEAT_LABEL.get(r.get("repeat") or "", r.get("repeat") or "Once"),
+                          "next": describe(r["due"], now) if r["due"] > now else "now (it was due while paused or off)",
+                          "chat": titles.get(r["chat_id"], ""), "last": last_result(r)})
+        s = services.settings
+        alerts_id = chat_named("Prometheus alerts")
+        alerts = [m for m in store.messages(alerts_id)][-8:][::-1] if alerts_id else []
+        from prometheus import automations as _auto
+
+        rules = [_auto.describe(r) for r in _auto.rules(store)]
+        return shell(request, "v3/automations.html", "automations", items=items, rules=rules,
+                     switches=[(k, label, about, bool(getattr(s, k, False))) for k, label, about in WATCH_SWITCHES],
+                     folders=list(s.watch_folders or []), alerts=alerts, alerts_chat=alerts_id,
+                     running="prometheus-reminders" in {t.name for t in __import__("threading").enumerate()})
+
+    def bad(text: str, code: int = 400):
+        return JSONResponse({"error": text}, status_code=code)
+
+    def item(reminder_id: int) -> dict | None:
+        rows = store._rows("SELECT * FROM reminders WHERE id = ? AND state IN ('waiting', 'paused')", (reminder_id,))
+        return dict(rows[0]) if rows else None
+
+    @app.post("/api/v3/automations/add")
+    def api_automation_add(text: str = Form(""), when: str = Form(""), kind: str = Form("reminder")):
+        text = " ".join(text.split())[:300]
+        if not text:
+            return bad("Say what it should remind you of, or do.")
+        try:
+            w = parse_when(when)
+        except WhenError as e:
+            return bad(str(e) or "I couldn't tell when. Try “tomorrow at 8am” or “every day at 7pm”.")
+        kind = "goal" if kind == "goal" else "reminder"
+        rid = store.add_reminder(chat_named(AUTOMATIONS_CHAT, create=True), text, w.due, w.repeat, kind)
+        store.audit("user", "add_automation", {"id": rid, "kind": kind})
+        return {"ok": True, "message": f"Added: {text}, {REPEAT_LABEL.get(w.repeat, w.repeat).lower()}, next {describe(w.due)}."}
+
+    @app.post("/api/v3/automations/{reminder_id}/pause")
+    def api_automation_pause(reminder_id: int, on: str = Form("")):
+        r = item(reminder_id)
+        if r is None:
+            return bad("It's gone.", 404)
+        if on:
+            store.set_reminder_state(reminder_id, "paused")
+            store.audit("user", "pause_automation", {"id": reminder_id})
+            return {"ok": True, "message": "Paused: it won't run until you resume it."}
+        due, now = r["due"], time.time()
+        while due <= now and r.get("repeat"):
+            nxt = next_time(due, r["repeat"])
+            if nxt is None:
+                break
+            due = nxt
+        store.set_reminder_state(reminder_id, "waiting", due)
+        store.audit("user", "resume_automation", {"id": reminder_id})
+        return {"ok": True, "message": "Resumed." + (" Its time had passed, so it runs within a minute." if due <= now else "")}
+
+    @app.post("/api/v3/automations/{reminder_id}/edit")
+    def api_automation_edit(reminder_id: int, text: str = Form("")):
+        text = " ".join(text.split())[:300]
+        if not text:
+            return bad("It needs some words: delete it instead.")
+        if not store.edit_reminder(reminder_id, text=text):
+            return bad("It's gone.", 404)
+        store.audit("user", "edit_automation", {"id": reminder_id})
+        return {"ok": True}
+
+    @app.post("/api/v3/automations/{reminder_id}/when")
+    def api_automation_when(reminder_id: int, text: str = Form("")):
+        try:
+            w = parse_when(text)
+        except WhenError as e:
+            return bad(str(e) or "I couldn't tell when. Try “tomorrow at 8am” or “every weekday at 7”.")
+        if not store.edit_reminder(reminder_id, due=w.due, repeat=w.repeat):
+            return bad("It's gone.", 404)
+        store.audit("user", "edit_automation", {"id": reminder_id})
+        return {"ok": True, "message": f"Next: {describe(w.due)} ({REPEAT_LABEL.get(w.repeat, w.repeat).lower()})."}
+
+    @app.post("/api/v3/automations/{reminder_id}/run")
+    def api_automation_run(reminder_id: int):
+        """Run a standing goal now; its schedule doesn't change."""
+        r = item(reminder_id)
+        if r is None:
+            return bad("It's gone.", 404)
+        if r.get("kind") != "goal":
+            return bad("Only goals can run now; a reminder just rings at its time.", 409)
+        if r["chat_id"] in services.running:
+            return bad("Its chat is busy right now. Try again in a moment.", 409)
+        services.start_task(r["chat_id"], r["text"])
+        store.audit("user", "run_automation", {"id": reminder_id})
+        return {"ok": True, "message": "Running it now: follow it in Tasks or its chat."}
+
+    @app.post("/api/v3/automations/{reminder_id}/delete")
+    def api_automation_delete(reminder_id: int):
+        if not store.cancel_reminder(reminder_id):
+            return bad("It's gone.", 404)
+        store.audit("user", "delete_automation", {"id": reminder_id})
+        return {"ok": True}
+
+    @app.post("/api/v3/watchers/{key}")
+    def api_watcher_switch(key: str, on: str = Form("")):
+        if key not in {k for k, _, _ in WATCH_SWITCHES}:
+            return bad("Unknown watcher.", 404)
+        setattr(services.settings, key, bool(on))
+        save_settings(services.settings)
+        store.audit("user", "switch_watcher", {"watcher": key, "on": bool(on)})
+        return {"ok": True}
+
+    @app.post("/api/v3/watchers/folders/remove")
+    def api_watch_folder_remove(path: str = Form("")):
+        s = services.settings
+        kept = [f for f in (s.watch_folders or []) if f.get("path") != path]
+        if len(kept) == len(s.watch_folders or []):
+            return bad("That folder isn't watched.", 404)
+        s.watch_folders = kept
+        save_settings(s)
+        store.audit("user", "remove_watch_folder", {"path": path[:200]})
+        return {"ok": True}
+
+
+# ---- Research (three modes: Research · Study · Money) ----------------------------------------------------------------
+RESEARCH_MODES = {
+    "research": {"label": "Research", "chat": "Research", "agent": "", "placeholder": "What should Prometheus research?",
+                 "prompts": ["Compare ", "Explain the latest on ", "Find sources about ", "Summarise what experts say about "]},
+    "study": {"label": "Study", "chat": "", "agent": "study", "placeholder": "What are you studying?",
+              "prompts": ["Make flashcards from ", "Quiz me on ", "My exam on ", "Explain simply: "]},
+    "money": {"label": "Money", "chat": "Money", "agent": "money", "placeholder": "Ask about your spending",
+              "prompts": ["How much did I spend on ", "I spent ", "Set a budget of ", "Where did my money go this week?"]},
+}
+
+
+def register_research_pages(app: FastAPI, services, shell) -> None:
+    import webbrowser
+
+    from fastapi import Form
+    from fastapi.responses import Response
+
+    from prometheus.agents.research import site_of
+
+    store = services.store
+
+    def chat_for(mode: str) -> int:
+        if mode == "study":
+            return services.briefing.study_chat() if services.briefing is not None else _named("Study")
+        return _named(RESEARCH_MODES[mode]["chat"])
+
+    def _named(title: str) -> int:
+        for cid, t in store.chats():
+            if t == title:
+                return cid
+        cid = store.create_chat(title)
+        store.rename_chat(cid, title, by="user")
+        return cid
+
+    def kv_list(key: str) -> list:
+        v = store.kv_get(key, []) or []
+        return v if isinstance(v, list) else []
+
+    def sources() -> list[dict]:
+        pinned, excluded = [int(i) for i in kv_list("research_pinned")], set(kv_list("research_excluded"))
+        rows = store._rows("SELECT d.id, d.title, d.source, d.updated, (SELECT text FROM chunks c WHERE c.doc_id = d.id "
+                           "AND c.parent_id IS NULL ORDER BY seq LIMIT 1) AS first FROM documents d "
+                           "WHERE d.key LIKE 'web:%' ORDER BY d.updated DESC LIMIT 60")
+        out = []
+        for r in rows:
+            site = site_of(r["source"])
+            out.append({"id": r["id"], "title": r["title"], "url": r["source"], "site": site, "updated": r["updated"],
+                        "snippet": " ".join((r["first"] or "").split())[:200], "pinned": r["id"] in pinned,
+                        "excluded": site in excluded})
+        return sorted(out, key=lambda s: (not s["pinned"], s["excluded"]))
+
+    def history(q: str) -> list[dict]:
+        """Past research: tasks that used the Research agent (any chat), newest first."""
+        args: tuple = ()
+        where = "EXISTS (SELECT 1 FROM steps s WHERE s.task_id = t.id AND s.agent = 'research')"
+        if q:
+            where += " AND (t.text LIKE ? OR t.answer LIKE ?)"
+            args = (f"%{q}%", f"%{q}%")
+        rows = store._rows(f"SELECT t.id, t.chat_id, t.text, t.status, t.created FROM tasks t WHERE {where} "
+                           "ORDER BY t.id DESC LIMIT 40", args)
+        out = []
+        for r in rows:
+            n = 0
+            for s in store.steps(r["id"]):
+                n += len((s.data or {}).get("sources", []) or [])
+            out.append({**dict(r), "sources": n})
+        return out
+
+    @app.get("/v3/research")
+    def research_page(request: Request, mode: str = "research", q: str = ""):
+        mode = mode if mode in RESEARCH_MODES else "research"
+        cid = chat_for(mode)
+        recent = [m for m in store.messages(cid) if m.role in ("user", "assistant")][-4:]
+        ctx: dict = {"mode": mode, "modes": RESEARCH_MODES, "m": RESEARCH_MODES[mode], "chat_id": cid,
+                     "recent": recent, "q": q.strip()[:100]}
+        if mode == "research":
+            from prometheus import projects as _pj
+            ctx.update(sources=sources(), history=history(ctx["q"]), excluded=kv_list("research_excluded"),
+                       projects=[{"id": p["id"], "name": p["name"]} for p in _pj.all_projects(store)])
+        elif mode == "study":
+            ctx.update(study_view())
+        else:
+            ctx.update(money_view())
+        return shell(request, "v3/research.html", "research", **ctx)
+
+    def study_view() -> dict:
+        import time as _t
+        from datetime import date as _date
+
+        from prometheus.agents import assignments_agent, exams_agent, study_agent
+        from prometheus.assignments import _when
+
+        st, tr, ex = study_agent.STUDY, assignments_agent.TRACKER, exams_agent.EXAMS
+        decks = st.decks() if st else []
+        exams = []
+        for p in (ex.plans() if ex else []):
+            days = ex.days(p["id"])
+            today = next((d for d in days if d["day"] == ex.today().isoformat()), None)
+            left = (_date.fromisoformat(p["exam_date"]) - ex.today()).days
+            exams.append({"exam": p["exam"], "date": p["exam_date"], "left": left,
+                          "today": ", ".join(today["topics"]) if today else "", "done": sum(1 for d in days if d["done"]),
+                          "total": len(days)})
+        deadlines = [{**a, "when": _when(a["due"]), "soon": a["due"] - _t.time() < 3 * 86400}
+                     for a in (tr.upcoming(60) if tr else [])]
+        return {"decks": decks, "due_total": sum(d.get("due") or 0 for d in decks), "exams": exams,
+                "deadlines": deadlines, "study_ready": st is not None, "sheets": quiz_sheets(services)}
+
+    def money_view() -> dict:
+        import time as _t
+
+        from prometheus.agents import money_agent
+
+        m = money_agent.MONEY
+        if m is None:
+            return {"money_ready": False}
+        now = _t.time()
+        by = m.by_category(m.month_start(now))
+        budgets = services.settings.money_budgets or {}
+        top = max(list(by.values()) + [b for b in budgets.values() if b] + [1])
+        cats = []
+        for name, amount in sorted(by.items(), key=lambda kv: -kv[1]):
+            b = budgets.get(name)
+            cats.append({"name": name, "amount": amount, "budget": b, "pct": min(100, round(100 * amount / (b or top))),
+                         "over": bool(b and amount >= b), "near": bool(b and amount >= 0.8 * b)})
+        recent = [dict(r) for r in store._rows("SELECT * FROM spending ORDER BY created DESC LIMIT 20")]
+        return {"money_ready": True, "cats": cats, "spent": recent, "total": sum(by.values()),
+                "today": sum(r["amount"] for r in m._since(m.day_start(now))), "month_name": _t.strftime("%B %Y"),
+                "email_set": bool(services.settings.email_address)}
+
+    def bad(text: str, code: int = 400):
+        return JSONResponse({"error": text}, status_code=code)
+
+    # -- research sources --------------------------------------------------------------------------------------------
+    def doc(doc_id: int) -> dict | None:
+        rows = store._rows("SELECT id, source, title FROM documents WHERE id = ? AND key LIKE 'web:%'", (doc_id,))
+        return dict(rows[0]) if rows else None
+
+    @app.post("/api/v3/research/sources/{doc_id}/pin")
+    def api_source_pin(doc_id: int, on: str = Form("")):
+        if doc(doc_id) is None:
+            return bad("That source is gone.", 404)
+        pinned = [int(i) for i in kv_list("research_pinned") if int(i) != doc_id]
+        if on:
+            if len(pinned) >= 3:
+                return bad("Up to 3 pinned sources: unpin one first.", 409)
+            pinned.append(doc_id)
+        store.kv_set("research_pinned", pinned)
+        return {"ok": True, "message": "Pinned: research will read it first." if on else "Unpinned."}
+
+    @app.post("/api/v3/research/sources/{doc_id}/exclude")
+    def api_source_exclude(doc_id: int, on: str = Form("")):
+        d = doc(doc_id)
+        if d is None:
+            return bad("That source is gone.", 404)
+        site = site_of(d["source"])
+        if not site:
+            return bad("That source has no website to leave out.")
+        sites = [s for s in kv_list("research_excluded") if s != site] + ([site] if on else [])
+        store.kv_set("research_excluded", sites)
+        if on:
+            store.kv_set("research_pinned", [i for i in kv_list("research_pinned") if int(i) != doc_id])
+        store.audit("user", "research_exclude", {"site": site, "on": bool(on)})
+        return {"ok": True, "message": f"Research won't use {site} any more." if on else f"{site} can be used again."}
+
+    @app.post("/api/v3/research/sites/{site}/include")
+    def api_site_include(site: str):
+        store.kv_set("research_excluded", [s for s in kv_list("research_excluded") if s != site])
+        return {"ok": True}
+
+    @app.post("/api/v3/research/sources/{doc_id}/open")
+    def api_source_open(doc_id: int):
+        """Open a source in the laptop's browser (the address is checked first)."""
+        from prometheus.agents.opener import SAFE_URL
+
+        d = doc(doc_id)
+        if d is None:
+            return bad("That source is gone.", 404)
+        url = d["source"]
+        if not (url.startswith("https://") or url.startswith("http://")) or not SAFE_URL.match(url):
+            return bad("That address doesn't look safe to open.", 409)
+        webbrowser.open(url)
+        return {"ok": True, "message": "Opened in your browser."}
+
+    @app.post("/api/v3/research/sources/add")
+    def api_source_add(url: str = Form("")):
+        """Add your own source: the page is read once, saved for searching, and pinned."""
+        import httpx
+
+        from prometheus.agents.research import UnsafeURL, check_url, fetch_text
+
+        url = url.strip()[:500]
+        if not url.startswith(("https://", "http://")):
+            url = "https://" + url
+        try:
+            check_url(url)
+            with httpx.Client(timeout=20.0, headers={"User-Agent": "Prometheus (personal assistant)"}) as http:
+                text = fetch_text(url, http)
+        except UnsafeURL:
+            return bad("That address isn't allowed (only public web pages).", 409)
+        except httpx.HTTPError:
+            return bad("Couldn't read that page. Is the address right?", 502)
+        if not text or len(text.strip()) < 200:
+            return bad("That page has too little text to use as a source.", 409)
+        title = " ".join(text.strip().splitlines()[0].split())[:120] if text.strip() else url
+        doc_id = store.add_document(f"web:{url}", title or url, url, text, private=False)
+        pinned = [int(i) for i in kv_list("research_pinned") if int(i) != doc_id][-2:] + [doc_id]
+        store.kv_set("research_pinned", pinned)
+        store.audit("user", "research_source_add", {"url": url[:200]})
+        return {"ok": True, "message": "Added and pinned: research will read it first."}
+
+    @app.get("/api/v3/research/{task_id}/export")
+    def api_research_export(task_id: int, fmt: str = "md"):
+        """A research answer as Markdown, PDF, Word or HTML."""
+        import re as _re
+
+        t = store.task(task_id)
+        if not t or not t.get("answer"):
+            return bad("No answer to save yet.", 404)
+        title = t["text"][:80]
+        body = f"# {title}\n\n{t['answer']}\n"
+        safe = _re.sub(r"[^\w .-]", "_", title)[:60].strip() or "research"
+        if fmt == "pdf":
+            from prometheus.actions.pdf import markdown_pdf
+            data, media, ext = markdown_pdf(body, title), "application/pdf", "pdf"
+        elif fmt == "docx":
+            from prometheus.agents.files import word_document
+            data = word_document(body)
+            media, ext = "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "docx"
+        elif fmt == "html":
+            from html import escape
+
+            from prometheus.web.render import render_message
+            data = (f"<!doctype html><meta charset=utf-8><title>{escape(title)}</title><body style=\"max-width:760px;"
+                    f"margin:40px auto;font-family:system-ui;line-height:1.6\"><h1>{escape(title)}</h1>"
+                    f"{render_message(t['answer'])}</body>").encode()
+            media, ext = "text/html", "html"
+        else:
+            data, media, ext = body.encode(), "text/markdown", "md"
+        return Response(data, media_type=media, headers={"Content-Disposition": f'attachment; filename="{safe}.{ext}"'})
+
+    # -- study ---------------------------------------------------------------------------------------------------------
+    @app.post("/api/v3/study/quiz")
+    def api_study_quiz(deck: str = Form("")):
+        from prometheus.agents import study_agent
+
+        if study_agent.STUDY is None:
+            return bad("Study isn't set up on this copy.", 409)
+        cid = chat_for("study")
+        store.add_message(cid, "user", f"Quiz me on {deck}".strip())
+        store.add_message(cid, "assistant", study_agent.STUDY.start_quiz(cid, deck[:80]), "instant")
+        return {"ok": True, "url": f"/c/{cid}"}
+
+    @app.post("/api/v3/study/make")
+    def api_study_make(text: str = Form("")):
+        """Make flashcards from a file: runs in the Study chat (the file is read with the usual path rules)."""
+        path = text.strip().strip('"')[:400]
+        if not path:
+            return bad("Type the file's path, like C:\\Users\\you\\Documents\\notes.pdf.")
+        cid = chat_for("study")
+        if cid in services.running:
+            return bad("The Study chat is busy. Try again in a moment.", 409)
+        services.start_task(cid, f"make flashcards from {path}")
+        return {"ok": True, "message": "Making the cards: follow it in the Study chat.", "url": f"/c/{cid}"}
+
+    @app.post("/api/v3/deadlines/add")
+    def api_deadline_add(text: str = Form("")):
+        from prometheus.agents import assignments_agent
+
+        tr = assignments_agent.TRACKER
+        if tr is None:
+            return bad("Deadlines aren't set up on this copy.", 409)
+        said = tr.tell(" ".join(text.split())[:160])
+        if said is None:
+            return bad("I couldn't tell what or when. Try “Physics lab report due Friday 5pm”.")
+        return {"ok": True, "message": said}
+
+    @app.post("/api/v3/deadlines/{deadline_id}/done")
+    def api_deadline_done(deadline_id: int):
+        rows = store._rows("SELECT title FROM assignments WHERE id = ?", (deadline_id,))
+        if not rows:
+            return bad("It's gone.", 404)
+        store._write("UPDATE assignments SET done = 1 WHERE id = ?", (deadline_id,))
+        for r in store.reminders():
+            if rows[0]["title"] in r["text"]:
+                store.cancel_reminder(r["id"])
+        return {"ok": True, "message": f"Marked {rows[0]['title']} as done."}
+
+    # -- money ---------------------------------------------------------------------------------------------------------
+    @app.post("/api/v3/money/add")
+    def api_money_add(text: str = Form("")):
+        """'250 lunch' or 'lunch 250'."""
+        import re as _re
+
+        from prometheus.agents import money_agent
+
+        if money_agent.MONEY is None:
+            return bad("Money isn't set up on this copy.", 409)
+        m = _re.search(r"(\d[\d,]*(?:\.\d+)?)", text.replace("₹", ""))
+        what = " ".join(_re.sub(r"(₹\s*)?\d[\d,]*(?:\.\d+)?", " ", text).split())[:40]
+        if not m or not what:
+            return bad("Type the amount and what it was for, like “250 lunch”.")
+        value = float(m.group(1).replace(",", ""))
+        if not 0 < value < 10_000_000:
+            return bad("That amount doesn't look right.")
+        money_agent.MONEY.add(value, what, said=text[:200])
+        return {"ok": True, "message": f"Added ₹{value:,.0f} on {what}."}
+
+    @app.post("/api/v3/money/scan")
+    def api_money_scan():
+        from prometheus.agents import money_agent
+        from prometheus.agents.email_agent import mailbox
+
+        if not services.settings.email_address:
+            return bad("Connect your email in Settings first.", 409)
+        try:
+            added = money_agent.MONEY.scan_email(mailbox(), days=7)
+        except Exception as e:
+            return bad(f"Couldn't read your email ({type(e).__name__}).", 502)
+        return {"ok": True, "message": f"Found {added} new bank or UPI alert(s)."}
+
+    @app.post("/api/v3/money/excel")
+    def api_money_excel():
+        from prometheus.agents import money_agent
+
+        path = money_agent.MONEY.write_excel(services.home / "Documents" / "Prometheus Money")
+        try:
+            if services.laptop is not None:
+                import os as _os
+
+                _os.startfile(str(path))           # our own sheet, made just now
+        except Exception:
+            pass
+        return {"ok": True, "message": f"Saved {path.name} in Documents/Prometheus Money."}
+
+
+# ---- Connections (in your menu) --------------------------------------------------------------------------------------
+def register_connection_pages(app: FastAPI, services, shell) -> None:
+    from pathlib import Path
+
+    from prometheus.config import delete_secret, get_secret, save_settings, secrets_set
+
+    store = services.store
+
+    def cards() -> list[dict]:
+        s, have = services.settings, secrets_set()
+        out = []
+        if s.email_address:
+            via = "through your Google sign-in" if s.email_via == "google" else "with an app password"
+            ok = s.email_via == "google" and have.get("GOOGLE_TOKEN") or s.email_via != "google" and have.get("EMAIL_PASSWORD")
+            out.append({"key": "email", "name": "Email", "state": "Connected" if ok else "Needs sign-in again",
+                        "detail": f"{s.email_address}, {via}. Sending always asks you first.", "setup": "connections"})
+        else:
+            out.append({"key": "email", "name": "Email", "state": "Not connected",
+                        "detail": "Read, search and (after your yes) send email.", "setup": "connections"})
+        google = "Connected" if have.get("GOOGLE_TOKEN") else ("Not signed in" if have.get("GOOGLE_CLIENT") else "Not connected")
+        out.append({"key": "google", "name": "Google (Gmail, Calendar, Drive)", "state": google,
+                    "detail": "Calendar events and Gmail ask you before changing anything; Drive is read only.",
+                    "setup": "google-signin"})
+        out.append({"key": "calendar", "name": "Calendar link (iCal)", "state": "Connected" if have.get("CALENDAR_LINKS") else "Not connected",
+                    "detail": "Read-only calendar from a secret .ics link (Google or Outlook).", "setup": "connections"})
+        out.append({"key": "github", "name": "GitHub", "state": "Connected" if have.get("GITHUB_TOKEN") else "Not connected",
+                    "detail": f"Reads and (with your yes) updates {s.github_repo}.", "setup": "github"})
+        vault = (s.obsidian_vault or "").strip()
+        out.append({"key": "obsidian", "name": "Obsidian", "detail": vault or "Your notes vault, read and written as Markdown.",
+                    "state": ("Connected" if Path(vault).is_dir() else "Folder missing") if vault else "Not connected",
+                    "setup": "obsidian"})
+        out.append({"key": "cloud", "name": "Cloud copy and phone", "state": "Connected" if s.cloud_url else "Not set up",
+                    "detail": s.cloud_url or "The always-on copy your phone talks to.", "setup": "safety-check"})
+        try:
+            from prometheus.agents import apps_agent
+
+            manager = apps_agent.MANAGER
+            for e in (manager.entries() if manager else []):
+                live = manager.live.get(e["name"])
+                err = manager.errors.get(e["name"], "")
+                state = ("Off" if not e.get("enabled") else "Connected" if live is not None
+                         else "Needs attention" if err else "Ready (starts when used)")
+                out.append({"key": f"app:{e['name']}", "name": e["name"], "app": True, "enabled": bool(e.get("enabled")),
+                            "state": state, "detail": err[:200] or (f"{len(live.tools)} tools" if live else e.get("target", "")[:120]),
+                            "setup": "connections"})
+        except Exception:
+            pass
+        return out
+
+    @app.get("/v3/connections")
+    def connections_page(request: Request):
+        return shell(request, "v3/connections.html", "connections", cards=cards())
+
+    def bad(text: str, code: int = 400):
+        return JSONResponse({"error": text}, status_code=code)
+
+    @app.post("/api/v3/connections/{key}/test")
+    def api_connection_test(key: str):
+        """Try the connection for real, once, and say what happened in plain words."""
+        import httpx
+
+        s = services.settings
+        try:
+            if key == "email":
+                from prometheus.agents.email_agent import mailbox
+
+                if not s.email_address:
+                    return bad("Email isn't connected.", 409)
+                n = len(mailbox().search(unread=True, days=2))
+                said = f"Works: {n} unread email(s) in the last 2 days."
+            elif key == "google":
+                from prometheus.agents.google_agent import google
+
+                if not get_secret("GOOGLE_TOKEN"):
+                    return bad("Not signed in to Google yet.", 409)
+                n = len(google().events(time.time(), time.time() + 7 * 86400))
+                said = f"Works: {n} event(s) in the next 7 days."
+            elif key == "calendar":
+                from datetime import datetime, timedelta
+
+                from prometheus.connectors.calendar_ics import events_between, fetch
+
+                links = [u.strip() for u in (get_secret("CALENDAR_LINKS") or "").split("|") if u.strip()]
+                if not links:
+                    return bad("No calendar link saved.", 409)
+                now = datetime.now()
+                n = sum(len(events_between(fetch(u), now, now + timedelta(days=7))) for u in links)
+                said = f"Works: {n} event(s) in the next 7 days."
+            elif key == "github":
+                token = get_secret("GITHUB_TOKEN")
+                if not token:
+                    return bad("No GitHub token saved.", 409)
+                r = httpx.get(f"https://api.github.com/repos/{s.github_repo}", timeout=15.0,
+                              headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"})
+                if r.status_code == 401:
+                    return bad("GitHub says the token is wrong or expired: make a new one and save it in Settings.", 502)
+                r.raise_for_status()
+                said = f"Works: can see {s.github_repo}."
+            elif key == "obsidian":
+                vault = Path((s.obsidian_vault or "").strip())
+                if not s.obsidian_vault:
+                    return bad("No vault connected.", 409)
+                if not vault.is_dir():
+                    return bad("That folder isn't there any more. Connect the vault again.", 409)
+                said = f"Works: {sum(1 for _ in vault.rglob('*.md'))} notes found."
+            elif key == "cloud":
+                if not s.cloud_url:
+                    return bad("No cloud copy set up.", 409)
+                r = httpx.get(s.cloud_url.rstrip("/") + "/healthz", timeout=10.0)
+                r.raise_for_status()
+                said = "Works: the cloud copy answered."
+            elif key.startswith("app:"):
+                from prometheus.agents import apps_agent
+
+                conn = apps_agent.MANAGER.get(key[4:])
+                said = f"Works: {len(conn.tools)} tool(s)."
+            else:
+                return bad("Unknown connection.", 404)
+        except Exception as e:
+            msg = str(e).strip()
+            if "401" in msg or "invalid_grant" in msg or "Unauthorized" in msg:
+                return bad("It needs you to sign in again (Settings → Connections).", 502)
+            return bad(f"Didn't work: {msg[:160] or type(e).__name__}.", 502)
+        store.audit("user", "connection_test", {"what": key[:60], "ok": True})
+        return {"ok": True, "message": said}
+
+    @app.post("/api/v3/connections/{key}/disconnect")
+    def api_connection_disconnect(key: str):
+        s = services.settings
+        if key == "email":
+            s.email_address, s.email_via = "", ""
+        elif key == "google":
+            delete_secret("GOOGLE_TOKEN")
+            if s.email_via == "google":
+                s.email_address, s.email_via = "", ""
+        elif key == "calendar":
+            delete_secret("CALENDAR_LINKS")
+        elif key == "github":
+            delete_secret("GITHUB_TOKEN")
+        elif key == "obsidian":
+            s.obsidian_vault = ""
+        elif key.startswith("app:"):
+            from prometheus.agents import apps_agent
+
+            name = key[4:]
+            found = False
+            for e in s.mcp_servers:
+                if e.get("name") == name:
+                    e["enabled"], found = False, True
+            if not found:
+                return bad("No such app.", 404)
+            apps_agent.MANAGER.drop(name)
+        else:
+            return bad("That one is changed in Settings.", 409)
+        save_settings(s)
+        store.audit("user", "connection_disconnect", {"what": key[:60]})
+        return {"ok": True, "message": "Disconnected."}
+
+    @app.post("/api/v3/connections/{key}/enable")
+    def api_connection_enable(key: str):
+        if not key.startswith("app:"):
+            return bad("Use Settings to connect this one.", 409)
+        for e in services.settings.mcp_servers:
+            if e.get("name") == key[4:]:
+                e["enabled"] = True
+                save_settings(services.settings)
+                store.audit("user", "connection_enable", {"what": key[:60]})
+                return {"ok": True, "message": "Switched on: it starts the next time it's needed."}
+        return bad("No such app.", 404)
+
+
+# ---- Automation builder (M2.3) ---------------------------------------------------------------------------------------
+WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+
+
+def next_at(hour: int, minute: int, repeat: str, weekday: int = 0, now: float | None = None) -> float:
+    """The next time a repeating automation runs: every day, every weekday (Mon-Fri) or every week on a weekday."""
+    import datetime as dt
+
+    now_dt = dt.datetime.fromtimestamp(time.time() if now is None else now)
+    cand = now_dt.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    for _ in range(15):
+        ok = cand > now_dt and (repeat == "daily" or (repeat == "weekdays" and cand.weekday() < 5)
+                                or (repeat == "weekly" and cand.weekday() == weekday))
+        if ok:
+            return cand.timestamp()
+        cand += dt.timedelta(days=1)
+    raise ValueError("Couldn't work out the next time.")
+
+
+def register_builder_pages(app: FastAPI, services, shell) -> None:
+    import datetime as dt
+    from pathlib import Path
+
+    from fastapi import Form
+
+    from prometheus import automations as auto
+
+    store = services.store
+
+    @app.get("/v3/automations/new")
+    def builder_page(request: Request):
+        auto.ready(store)
+        return shell(request, "v3/automation_new.html", "automations", events=auto.EVENTS, weekdays=WEEKDAYS,
+                     folders=[f.get("path", "") for f in services.settings.watch_folders or []])
+
+    def bad(text: str, code: int = 400):
+        return JSONResponse({"error": text}, status_code=code)
+
+    @app.post("/api/v3/automations/build")
+    def api_build(when: str = Form(""), at: str = Form(""), time_of_day: str = Form(""), repeat: str = Form(""),
+                  weekday: int = Form(0), event: str = Form(""), folder: str = Form(""), action: str = Form("do"),
+                  text: str = Form(""), name: str = Form(""), ask_first: str = Form("1")):
+        """Make an automation from the builder's four steps (When, What, Ask first, Name)."""
+        auto.ready(store)
+        text = auto.clean(text)
+        if not text:
+            return bad("Step 2: say what it should remind you of, or do.")
+        action = "remind" if action == "remind" else "do"
+        ask = ask_first not in ("0", "") and action == "do"          # "0" = just run; missing = ask first (safe)
+        if when == "event":
+            if event == "new_file":
+                from prometheus.agents.files import resolve_place
+
+                try:
+                    folder_path = services.policy.check_read(resolve_place(folder, Path(services.home)))     # quotes, "Downloads"
+                except Exception:
+                    return bad("Step 1: Prometheus may not look in that folder. Add it in Settings → Places Prometheus "
+                               "may use first.", 409)
+                if not Path(folder_path).is_dir():
+                    return bad("Step 1: that folder doesn't exist.")
+                folder = str(folder_path)
+            try:
+                rid = auto.add_rule(store, name, event, action, text, folder, ask)
+            except ValueError as e:
+                return bad(str(e))
+            store.audit("user", "add_automation", {"rule": rid, "event": event})
+            return {"ok": True, "message": f"Made “{auto.rule(store, rid)['name']}”: it waits for {auto.EVENTS[event].lower()}."}
+        try:
+            if when == "once":
+                due = dt.datetime.fromisoformat(at.strip()).timestamp()
+                if due <= time.time():
+                    return bad("Step 1: that time has already passed.")
+                rep = ""
+            elif when == "repeat":
+                hh, mm = (int(x) for x in time_of_day.split(":")[:2])
+                rep = repeat if repeat in ("daily", "weekdays", "weekly") else "daily"
+                due = next_at(hh, mm, rep, max(0, min(6, weekday)))
+            else:
+                return bad("Step 1: choose when it runs.")
+        except (ValueError, TypeError):
+            return bad("Step 1: choose a date and time.")
+        from prometheus.reminders import describe
+
+        rid = store.add_reminder(auto.chat_id(store), text, due, rep, "goal" if action == "do" else "reminder")
+        if ask:
+            store._write("UPDATE reminders SET ask_first = 1 WHERE id = ?", (rid,))
+        store.audit("user", "add_automation", {"id": rid, "kind": "timed"})
+        return {"ok": True, "message": f"Made it: next {describe(due)}."}
+
+    @app.post("/api/v3/automations/rules/{rule_id}/switch")
+    def api_rule_switch(rule_id: int, on: str = Form("")):
+        if not auto.set_rule(store, rule_id, enabled=1 if on else 0):
+            return bad("It's gone.", 404)
+        store.audit("user", "switch_automation", {"rule": rule_id, "on": bool(on)})
+        return {"ok": True, "message": "On." if on else "Paused: it won't run until you switch it on."}
+
+    @app.post("/api/v3/automations/rules/{rule_id}/ask")
+    def api_rule_ask(rule_id: int, on: str = Form("")):
+        if not auto.set_rule(store, rule_id, ask_first=1 if on else 0):
+            return bad("It's gone.", 404)
+        return {"ok": True, "message": "It asks you before each run." if on else "It runs by itself; risky steps still ask."}
+
+    @app.post("/api/v3/automations/rules/{rule_id}/edit")
+    def api_rule_edit(rule_id: int, text: str = Form("")):
+        text = auto.clean(text)
+        if not text:
+            return bad("It needs some words: delete it instead.")
+        if not auto.set_rule(store, rule_id, text=text):
+            return bad("It's gone.", 404)
+        return {"ok": True}
+
+    @app.post("/api/v3/automations/rules/{rule_id}/run")
+    def api_rule_run(rule_id: int):
+        r = auto.rule(store, rule_id)
+        if r is None:
+            return bad("It's gone.", 404)
+        return {"ok": True, "message": auto.run(services, r, by_hand=True)}
+
+    @app.post("/api/v3/automations/rules/{rule_id}/delete")
+    def api_rule_delete(rule_id: int):
+        if not auto.delete_rule(store, rule_id):
+            return bad("It's gone.", 404)
+        store.audit("user", "delete_automation", {"rule": rule_id})
+        return {"ok": True}
+
+    @app.post("/api/v3/automations/{reminder_id}/ask")
+    def api_goal_ask(reminder_id: int, on: str = Form("")):
+        rows = store._rows("SELECT kind FROM reminders WHERE id = ? AND state IN ('waiting', 'paused')", (reminder_id,))
+        if not rows:
+            return bad("It's gone.", 404)
+        if rows[0]["kind"] != "goal":
+            return bad("Only goals can ask first; a reminder just rings.", 409)
+        store._write("UPDATE reminders SET ask_first = ? WHERE id = ?", (1 if on else 0, reminder_id))
+        return {"ok": True, "message": "It asks you before each run." if on else "It runs by itself; risky steps still ask."}
+
+
+# ---- Projects (M2.3) -------------------------------------------------------------------------------------------------
+PROJECT_TABS = ("files", "chats", "tasks", "agents", "notes", "settings")
+
+
+def register_project_pages(app: FastAPI, services, shell) -> None:
+    from pathlib import Path
+
+    from fastapi import File, Form
+    from fastapi.responses import Response
+
+    from prometheus import projects as pj
+
+    store = services.store
+
+    def bad(text: str, code: int = 400):
+        return JSONResponse({"error": text}, status_code=code)
+
+    def card(p: dict) -> dict:
+        ts = pj.tasks(store, p["id"])
+        done = sum(1 for t in ts if t["status"] in ("done", "instant", "phone"))
+        fs = pj.files(p, limit=1000, policy=services.policy)
+        return {**p, "chats": len(pj.chats(store, p["id"])), "tasks_done": done, "tasks_total": len(ts),
+                "files": sum(1 for f in fs if not f["dir"]), "agents": [a for a, _ in pj.agents_used(store, p["id"])][:4],
+                "last": pj.last_activity(store, p["id"]) or p["created"], "folder_ok": Path(p["folder"]).is_dir()}
+
+    @app.get("/v3/projects")
+    def projects_page(request: Request):
+        return shell(request, "v3/projects.html", "projects", cards=[card(p) for p in pj.all_projects(store)],
+                     trash=pj.all_projects(store, trashed=True), trash_days=pj.TRASH_DAYS)
+
+    @app.get("/v3/projects/{project_id}")
+    def project_page(request: Request, project_id: int, tab: str = "files"):
+        p = pj.get(store, project_id)
+        if p is None or p["trashed"]:
+            return shell(request, "v3/project_missing.html", "projects", status_code=404)
+        tab = tab if tab in PROJECT_TABS else "files"
+        ctx: dict = {"p": card(p), "tab": tab}
+        if tab == "files":
+            ctx["files"] = pj.files(p, policy=services.policy)
+        elif tab == "chats":
+            ctx["chats"] = pj.chats(store, project_id)
+            ctx["others"] = [(cid, t) for cid, t in store.chats() if not pj.chat_project(store, cid)][:200]
+        elif tab == "tasks":
+            ctx["tasks"] = [{**t, "label": STATUS_LABEL.get(t["status"], t["status"].title())}
+                            for t in pj.tasks(store, project_id)]
+            ctx["titles"] = dict(store.chats())
+        elif tab == "agents":
+            ctx["agents"] = pj.agents_used(store, project_id)
+        elif tab == "notes":
+            ctx["notes"] = pj.notes(store, project_id)
+        return shell(request, "v3/project.html", "projects", **ctx)
+
+    def live(project_id: int) -> dict | None:
+        p = pj.get(store, project_id)
+        return None if p is None or p["trashed"] else p
+
+    @app.post("/api/v3/projects")
+    def api_project_create(name: str = Form(""), folder: str = Form(""), about: str = Form("")):
+        try:
+            pid = pj.create(store, services.policy, services.home, name, folder, about)
+        except pj.ProjectError as e:
+            return bad(str(e))
+        store.audit("user", "project_create", {"project": pid, "from_folder": bool(folder.strip())})
+        return {"ok": True, "url": f"/v3/projects/{pid}", "message": f"Made the project. Its files: {pj.get(store, pid)['folder']}"}
+
+    @app.post("/api/v3/projects/{project_id}/edit")
+    async def api_project_edit(project_id: int, request: Request):
+        if live(project_id) is None:
+            return bad("No such project.", 404)
+        form = await request.form()                  # read directly: an emptied box must clear, not count as missing
+        name, about = form.get("name"), form.get("about")
+        try:
+            pj.update(store, project_id, None if name is None else str(name), None if about is None else str(about))
+        except pj.ProjectError as e:
+            return bad(str(e))
+        return {"ok": True, "message": "Saved."}
+
+    @app.post("/api/v3/projects/{project_id}/trash")
+    def api_project_trash(project_id: int, on: str = Form("1")):
+        p = pj.get(store, project_id)
+        if p is None:
+            return bad("No such project.", 404)
+        on = "" if on == "0" else on                     # "0" = restore (an empty value would read as missing)
+        pj.trash(store, project_id, bool(on))
+        store.audit("user", "project_trash" if on else "project_restore", {"project": project_id})
+        return {"ok": True, "message": (f"Moved to the trash. Restore it within {pj.TRASH_DAYS} days; its folder and "
+                                        "files aren't touched.") if on else "Restored."}
+
+    @app.post("/api/v3/projects/{project_id}/delete")
+    def api_project_delete(project_id: int):
+        if not pj.delete_forever(store, project_id):
+            return bad("Only a project in the trash can be deleted for good.", 409)
+        store.audit("user", "project_delete", {"project": project_id})
+        return {"ok": True, "message": "Deleted for good. Its chats are still in Chats, and its folder wasn't touched."}
+
+    @app.post("/api/v3/projects/{project_id}/chats/new")
+    def api_project_new_chat(project_id: int):
+        p = live(project_id)
+        if p is None:
+            return bad("No such project.", 404)
+        cid = store.create_chat(f"{p['name']} chat")
+        pj.set_chat_project(store, cid, project_id)
+        return {"ok": True, "url": f"/c/{cid}"}
+
+    @app.post("/api/v3/projects/{project_id}/chats/{chat_id}")
+    def api_project_add_chat(project_id: int, chat_id: int, on: str = Form("1")):
+        if live(project_id) is None or chat_id not in dict(store.chats()):
+            return bad("No such project or chat.", 404)
+        on = "" if on == "0" else on                     # "0" = take it out
+        if not on and (pj.chat_project(store, chat_id) or {}).get("id") != project_id:
+            return bad("That chat isn't in this project.")
+        pj.set_chat_project(store, chat_id, project_id if on else 0)
+        return {"ok": True, "message": "Added to the project." if on else "Taken out of the project (the chat stays)."}
+
+    @app.post("/api/v3/projects/{project_id}/notes")
+    def api_project_note_add(project_id: int, text: str = Form("")):
+        if live(project_id) is None:
+            return bad("No such project.", 404)
+        try:
+            pj.add_note(store, project_id, text)
+        except pj.ProjectError as e:
+            return bad(str(e))
+        return {"ok": True}
+
+    @app.post("/api/v3/projects/{project_id}/notes/{note_id}/edit")
+    def api_project_note_edit(project_id: int, note_id: int, text: str = Form("")):
+        try:
+            ok = pj.edit_note(store, project_id, note_id, text)
+        except pj.ProjectError as e:
+            return bad(str(e))
+        return {"ok": True} if ok else bad("That note is gone.", 404)
+
+    @app.post("/api/v3/projects/{project_id}/notes/{note_id}/delete")
+    def api_project_note_delete(project_id: int, note_id: int):
+        return {"ok": True} if pj.delete_note(store, project_id, note_id) else bad("That note is gone.", 404)
+
+    def project_file(p: dict, rel: str) -> Path:
+        root = Path(p["folder"]).resolve()
+        path = (root / rel).resolve()
+        path.relative_to(root)                                   # never outside the project folder
+        return Path(services.policy.check_read(path))
+
+    @app.post("/api/v3/projects/{project_id}/files/open")
+    def api_project_file_open(project_id: int, rel: str = Form(""), how: str = Form("open")):
+        from prometheus.agents.opener import open_output
+
+        p = live(project_id)
+        if p is None:
+            return bad("No such project.", 404)
+        try:
+            path = project_file(p, rel) if rel else Path(services.policy.check_read(Path(p["folder"])))
+            said = open_output(str(path), "folder" if how == "folder" else "open", services.policy)
+        except (ValueError, Exception) as e:
+            return bad(f"Couldn't open it: {getattr(e, 'strerror', None) or e}"[:200], 409)
+        store.audit("user", "project_open", {"project": project_id, "rel": rel[:200]})
+        return {"ok": True, "message": said or "Opened."}
+
+    @app.get("/api/v3/projects/{project_id}/export")
+    def api_project_export(project_id: int):
+        import re as _re
+        p = pj.get(store, project_id)
+        if p is None:
+            return bad("No such project.", 404)
+        from urllib.parse import quote
+
+        full = f"{p['name'][:60]} (Prometheus project).zip"
+        plain = _re.sub(r"[^A-Za-z0-9 ._()-]", "_", full)     # for old browsers; the real (e.g. Hindi) name below
+        return Response(pj.export_zip(store, project_id, services.policy), media_type="application/zip",
+                        headers={"Content-Disposition": f"attachment; filename=\"{plain}\"; filename*=UTF-8''{quote(full)}"})
+
+    @app.post("/api/v3/projects/import")
+    async def api_project_import(file: UploadFile = File(...)):
+        raw = await file.read(30 * 1024 * 1024 + 1)
+        if len(raw) > 30 * 1024 * 1024:
+            return bad("That file is too big (30 MB at most).")
+        try:
+            pid = pj.import_zip(store, services.policy, services.home, raw)
+        except pj.ProjectError as e:
+            return bad(str(e))
+        store.audit("user", "project_import", {"project": pid})
+        return {"ok": True, "url": f"/v3/projects/{pid}", "message": "Imported."}
+
+    @app.post("/api/v3/research/{task_id}/to-project")
+    def api_research_to_project(task_id: int, project_id: int = Form(0)):
+        """Save a research answer into a project's folder as Markdown (undo in System → Activity)."""
+        import re as _re
+
+        t, p = store.task(task_id), live(project_id)
+        if not t or not t.get("answer"):
+            return bad("No answer to save yet.", 404)
+        if p is None:
+            return bad("Choose a project.", 404)
+        folder = Path(p["folder"])
+        root = services.policy.root_for(folder)
+        if root is None or not folder.is_dir():
+            return bad("The project's folder isn't there or isn't allowed any more.", 409)
+        base = pj.safe_name(t["text"][:60]) or "Research"          # no line breaks or reserved Windows names
+        target, n = folder / f"{base}.md", 2
+        while target.exists():
+            target, n = folder / f"{base} ({n}).md", n + 1
+        run = services.files.journal.start(root)
+        try:
+            res = services.files.create(run, target, f"# {t['text']}\n\n{t['answer']}\n".encode("utf-8"), root)
+        finally:
+            services.files.journal.finish(run)
+        if res.status != "done":
+            return bad(f"Couldn't save it: {res.detail}", 409)
+        store.audit("user", "research_to_project", {"task": task_id, "project": project_id})
+        return {"ok": True, "message": f"Saved {target.name} in {p['name']}."}
+
+    @app.get("/api/v3/chats/{chat_id}/project-files")
+    def api_chat_project_files(chat_id: int):
+        """For the + menu in a project's chat: the project's newest files (to mention in a request)."""
+        p = pj.chat_project(store, chat_id)
+        if p is None:
+            return {"project": None, "files": []}
+        return {"project": p["name"], "files": [{"rel": f["rel"], "path": f["path"]} for f in pj.files(p, 60, policy=services.policy)
+                                                if not f["dir"]][:30]}
+
+
+# ---- M2.4: what only the old screens had, moved into the new look -----------------------------------------------------
+def quiz_sheets(services) -> list[dict]:
+    """The quiz sheets (PDFs) the study agent made, newest first (Research → Study)."""
+    from prometheus.agents import study_agent
+
+    st, out = study_agent.STUDY, []
+    if st is not None and st.folder is not None and st.folder.exists():
+        for pth in sorted(st.folder.glob("Quiz *.pdf"), key=lambda x: -x.stat().st_mtime)[:20]:
+            rows = services.store._rows("SELECT id FROM outputs WHERE path = ? ORDER BY id DESC LIMIT 1", (str(pth),))
+            out.append({"name": pth.stem, "id": rows[0]["id"] if rows else 0, "when": pth.stat().st_mtime})
+    return out
+
+def register_switchover_pages(app: FastAPI, services, shell) -> None:
+    import threading
+
+    from fastapi import Form
+
+    store = services.store
+
+    def bad(text: str, code: int = 400):
+        return JSONResponse({"error": text}, status_code=code)
+
+    @app.get("/c/{chat_id}/live")
+    def chat_live(request: Request, chat_id: int):
+        """Controls that appear above a chat only while something is going on: the document reader (read aloud) and
+        the browser Prometheus is driving."""
+        from prometheus.voice import reader as _reader
+
+        r = _reader.CURRENT
+        reading = r.status() if r is not None else None
+        b = services.browser
+        browser = {"started": bool(b is not None and b._thread is not None and b._thread.is_alive()),
+                   "paused": bool(b and b.paused)}
+        return shell(request, "v3/chat_live.html", "chats", r=reading if reading and reading.get("state") != "off" else None,
+                     browser=browser, chat_id=chat_id)
+
+    @app.post("/api/v3/reader/{action}")
+    def api_reader(action: str):
+        from prometheus.voice import reader as _reader
+
+        r = _reader.CURRENT
+        if r is None or not getattr(r, "active", lambda: True)():
+            return bad("Nothing is being read now.", 409)
+        act = {"pause": lambda: r.pause(), "continue": lambda: r.resume(), "back": lambda: r.move(-1),
+               "skip": lambda: r.move(1), "slower": lambda: r.set_speed(False), "faster": lambda: r.set_speed(True),
+               "stop": lambda: r.stop(),
+               "explain": lambda: threading.Thread(target=r.explain, daemon=True).start()}.get(action)
+        if act is None:
+            return bad("Unknown control.", 404)
+        act()
+        return {"ok": True}
+
+    @app.post("/api/v3/browser/toggle")
+    def api_browser_toggle():
+        b = services.browser
+        if b is None:
+            return bad("The browser isn't running.", 409)
+        b.paused = not b.paused
+        store.audit("user", "browser_takeover", {"paused": b.paused})
+        return {"ok": True, "message": "You're driving: Prometheus waits." if b.paused else "Handed back to Prometheus."}
+
+    @app.post("/api/v3/chats/{chat_id}/notes")
+    def api_chat_note_add(chat_id: int, text: str = Form("")):
+        if chat_id not in dict(store.chats()):
+            return bad("No such chat.", 404)
+        text = " ".join(text.split())[:500]
+        if not text:
+            return bad("The note is empty.")
+        store.add_chat_note(chat_id, text)
+        return {"ok": True}
+
+    @app.post("/api/v3/chats/{chat_id}/notes/{note_id}/delete")
+    def api_chat_note_delete(chat_id: int, note_id: int):
+        if not any(n.id == note_id for n in store.chat_notes(chat_id)):
+            return bad("That note is gone.", 404)
+        store.delete_chat_note(note_id)
+        return {"ok": True}
+
+    @app.post("/api/v3/study/export")
+    def api_study_export(deck: str = Form("")):
+        """A deck as a file Anki can import (saved in Documents/Prometheus Study)."""
+        from prometheus.agents import study_agent
+
+        if study_agent.STUDY is None:
+            return bad("Study isn't set up on this copy.", 409)
+        if not deck.strip():
+            return bad("Choose a deck.")
+        path = study_agent.STUDY.export_anki(deck.strip()[:80], services.home / "Documents" / "Prometheus Study")
+        return {"ok": True, "message": f"Saved {path.name} in Documents/Prometheus Study. In Anki: File → Import."}
+

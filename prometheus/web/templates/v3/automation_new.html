@@ -1,0 +1,80 @@
+{% extends "v3/layout.html" %}
+{% from "v3/icons.html" import icon %}
+{% block title %}New automation · Prometheus{% endblock %}
+{% block topbar %}<a class="crumb" href="/v3/automations">Automations</a><span class="muted">/</span><b>New</b>{% endblock %}
+{% block content %}
+<section class="page builder-page">
+  <h1>New automation</h1>
+  <p class="muted lead">Four short steps. You can pause, change or delete it later on the Automations page.</p>
+  <form id="builder" class="builder">
+    <fieldset class="b-step">
+      <legend><span class="b-num">1</span> When does it run?</legend>
+      <div class="b-choices">
+        <label class="b-choice"><input type="radio" name="when" value="once" checked><b>Once</b><small>On a date and time</small></label>
+        <label class="b-choice"><input type="radio" name="when" value="repeat"><b>Repeats</b><small>Every day, weekday or week</small></label>
+        <label class="b-choice"><input type="radio" name="when" value="event"><b>When something happens</b><small>A new file, low battery…</small></label>
+      </div>
+      <div class="b-more" data-for="once"><label>Date and time <input type="datetime-local" name="at"></label></div>
+      <div class="b-more" data-for="repeat" hidden>
+        <label>How often <select name="repeat"><option value="daily">Every day</option><option value="weekdays">Every weekday (Mon–Fri)</option><option value="weekly">Every week</option></select></label>
+        <label data-weekly hidden>On <select name="weekday">{% for d in weekdays %}<option value="{{ loop.index0 }}">{{ d }}</option>{% endfor %}</select></label>
+        <label>At <input type="time" name="time_of_day" value="08:00"></label>
+      </div>
+      <div class="b-more" data-for="event" hidden>
+        <label>What happens <select name="event">{% for k, label in events.items() %}<option value="{{ k }}">{{ label }}</option>{% endfor %}</select></label>
+        <label data-folder>Folder <input name="folder" list="known-folders" placeholder="e.g. C:\Users\you\Downloads">
+          <datalist id="known-folders">{% for f in folders %}<option value="{{ f }}">{% endfor %}</datalist></label>
+      </div>
+    </fieldset>
+    <fieldset class="b-step">
+      <legend><span class="b-num">2</span> What should it do?</legend>
+      <div class="b-choices">
+        <label class="b-choice"><input type="radio" name="action" value="do" checked><b>Do something</b><small>Runs it like a request you typed</small></label>
+        <label class="b-choice"><input type="radio" name="action" value="remind"><b>Remind me</b><small>A message and a notification</small></label>
+      </div>
+      <label class="b-text">In your words <textarea name="text" rows="2" required placeholder="e.g. file new PDFs into Documents\PDFs"></textarea></label>
+    </fieldset>
+    <fieldset class="b-step" data-ask>
+      <legend><span class="b-num">3</span> Should it ask you first?</legend>
+      <div class="b-choices">
+        <label class="b-choice"><input type="radio" name="ask_first" value="1" checked><b>Ask me before each run</b><small>It waits for your yes on Approvals</small></label>
+        <label class="b-choice"><input type="radio" name="ask_first" value="0"><b>Just run</b><small>Risky steps (deleting, sending, paying) still ask</small></label>
+      </div>
+    </fieldset>
+    <fieldset class="b-step">
+      <legend><span class="b-num">4</span> Name it <span class="muted">(optional)</span></legend>
+      <input name="name" class="b-name" placeholder="e.g. Tidy new PDFs" maxlength="80">
+    </fieldset>
+    <div class="task-actions"><button type="submit" class="pill ok" disabled>{{ icon("automations") }}Make it</button>
+      <a class="pill" href="/v3/automations">Cancel</a></div>
+  </form>
+</section>
+<script>
+(function () {
+  var f = document.getElementById("builder");
+  function sync() {
+    var when = f.querySelector("[name=when]:checked").value, action = f.querySelector("[name=action]:checked").value;
+    f.querySelectorAll(".b-more").forEach(function (d) { d.hidden = d.dataset.for !== when; });
+    f.querySelector("[data-weekly]").hidden = f.querySelector("[name=repeat]").value !== "weekly";
+    f.querySelector("[data-folder]").hidden = f.querySelector("[name=event]").value !== "new_file";
+    f.querySelector("[data-ask]").hidden = action === "remind";
+    f.querySelectorAll(".b-choice").forEach(function (c) { c.classList.toggle("on", c.querySelector("input").checked); });
+    f.querySelector("[type=submit]").disabled = !f.querySelector("[name=text]").value.trim();   // nothing to make yet
+  }
+  f.addEventListener("change", sync); f.addEventListener("input", sync); sync();
+  f.addEventListener("submit", function (e) {
+    e.preventDefault();
+    var btn = f.querySelector("[type=submit]"); btn.disabled = true;
+    fetch("/api/v3/automations/build", { method: "POST", credentials: "same-origin", body: new FormData(f),
+          headers: { "X-CSRF-Token": document.body.dataset.csrf } })
+      .then(function (r) { return r.json().then(function (j) { return [r.ok, j]; }); })
+      .then(function (x) {
+        sync();
+        if (!x[0]) { promToast(x[1].error || "Couldn't make it.", true); return; }
+        try { sessionStorage.setItem("prom-said", x[1].message); } catch (z) {}
+        location.href = "/v3/automations";
+      });
+  });
+})();
+</script>
+{% endblock %}

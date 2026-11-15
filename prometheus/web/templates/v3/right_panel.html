@@ -1,0 +1,22 @@
+{% from "v3/icons.html" import icon %}
+{# Filled from /api/v3/state and /api/v3/telemetry by app.js. Readings this computer can't give stay hidden. #}
+<aside class="rpanel" id="panel" aria-label="Status">
+  <div class="card status">
+    <span class="dot" id="online-dot"></span><span id="online-label">Checking…</span>
+    <span class="levels" id="levels" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>
+  </div>
+  <div class="card" id="system-card">
+    <h2>{{ icon("monitor") }}System</h2>
+    <div class="gauges" id="gauges"></div>
+    <dl class="facts" id="facts"></dl>
+  </div>
+  <div class="card" id="agent-card">
+    <h2>{{ icon("agents") }}Active agent</h2>
+    <div class="agent" id="agent-box"><span class="idle">Nothing running</span></div>
+  </div>
+  <div class="card" id="task-card">
+    <h2>{{ icon("tasks") }}Current task</h2>
+    <div id="task-box"><span class="idle">No task running</span></div>
+  </div>
+  {% if active != "home" %}<canvas class="panel-sphere" data-sphere="panel" aria-hidden="true"></canvas>{% endif %}
+</aside>

@@ -1,0 +1,47 @@
+{% extends "v3/layout.html" %}
+{% from "v3/icons.html" import icon %}
+{% block title %}Phone · Prometheus{% endblock %}
+{% block topbar %}<b>Phone</b>{% endblock %}
+{% block content %}
+<section class="page phone-page">
+  <h1>Get Prometheus on your phone</h1>
+  <p class="muted lead">The phone talks to your cloud copy, so it works even when this laptop is off.</p>
+  <div class="sys-grid">
+    <section class="sys-card phone-qr">
+      <h2>1 · Scan</h2>
+      {% if address %}
+      <img src="data:image/png;base64,{{ qr }}" width="220" height="220" alt="QR code for {{ address }}">
+      <code>{{ address }}</code>
+      <p class="muted small">Scan with the phone's camera (Tailscale on), sign in, then Add to home screen.</p>
+      {% else %}
+      <p class="muted">Set up the cloud copy first: Settings → Phone, cloud copy, backup and safety check (guide in <code>docs/cloud-setup.md</code>).
+        Its address then shows here as a QR code.</p>
+      <a class="pill" href="/settings#safety-check">{{ icon("settings") }}Open the cloud copy settings</a>
+      {% endif %}
+    </section>
+    <section class="sys-card">
+      <h2>2 · Android: the app</h2>
+      <ol class="steps-plain">
+        <li>Install <b>Tailscale</b> (Play Store) and sign in with the same account as the cloud copy.</li>
+        <li>On the phone, open this page and press <b>Download the app</b>; Android asks once to allow installing from Chrome.</li>
+        <li>Open Prometheus from its icon, press <b>Open in the app</b> (or type the address) and sign in.</li>
+        <li>☰ → <b>Turn on phone notifications</b>.</li>
+      </ol>
+      <div class="task-actions">
+        <a class="pill" href="{{ apk_url }}">{{ icon("doc") }}Download the app</a>
+        {% if address %}<a class="pill" href="prometheus://open?url={{ address|urlencode }}">Open in the app</a>{% endif %}
+      </div>
+    </section>
+    <section class="sys-card">
+      <h2>iPhone, or without the app</h2>
+      <ol class="steps-plain">
+        <li>Install <b>Tailscale</b> and sign in with the same account as the cloud copy.</li>
+        <li>Scan the code (or type the address) and sign in with your Prometheus password.</li>
+        <li>Chrome ⋮ → <b>Add to home screen</b> (iPhone: Safari → Share → Add to Home Screen).</li>
+        <li>Open it from the icon → ☰ → <b>Turn on phone notifications</b>.</li>
+      </ol>
+      <p class="muted small">Optional: bank SMS into the money tracker, and letting Prometheus control the phone: Settings → Phone control and <code>docs/phone-setup.md</code>.</p>
+    </section>
+  </div>
+</section>
+{% endblock %}

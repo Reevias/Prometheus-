@@ -40,11 +40,11 @@ def test_messages_refresh_returns_nothing_when_unchanged(app_client):
     client, services = authed(app_client)
     chat = services.store.create_chat("c")
     services.store.add_message(chat, "user", "hi")
-    assert client.get(f"/chats/{chat}/messages?have=1&busy=0").status_code == 204
-    assert client.get(f"/chats/{chat}/messages?have=0&busy=0").status_code == 200
+    assert client.get(f"/c/{chat}/messages?have=1&busy=0").status_code == 204
+    assert client.get(f"/c/{chat}/messages?have=0&busy=0").status_code == 200
     services.running[chat] = True
-    assert client.get(f"/chats/{chat}/messages?have=1&busy=0").status_code == 200
-    assert client.get(f"/chats/{chat}/messages").status_code == 200
+    assert client.get(f"/c/{chat}/messages?have=1&busy=0").status_code == 200
+    assert client.get(f"/c/{chat}/messages").status_code == 200
 
 
 def test_assistant_answer_is_formatted_and_user_text_is_not(app_client):
@@ -52,7 +52,7 @@ def test_assistant_answer_is_formatted_and_user_text_is_not(app_client):
     chat = services.store.create_chat("c")
     services.store.add_message(chat, "user", "**not bold** <i>x</i>")
     services.store.add_message(chat, "assistant", "**bold** answer", "openrouter · big/model")
-    page = client.get(f"/chats/{chat}/messages").text
+    page = client.get(f"/c/{chat}/messages").text
     assert "<strong>bold</strong> answer" in page and "<strong>not bold</strong>" not in page
     assert "&lt;i&gt;x&lt;/i&gt;" in page and "openrouter · big/model" in page
 
@@ -64,7 +64,7 @@ def test_working_line_names_the_current_step(app_client):
     services.store.set_task_status(task, "running")
     services.store.add_step(task, "file_sorter", "Sort Downloads", {})
     services.running[chat] = True
-    page = client.get(f"/chats/{chat}/messages").text
+    page = client.get(f"/c/{chat}/messages").text
     assert "working" in page and "Sort Downloads" in page
 
 
@@ -73,11 +73,11 @@ def test_chat_gets_its_title_from_the_first_message(app_client):
     h = {"X-CSRF-Token": client.cookies.get("csrf_token")}
     services.start_task = lambda chat_id, text: services.store.add_message(chat_id, "user", text)
     chat = services.store.create_chat("New chat")
-    client.post(f"/chats/{chat}/send", data={"text": "sort my Downloads folder and summarise any PDFs about taxes"},
-                headers=h)
+    client.post("/api/v3/send", data={"text": "sort my Downloads folder and summarise any PDFs about taxes",
+                                      "chat_id": str(chat)}, headers=h)
     title = dict(services.store.chats())[chat]
     assert title.startswith("Sort my Downloads folder") and len(title) <= 60
-    client.post(f"/chats/{chat}/send", data={"text": "something else"}, headers=h)
+    client.post("/api/v3/send", data={"text": "something else", "chat_id": str(chat)}, headers=h)
     assert dict(services.store.chats())[chat] == title
 
 

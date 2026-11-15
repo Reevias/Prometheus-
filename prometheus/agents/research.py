@@ -46,9 +46,13 @@ class Research(Agent):
             results = self.search(query, max_sources * 2)
         except Exception:
             results = []          # search engine down or rate-limited: Wikipedia below still gives an answer
-        pages = []
+        # The owner's choices on the Research page: sites never to use, and their own pinned sources
+        excluded = {d.lower() for d in (ctx.store.kv_get("research_excluded", []) or []) if isinstance(d, str)}
+        results = [r for r in results if site_of(r.get("url", "")) not in excluded]
+        pages = pinned_pages(ctx, query)
+        pinned = len(pages)
         for r in results:
-            if len(pages) >= max_sources:
+            if len(pages) >= max_sources + pinned:
                 break
             ctx.killswitch.check()
             url = r.get("url", "")
@@ -77,3 +81,31 @@ class Research(Agent):
         summary = reply.text.strip() + "\n\nSources:\n" + "\n".join(f"[{i}] {u}" for i, u in enumerate(sources, 1))
         ctx.store.add_agent_note(ctx.task_id, self.name, summary[:2000])
         return StepResult("done", summary, {"sources": sources})
+
+
+def site_of(url: str) -> str:
+    """'https://www.bbc.co.uk/news/x' → 'bbc.co.uk'."""
+    from urllib.parse import urlparse
+
+    try:
+        host = (urlparse(url).hostname or "").lower()
+    except ValueError:
+        return ""
+    return host[4:] if host.startswith("www.") else host
+
+
+def pinned_ids(ctx: AgentContext) -> list[int]:
+    return [int(i) for i in (ctx.store.kv_get("research_pinned", []) or []) if str(i).isdigit()][:3]
+
+
+def pinned_pages(ctx: AgentContext, query: str) -> list[tuple[str, str]]:
+    """The owner's pinned sources: the parts of each that best answer this question (at most three sources)."""
+    out = []
+    for doc_id in pinned_ids(ctx):
+        rows = ctx.store._rows("SELECT source FROM documents WHERE id = ? AND private = 0", (doc_id,))
+        if not rows:
+            continue
+        text = ctx.store.best_passages(doc_id, query, PAGE_CHARS)
+        if text.strip():
+            out.append((rows[0]["source"], text[:PAGE_CHARS]))
+    return out

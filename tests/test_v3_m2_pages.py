@@ -1,0 +1,899 @@
+"""M2.2: the new-look pages on what Prometheus already does. Tasks first."""
+from __future__ import annotations
+
+import time
+
+from conftest import login
+
+from prometheus.web.pages_v3 import since_for, took
+
+
+def _task(st, text="sort my downloads", status="done", answer="Done: 12 files sorted.", chat=None):
+    cid = chat or st.create_chat("Downloads")
+    tid = st.create_task(cid, text)
+    sid = st.add_step(tid, "file_sorter", "Sort Downloads", {"folder": "Downloads"})
+    st.finish_step(sid, "done", "Moved 12 files")
+    st.add_agent_note(tid, "file_sorter", "Left 2 files it couldn't classify")
+    st.set_task_status(tid, status, answer)
+    return cid, tid
+
+
+def test_helpers():
+    assert took(100, 104) == "4 s" and took(100, 225) == "2 min 5 s" and took(0, 5) == "" and took(10, 5) == ""
+    now = time.time()
+    assert since_for("all") == 0 and abs(since_for("week", now) - (now - 7 * 86400)) < 1
+    assert 0 <= now - since_for("today", now) <= 86400
+
+
+def test_tasks_page_lists_filters_and_searches(app_client):
+    client, services = app_client()
+    login(client)
+    st = services.store
+    _task(st)
+    _task(st, "summarise the physics chapter", status="failed", answer="The file was missing.")
+    page = client.get("/v3/tasks").text
+    assert "sort my downloads" in page and "summarise the physics chapter" in page and "Failed" in page
+    assert 'href="/v3/tasks"' in page                                          # the sidebar's Tasks goes here now
+    done = client.get("/v3/tasks?status=done").text
+    assert "sort my downloads" in done and "physics" not in done
+    found = client.get("/v3/tasks?q=missing").text                             # searches answers too
+    assert "physics" in found and "sort my downloads" not in found
+    assert "No task matches" in client.get("/v3/tasks?q=nothing-like-this").text
+    part = client.get("/v3/tasks?status=failed", headers={"HX-Request": "true", "HX-Target": "task-list"}).text
+    assert "physics" in part and "<aside" not in part                       # just the list, for live filtering
+
+
+def test_task_detail_shows_the_timeline_notes_and_answer(app_client):
+    client, services = app_client()
+    login(client)
+    _, tid = _task(services.store)
+    page = client.get(f"/v3/tasks/{tid}").text
+    for part in ("You asked", "File Sorter", "Sort Downloads", "Moved 12 files", "What it used", "Downloads",
+                 "Left 2 files it couldn", "Done: 12 files sorted.", "Run again", "Save record"):
+        assert part in page, part
+    assert client.get("/v3/tasks/99999").status_code == 404
+
+
+def test_task_actions(app_client):
+    client, services = app_client()
+    csrf = login(client)
+    h = {"X-CSRF-Token": csrf}
+    st = services.store
+    cid, tid = _task(st)
+    # stop: only a running task (or a paused one, which then won't resume)
+    assert client.post(f"/api/v3/tasks/{tid}/stop", headers=h).status_code == 409
+    from prometheus import resume
+    _, paused = _task(st, "translate this", status="paused", answer="Paused: the AI limit.")
+    resume.note_limit(st, st.task(paused)["chat_id"], "translate this", "rate limit reached")
+    r = client.post(f"/api/v3/tasks/{paused}/stop", headers=h)
+    assert r.status_code == 200 and st.task(paused)["status"] == "stopped"
+    assert not any(i["chat_id"] == st.task(paused)["chat_id"] for i in resume._queue(st))
+    # running: the stop reaches the orchestrator
+    services.running[cid] = True
+    st.set_task_status(tid, "running")
+    assert client.post(f"/api/v3/tasks/{tid}/stop", headers=h).status_code == 200
+    assert cid in services.orchestrator.stopping
+    assert client.post(f"/api/v3/tasks/{tid}/retry", headers=h).status_code == 409      # still answering
+    assert client.post(f"/api/v3/tasks/{tid}/delete", headers=h).status_code == 409     # stop it first
+    services.running.pop(cid)
+    services.orchestrator.stopping.discard(cid)
+    st.set_task_status(tid, "done", "ok")
+    # retry: the same request again, in its chat
+    r = client.post(f"/api/v3/tasks/{tid}/retry", headers=h)
+    assert r.status_code == 200 and r.json()["url"] == f"/c/{cid}"
+    for _ in range(100):
+        if cid not in services.running and len(st.list_tasks(q="sort my downloads")) == 2:
+            break
+        time.sleep(0.05)
+    assert len(st.list_tasks(q="sort my downloads")) == 2
+    # save record, then delete (the chat stays)
+    rec = client.get(f"/api/v3/tasks/{tid}/export")
+    assert rec.status_code == 200 and rec.json()["steps"][0]["result"] == "Moved 12 files"
+    assert "attachment" in rec.headers["content-disposition"]
+    assert client.post(f"/api/v3/tasks/{tid}/delete", headers=h).json() == {"deleted": tid}
+    assert st.task(tid) == {} and st.steps(tid) == [] and cid in dict(st.chats())
+    assert client.post(f"/api/v3/tasks/{tid}/delete", headers=h).status_code == 404
+    # a deleted chat can't be retried into
+    st.delete_chat(cid)
+    _, orphan = _task(st, chat=cid)
+    assert client.post(f"/api/v3/tasks/{orphan}/retry", headers=h).status_code == 409
+
+
+def test_task_board_and_timeline_views(app_client):
+    client, services = app_client()
+    login(client)
+    st = services.store
+    _, tid = _task(st, "sort my downloads")
+    r = client.get("/v3/tasks?view=board")
+    assert r.status_code == 200 and 'class="board-cols"' in r.text
+    assert 'href="/v3/tasks/%d"' % tid in r.text and 'data-state="done"' in r.text
+    r = client.get("/v3/tasks?view=timeline&period=week")
+    assert 'class="tl-row"' in r.text and "tl-bar b-done" in r.text
+    assert f'href="/v3/tasks/{tid}"' in r.text
+    # anything else is the list, and the HTMX refresh brings back the same view
+    assert 'class="task-row"' in client.get("/v3/tasks?view=banana").text
+    h = {"HX-Request": "true", "HX-Target": "task-list"}
+    assert 'class="board-cols"' in client.get("/v3/tasks?view=board", headers=h).text
+    assert "tl-rows" in client.get("/v3/tasks?view=timeline", headers=h).text
+    assert "tl-bar" not in client.get("/v3/tasks?view=cards", headers=h).text
+
+
+def test_board_and_timeline_put_each_task_in_the_right_place():
+    from prometheus.web.pages_v3 import board_of, timeline_bars, timeline_window
+
+    rows = [{"id": 1, "created": 1000.0, "finished": 1060.0, "status": "done", "label": "Done"},
+            {"id": 2, "created": 1030.0, "finished": 0.0, "status": "running", "label": "Running"},
+            {"id": 3, "created": 1040.0, "finished": 1050.0, "status": "failed", "label": "Failed"}]
+    cols = {c["key"]: [r["id"] for r in c["cards"]] for c in board_of(rows)}
+    assert cols == {"running": [2], "paused": [], "done": [1], "failed": [3], "stopped": []}
+    start, end = timeline_window("all", rows, now=1100.0)
+    assert end == 1100.0 and start <= 1000.0
+    bars = timeline_bars(rows, start, end, now=1100.0)
+    assert [b["id"] for b in bars] == [1, 2, 3]                    # oldest first, like a timeline
+    assert bars[1]["group"] == "running" and bars[1]["ended"] == 1100.0   # a running task goes up to now
+    assert all(0 <= b["width"] <= 100 for b in bars)
+    assert timeline_bars([{"id": 9, "created": 10.0, "finished": 20.0, "status": "done", "label": "Done"}],
+                         1000.0, 1100.0, now=1100.0) == []           # before the window: not drawn
+
+
+def test_pause_and_carry_on(app_client):
+    client, services = app_client()
+    h = {"X-CSRF-Token": login(client)}
+    st = services.store
+    chat, tid = _task(st)
+    # pause: only a task running in its chat, and the page offers it
+    assert client.post(f"/api/v3/tasks/{tid}/pause", headers=h).status_code == 409
+    st.set_task_status(tid, "running")
+    services.running[chat] = True
+    assert 'data-task="pause"' in client.get(f"/v3/tasks/{tid}").text
+    assert client.post(f"/api/v3/tasks/{tid}/pause", headers=h).json()["pausing"] == tid
+    assert chat in services.orchestrator.pausing
+    services.orchestrator.pausing.discard(chat)
+    services.running.pop(chat, None)
+    # carry on: only a paused task that kept something, and only from its own chat
+    assert client.post(f"/api/v3/tasks/{tid}/resume", headers=h).status_code == 409
+    st.set_task_status(tid, "paused", "Paused by you.")
+    assert client.post(f"/api/v3/tasks/{tid}/resume", headers=h).status_code == 409      # nothing kept
+    from prometheus.orchestrator.planner import paused_run, save_paused_run
+
+    save_paused_run(st, tid, {"text": "sort my downloads", "steps": [], "done": {}, "bad": [], "private": []})
+    assert 'data-task="resume"' in client.get(f"/v3/tasks/{tid}").text
+    r = client.post(f"/api/v3/tasks/{tid}/resume", headers=h)
+    assert r.status_code == 200 and r.json()["resumed"] == tid
+    for _ in range(200):
+        if chat not in services.running and st.task(tid)["status"] != "running":
+            break
+        time.sleep(0.05)
+    assert st.task(tid)["status"] in ("done", "failed")
+    assert paused_run(st, tid) is None
+    # don't carry on: a paused task with something kept can be stopped for good, and the kept steps go
+    st.set_task_status(tid, "paused", "Paused by you.")
+    save_paused_run(st, tid, {"text": "sort my downloads", "steps": [], "done": {}, "bad": [], "private": []})
+    assert client.post(f"/api/v3/tasks/{tid}/stop", headers=h).status_code == 200
+    assert st.task(tid)["status"] == "stopped" and paused_run(st, tid) is None
+
+
+def test_actions_need_the_csrf_token(app_client):
+    client, services = app_client()
+    login(client)
+    _, tid = _task(services.store)
+    assert client.post(f"/api/v3/tasks/{tid}/delete").status_code in (403, 400)
+    assert services.store.task(tid)
+
+
+# ---- Skills ---------------------------------------------------------------------------------------------------------
+def _user_skill(services, name="my-notes", body="# Notes\n\nHow I take notes.", refs=None):
+    folder = services.skills.user / name
+    (folder / "references").mkdir(parents=True, exist_ok=True)
+    (folder / "SKILL.md").write_text(f"---\nname: {name}\ndescription: Use when the owner asks how they like their "
+                                     f"notes written.\nversion: 1.2\nauthor: Me\n---\n{body}", encoding="utf-8")
+    for ref, text in (refs or {}).items():
+        (folder / "references" / ref).write_text(text, encoding="utf-8")
+    return folder
+
+
+def test_skills_page_groups_searches_and_shows_details(app_client):
+    client, services = app_client()
+    login(client)
+    _user_skill(services, refs={"style.md": "Short bullet points."})
+    page = client.get("/v3/skills").text
+    for part in ("Code", "Research and learning", "Yours", "My notes", "Built in", "Added by you", 'href="/v3/skills"'):
+        assert part in page, part
+    assert "My notes" in client.get("/v3/skills?q=notes").text and "Coding" not in client.get("/v3/skills?q=notes").text
+    detail = client.get("/v3/skills/my-notes").text
+    for part in ("How I take notes.", "1.2", "Me", "style.md", "Not used yet", "Check it", "Try it", "Remove"):
+        assert part in detail, part
+    assert "Short bullet points." in client.get("/v3/skills/my-notes?ref=style.md").text
+    assert 'id="skill-remove"' not in client.get("/v3/skills/research").text   # built-in: switch off, never delete
+    assert client.get("/v3/skills/nope").status_code == 404
+    assert client.get("/skills", follow_redirects=False).headers["location"] == "/v3/skills"
+    assert client.get("/skills?view=classic").status_code == 200
+
+
+def test_skill_switch_hides_it_from_the_planner(app_client):
+    client, services = app_client()
+    csrf = login(client)
+    h = {"X-CSRF-Token": csrf}
+    assert "research" in services.skills.catalog_text()
+    r = client.post("/api/v3/skills/research/switch", data={}, headers=h)
+    assert r.json() == {"skill": "research", "on": False}
+    assert "research" not in services.skills.catalog_text() and services.skills.get("research") is None
+    assert services.skills.get_any("research") is not None and "research" in services.settings.skills_off
+    assert client.post("/api/v3/skills/research/try", data={"question": "x"}, headers=h).status_code == 409
+    client.post("/api/v3/skills/research/switch", data={"on": "1"}, headers=h)
+    assert services.skills.get("research") is not None
+    assert client.post("/api/v3/skills/nope/switch", headers=h).status_code == 404
+
+
+def test_skill_check_finds_problems(app_client):
+    client, services = app_client()
+    csrf = login(client)
+    h = {"X-CSRF-Token": csrf}
+    assert client.post("/api/v3/skills/research/check", headers=h).json()["ok"] is True
+    folder = _user_skill(services, "big-one", body="x" * 25_000)
+    (folder / "references" / "script.py").write_text("print(1)")
+    res = client.post("/api/v3/skills/big-one/check", headers=h).json()
+    texts = " ".join(r["text"] for r in res["results"])
+    assert res["ok"] is False and "longer than" in texts and "script.py" in texts
+
+
+def test_skill_try_and_remove(app_client):
+    client, services = app_client()
+    csrf = login(client)
+    h = {"X-CSRF-Token": csrf}
+    folder = _user_skill(services)
+    assert client.post("/api/v3/skills/my-notes/try", data={"question": " "}, headers=h).status_code == 400
+    r = client.post("/api/v3/skills/my-notes/try", data={"question": "write today's notes"}, headers=h)
+    assert r.status_code == 200
+    cid = r.json()["chat_id"]
+    for _ in range(100):
+        if cid not in services.running and services.store.messages(cid):
+            break
+        time.sleep(0.05)
+    assert services.store.messages(cid)[0].text == "Use the my-notes skill: write today's notes"
+    assert client.post("/api/v3/skills/research/remove", headers=h).status_code == 409    # built in
+    assert client.post("/api/v3/skills/my-notes/remove", headers=h).json() == {"removed": "my-notes"}
+    assert not folder.exists() and services.skills.get_any("my-notes") is None
+
+
+def test_skill_use_is_recorded_and_listed(app_client):
+    client, services = app_client()
+    login(client)
+    st = services.store
+    cid = st.create_chat("x")
+    tid = st.create_task(cid, "research solar panels")
+    sid = st.add_step(tid, "research", "Find sources", {})
+    st.finish_step(sid, "done", "Found 5", {"skill": "research"})
+    st.set_task_status(tid, "done", "ok")
+    page = client.get("/v3/skills/research").text
+    assert "Find sources" in page and f"/v3/tasks/{tid}" in page
+    assert "used 1 time<" in client.get("/v3/skills").text.replace("\n", "")
+
+
+def test_add_skill_from_a_github_link(app_client, monkeypatch):
+    client, services = app_client()
+    csrf = login(client)
+    h = {"X-CSRF-Token": csrf}
+    from prometheus import repo_of_day
+
+    class Resp:
+        def __init__(self, code, data):
+            self.status_code, self._d = code, data
+
+        def json(self):
+            return self._d
+
+    class Http:
+        def get(self, url, headers=None):
+            if url.endswith("/readme"):
+                import base64
+                return Resp(200, {"content": base64.b64encode(b"# Tool\nIt sorts photos.").decode(), "encoding": "base64"})
+            if "missing/repo" in url:
+                return Resp(404, {})
+            return Resp(200, {"full_name": "someone/photo-sorter", "description": "Sorts photos by date",
+                              "language": "Python", "stargazers_count": 10})
+
+    real = repo_of_day.RepoOfTheDay.__init__
+    monkeypatch.setattr(repo_of_day.RepoOfTheDay, "__init__", lambda self, services, http=None: real(self, services, Http()))
+    assert client.post("/api/v3/skills/add", data={"link": "not a link"}, headers=h).status_code == 400
+    assert client.post("/api/v3/skills/add", data={"link": "github.com/missing/repo"}, headers=h).status_code == 404
+    r = client.post("/api/v3/skills/add", data={"link": "https://github.com/someone/photo-sorter.git"}, headers=h)
+    assert r.status_code == 200, r.text
+    assert services.skills.get_any("repo-someone-photo-sorter") is not None
+    assert "From GitHub" in client.get("/v3/skills").text
+
+
+# ---- Memory ---------------------------------------------------------------------------------------------------------
+def test_memory_page_tabs_and_search(app_client):
+    client, services = app_client()
+    login(client)
+    st = services.store
+    st.add_memory("My bike is a blue Trek", source="chat: Bikes")
+    services.orchestrator.facts.save("me", "college", "IIT Delhi", source="chat: Intro")
+    page = client.get("/v3/memory").text
+    for part in ("My bike is a blue Trek", "People and facts", "college", "IIT Delhi", 'href="/v3/memory"'):
+        assert part in page, part
+    assert "blue Trek" in client.get("/v3/memory?q=bike").text
+    for tab in ("files", "answers", "topics", "privacy"):
+        assert client.get(f"/v3/memory?tab={tab}").status_code == 200, tab
+    assert client.get("/memory", follow_redirects=False).headers["location"] == "/v3/memory"
+    assert "What Prometheus remembers about you" in client.get("/memory?view=classic").text
+
+
+def test_memory_add_edit_delete_and_secrets(app_client):
+    client, services = app_client()
+    h = {"X-CSRF-Token": login(client)}
+    st = services.store
+    mid = client.post("/api/v3/memory/add", data={"text": "I wake up at 7"}, headers=h).json()["id"]
+    assert client.post("/api/v3/memory/add", data={"text": "my password is hunter22"}, headers=h).status_code == 400
+    assert client.post(f"/api/v3/memory/{mid}/edit", data={"text": "I wake up at 6:30"}, headers=h).json()["ok"]
+    assert [m.text for m in st.memories()] == ["I wake up at 6:30"]
+    assert [h_.text for h_ in st.recall("6:30", kinds=("memory",))]                     # search sees the new text
+    assert not st.recall("wake up at 7", kinds=("memory",)) or "6:30" in st.recall("wake", kinds=("memory",))[0].text
+    assert client.post(f"/api/v3/memory/{mid}/edit", data={"text": " "}, headers=h).status_code == 400
+    assert client.post("/api/v3/memory/999/edit", data={"text": "x"}, headers=h).status_code == 404
+    client.post(f"/api/v3/memory/{mid}/delete", headers=h)
+    assert st.memories() == []
+
+
+def test_fact_edit_keeps_the_old_value_as_past(app_client):
+    client, services = app_client()
+    h = {"X-CSRF-Token": login(client)}
+    facts = services.orchestrator.facts
+    fid, _ = facts.save("me", "city", "Pune")
+    assert client.post(f"/api/v3/facts/{fid}/edit", data={"text": "Delhi"}, headers=h).json()["ok"]
+    now = [f.value for f in facts.about("me", past=False)]
+    assert now == ["Delhi"] and "Pune" in [f.value for f in facts.about("me")]
+    assert client.post(f"/api/v3/facts/{fid}/edit", data={"text": "Goa"}, headers=h).status_code == 404   # past now
+    new = [f.id for f in facts.about("me", past=False)][0]
+    client.post(f"/api/v3/facts/{new}/forget", headers=h)               # forgetting the new value brings back the old
+    assert [f.value for f in facts.about("me", past=False)] == ["Pune"]
+
+
+def test_pause_and_leave_out_stop_saving_by_itself(app_client):
+    client, services = app_client()
+    h = {"X-CSRF-Token": login(client)}
+    from prometheus.features import memory_collects
+    st = services.store
+    cid = st.create_chat("Diary")
+    assert memory_collects(services.settings, cid)
+    client.post("/api/v3/memory/pause", data={"on": "1"}, headers=h)
+    assert services.settings.memory_paused and not memory_collects(services.settings, cid)
+    client.post("/api/v3/memory/pause", data={}, headers=h)
+    assert memory_collects(services.settings, cid)
+    # the chat's searchable parts exist, then go when it's left out, and come back when included again
+    st.add_message(cid, "user", "my secret diary entry about the hackathon")
+    st.add_message(cid, "assistant", "Noted.")                                    # chats are filed after an answer
+    for _ in range(50):
+        if st.segments(chat_id=cid):
+            break
+        time.sleep(0.05)
+    assert st.segments(chat_id=cid)
+    assert client.post(f"/api/v3/memory/chats/{cid}/leave-out", data={"on": "1"}, headers=h).json()["left_out"]
+    assert st.segments(chat_id=cid) == [] and not st.document_keys(f"chat:{cid}:")
+    assert not memory_collects(services.settings, cid)
+    st.add_message(cid, "user", "another entry")                                  # still nothing saved
+    st.add_message(cid, "assistant", "Noted again.")
+    time.sleep(0.2)
+    assert st.segments(chat_id=cid) == []
+    assert "Diary" in client.get("/v3/memory?tab=privacy").text
+    client.post(f"/api/v3/memory/chats/{cid}/leave-out", data={}, headers=h)
+    assert st.segments(chat_id=cid)
+    assert client.post("/api/v3/memory/chats/9999/leave-out", data={"on": "1"}, headers=h).status_code == 404
+
+
+def test_paused_memory_saves_no_facts_by_itself(app_client):
+    client, services = app_client()
+    login(client)
+    services.settings.memory_paused = True
+    cid = services.store.create_chat("x")
+    tid = services.store.create_task(cid, "my sister Riya studies law")
+    services.orchestrator._save_facts(cid, tid, [{"subject": "Riya", "attribute": "studies", "value": "law"}])
+    assert services.orchestrator.facts.subjects() == []
+    services.settings.memory_paused = False
+    services.orchestrator._save_facts(cid, tid, [{"subject": "Riya", "attribute": "studies", "value": "law"}])
+    assert [s.lower() for s in services.orchestrator.facts.subjects()] == ["riya"]
+
+
+def test_memory_export_and_wipe(app_client):
+    client, services = app_client()
+    h = {"X-CSRF-Token": login(client)}
+    st = services.store
+    st.add_memory("I like chess")
+    services.orchestrator.facts.save("me", "game", "chess")
+    r = client.get("/api/v3/memory/export")
+    assert r.status_code == 200 and "attachment" in r.headers["content-disposition"]
+    data = r.json()
+    assert data["memories"][0]["text"] == "I like chess" and data["facts"][0]["value"] == "chess"
+    assert client.post("/api/v3/memory/wipe", data={"confirm": "yes"}, headers=h).status_code == 400
+    assert st.memories()
+    assert client.post("/api/v3/memory/wipe", data={"confirm": "forget everything"}, headers=h).json()["ok"]
+    assert st.memories() == [] and services.orchestrator.facts.about("me") == []
+
+
+def test_files_tab_searches_inside_files_and_lists_what_it_made(app_client, tmp_path):
+    client, services = app_client()
+    login(client)
+    st = services.store
+    st.add_document("file:notes.txt", "notes.txt", str(tmp_path / "notes.txt"), "Photosynthesis makes glucose from light.",
+                    private=True)
+    cid = st.create_chat("Charts")
+    out = tmp_path / "sales.png"
+    out.write_bytes(b"x")
+    st._write("INSERT INTO outputs (chat_id, path, kind, is_dir, created) VALUES (?, ?, 'image', 0, ?)",
+              (cid, str(out), time.time()))
+    page = client.get("/v3/memory?tab=files&q=glucose").text
+    assert "Photosynthesis" in page and "notes.txt" in page
+    made = client.get("/v3/memory?tab=files&show=made").text
+    assert "sales.png" in made and "Charts" in made and "Saved pages and files <" not in made
+
+
+# ---- System and Activity ------------------------------------------------------------------------------------------
+def test_system_overview_shows_only_real_states(app_client):
+    client, services = app_client()
+    login(client)
+    page = client.get("/v3/system").text
+    for part in ("This laptop", "Prometheus itself", "AI models", "Background jobs", "About", "fake", 'href="/v3/system"'):
+        assert part in page, part
+    from prometheus.web.pages_v3 import plain_action
+    assert plain_action("delete_task") == "Deleted task" and plain_action("skill_switch") == "Skill switch"
+    # a job whose thread isn't alive is never called Running
+    import threading
+    alive = {t.name for t in threading.enumerate()}
+    if "prometheus-briefing" not in alive:
+        assert "Morning briefing</span><small class=\"muted\">Running" not in page.replace("\n", "")
+
+
+def test_activity_lists_undoes_and_logs(app_client):
+    client, services = app_client()
+    h = {"X-CSRF-Token": login(client)}
+    st = services.store
+    from prometheus import undo
+    rid = st.add_reminder(st.create_chat("r"), "call mum", time.time() + 3600)
+    if rid is not None:
+        undo.record(st, "reminder", "a reminder to call mum", {"id": rid})
+    undo.record(st, "email", "an email to Ravi", {})
+    st.audit("user", "delete_task", {"task": 3})
+    page = client.get("/v3/system?tab=activity").text
+    assert "An email to ravi" in page and "can't be unsent" in page and "Deleted task" in page
+    assert "Deleted task" in client.get("/v3/system?tab=activity&q=delete").text
+    assert "Deleted task" not in client.get("/v3/system?tab=activity&q=zzz").text
+    log_id = st._rows("SELECT id FROM undo_log WHERE kind = 'email'")[0]["id"]
+    r = client.post("/api/v3/activity/undo", data={"source": "log", "id": str(log_id)}, headers=h)
+    assert r.status_code == 200 and "can't be unsent" in r.json()["message"]
+    if rid is not None:
+        rem_id = st._rows("SELECT id FROM undo_log WHERE kind = 'reminder'")[0]["id"]
+        assert client.post("/api/v3/activity/undo", data={"source": "log", "id": str(rem_id)}, headers=h).json()["ok"]
+        assert client.post("/api/v3/activity/undo", data={"source": "log", "id": str(rem_id)}, headers=h).status_code == 409
+    assert client.post("/api/v3/activity/undo", data={"source": "files", "id": "nope"}, headers=h).status_code == 404
+    assert client.post("/api/v3/activity/undo", data={"source": "x", "id": "1"}, headers=h).status_code == 400
+    assert client.get("/history", follow_redirects=False).headers["location"] == "/v3/system?tab=activity"
+
+
+# ---- Approvals ------------------------------------------------------------------------------------------------------
+def test_approvals_page_approve_reject_and_secret(app_client):
+    import json as _json
+    client, services = app_client()
+    h = {"X-CSRF-Token": login(client)}
+    got = []
+    services.approvals.register("wifi_password", lambda payload, secret: got.append(secret) or "Connected",
+                                needs_secret=True)
+    services.approvals.register("demo", lambda payload, secret: got.append("demo") or "Did the demo")
+    wifi = services.approvals.request("wifi_password", "Wi-Fi password for Office-5G", {"ssid": "Office-5G"},
+                                      secret_label="Wi-Fi password")
+    demo = services.approvals.request("demo", "Run the demo", {"path": "C:/Users/me/demo"})
+    page = client.get("/v3/approvals").text
+    assert "Wi-Fi password for Office-5G" in page and 'type="password"' in page and "C:/Users/me/demo" in page
+    assert 'class="avatar-badge"' in page and 'href="/v3/approvals"' in page                 # badge in your menu
+    assert client.post(f"/api/v3/approvals/{wifi}", data={"decision": "approve"}, headers=h).status_code == 400
+    r = client.post(f"/api/v3/approvals/{wifi}", data={"decision": "approve", "secret": "pass-123456"}, headers=h)
+    assert r.status_code == 200 and got == ["pass-123456"] and "pass-123456" not in r.text
+    assert "pass-123456" not in _json.dumps(services.store.audit_log())
+    assert client.post(f"/api/v3/approvals/{wifi}", data={"decision": "approve"}, headers=h).status_code == 409
+    assert client.post(f"/api/v3/approvals/{demo}", data={"decision": "reject"}, headers=h).status_code == 200
+    assert "demo" not in got and services.store.approval(demo).status != "pending"
+    assert client.post("/api/v3/approvals/999", data={"decision": "approve"}, headers=h).status_code == 404
+    assert "Nothing is waiting" in client.get("/v3/approvals").text
+    assert client.get("/approvals", follow_redirects=False).headers["location"] == "/v3/approvals"
+
+
+# ---- Chat files panel -----------------------------------------------------------------------------------------------
+def test_chat_files_show_size_and_delete_to_the_recycle_bin(app_client):
+    from pathlib import Path
+    client, services = app_client()
+    h = {"X-CSRF-Token": login(client)}
+    st = services.store
+    folder = Path(services.home) / "Documents"
+    folder.mkdir(parents=True, exist_ok=True)
+    made = folder / "report.txt"
+    made.write_text("x" * 2048)
+    cid = st.create_chat("Report")
+    st._write("INSERT INTO outputs (chat_id, path, kind, is_dir, created) VALUES (?, ?, 'file', 0, ?)",
+              (cid, str(made), time.time()))
+    oid = st.outputs(cid)[0]["id"]
+    strip = client.get(f"/c/{cid}/files").text
+    assert "report.txt" in strip and "2.0 KB" in strip and f"/api/v3/outputs/{oid}/recycle" in strip
+    binned = []
+    services.files.trash = lambda p: (binned.append(p), Path(p).unlink())
+    r = client.post(f"/api/v3/outputs/{oid}/recycle", headers=h)
+    assert r.status_code == 200, r.text
+    assert [Path(b).name for b in binned] == ["report.txt"]
+    assert not made.exists() and "not there any more" in client.get(f"/c/{cid}/files").text
+    assert client.post(f"/api/v3/outputs/{oid}/recycle", headers=h).status_code == 409
+    # outside the allowed places it's refused, even if recorded as an output
+    st._write("INSERT INTO outputs (chat_id, path, kind, is_dir, created) VALUES (?, ?, 'file', 0, ?)",
+              (cid, "/etc/hostname", time.time()))
+    bad = [o for o in st.outputs(cid) if o["path"] == "/etc/hostname"][0]["id"]
+    if Path("/etc/hostname").exists():
+        assert client.post(f"/api/v3/outputs/{bad}/recycle", headers=h).status_code == 409
+
+
+def test_costs_live_in_settings(app_client):
+    client, services = app_client()
+    login(client)
+    chat = services.store.create_chat("Physics notes")
+    services.store.add_cost("anthropic", "claude-sonnet", 0.0123, 1200, 300, chat_id=chat)
+    page = client.get("/settings").text
+    assert 'id="costs"' in page and "claude-sonnet" in page and "Physics notes" in page and "$0.0123" in page
+    assert client.get("/costs", follow_redirects=False).headers["location"] == "/settings#costs"
+    assert "What paid AI has cost" in client.get("/costs?view=classic").text
+
+
+# ---- Automations ----------------------------------------------------------------------------------------------------
+def test_automations_add_pause_resume_edit_run_delete(app_client):
+    client, services = app_client()
+    h = {"X-CSRF-Token": login(client)}
+    st = services.store
+    r = client.post("/api/v3/automations/add", data={"text": "drink water", "when": "every day at 8am"}, headers=h)
+    assert r.status_code == 200, r.text
+    assert client.post("/api/v3/automations/add", data={"text": "x", "when": "whenever"}, headers=h).status_code == 400
+    client.post("/api/v3/automations/add", data={"text": "tidy Downloads", "when": "tomorrow at 9", "kind": "goal"}, headers=h)
+    page = client.get("/v3/automations").text
+    for part in ("drink water", "Every day", "tidy Downloads", "Goal", "Run now", 'href="/v3/automations"'):
+        assert part in page, part
+    water = [a for a in st.automations() if a["text"] == "drink water"][0]
+    goal = [a for a in st.automations() if a["text"] == "tidy Downloads"][0]
+    # pause: the clock skips it; resume: a passed time rolls to the next one
+    client.post(f"/api/v3/automations/{water['id']}/pause", data={"on": "1"}, headers=h)
+    st._write("UPDATE reminders SET due = ? WHERE id = ?", (time.time() - 3 * 86400, water["id"]))
+    assert all(r["id"] != water["id"] for r in st.reminders_due(time.time()))
+    assert "Paused" in client.get("/v3/automations").text
+    client.post(f"/api/v3/automations/{water['id']}/pause", data={}, headers=h)
+    resumed = [a for a in st.automations() if a["id"] == water["id"]][0]
+    assert resumed["state"] == "waiting" and resumed["due"] > time.time()
+    # edit words and time
+    assert client.post(f"/api/v3/automations/{water['id']}/edit", data={"text": "drink 2 glasses"}, headers=h).json()["ok"]
+    assert client.post(f"/api/v3/automations/{water['id']}/when", data={"text": "every weekday at 7pm"}, headers=h).json()["ok"]
+    changed = [a for a in st.automations() if a["id"] == water["id"]][0]
+    assert changed["text"] == "drink 2 glasses" and changed["repeat"] == "weekdays"
+    # run now: goals only, schedule unchanged
+    assert client.post(f"/api/v3/automations/{water['id']}/run", headers=h).status_code == 409
+    before = goal["due"]
+    assert client.post(f"/api/v3/automations/{goal['id']}/run", headers=h).json()["ok"]
+    for _ in range(100):
+        if goal["chat_id"] not in services.running and st.list_tasks(q="tidy Downloads"):
+            break
+        time.sleep(0.05)
+    assert st.list_tasks(q="tidy Downloads") and [a for a in st.automations() if a["id"] == goal["id"]][0]["due"] == before
+    # delete
+    assert client.post(f"/api/v3/automations/{water['id']}/delete", headers=h).json()["ok"]
+    assert client.post(f"/api/v3/automations/{water['id']}/delete", headers=h).status_code == 404
+
+
+def test_reminder_firing_records_when_it_ran(app_client):
+    client, services = app_client()
+    login(client)
+    st = services.store
+    cid = st.create_chat("r")
+    rid = st.add_reminder(cid, "stretch", time.time() - 5, "daily")
+    services.reminders.tick()
+    row = [a for a in st.automations() if a["id"] == rid][0]
+    assert row["last_fired"] > 0 and row["due"] > time.time()
+
+
+def test_watcher_switches_and_folders(app_client):
+    client, services = app_client()
+    h = {"X-CSRF-Token": login(client)}
+    s = services.settings
+    client.post("/api/v3/watchers/watch_cpu", data={"on": "1"}, headers=h)
+    assert s.watch_cpu is True
+    client.post("/api/v3/watchers/watch_battery", data={}, headers=h)
+    assert s.watch_battery is False
+    assert client.post("/api/v3/watchers/password", data={"on": "1"}, headers=h).status_code == 404
+    s.watch_folders = [{"path": "C:/Users/me/Downloads", "goal": "file PDFs"}]
+    assert "C:/Users/me/Downloads" in client.get("/v3/automations").text
+    assert client.post("/api/v3/watchers/folders/remove", data={"path": "C:/Users/me/Downloads"}, headers=h).json()["ok"]
+    assert s.watch_folders == []
+    assert client.post("/api/v3/watchers/folders/remove", data={"path": "x"}, headers=h).status_code == 404
+
+
+# ---- Research (three modes) -------------------------------------------------------------------------------------------
+def _research_task(st, question="solar panels in India", answer="Solar is growing [1].\n\nSources:\n[1] https://example.org/solar"):
+    cid = st.create_chat("Research")
+    tid = st.create_task(cid, question)
+    sid = st.add_step(tid, "research", "Search the web", {"query": question})
+    st.finish_step(sid, "done", answer, {"sources": ["https://example.org/solar"]})
+    st.set_task_status(tid, "done", answer)
+    return tid
+
+
+def test_research_modes_render_with_their_own_chats(app_client):
+    client, services = app_client()
+    login(client)
+    st = services.store
+    _research_task(st)
+    page = client.get("/v3/research").text
+    for part in ("Research", "Study", "Money", "solar panels in India", "1 source", "Word", 'href="/v3/research"'):
+        assert part in page, part
+    study = client.get("/v3/research?mode=study").text
+    assert "@study" in study and "Flashcards" in study and "Deadlines" in study
+    money = client.get("/v3/research?mode=money").text
+    assert "@money" in money
+    titles = [t for _, t in st.chats()]
+    assert "Research" in titles and "Money" in titles
+    assert "solar" in client.get("/v3/research?q=solar").text and "solar panels" not in client.get("/v3/research?q=zzz").text
+
+
+def test_research_export_formats(app_client):
+    client, services = app_client()
+    login(client)
+    tid = _research_task(services.store)
+    md = client.get(f"/api/v3/research/{tid}/export?fmt=md")
+    assert md.status_code == 200 and "Solar is growing" in md.text and "attachment" in md.headers["content-disposition"]
+    assert client.get(f"/api/v3/research/{tid}/export?fmt=pdf").content[:4] == b"%PDF"
+    assert client.get(f"/api/v3/research/{tid}/export?fmt=docx").content[:2] == b"PK"            # a Word file is a zip
+    html = client.get(f"/api/v3/research/{tid}/export?fmt=html").text
+    assert "<h1>solar panels in India</h1>" in html and "<script" not in html
+    assert client.get("/api/v3/research/9999/export").status_code == 404
+
+
+def test_research_sources_pin_exclude_and_the_agent_follows(app_client):
+    client, services = app_client()
+    h = {"X-CSRF-Token": login(client)}
+    st = services.store
+    a = st.add_document("web:https://www.bbc.co.uk/solar", "BBC on solar", "https://www.bbc.co.uk/solar",
+                        "Solar panels in India grew fast in 2025. " * 40, private=False)
+    b = st.add_document("web:https://example.org/x", "Example", "https://example.org/x", "Other text. " * 60, private=False)
+    assert "BBC on solar" in client.get("/v3/research").text
+    assert client.post(f"/api/v3/research/sources/{a}/pin", data={"on": "1"}, headers=h).json()["ok"]
+    assert st.kv_get("research_pinned") == [a]
+    r = client.post(f"/api/v3/research/sources/{b}/exclude", data={"on": "1"}, headers=h)
+    assert r.json()["ok"] and st.kv_get("research_excluded") == ["example.org"]
+    # the agent: pinned page first, excluded site skipped
+    from prometheus.agents.research import Research as ResearchAgent, pinned_pages, site_of
+    assert site_of("https://www.bbc.co.uk/news") == "bbc.co.uk"
+    ctx = services.orchestrator.make_context(st.create_task(st.create_chat("x"), "q"), 0)
+    pages = pinned_pages(ctx, "solar panels India")
+    assert pages and pages[0][0] == "https://www.bbc.co.uk/solar"
+    agent = ResearchAgent()
+    agent.search = lambda q, n: [{"url": "https://example.org/y", "title": "skip me"}]
+    fetched = []
+    import prometheus.agents.research as R
+    real = R.fetch_text
+    R.fetch_text = lambda url, http: fetched.append(url) or "text"
+    try:
+        from prometheus.models.fake import FakeProvider
+        services.router.providers["fake"] = FakeProvider(["Answer [1]"], name="fake")
+        res = agent.run("solar panels India", {"query": "solar panels India"}, ctx)
+    finally:
+        R.fetch_text = real
+    assert fetched == [] and res.data["sources"] == ["https://www.bbc.co.uk/solar"]
+    # limits and include again
+    for i in range(3):
+        d = st.add_document(f"web:https://p{i}.org/", f"P{i}", f"https://p{i}.org/", "words " * 80, private=False)
+        client.post(f"/api/v3/research/sources/{d}/pin", data={"on": "1"}, headers=h)
+    assert len(st.kv_get("research_pinned")) == 3
+    client.post("/api/v3/research/sites/example.org/include", headers=h)
+    assert st.kv_get("research_excluded") == []
+    assert client.post("/api/v3/research/sources/99999/pin", data={"on": "1"}, headers=h).status_code == 404
+
+
+def test_add_own_source_refuses_private_addresses(app_client):
+    client, services = app_client()
+    h = {"X-CSRF-Token": login(client)}
+    r = client.post("/api/v3/research/sources/add", data={"url": "http://127.0.0.1:8000/secret"}, headers=h)
+    assert r.status_code == 409
+    r = client.post("/api/v3/research/sources/add", data={"url": "http://192.168.1.1/"}, headers=h)
+    assert r.status_code == 409
+
+
+def test_study_and_money_actions(app_client):
+    client, services = app_client()
+    h = {"X-CSRF-Token": login(client)}
+    from prometheus.agents import assignments_agent, money_agent
+    if money_agent.MONEY is not None:
+        assert client.post("/api/v3/money/add", data={"text": "250 lunch"}, headers=h).json()["ok"]
+        assert client.post("/api/v3/money/add", data={"text": "lunch"}, headers=h).status_code == 400
+        assert "250" in client.get("/v3/research?mode=money").text
+    if assignments_agent.TRACKER is not None:
+        r = client.post("/api/v3/deadlines/add", data={"text": "Physics lab report due Friday 5pm"}, headers=h)
+        assert r.status_code == 200, r.text
+        page = client.get("/v3/research?mode=study").text
+        assert "Physics lab report" in page
+        did = services.store._rows("SELECT id FROM assignments WHERE title LIKE '%Physics%'")[0]["id"]
+        assert client.post(f"/api/v3/deadlines/{did}/done", headers=h).json()["ok"]
+
+
+# ---- Connections ------------------------------------------------------------------------------------------------------
+def test_connections_show_real_states_test_and_disconnect(app_client, tmp_path, monkeypatch):
+    for k in ("GITHUB_TOKEN", "EMAIL_PASSWORD", "GOOGLE_TOKEN", "GOOGLE_CLIENT", "CALENDAR_LINKS"):
+        monkeypatch.delenv(k, raising=False)           # a key from the environment counts as connected
+    client, services = app_client()
+    h = {"X-CSRF-Token": login(client)}
+    s = services.settings
+    page = client.get("/v3/connections").text
+    for part in ("Email", "Google (Gmail, Calendar, Drive)", "GitHub", "Obsidian", "Cloud copy", "Not connected",
+                 'href="/v3/connections"'):
+        assert part in page, part
+    # nothing connected: Test is refused with a plain reason, never a fake "works"
+    assert client.post("/api/v3/connections/email/test", headers=h).status_code == 409
+    assert client.post("/api/v3/connections/github/test", headers=h).status_code == 409
+    # Obsidian: connected while the folder exists; the test counts real notes
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    (vault / "a.md").write_text("# hi")
+    s.obsidian_vault = str(vault)
+    assert "Connected" in client.get("/v3/connections").text
+    r = client.post("/api/v3/connections/obsidian/test", headers=h)
+    assert r.status_code == 200 and "1 notes" in r.json()["message"]
+    s.obsidian_vault = str(tmp_path / "gone")
+    assert "Folder missing" in client.get("/v3/connections").text
+    assert client.post("/api/v3/connections/obsidian/test", headers=h).status_code == 409
+    assert client.post("/api/v3/connections/obsidian/disconnect", headers=h).json()["ok"] and s.obsidian_vault == ""
+    # email disconnect clears it; unknown keys are refused
+    s.email_address, s.email_via = "me@college.edu", "password"
+    client.post("/api/v3/connections/email/disconnect", headers=h)
+    assert s.email_address == ""
+    assert client.post("/api/v3/connections/nope/test", headers=h).status_code == 404
+    assert client.post("/api/v3/connections/cloud/disconnect", headers=h).status_code == 409
+
+
+# ---- owner's fixes (14 Nov): delete a chat stays where you were; delete tasks from the list -----------------------
+def test_deleting_a_chat_stays_where_you_were(app_client):
+    client, services = app_client()
+    h = {"X-CSRF-Token": login(client)}
+    st = services.store
+    a, b = st.create_chat("One"), st.create_chat("Two")
+    r = client.post(f"/chats/{a}/delete", headers={**h, "HX-Request": "true",
+                                                    "HX-Current-URL": "http://127.0.0.1:8000/v3/chats"})
+    assert r.status_code == 204 and r.headers.get("HX-Refresh") == "true" and "HX-Redirect" not in r.headers
+    r = client.post(f"/chats/{b}/delete", headers={**h, "HX-Request": "true",
+                                                    "HX-Current-URL": f"http://127.0.0.1:8000/c/{b}"})
+    assert r.headers.get("HX-Redirect") == "/v3/chats"                 # from inside that chat: the chat list
+    assert a not in dict(st.chats()) and b not in dict(st.chats())
+
+
+def test_tasks_can_be_deleted_from_the_list(app_client):
+    client, services = app_client()
+    login(client)
+    _, tid = _task(services.store)
+    page = client.get("/v3/tasks").text
+    assert f'data-api="/api/v3/tasks/{tid}/delete"' in page and 'class="task-del"' in page
+    services.running[services.store.task(tid)["chat_id"]] = True
+    services.store.set_task_status(tid, "running")
+    assert f'data-api="/api/v3/tasks/{tid}/delete"' not in client.get("/v3/tasks").text   # not while it runs
+
+
+# ---- M2.2 audit fixes (15 Nov) ----------------------------------------------------------------------------------------
+def test_a_left_out_chat_is_never_recalled_anywhere(app_client):
+    """The audit's case: a diary chat left out of memory still showed its note in Memory search and to the planner."""
+    client, services = app_client()
+    h = {"X-CSRF-Token": login(client)}
+    st = services.store
+    diary, other = st.create_chat("Diary"), st.create_chat("Other")
+    st.add_chat_note(diary, "The hackathon is on Friday")
+    tid = st.create_task(diary, "plan the hackathon")
+    st.add_agent_note(tid, "research", "hackathon venue is the library")
+    st.add_message(diary, "user", "my hackathon idea is a plant watering bot")
+    st.add_chat_note(other, "The hackathon team is Riya and Sam")
+    kinds = ("memory", "chat_note", "agent_note", "message")
+    assert len(st.recall("hackathon", limit=20, kinds=kinds)) == 4
+    client.post(f"/api/v3/memory/chats/{diary}/leave-out", data={"on": "1"}, headers=h)
+    left = st.recall("hackathon", limit=20, kinds=kinds)
+    assert [r.text for r in left] == ["The hackathon team is Riya and Sam"]          # only the other chat's note
+    # Memory search on the new page, and what the planner reads, are both clean
+    page = client.get("/v3/memory?q=hackathon").text
+    assert "Riya and Sam" in page and "Friday" not in page and "library" not in page and "watering" not in page
+    assert all("Friday" not in r.text for r in st.recall("hackathon", limit=8, kinds=("memory", "chat_note")))
+    # hidden, not deleted: including the chat again brings them back
+    client.post(f"/api/v3/memory/chats/{diary}/leave-out", data={}, headers=h)
+    assert len(st.recall("hackathon", limit=20, kinds=kinds)) == 4
+    # Chats page search still finds the chat itself (owner's choice)
+    client.post(f"/api/v3/memory/chats/{diary}/leave-out", data={"on": "1"}, headers=h)
+    assert "Diary" in client.get("/v3/chats?q=watering").text
+
+
+def test_system_waiting_link_goes_straight_to_approvals(app_client):
+    client, _ = app_client()
+    login(client)
+    page = client.get("/v3/system").text
+    assert 'href="/v3/approvals">0 approvals' in page and 'href="/approvals"' not in page
+
+
+def test_todays_repos_use_json_actions(app_client, monkeypatch):
+    client, services = app_client()
+    h = {"X-CSRF-Token": login(client)}
+    from prometheus import repo_of_day
+
+    class Fake:
+        def __init__(self, services, http=None):
+            pass
+
+        def todays(self):
+            return {"date": "2026-11-15", "repos": [{"full_name": "a/b", "stars_today": 5, "description": "x"}]}
+
+        def add_numbers(self, ns):
+            return "Added a/b to the skill library." if ns == [1] else "There's no number 9 on today's list (it has 1)."
+
+        def suggest(self):
+            return "Here are today's 10 repositories."
+
+    monkeypatch.setattr(repo_of_day, "RepoOfTheDay", Fake)
+    page = client.get("/v3/skills?tab=github").text
+    assert 'data-api="/api/v3/skills/trending/1/add"' in page and 'hx-target="body"' not in page
+    assert client.post("/api/v3/skills/trending/1/add", headers=h).json()["ok"]
+    assert client.post("/api/v3/skills/trending/9/add", headers=h).status_code == 409
+    assert "today's 10" in client.post("/api/v3/skills/trending/refresh", headers=h).json()["message"]
+
+
+# ---- M2.4: Devices tab ---------------------------------------------------------------------------------------------
+def test_devices_tab_shows_only_what_can_be_read(app_client, monkeypatch):
+    client, services = app_client()
+    h = {"X-CSRF-Token": login(client)}
+    page = client.get("/v3/system?tab=devices").text
+    assert "This laptop" in page and "Cloud copy" in page and "Not set up" in page and "Phone control" in page
+    assert client.post("/api/v3/devices/cloud/check", headers=h).status_code == 409          # nothing set up: no guess
+    assert client.post("/api/v3/devices/phone/check", headers=h).status_code == 409
+    assert client.post("/api/v3/devices/fridge/check", headers=h).status_code == 404
+    services.settings.cloud_url = "http://100.64.0.9:8000"
+    import httpx
+
+    class R:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"app": "prometheus"}
+
+    monkeypatch.setattr(httpx, "get", lambda url, timeout=0: R())
+    r = client.post("/api/v3/devices/cloud/check", headers=h)
+    assert r.status_code == 200 and "online" in r.json()["message"]
+    monkeypatch.setattr(httpx, "get", lambda url, timeout=0: (_ for _ in ()).throw(httpx.ConnectError("x")))
+    assert client.post("/api/v3/devices/cloud/check", headers=h).status_code == 502
+
+
+# ---- M2.4: features moved over from the old screens ---------------------------------------------------------------
+def test_chat_notes_reader_browser_and_anki_in_the_new_look(app_client, monkeypatch):
+    client, services = app_client()
+    h = {"X-CSRF-Token": login(client)}
+    st = services.store
+    cid = st.create_chat("Notes")
+    assert client.post(f"/api/v3/chats/{cid}/notes", data={"text": "use metric units"}, headers=h).json()["ok"]
+    page = client.get(f"/c/{cid}").text
+    assert "use metric units" in page and 'id="notes-btn"' in page
+    nid = st.chat_notes(cid)[0].id
+    assert client.post(f"/api/v3/chats/{cid}/notes/{nid}/delete", headers=h).json()["ok"] and st.chat_notes(cid) == []
+    # nothing being read, no browser: the live strip is empty and the controls refuse plainly
+    live = client.get(f"/c/{cid}/live").text
+    assert "Reading:" not in live and "Take over" not in live
+    assert client.post("/api/v3/reader/pause", headers=h).status_code == 409
+    from prometheus.voice import reader as _reader
+
+    class R:
+        calls = []
+        def status(self):
+            return {"state": "reading", "title": "Chapter 2", "index": 0, "total": 3, "before": "", "now": "Cells divide.",
+                    "after": "Then…", "speed": 1.0}
+        def pause(self):
+            R.calls.append("pause")
+    monkeypatch.setattr(_reader, "CURRENT", R())
+    live = client.get(f"/c/{cid}/live").text
+    assert "Reading: Chapter 2" in live and "Cells divide." in live and "/api/v3/reader/pause" in live
+    assert client.post("/api/v3/reader/pause", headers=h).json()["ok"] and R.calls == ["pause"]
+    assert client.post("/api/v3/reader/dance", headers=h).status_code == 404
+    from prometheus.agents import study_agent
+    if study_agent.STUDY is not None:
+        study_agent.STUDY.add("physics", "Unit of force?", "newton")
+        assert "Export to Anki" in client.get("/v3/research?mode=study").text
+        r = client.post("/api/v3/study/export", data={"deck": "physics"}, headers=h)
+        assert r.status_code == 200 and "Anki" in r.json()["message"]

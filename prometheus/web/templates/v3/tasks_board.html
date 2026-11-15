@@ -1,0 +1,28 @@
+{# The task board: one column per state, from the same rows as the list. Nothing moves by dragging (the state is Prometheus's). #}
+<div class="task-list board"{% if live %} hx-get="/v3/tasks?view=board" hx-include="#task-filters" hx-target="#task-list" hx-trigger="every 5s"{% endif %}>
+  <div class="board-cols">
+  {% for c in board %}
+    <section class="board-col" data-state="{{ c.key }}">
+      <h3>{{ c.label }} <span class="muted">{{ c.cards|length }}</span></h3>
+      {% for r in c.cards %}
+      <div class="board-item">
+      <a class="board-card" href="/v3/tasks/{{ r.id }}" title="{{ r.text[:300] }}">
+        <b>{{ r.text[:110] }}{% if r.text|length > 110 %}…{% endif %}</b>
+        <small class="muted">{{ r.chat }} · {{ r.steps }} step{{ "s" if r.steps != 1 }} · {{ r.created|day }} {{ r.created|clock }}{% if r.took %} · took {{ r.took }}{% endif %}</small>
+        <span class="state s-{{ r.status }}">{% if r.live %}<i class="pulse" aria-hidden="true"></i>{% endif %}{{ r.label }}</span>
+      </a>
+      {# buttons on the card (owner, 15 Nov): what each state allows; nothing is dragged #}
+      <div class="row-actions board-actions">
+        {% if r.live %}<button type="button" data-api="/api/v3/tasks/{{ r.id }}/pause">Pause</button>
+          <button type="button" data-api="/api/v3/tasks/{{ r.id }}/stop" data-confirm="Stop this task?">Stop</button>
+        {% elif r.resumable %}<button type="button" data-api="/api/v3/tasks/{{ r.id }}/resume">Carry on</button>
+          <button type="button" data-api="/api/v3/tasks/{{ r.id }}/stop" data-confirm="Stop it for good? It won't be able to carry on.">Stop</button>
+        {% else %}<button type="button" data-api="/api/v3/tasks/{{ r.id }}/retry">Run again</button>{% endif %}
+      </div>
+      </div>
+      {% else %}<p class="muted small empty-col">Nothing here.</p>{% endfor %}
+    </section>
+  {% endfor %}
+  </div>
+  {% if not rows %}<p class="muted empty">{% if q or status != "all" or period != "all" %}No task matches these filters.{% else %}No tasks yet. Ask Prometheus something on Home and it shows up here.{% endif %}</p>{% endif %}
+</div>

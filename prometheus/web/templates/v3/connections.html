@@ -1,0 +1,26 @@
+{% extends "v3/layout.html" %}
+{% from "v3/icons.html" import icon %}
+{% block title %}Connections · Prometheus{% endblock %}
+{% block topbar %}<b>Connections</b>{% endblock %}
+{% block content %}
+<section class="page connections-page">
+  <h1>Connections</h1>
+  <p class="muted lead">The accounts and apps Prometheus can use. Test one to check it really works. Connecting needs your Prometheus password,
+    so that happens in <a href="/settings#connections">Settings → Connections</a>. Anything that sends or changes something asks you first.</p>
+  <div class="auto-grid">
+    {% for c in cards %}
+    <div class="auto-card conn-card">
+      <div class="skill-top"><b>{{ c.name }}</b>
+        <span class="state {{ 's-done' if c.state == 'Connected' else 's-failed' if c.state in ('Needs sign-in again', 'Needs attention', 'Folder missing') else '' }}">{{ c.state }}</span></div>
+      <p class="muted">{{ c.detail }}</p>
+      <div class="row-actions">
+        {% if c.state not in ("Not connected", "Not set up", "Off") %}<button type="button" data-api="/api/v3/connections/{{ c.key }}/test">Test</button>{% endif %}
+        {% if c.app and not c.enabled %}<button type="button" data-api="/api/v3/connections/{{ c.key }}/enable">Switch on</button>
+        {% elif c.state != "Not connected" and c.state != "Not set up" and c.key != "cloud" %}<button type="button" class="danger" data-api="/api/v3/connections/{{ c.key }}/disconnect" data-confirm="Disconnect {{ c.name }}?">{{ "Switch off" if c.app else "Disconnect" }}</button>{% endif %}
+        <a class="conn-setup" href="/settings#{{ c.setup }}">{{ "Connect" if c.state in ("Not connected", "Not set up", "Not signed in") else "Settings" }}</a>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}

@@ -1,0 +1,55 @@
+{% extends "v3/layout.html" %}
+{% from "v3/icons.html" import icon %}
+{% block title %}Approvals · Prometheus{% endblock %}
+{% block topbar %}<b>Approvals</b>{% endblock %}
+{% block content %}
+<section class="page approvals-page">
+  <h1>Approvals</h1>
+  <p class="muted lead">Prometheus asks here before anything big or risky. Nothing happens until you approve. Things you allowed for good are in
+    <a href="/settings#always-allowed">Settings → Always allowed</a>.</p>
+  <h2 class="section">Waiting for you <span class="muted">{{ waiting|length }}</span></h2>
+  <div class="appr-list">
+  {% for a in waiting %}
+    <form class="appr-card" data-approval="{{ a.id }}">
+      <div class="appr-head"><b>{{ a.summary }}</b><span class="state s-paused">{{ a.kind.replace("_", " ") }}</span></div>
+      {% if a.payload.url %}<p class="muted wrap">{{ a.payload.url }}
+        {% if a.payload.url.startswith("https://github.com/") %}<button type="button" class="pill" hx-post="/approvals/{{ a.id }}/open" hx-swap="none">Open link</button>{% endif %}</p>{% endif %}
+      {% if a.payload.path %}<p class="muted wrap">{{ a.payload.path }}</p>{% endif %}
+      {% if a.payload.task %}<pre class="io">{{ a.payload.task }}</pre>{% endif %}
+      {% if a.payload.diff %}<pre class="io">{{ a.payload.diff }}</pre>{% endif %}
+      {% if a.payload._secret_label %}
+      <label class="appr-secret">{{ a.payload._secret_label }}
+        <input type="password" name="secret" autocomplete="off" placeholder="Goes straight to Windows. Never saved or sent to an AI.">
+      </label>
+      {% endif %}
+      <div class="task-actions">
+        <button type="submit" class="pill ok" name="decision" value="approve">{{ icon("tasks") }}{{ "Connect" if a.payload._secret_label else "Approve" }}</button>
+        <button type="submit" class="pill danger" name="decision" value="reject">{{ icon("close") }}Reject</button>
+      </div>
+    </form>
+  {% else %}<p class="muted empty">Nothing is waiting.</p>{% endfor %}
+  </div>
+  {% if done %}
+  <h2 class="section">Decided lately</h2>
+  <div class="mem-list">{% for d in done %}<div class="mem-row past"><div><p>{{ d.summary }}</p>
+    <small class="muted">{{ d.kind.replace("_", " ") }} · {{ d.status }} · {{ d.created|day }} {{ d.created|clock }}</small></div></div>{% endfor %}</div>
+  {% endif %}
+</section>
+<script>
+document.addEventListener("submit", function (e) {
+  var f = e.target.closest("[data-approval]"); if (!f) return;
+  e.preventDefault();
+  var body = new FormData(f), btn = e.submitter;
+  body.append("decision", btn ? btn.value : "reject");
+  f.querySelectorAll("button").forEach(function (b) { b.disabled = true; });
+  fetch("/api/v3/approvals/" + f.dataset.approval, { method: "POST", credentials: "same-origin", body: body,
+        headers: { "X-CSRF-Token": document.body.dataset.csrf } })
+    .then(function (r) { return r.json().then(function (j) { return [r.ok, j]; }); })
+    .then(function (x) {
+      if (!x[0]) { promToast(x[1].error || "That didn't work.", true); f.querySelectorAll("button").forEach(function (b) { b.disabled = false; }); return; }
+      try { sessionStorage.setItem("prom-said", x[1].message || "Done."); } catch (z) {}
+      location.reload();
+    });
+});
+</script>
+{% endblock %}

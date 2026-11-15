@@ -156,7 +156,7 @@ class RepoOfTheDay:
             english = to_english_many(self.services.router, [r["description"] for r in repos])
         except Exception:
             english = [r["description"] for r in repos]
-        have = {s.name for s in self.services.skills.catalog()} if getattr(self.services, "skills", None) else set()
+        have = {s.name for s in self.services.skills.everything()} if getattr(self.services, "skills", None) else set()
         for r, desc in zip(repos, english):
             r["original"] = r["description"] if desc != r["description"] else ""
             r["description"] = desc

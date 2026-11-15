@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Callable
 
@@ -24,6 +24,10 @@ CHAT_PASSAGE_CHARS = 1200
 KNOWN_TOPICS = 40
 NAME_UNTIL = 2             # the planner may improve a chat's name during its first two requests
 HISTORY_CHARS = 1500
+# chat messages that carry outside text (file names from watched folders, a project file someone sent you): replayed to
+# the model marked as outside text, never as the owner's own words (M2.4 review)
+OUTSIDE_MESSAGES = {"imported": "a chat imported from a project file", "automation": "an automation (names of new files)",
+                    "watcher": "a watcher (names of new files)"}
 SUMMARY_EVERY = 10
 MAX_REMEMBER = 3
 MAX_FACTS = 6
@@ -102,6 +106,44 @@ class PlanError(Exception):
     pass
 
 
+class Paused(Exception):
+    """The owner pressed Pause: the task stops and its remaining steps are kept for Carry on."""
+
+
+# ---- pausing a task the owner started: where each paused task stopped, so it can carry on ------------------
+PAUSED_KV = "paused_runs"
+PAUSED_MAX = 20                  # the newest few are kept; older ones just can't carry on
+
+
+def paused_runs(store) -> dict:
+    try:
+        kept = store.kv_get(PAUSED_KV, {})
+    except Exception:
+        return {}
+    return kept if isinstance(kept, dict) else {}
+
+
+def paused_run(store, task_id: int) -> dict | None:
+    """What a paused task has left to do (None if it can't carry on, e.g. it was stopped by an AI limit)."""
+    found = paused_runs(store).get(str(int(task_id)))
+    return found if isinstance(found, dict) else None
+
+
+def save_paused_run(store, task_id: int, data: dict) -> None:
+    kept = paused_runs(store)
+    kept[str(int(task_id))] = data
+    for old in sorted(kept, key=lambda k: int(k))[:-PAUSED_MAX]:
+        kept.pop(old, None)
+    store.kv_set(PAUSED_KV, kept)
+
+
+def drop_paused_run(store, task_id: int) -> None:
+    kept = paused_runs(store)
+    if kept.pop(str(int(task_id)), None) is not None:
+        store.kv_set(PAUSED_KV, kept)
+
+
+
 @dataclass
 class Plan:
     steps: list[dict]
@@ -147,6 +189,9 @@ PAID_YES = re.compile(r"^\W*(?:ok(?:ay)?[, ]+)?(?:yes|yeah|yep|sure|go ahead)?[,
 CODE_REQUEST = re.compile(r"\b(code|coding|script|python|javascript|typescript|java|c\+\+|rust|html|css|function|"
                           r"bug|debug|compile|program(?:me)?|algorithm|regex|sql|refactor|unit tests?|stack ?trace|"
                           r"traceback|pull request|commit|repo(?:sitory)?)\b", re.I)
+# "@research what's new in solar panels": the owner picks the agent for this message (M2.2). Enforced in code: the
+# planner only sees that agent and a plan naming any other one is refused.
+MENTION = re.compile(r"^\s*@([A-Za-z_]{2,30})\b[\s,:]*")
 
 
 def json_part(raw: str) -> str:
@@ -252,6 +297,9 @@ class Orchestrator:
         self.extra_sections: list = []     # (heading, callable returning text) added to the planner's system
         self.interceptors: list = []       # callables (chat_id, text) -> answer or None: e.g. a quiz in progress
         self.before_steps = None           # callable (chat_id, text, plan) -> answer to stop with, or "" to go on
+        self.stopping: set[int] = set()    # chats whose reply the owner stopped (Stop button): ends before the next step
+        self.project_context = None        # callable (chat_id) -> text about the chat's project (M2.3), or None
+        self.pausing: set[int] = set()     # chats the owner paused: ends before the next step, the rest is kept
         self.skills = skills
         from prometheus.memory.facts import Facts
 
@@ -302,7 +350,10 @@ class Orchestrator:
         turns = []
         for m in recent:
             if m.role in ("user", "assistant"):
-                turns.append({"role": m.role, "content": (PRIVATE_PLACEHOLDER if m.private else m.text)[:HISTORY_CHARS]})
+                content = (PRIVATE_PLACEHOLDER if m.private else m.text)[:HISTORY_CHARS]
+                if m.model in OUTSIDE_MESSAGES and not m.private:
+                    content = untrusted(content, OUTSIDE_MESSAGES[m.model])
+                turns.append({"role": m.role, "content": content})
         while turns and turns[0]["role"] != "user":
             turns.pop(0)
         summary = self._summarise_older(chat_id, older) if older else ""
@@ -328,6 +379,10 @@ class Orchestrator:
 
     def _save_facts(self, chat_id: int, task_id: int, facts: list[dict]) -> None:
         """Lasting facts from the owner's message are saved by themselves and listed under the answer."""
+        from prometheus.features import memory_collects
+
+        if not memory_collects(getattr(self, "settings", None), chat_id):   # Memory → Privacy
+            return
         title = dict(self.store.chats()).get(chat_id, "chat")
         noted, saved_ids = [], []
         for f in facts[:MAX_FACTS]:
@@ -358,8 +413,13 @@ class Orchestrator:
         return "From earlier chats (only the matching parts):\n" + "\n".join(
             untrusted(h.context[:CHAT_PASSAGE_CHARS], h.title) for h in hits) + "\n\n"
 
-    def _plan(self, text: str, history: list[dict] | None = None, chat_id: int | None = None) -> Plan:
-        agents = "\n".join(f"- {name}: {cls.description}" for name, cls in self._usable_agents())
+    def _plan(self, text: str, history: list[dict] | None = None, chat_id: int | None = None, only: str = "") -> Plan:
+        usable = [(n, c) for n, c in self._usable_agents() if not only or n == only]
+        registry = dict(usable) if only else self.registry
+        agents = "\n".join(f"- {name}: {cls.description}" for name, cls in usable)
+        if only:
+            agents += (f"\n\nThe owner chose the {only} agent for this message (they wrote @{only}). Use only that "
+                       "agent, or answer directly when no step is needed.")
         system = f"{self._prompt('planner')}\n\nWriting rules:\n{self._style()}\n\nAgents:\n{agents}"
         catalog = self.skills.catalog_text() if self.skills else ""
         if catalog:
@@ -401,6 +461,11 @@ class Orchestrator:
                 f"- {f}" for f in known_facts) + "\n\n"
         # Passages from web pages read before (never private files: this goes to the planning model).
         content += self._earlier_chats(text, chat_id)
+        if self.project_context is not None and chat_id is not None:
+            try:
+                content += self.project_context(chat_id)      # the chat's project: folder, instructions, notes
+            except Exception:
+                pass
         lessons = self.store.relevant_lessons(text)
         if lessons:
             content += "Lessons from earlier tasks (follow them):\n" + "\n".join(f"- {l}" for l in lessons) + "\n\n"
@@ -427,7 +492,7 @@ class Orchestrator:
                 raise                        # (only paid ones left: ask the owner)
             label = f"{reply.provider} · {reply.model}"
             try:
-                plan = validate_plan(reply.text, self.registry)
+                plan = validate_plan(reply.text, registry)
                 break
             except PlanError as e:
                 retry = messages + [{"role": "assistant", "content": reply.text or "(empty)"},
@@ -437,7 +502,7 @@ class Orchestrator:
                                              skip=skip)
                 label = f"{again.provider} · {again.model}"
                 try:
-                    plan = validate_plan(again.text, self.registry)
+                    plan = validate_plan(again.text, registry)
                     break
                 except PlanError as e2:
                     tried.append(label)
@@ -465,6 +530,8 @@ class Orchestrator:
 
     def _finish(self, chat_id: int, task_id: int, status: str, answer: str, model: str = "",
                 private: bool = False, topic: str = "") -> TaskOutcome:
+        self.stopping.discard(chat_id)
+        self.pausing.discard(chat_id)
         # the markers around outside text are for the AIs; the owner sees only the words
         answer = re.sub(r"</?untrusted(?: source=\"[^\"\n]*\")?>\n?", "", answer or "").replace("&lt;/untrusted", "</untrusted")
         noted = self._remembered.pop(task_id, [])
@@ -530,6 +597,8 @@ class Orchestrator:
             if ctx.skills is None:
                 ctx.skills = self.skills
             res = agent.run(st["goal"], inputs, ctx)
+            if skill is not None:                  # the Skills page shows when each guide was used
+                res.data = {**(res.data or {}), "skill": skill.name}
         except (ProviderUnavailable, BudgetExceeded) as e:
             self.store.finish_step(sid, "paused", str(e))
             raise
@@ -571,9 +640,10 @@ class Orchestrator:
         except Exception:
             pass
 
-    def _repair(self, text: str, st: dict, tries: list, agent_cls) -> dict | None:
+    def _repair(self, text: str, st: dict, tries: list, agent_cls, only: str = "") -> dict | None:
         """Ask the lead AI for ONE different way to reach the same goal, or None to stop."""
-        agents = "\n".join(f"- {name}: {cls.description}" for name, cls in self._usable_agents())
+        usable = [(n, c) for n, c in self._usable_agents() if not only or n == only]
+        agents = "\n".join(f"- {name}: {cls.description}" for name, cls in usable)
         lines = []
         for a, r in tries:
             hidden = getattr(self.registry.get(a["agent"]), "private_outputs", False)
@@ -597,7 +667,7 @@ class Orchestrator:
         try:
             plan = validate_plan(json.dumps({"answer": "", "remember": [], "steps": [{
                 "id": 1, "agent": data.get("agent", ""), "goal": str(data.get("goal") or st["goal"]),
-                "skill": "", "inputs": data.get("inputs") or [], "depends_on": []}]}), self.registry)
+                "skill": "", "inputs": data.get("inputs") or [], "depends_on": []}]}), dict(usable) if only else self.registry)
         except PlanError:
             return None
         nxt = plan.steps[0]
@@ -605,9 +675,21 @@ class Orchestrator:
             return None                            # the same thing again: stop instead of looping
         return nxt
 
+    def request_stop(self, chat_id: int) -> None:
+        """Stop this chat's reply only (Stop all pauses everything instead). Takes effect before the next step;
+        a step already running finishes first."""
+        self.stopping.add(chat_id)
+
+    def request_pause(self, chat_id: int) -> None:
+        """Pause this chat's reply (the Tasks page's Pause): it stops at the next safe point and keeps what's left."""
+        self.pausing.add(chat_id)
+
     def run(self, chat_id: int, text: str, read_only: bool = False) -> TaskOutcome:
         """read_only: another app asked; only reading steps run, nothing is remembered or changed."""
         from prometheus.safety.budget import for_chat
+
+        self.stopping.discard(chat_id)            # a stop pressed for an earlier reply doesn't stop this one
+        self.pausing.discard(chat_id)             # nor a pause pressed for an earlier one
 
         for_chat(chat_id)                         # costs from this task count for this chat
         history = self._history(chat_id)          # taken before this message is added
@@ -652,11 +734,22 @@ class Orchestrator:
             return self._finish(chat_id, task_id, "done", from_last_task(self.store, chat_id), "instant")
         from prometheus.quick import understand
 
+        only = ""
+        mention = MENTION.match(text or "") if not read_only and "<untrusted" not in text else None
+        if mention and mention.group(1).lower() in self.registry:
+            from prometheus.features import agent_blocked
+
+            only = mention.group(1).lower()
+            blocked = agent_blocked(getattr(self, "settings", None), only)
+            if blocked:
+                return self._finish(chat_id, task_id, "failed", f"I can't use @{only} now: {blocked}")
+            text = text[mention.end():].strip() or text
+
         try:
             # instant phrases are for the owner's own words only, never for text that carries outside content
             from prometheus.features import on as _feature_on
 
-            fast = (None if "<untrusted" in text or not _feature_on(getattr(self, "settings", None), "instant")
+            fast = (None if only or "<untrusted" in text or not _feature_on(getattr(self, "settings", None), "instant")
                     else understand(text, self.store))
         except Exception:
             fast = None
@@ -665,7 +758,7 @@ class Orchestrator:
         if fast is not None and fast.answer:                  # time, date, weather: no AI needed
             return self._finish(chat_id, task_id, "done", fast.answer, "instant")
         try:
-            plan = Plan(fast.steps, answer="") if fast is not None else self._plan(text, history, chat_id)
+            plan = Plan(fast.steps, answer="") if fast is not None else self._plan(text, history, chat_id, only=only)
         except PlanError as e:
             return self._finish(chat_id, task_id, "failed", f"I couldn't work out the steps for that: {e}")
         except (ProviderUnavailable, BudgetExceeded) as e:
@@ -682,6 +775,8 @@ class Orchestrator:
         if topic:
             self.store.set_message_topic(user_msg, topic)
         self._name_chat(chat_id, plan.title)
+        if chat_id in self.stopping:
+            return self._finish(chat_id, task_id, "stopped", "Stopped. Ask again whenever you like.")
         if not plan.steps:                        # no tools needed: the plan call already wrote the answer
             return self._finish(chat_id, task_id, "done", plan.answer, plan.model, topic=topic)
 
@@ -695,11 +790,22 @@ class Orchestrator:
         results: dict[int, StepResult] = {}
         bad: set[int] = set()
         private: set[int] = set()
+        return self._execute(chat_id, task_id, text, plan, read_only, only, fast, topic, results, bad, private)
+
+    def _execute(self, chat_id: int, task_id: int, text: str, plan: Plan, read_only: bool, only: str,
+                 fast, topic: str, results: dict[int, StepResult], bad: set[int],
+                 private: set[int]) -> TaskOutcome:
+        """Run the plan's steps (all of them, or the ones left after a pause) and write one answer."""
+        pos = 0                                   # the step about to run; what a pause keeps
         try:
             spent_at_start = self._spent()
             executed = 0
-            for st in plan.steps:
+            for pos, st in enumerate(plan.steps):
                 self.killswitch.check()
+                if chat_id in self.stopping:
+                    raise Stopped("Stopped. Ask again whenever you like.")
+                if chat_id in self.pausing:
+                    raise Paused("Paused by you.")
                 if any(d in bad for d in st["depends_on"]):
                     sid = self.store.add_step(task_id, st["agent"], st["goal"], st["inputs"])
                     self.store.finish_step(sid, "skipped", "Skipped because an earlier step failed.")
@@ -729,7 +835,7 @@ class Orchestrator:
                     if res.status != "failed" or len(tries) + 1 >= self.step_tries:
                         break
                     tries.append((attempt, res))
-                    nxt = self._repair(text, st, tries, agent_cls)
+                    nxt = self._repair(text, st, tries, agent_cls, only=only)
                     if nxt is None:
                         break
                     attempt = {**nxt, "id": st["id"], "depends_on": st["depends_on"]}
@@ -745,6 +851,16 @@ class Orchestrator:
             return self._finish(chat_id, task_id, "paused", self._paused_text(chat_id, text, e, read_only))
         except Stopped as e:
             return self._finish(chat_id, task_id, "stopped", str(e))
+        except Paused:
+            self._keep_for_carry_on(task_id, text, plan, pos, results, bad, private, read_only, only, topic)
+            return self._finish(chat_id, task_id, "paused",
+                                "Paused. Everything it needed is done; press Carry on and I'll write the answer.")
+
+        if chat_id in self.pausing:                # pressed while the last step ran: keep it for Carry on
+            self._keep_for_carry_on(task_id, text, plan, len(plan.steps), results, bad, private, read_only, only,
+                                    topic)
+            return self._finish(chat_id, task_id, "paused",
+                                "Paused. Everything it needed is done; press Carry on and I'll write the answer.")
 
         if fast is not None:                                  # an instant command: say what the step said
             steps = self.store.steps(task_id)
@@ -769,3 +885,35 @@ class Orchestrator:
         status = "failed" if bad and len(bad) == len(plan.steps) else "done"
         return self._finish(chat_id, task_id, status, answer or "Done.", written_by, private=bool(private),
                             topic=topic)
+
+    def _keep_for_carry_on(self, task_id: int, text: str, plan: Plan, pos: int, results: dict[int, StepResult],
+                           bad: set[int], private: set[int], read_only: bool, only: str, topic: str) -> None:
+        """Write down what's left of a paused task, so Carry on runs only that (never the whole request again)."""
+        try:
+            save_paused_run(self.store, task_id, {
+                "text": text, "topic": topic, "read_only": bool(read_only), "only": only or "",
+                "steps": list(plan.steps[pos:]),
+                "done": {str(k): asdict(v) for k, v in results.items()},
+                "bad": sorted(bad), "private": sorted(private)})
+        except (TypeError, ValueError):
+            pass            # a step's answer can't be written down: Carry on says so, and Run again still works
+
+    def resume_paused(self, task_id: int) -> TaskOutcome | None:
+        """Carry on a task the owner paused, from the step it stopped at. None when nothing was kept."""
+        saved = paused_run(self.store, task_id)
+        t = self.store.task(task_id)
+        if saved is None or not t:
+            drop_paused_run(self.store, task_id)
+            return None
+        drop_paused_run(self.store, task_id)          # taken now: a double click can't run it twice
+        chat_id = int(t["chat_id"])
+        self.stopping.discard(chat_id)
+        self.pausing.discard(chat_id)
+        self.store.set_task_status(task_id, "running")
+        self.store.add_message(chat_id, "assistant", "Carrying on from where I stopped.", "paused")
+        plan = Plan(steps=list(saved.get("steps") or []), topic=str(saved.get("topic") or ""))
+        results = {int(k): StepResult(**v) for k, v in (saved.get("done") or {}).items() if isinstance(v, dict)}
+        return self._execute(chat_id, task_id, str(saved.get("text") or t["text"]), plan,
+                             bool(saved.get("read_only")), str(saved.get("only") or ""), None,
+                             str(saved.get("topic") or ""), results, set(saved.get("bad") or []),
+                             set(saved.get("private") or []))

@@ -1,0 +1,33 @@
+{% extends "v3/layout.html" %}
+{% block title %}{{ chat_title }} · Prometheus{% endblock %}
+{% block topbar %}<canvas data-sphere="mini" aria-hidden="true"></canvas><b>{{ chat_title }}</b>
+{% if project %}<a class="chip small project-chip" href="/v3/projects/{{ project.id }}" title="This chat is in the project {{ project.name }}">{{ project.name }}</a>{% endif %}
+<button type="button" class="chip small" id="export" aria-haspopup="menu" aria-expanded="false" title="Download this chat">Export</button>
+<button type="button" class="chip small" id="notes-btn" aria-haspopup="true" aria-expanded="false" title="Notes for this chat">Notes{% if notes %} {{ notes|length }}{% endif %}</button>
+<div class="menu notes-pop" id="notes-pop" hidden style="top: 52px">
+  {% for n in notes %}<div class="note-row"><span>{{ n.text }}</span><button type="button" class="danger" data-api="/api/v3/chats/{{ chat_id }}/notes/{{ n.id }}/delete" title="Delete">×</button></div>
+  {% else %}<p class="muted small">No notes. Prometheus reads them when it answers in this chat.</p>{% endfor %}
+  <button type="button" data-api="/api/v3/chats/{{ chat_id }}/notes" data-prompt="A note for this chat">+ Add a note</button>
+</div>
+<div class="menu" id="export-menu" role="menu" hidden style="top: 52px">
+  <a role="menuitem" href="/api/v3/chats/{{ chat_id }}/export?fmt=md" download>Markdown (.md)</a>
+  <a role="menuitem" href="/api/v3/chats/{{ chat_id }}/export?fmt=pdf" download>PDF (.pdf)</a>
+  <a role="menuitem" href="/api/v3/chats/{{ chat_id }}/export?fmt=json" download>JSON (.json)</a>
+</div><div class="lightbox" id="lightbox" hidden role="dialog" aria-label="Image">
+  <img id="lightbox-img" alt="">
+  <div class="lightbox-bar"><a id="lightbox-save" download>Save image</a><button type="button" id="lightbox-close">Close (Esc)</button></div>
+</div>
+{% endblock %}
+{% block scripts %}<script src="/static/v3/chat.js" defer></script>{% endblock %}
+{% block content %}
+<section class="chat">
+  <div id="chat-files" class="chat-files" hx-get="/c/{{ chat_id }}/files" hx-trigger="load, every 4s [document.visibilityState === 'visible']"></div>
+  <div id="chat-live" class="chat-live" hx-get="/c/{{ chat_id }}/live" hx-trigger="load, every 2s [document.visibilityState === 'visible']"></div>
+  <div class="messages" id="messages" data-chat="{{ chat_id }}"
+       hx-get="/c/{{ chat_id }}/messages" hx-trigger="every 2s [document.visibilityState === 'visible']"
+       hx-vals='js:{have: document.querySelectorAll("#messages .msg, #messages .ask").length, busy: document.querySelector("#messages .working") ? 1 : 0}'>
+    {% include "v3/messages.html" %}
+  </div>
+  {% with autofocus = True %}{% include "v3/command_bar.html" %}{% endwith %}
+</section>
+{% endblock %}

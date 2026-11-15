@@ -6,7 +6,7 @@ import threading
 import time
 from typing import Callable
 
-from prometheus.voice.audio import Endpointer, NoiseFloor
+from prometheus.voice.audio import Endpointer, NoiseFloor, rms
 from prometheus.voice.text import speakable, strip_wake
 
 CARRY_ON = 0.7       # seconds of quiet after the name that mean "that was all, now ask for the command"
@@ -54,6 +54,8 @@ class VoiceLoop:
         self.follow_up = 0.0             # seconds to keep talking after a "Prometheus" answer (0: single questions)
         self.barge_in = True             # talking over an answer stops it
         self._barged = b""               # what the owner said over the answer
+        self.level = 0.0                 # how loud the mic is right now, 0..1 (the waveform and the sphere follow it)
+        self._listen_now = threading.Event()     # the mic button: listen as if the wake word was said
 
     # -- control ---------------------------------------------------------------------
     def start(self) -> None:
@@ -71,6 +73,13 @@ class VoiceLoop:
             pass
         self.state = "off"
 
+    def listen_now(self) -> bool:
+        """The mic button in the app: start listening for a command without the wake word. False when muted."""
+        if self.muted:
+            return False
+        self._listen_now.set()
+        return True
+
     def set_muted(self, muted: bool) -> None:
         self.muted = muted
         self.state = "muted" if muted else "idle"
@@ -87,8 +96,22 @@ class VoiceLoop:
             if frame is None:
                 continue
             if self.muted or self._announcing:
+                self.level = 0.0
                 continue                       # never listen to our own voice
+            self.level = min(1.0, rms(frame) / 4000.0)
             self.noise.update(frame)
+            if self._listen_now.is_set():
+                self._listen_now.clear()
+                try:
+                    self.handle_button()       # "Yes sir?", then the command
+                except Exception as e:
+                    self.log(f"voice turn failed: {type(e).__name__}: {e}")
+                finally:
+                    self.mic.flush()
+                    self.spotter.reset()
+                    if not self.muted:
+                        self.state = "idle"
+                continue
             if self.clap is not None and self.on_clap is not None and self.clap.feed(frame):
                 try:
                     self.handle_clap()
@@ -127,6 +150,22 @@ class VoiceLoop:
             if verdict != "more":
                 return verdict, lead + ep.audio()
         return "nothing", lead
+
+    def handle_button(self) -> None:
+        """The mic button: like saying only the wake word ("Yes sir?", then the command), but never reusing what
+        the wake-word spotter heard earlier."""
+        self.state = "listening"
+        t0 = time.monotonic()
+        self._speak_quietly(getattr(self.speaker, "ask", self.speaker.chime))
+        verdict, audio = self._record()
+        command = self.transcriber.text(audio).strip() if verdict == "done" else ""
+        command = strip_wake(command) or command
+        if not command:
+            self.log("mic button: heard no command")
+            return
+        if self.is_own_echo(command):
+            return
+        self._answer(command, t0)
 
     def handle_wake(self, wake_audio: bytes) -> None:
         """After "Hello Prometheus": a command said in the same breath is used straight away (no second listen);

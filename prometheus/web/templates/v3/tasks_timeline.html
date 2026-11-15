@@ -1,0 +1,19 @@
+{# The task timeline: one bar per task across the chosen period, so you can see what ran when and for how long. #}
+<div class="task-list tlview">
+  <div class="tl-head">
+    <span class="muted small">{{ span[0]|day }} {{ span[0]|clock }}</span>
+    <span class="muted small">now</span>
+  </div>
+  <div class="tl-rows">
+  {% for r in bars %}
+    <a class="tl-row" href="/v3/tasks/{{ r.id }}" title="{{ r.text[:300] }} · {{ r.label }} · {{ r.began|clock }} → {{ r.ended|clock }} ({{ r.how }})">
+      <span class="tl-name">{{ r.text[:52] }}{% if r.text|length > 52 %}…{% endif %}</span>
+      <span class="tl-track"><i class="tl-bar b-{{ r.group }}" style="left: {{ r.left }}%; width: {{ r.width }}%"></i></span>
+      <span class="tl-how muted small">{{ r.how }}</span>
+    </a>
+  {% else %}
+    <p class="muted empty">{% if q or status != "all" %}No task matches these filters.{% else %}Nothing ran in this period yet.{% endif %}</p>
+  {% endfor %}
+  </div>
+  <p class="muted small">A bar starts when you asked and ends when it finished (a running one goes up to now).</p>
+</div>

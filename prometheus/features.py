@@ -113,12 +113,51 @@ def set_on(settings, key: str, value: bool) -> None:
     settings.features_off = off
 
 
+def agent_on(settings, agent: str) -> bool:
+    """The owner's own switch for this agent (Agents page). True unless switched off there."""
+    return agent not in (getattr(settings, "agents_off", None) or [])
+
+
+def set_agent_on(settings, agent: str, value: bool) -> None:
+    off = [a for a in (getattr(settings, "agents_off", None) or []) if a != agent]
+    if not value:
+        off.append(agent)
+    settings.agents_off = off
+
+
+def skill_on(settings, name: str) -> bool:
+    """The owner's switch for this skill (Skills page). An off skill is never offered to the planner."""
+    return name not in (getattr(settings, "skills_off", None) or [])
+
+
+def set_skill_on(settings, name: str, value: bool) -> None:
+    off = [n for n in (getattr(settings, "skills_off", None) or []) if n != name]
+    if not value:
+        off.append(name)
+    settings.skills_off = off
+
+
+def memory_collects(settings, chat_id: int | None = None) -> bool:
+    """May Prometheus save things from this chat by itself (facts, searchable chat parts, the chat's file)?
+    "Remember …" said by the owner is always saved; this covers only what it does without being asked."""
+    if getattr(settings, "memory_paused", False):
+        return False
+    return chat_id is None or chat_id not in (getattr(settings, "memory_off_chats", None) or [])
+
+
+def feature_of(agent: str):
+    """The Features switch this agent belongs to, if any."""
+    return next((f for f in FEATURES if agent in f.agents), None)
+
+
 def agent_blocked(settings, agent: str) -> str:
     """Why this agent may not run now ("" = it may)."""
     if settings is None:
         return ""
     if paused(settings) and agent not in SAFE_WHEN_PAUSED:
         return "Everything is stopped (Settings → Features → Stop everything). Switch it back on to do this."
+    if not agent_on(settings, agent):
+        return f"The {agent.replace('_', ' ')} agent is switched off (Agents page)."
     for f in FEATURES:
         if agent in f.agents and not on(settings, f.key):
             return f"{f.label} is switched off (Settings → Features)."

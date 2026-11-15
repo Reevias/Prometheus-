@@ -225,7 +225,7 @@ def test_voice_settings_and_pill(app_client):
     h = {"X-CSRF-Token": login(client)}
     page = client.get("/settings").text
     assert "Voice" in page and "Listen for" in page
-    assert client.get("/voice/pill").status_code == 200
+    assert client.get("/api/v3/voice").status_code == 200                # the v3 voice state (was the pill)
     r = client.post("/settings/voice", data={"on": "1"}, headers=h)
     assert r.status_code == 200 and services.settings.voice_enabled
     assert services.voice.loop is None and services.voice.error      # nothing to listen with here, said plainly

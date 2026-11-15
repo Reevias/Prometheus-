@@ -1,0 +1,93 @@
+{% extends "v3/layout.html" %}
+{% from "v3/icons.html" import icon %}
+{% block title %}Agents · Prometheus{% endblock %}
+{% block topbar %}<b>Agents</b>{% endblock %}
+{% macro since(ts) -%}
+{%- if ts %}{{ ts | day }} {{ ts | clock }}{% else %}never{% endif -%}
+{%- endmacro %}
+{% block content %}
+<section class="page agents-page{{ ' with-detail' if chosen }}">
+  <div class="agents-main">
+    <h1>Agents</h1>
+    <p class="muted lead">Prometheus picks the right agent for each request by itself. To choose one yourself, start a
+      message with <code>@</code> and its name, for example <code>@research solar panels</code>.</p>
+    {% if running %}
+    <h2 class="section">Running now</h2>
+    <div class="rows">
+      {% for a in running %}<a href="/c/{{ a.now.chat_id }}"><b>{{ a.title }}</b> {{ a.now.goal }}<span>Open chat</span></a>{% endfor %}
+    </div>
+    {% endif %}
+    <input class="search" type="search" id="agent-filter" placeholder="Filter agents" aria-label="Filter agents">
+    {% for group in agents | groupby("group") %}
+    <h2 class="section">{{ group.grouper }}</h2>
+    <div class="agent-grid">
+      {% for a in group.list %}
+      <a class="agent-card{{ ' on' if chosen and chosen.name == a.name }} st-{{ a.status }}" href="/v3/agents?show={{ a.name }}"
+         data-name="{{ a.name }} {{ a.title | lower }} {{ a.about | lower }}">
+        <div class="agent-head"><b>{{ a.title }}</b><span class="pill st-{{ a.status }}">{{ a.status_label }}</span></div>
+        <p>{{ a.about }}</p>
+        <div class="tags">{% for t in a.tags[:3] %}<span class="tag">{{ t }}</span>{% endfor %}</div>
+        <div class="agent-foot muted">{% if a.runs %}Last used {{ since(a.last.when) }} · {{ a.runs }} step{{ "s" if a.runs != 1 }}{% else %}Not used yet{% endif %}</div>
+      </a>
+      {% endfor %}
+    </div>
+    {% endfor %}
+  </div>
+  {% if chosen %}
+  <aside class="agent-detail" aria-label="{{ chosen.title }} details">
+    <div class="detail-head">
+      <h2>{{ chosen.title }}</h2>
+      <a class="icon-btn" href="/v3/agents" title="Close" aria-label="Close">{{ icon("close") }}</a>
+    </div>
+    <span class="pill st-{{ chosen.status }}">{{ chosen.status_label }}</span>
+    {% if chosen.now %}<p class="muted">Working on: {{ chosen.now.goal }}</p>{% endif %}
+    <label class="switch-row">
+      <input type="checkbox" id="agent-switch" data-agent="{{ chosen.name }}" {{ "checked" if chosen.on }}>
+      <span>Prometheus may use this agent</span>
+    </label>
+    {% if chosen.status == "feature_off" %}<p class="muted">Also switched off with “{{ chosen.feature }}” in
+      <a href="/settings#features">Settings → Features</a>.</p>{% endif %}
+    {% if chosen.status == "stopped" %}<p class="muted">Everything is stopped. Press Resume at the top to let it run.</p>{% endif %}
+    <h3>What it does</h3>
+    <p class="desc">{{ chosen.description }}</p>
+    <h3>Model</h3>
+    <p class="muted">Uses the AI chosen in <a href="/settings#ai">Settings → AI models</a> ({{ head or "automatic" }}).</p>
+    <h3>Tools and permissions</h3>
+    <dl class="facts perms">
+      {% for p in chosen.permissions %}<dt>{{ p.what }}</dt><dd>{{ p.rule }}</dd>{% else %}<dt>None</dt><dd></dd>{% endfor %}
+    </dl>
+    {% if chosen.private %}<p class="muted">Its results stay on this laptop (never sent to cloud AI).</p>{% endif %}
+    <h3>Last runs</h3>
+    {% if history %}
+    <ul class="runs">
+      {% for h in history %}
+      <li><span class="step-dot st-{{ h.status }}"></span>
+        <div><b>{{ h.goal or "(no goal)" }}</b>
+          <span class="muted">{{ since(h.created) }} · {{ h.status | replace("_", " ") }}{% if h.chat_id and h.chat_id in titles %} · <a href="/c/{{ h.chat_id }}">{{ titles[h.chat_id] }}</a>{% endif %}</span></div></li>
+      {% endfor %}
+    </ul>
+    {% else %}<p class="muted">Not used yet.</p>{% endif %}
+  </aside>
+  {% endif %}
+</section>
+<script>
+(function () {
+  var f = document.getElementById("agent-filter");
+  if (f) f.addEventListener("input", function () {
+    var q = f.value.trim().toLowerCase();
+    document.querySelectorAll(".agent-card").forEach(function (c) { c.hidden = !!q && c.dataset.name.indexOf(q) < 0; });
+    document.querySelectorAll(".agent-grid").forEach(function (g) {
+      var any = [].some.call(g.children, function (c) { return !c.hidden; });
+      g.hidden = !any; g.previousElementSibling.hidden = !any;
+    });
+  });
+  var sw = document.getElementById("agent-switch");
+  if (sw) sw.addEventListener("change", function () {
+    var body = new FormData(); if (sw.checked) body.append("on", "1");
+    fetch("/api/v3/agents/" + sw.dataset.agent + "/switch", { method: "POST", credentials: "same-origin", body: body,
+          headers: { "X-CSRF-Token": document.body.dataset.csrf } })
+      .then(function (r) { if (r.ok) location.reload(); else { sw.checked = !sw.checked; alert("Couldn't change that agent."); } });
+  });
+})();
+</script>
+{% endblock %}

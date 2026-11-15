@@ -185,6 +185,9 @@ def test_nightly_learning_reads_task_lessons(app_client):
     assert services.store.lessons_to_learn() == []
     from tests.conftest import login
     h = {"X-CSRF-Token": login(client)}
-    assert "open spotify" in client.get("/memory").text
-    client.post(f"/memory/task-lessons/{services.store.lessons()[0]['id']}/delete", headers=h)
+    assert "open spotify" in client.get("/v3/memory?tab=answers").text
+    lid = services.store.lessons()[0]["id"]
+    assert client.post(f"/api/v3/task-lessons/{lid}/delete").status_code == 403         # needs CSRF
+    assert services.store.lessons() != []
+    assert client.post(f"/api/v3/task-lessons/{lid}/delete", headers=h).status_code == 200
     assert services.store.lessons() == []

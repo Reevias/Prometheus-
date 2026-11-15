@@ -71,8 +71,10 @@ def test_planner_saves_facts_and_says_so(app_client):
     out = orch._finish(chat, tid, "done", "Nice.")
     assert "Remembered: Asha is your sister" in out.answer
     h = {"X-CSRF-Token": login(client)}
-    page = client.get("/memory")
+    page = client.get("/v3/memory")
     assert "Ravi" in page.text and "12 March" in page.text and "Asha" in page.text
     fid = orch.facts.about("Asha")[0].id
-    client.post(f"/memory/facts/{fid}/forget", headers=h)
+    assert client.post(f"/api/v3/facts/{fid}/forget").status_code == 403         # needs CSRF
+    assert orch.facts.about("Asha")
+    assert client.post(f"/api/v3/facts/{fid}/forget", headers=h).status_code == 200
     assert not orch.facts.about("Asha")

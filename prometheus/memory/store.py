@@ -132,6 +132,7 @@ class Step:
     status: str
     result: str
     data: dict = field(default_factory=dict)
+    created: float = 0.0
 
 
 @dataclass
@@ -156,6 +157,7 @@ class Store:
         self._lock = threading.RLock()
         self._db = sqlite3.connect(str(path), check_same_thread=False)
         self.listeners = []    # called with (chat_id) after an answer is saved, e.g. the chat archive
+        self.hidden_chats = lambda: set()   # set by the app: chats left out in Memory → Privacy (never recalled)
         self.embedder = None   # optional: turns text into vectors for meaning-based search (local Ollama only)
         self._db.row_factory = sqlite3.Row
         with self._lock:
@@ -179,6 +181,10 @@ class Store:
                 self._db.execute("ALTER TABLE messages ADD COLUMN private INTEGER NOT NULL DEFAULT 0")
                 # Answers saved before this existed may hold details from personal files: treat them all as private.
                 self._db.execute("UPDATE messages SET private = 1 WHERE role = 'assistant'")
+            if "last_fired" not in {r["name"] for r in self._db.execute("PRAGMA table_info(reminders)")}:
+                self._db.execute("ALTER TABLE reminders ADD COLUMN last_fired REAL NOT NULL DEFAULT 0")
+            if "finished" not in {r["name"] for r in self._db.execute("PRAGMA table_info(tasks)")}:
+                self._db.execute("ALTER TABLE tasks ADD COLUMN finished REAL NOT NULL DEFAULT 0")
             if "topic" not in {r["name"] for r in self._db.execute("PRAGMA table_info(messages)")}:
                 self._db.execute("ALTER TABLE messages ADD COLUMN topic TEXT NOT NULL DEFAULT ''")
             if "chat_id" not in {r["name"] for r in self._db.execute("PRAGMA table_info(costs)")}:
@@ -257,12 +263,42 @@ class Store:
 
     def reminder_fired(self, reminder_id: int, next_due: float | None) -> None:
         if next_due is None:
-            self._write("UPDATE reminders SET state = 'done' WHERE id = ?", (reminder_id,))
+            self._write("UPDATE reminders SET state = 'done', last_fired = ? WHERE id = ?", (time.time(), reminder_id))
         else:
-            self._write("UPDATE reminders SET due = ? WHERE id = ?", (next_due, reminder_id))
+            self._write("UPDATE reminders SET due = ?, last_fired = ? WHERE id = ?", (next_due, time.time(), reminder_id))
+
+    def automations(self) -> list[dict]:
+        """Reminders and standing goals that are waiting or paused (the Automations page)."""
+        return [dict(r) for r in self._rows("SELECT * FROM reminders WHERE state IN ('waiting', 'paused') ORDER BY due")]
+
+    def set_reminder_state(self, reminder_id: int, state: str, due: float | None = None) -> bool:
+        with self._lock:
+            if due is None:
+                cur = self._db.execute("UPDATE reminders SET state = ? WHERE id = ? AND state IN ('waiting', 'paused')",
+                                       (state, reminder_id))
+            else:
+                cur = self._db.execute("UPDATE reminders SET state = ?, due = ? WHERE id = ? AND state IN "
+                                       "('waiting', 'paused')", (state, due, reminder_id))
+            self._db.commit()
+            return cur.rowcount > 0
+
+    def edit_reminder(self, reminder_id: int, text: str | None = None, due: float | None = None,
+                      repeat: str | None = None) -> bool:
+        sets, args = [], []
+        for col, val in (("text", text), ("due", due), ("repeat", repeat)):
+            if val is not None:
+                sets.append(f"{col} = ?")
+                args.append(val)
+        if not sets:
+            return False
+        with self._lock:
+            cur = self._db.execute(f"UPDATE reminders SET {', '.join(sets)} WHERE id = ? AND state IN ('waiting', 'paused')",
+                                   (*args, reminder_id))
+            self._db.commit()
+            return cur.rowcount > 0
 
     def cancel_reminder(self, reminder_id: int) -> bool:
-        rows = self._rows("SELECT id FROM reminders WHERE id = ? AND state = 'waiting'", (reminder_id,))
+        rows = self._rows("SELECT id FROM reminders WHERE id = ? AND state IN ('waiting', 'paused')", (reminder_id,))
         if rows:
             self._write("UPDATE reminders SET state = 'cancelled' WHERE id = ?", (reminder_id,))
         return bool(rows)
@@ -496,6 +532,21 @@ class Store:
         rows = self._rows("SELECT * FROM chat_notes WHERE chat_id = ? ORDER BY id", (chat_id,))
         return [Note(r["id"], r["text"], r["created"]) for r in rows]
 
+    def delete_message(self, chat_id: int, message_id: int) -> bool:
+        """Remove one message from a chat (the owner's choice). True when it existed."""
+        with self._lock:
+            cur = self._db.execute("DELETE FROM messages WHERE id = ? AND chat_id = ?", (message_id, chat_id))
+            self._db.commit()
+            gone = cur.rowcount > 0
+        if gone:
+            self._unindex("message", message_id)
+        return gone
+
+    def chat_tasks(self, chat_id: int) -> list[dict]:
+        """The requests of a chat, oldest first: id, created, status."""
+        return [{"id": r["id"], "created": float(r["created"]), "status": r["status"]}
+                for r in self._rows("SELECT id, created, status FROM tasks WHERE chat_id = ? ORDER BY id", (chat_id,))]
+
     def delete_chat_note(self, note_id: int) -> None:
         self._write("DELETE FROM chat_notes WHERE id = ?", (note_id,))
         self._unindex("chat_note", note_id)
@@ -509,6 +560,15 @@ class Store:
     def memories(self) -> list[Note]:
         return [Note(r["id"], r["text"], r["created"], r["source"])
                 for r in self._rows("SELECT * FROM memories ORDER BY id")]
+
+    def update_memory(self, memory_id: int, text: str) -> bool:
+        with self._lock:
+            cur = self._db.execute("UPDATE memories SET text = ? WHERE id = ?", (text, memory_id))
+            self._db.commit()
+        if cur.rowcount:
+            self._unindex("memory", memory_id)
+            self._index("memory", memory_id, text)
+        return cur.rowcount > 0
 
     def delete_memory(self, memory_id: int) -> None:
         self._write("DELETE FROM memories WHERE id = ?", (memory_id,))
@@ -526,7 +586,37 @@ class Store:
         )
 
     def set_task_status(self, task_id: int, status: str, answer: str = "") -> None:
-        self._write("UPDATE tasks SET status = ?, answer = ? WHERE id = ?", (status, answer, task_id))
+        finished = 0.0 if status in ("new", "running") else time.time()
+        self._write("UPDATE tasks SET status = ?, answer = ?, finished = ? WHERE id = ?", (status, answer, finished, task_id))
+
+    def list_tasks(self, statuses: tuple[str, ...] = (), q: str = "", since: float = 0.0, limit: int = 300) -> list[dict]:
+        """Tasks newest first, with their chat's title and how many steps they took (the Tasks page)."""
+        where, args = ["t.created >= ?"], [since]
+        if statuses:
+            where.append(f"t.status IN ({','.join('?' * len(statuses))})")
+            args += list(statuses)
+        if q:
+            where.append("(t.text LIKE ? ESCAPE '\\' OR t.answer LIKE ? ESCAPE '\\')")
+            like = "%" + q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+            args += [like, like]
+        rows = self._rows(
+            "SELECT t.id, t.chat_id, t.text, t.status, t.created, t.finished, COALESCE(c.title, '') AS chat, "
+            "(SELECT COUNT(*) FROM steps s WHERE s.task_id = t.id) AS steps "
+            f"FROM tasks t LEFT JOIN chats c ON c.id = t.chat_id WHERE {' AND '.join(where)} "
+            "ORDER BY t.id DESC LIMIT ?", (*args, limit))
+        return [dict(r) for r in rows]
+
+    def task_status_counts(self) -> dict[str, int]:
+        return {r["status"]: r["n"] for r in self._rows("SELECT status, COUNT(*) AS n FROM tasks GROUP BY status")}
+
+    def delete_task(self, task_id: int) -> bool:
+        """Removes a task's record, steps and notes; the chat and its messages stay."""
+        with self._lock:
+            cur = self._db.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
+            self._db.execute("DELETE FROM steps WHERE task_id = ?", (task_id,))
+            self._db.execute("DELETE FROM agent_notes WHERE task_id = ?", (task_id,))
+            self._db.commit()
+            return cur.rowcount > 0
 
     def task(self, task_id: int) -> dict:
         rows = self._rows("SELECT * FROM tasks WHERE id = ?", (task_id,))
@@ -552,9 +642,30 @@ class Store:
         rows = self._rows("SELECT * FROM steps WHERE task_id = ? ORDER BY id", (task_id,))
         return [
             Step(r["id"], r["task_id"], r["agent"], r["goal"], json.loads(r["inputs"]), r["status"], r["result"],
-                 json.loads(r["data"]))
+                 json.loads(r["data"]), float(r["created"] or 0.0))
             for r in rows
         ]
+
+    def agent_activity(self) -> dict[str, dict]:
+        """Per agent: its last step (when, status, goal) and how many steps it ran, from the real steps table."""
+        out: dict[str, dict] = {}
+        for r in self._rows("SELECT agent, COUNT(*) AS runs, MAX(id) AS last_id FROM steps GROUP BY agent"):
+            out[r["agent"]] = {"runs": int(r["runs"]), "last_id": int(r["last_id"])}
+        ids = [v["last_id"] for v in out.values()]
+        if ids:
+            marks = ",".join("?" for _ in ids)
+            for r in self._rows(f"SELECT s.id, s.agent, s.status, s.goal, s.result, s.created, s.task_id, t.chat_id "
+                                f"FROM steps s LEFT JOIN tasks t ON t.id = s.task_id WHERE s.id IN ({marks})", tuple(ids)):
+                out[r["agent"]].update({"status": r["status"], "goal": r["goal"], "result": r["result"],
+                                        "when": float(r["created"] or 0), "task_id": int(r["task_id"]),
+                                        "chat_id": int(r["chat_id"] or 0)})
+        return out
+
+    def agent_steps(self, agent: str, limit: int = 10) -> list[dict]:
+        rows = self._rows("SELECT s.id, s.status, s.goal, s.result, s.created, s.task_id, t.chat_id FROM steps s "
+                          "LEFT JOIN tasks t ON t.id = s.task_id WHERE s.agent = ? ORDER BY s.id DESC LIMIT ?",
+                          (agent, limit))
+        return [dict(r) for r in rows]
 
     def mark_interrupted(self) -> int:
         with self._lock:
@@ -723,7 +834,10 @@ class Store:
             return []
         now = time.time()
         out = []
+        hidden = set(self.hidden_chats() or ())
         for r in rows:
+            if hidden and self._chat_of(r["kind"], int(r["ref_id"])) in hidden:
+                continue                      # a left-out chat: its notes and messages are kept but never used
             found = self._lookup(r["kind"], int(r["ref_id"]))
             if found is None:
                 continue
@@ -733,6 +847,16 @@ class Store:
             out.append(Recalled(r["kind"], int(r["ref_id"]), text, source, created, score))
         out.sort(key=lambda h: h.score, reverse=True)
         return out[:limit]
+
+    def _chat_of(self, kind: str, ref_id: int) -> int | None:
+        """The chat a recalled item came from (None for memories, which belong to no chat)."""
+        sql = {"chat_note": "SELECT chat_id FROM chat_notes WHERE id = ?",
+               "message": "SELECT chat_id FROM messages WHERE id = ?",
+               "agent_note": "SELECT t.chat_id FROM agent_notes a JOIN tasks t ON t.id = a.task_id WHERE a.id = ?"}.get(kind)
+        if sql is None:
+            return None
+        rows = self._rows(sql, (ref_id,))
+        return int(rows[0][0]) if rows else None
 
     # -- search -------------------------------------------------------------
     def search(self, query: str, limit: int = 20) -> list[SearchHit]:

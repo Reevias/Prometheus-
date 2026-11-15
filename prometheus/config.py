@@ -55,6 +55,18 @@ class Settings:
     ollama_url: str = "http://127.0.0.1:11434"
     voice_enabled: bool = False                 # listen for "Prometheus" and answer out loud
     voice_autostart: bool = False
+    owner_name: str = ""                     # shown in the sidebar; asked on first run
+    ui_glow: float = 1.0                     # Appearance: glow strength 0.4 … 1.4
+    ui_sphere: str = "auto"                  # Appearance: sphere quality auto|low|medium|high
+    ui_motion: str = "auto"                  # Appearance: auto (follow Windows) | reduced | full
+    ui_text: int = 15                        # Appearance: text size (px)
+    ui_density: str = "comfortable"          # Appearance: comfortable | compact
+    window_x: int | None = None              # where the desktop window was last (restored if that screen is there)
+    window_y: int | None = None
+    quick_actions: list = field(default_factory=list)  # Home buttons [{label, fill, icon}]; empty = the defaults
+    attach_max_mb: int = 25                  # + button: biggest file (MB)
+    attach_max_files: int = 10               # + button: files per message
+    attach_keep_days: int = 7                # attachments not in a project are removed after this
     voice_name: str = "af_heart"
     voice_speech: str = "fast"                  # fast | accent | hindi: how commands are turned into words
     voice_engine: str = "auto"                  # auto (ElevenLabs when its key is in) | elevenlabs | local
@@ -65,6 +77,10 @@ class Settings:
     paid_needs_yes: bool = True                 # paid AI only after the owner says yes (free ones are used first)
     code_brain: str = "auto"                    # who plans coding requests: auto (Ripple on OpenRouter), off, or a route entry
     features_off: list = field(default_factory=list)   # Settings → Features: the ones switched off
+    agents_off: list = field(default_factory=list)     # Agents page: agents the owner switched off
+    skills_off: list = field(default_factory=list)     # Skills page: guides the owner switched off
+    memory_paused: bool = False                        # Memory → Privacy: save nothing from chats by itself
+    memory_off_chats: list = field(default_factory=list)  # Memory → Privacy: chats it never remembers or searches
     paused: bool = False                        # Stop everything: no background jobs or outside actions
     auto_update: bool = True
     auto_restart: bool = True              # after an update, restart by itself once nothing is running

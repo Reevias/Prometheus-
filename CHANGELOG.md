@@ -1,5 +1,108 @@
 # Changelog
 
+## Prometheus 3.0, M2.4 (on the prometheus-v3 branch, not released yet)
+- Phones get the new look: the menu opens from a button at the top left as a drawer, the right panel is gone, the ask
+  box puts its buttons under the text, and pages stack into one column. Hold-to-talk and spoken answers where the
+  phone's browser supports them; turn on notifications from the bell.
+- System → **Devices**: the health of each device, as far as Prometheus can really read it: this laptop (live CPU,
+  memory, disk), the cloud copy (Check now asks it for real) and the phone (notifications on, and its battery when
+  phone control is set up).
+- **The old screens are gone.** Everything they did has a place in the new look (checklist:
+  `docs/m2/M2_4_SWITCHOVER.md`); their old addresses take you to the new place, so bookmarks, notifications and the
+  phone app keep working. The light theme is retired (the new look is dark only).
+- Bug hunt before the merge (an independent review; 14 fixes, see `docs/bugs.md`). Safety: an imported project's
+  instructions and chats are outside text until you edit them; approving an automation runs it as it is now.
+- Moved from the old screens into the new ones: the reader's controls and the browser's Stop in a chat, chat notes,
+  quiz sheets and Export to Anki in Study, and Research's "To project".
+
+## Prometheus 3.0, M2.3 (on the prometheus-v3 branch, not released yet)
+- Projects (in the menu after Chats): a folder, its chats, notes and your instructions together. New project (its files
+  go in Documents\Prometheus Projects\<name>) or from a folder you choose (it must be a place Prometheus may use).
+  Tabs: Files (open, show in folder), Chats (new chat in the project, add or take out chats), Tasks, Agents, Notes,
+  Settings (rename, instructions, export, move to trash). Chats in a project know its folder, instructions and notes;
+  their + menu lists the project's files; Research can save a report into a project. Trash keeps a project 30 days;
+  deleting for good never touches its folder or chats. Export and import as a .zip.
+- Automation builder (Automations → New automation): four steps. When (once on a date and time; repeating every day,
+  weekday or week; or when something happens: a new file in a folder, the battery low, the disk almost full, the CPU
+  busy), what (remind you, or do something as a task), whether to ask you first (on Approvals; without it, risky
+  steps still ask), and a name. Automations that wait for something can be paused, edited, run now or deleted;
+  timed goals can ask first too.
+- Tasks: **Pause** a running task and **Carry on** later. Pause stops it at the next safe point and keeps the steps it
+  hasn't run; Carry on does only those (never the whole request again). "Don't carry on" throws the kept steps away.
+- Tasks: a **Board** view (one column per state: Running, Paused, Done, Failed, Stopped) and a **Timeline** view
+  (a bar per task, from when you asked to when it finished), from the same real rows as the list. The view you pick
+  is remembered.
+
+## Prometheus 3.0, M2.2 (on the prometheus-v3 branch, not released yet)
+- Privacy fix (audit): a chat you leave out of memory is now hidden everywhere: Memory search, Prometheus's own
+  answers and other AI apps never see its notes or messages. Include it again and they come back. The chat stays in
+  your chat list and Chats search.
+- Owner's fixes: delete a task straight from the Tasks list; deleting a chat keeps you where you were; clicking
+  Prometheus on the taskbar minimises it again (Win+Down, Win+Up and snapping work too).
+- Connections (in your menu): email, Google, calendar link, GitHub, Obsidian, the cloud copy and your other apps,
+  each with its real state (connected, not connected, needs sign-in again, folder missing), Test (tries it for real
+  and says what happened), Disconnect or switch off, and a link to connect it in Settings.
+- Research: one page with three modes, each with its own ask box, chat and quick prompts. Research: past research
+  (search, delete, save as Markdown, PDF, Word or HTML) and sources (open, pin up to 3 so research reads them first,
+  leave a site out so it's never used, add your own page). Study (@study): flashcards and quizzes, cards from a file,
+  exams, deadlines. Money (@money): this month and today, by category with budgets, latest spending, add, read bank
+  alerts, Excel. The sidebar is now 9 links (Home, Agents, Chats, Skills, Tasks, Memory, Automations, System,
+  Research); the old Study, Money and Exams pages open their mode.
+- Automations: reminders and standing goals as cards (repeats, next time, when it last ran and how a goal's
+  last run went); new reminder or goal, pause and resume (a passed time rolls to the next one), edit, change time,
+  run a goal now (schedule unchanged), delete. Watchers: battery, disk and CPU switches, watched folders, latest alerts.
+- Costs moved into Settings → AI models → Costs (this month against your limit, the last 30 days, by model and by chat).
+- Chat files: on wide windows a chat's files sit beside it (a strip above it on narrower ones), with their size;
+  Delete sends a file to the Recycle Bin (undo in System → Activity). The Phone page is in the new look, in your menu.
+- Approvals moved into your menu (click your name), with the number waiting and an orange dot on your picture
+  when something waits. The new page shows what each one is about, takes passwords straight to Windows, and lists
+  what you decided lately.
+- System: the laptop's live readings, Prometheus's own memory use, each AI model (ready, resting, not set up),
+  background jobs ("Running" only when really running), spending and About. Activity is a tab: everything you can
+  undo (file changes, reminders, saved facts, events, setting changes; email can't be unsent) and the full log,
+  searchable. The menu's Activity link became System.
+- Memory: memories and facts (search, add, edit, delete; editing a fact keeps the old value as past), files and
+  pages (search inside your files, saved texts, and every file Prometheus made, across chats), how it answers you
+  (learned rules, earlier versions, task lessons), topics with their chats, and Privacy: pause remembering by itself,
+  leave a chat out (never remembered or searched; what it saved is removed), export everything as JSON, and forget
+  everything (now also the facts). Ctrl+K has Tasks, Skills, Memory and Search my files.
+- Skills: guides as cards or a list, grouped by type, with search; each skill's page shows its guide and reference
+  files, version, author, what it needs, its permissions and every time it was used. Switch a skill off (the planner
+  then never sees it), check it (what Prometheus can read, and any problem, without an AI), try it in a new chat,
+  remove one you added, or add one from a GitHub link (reads the README only). Today's repos and the tools
+  Prometheus made are tabs on the same page.
+- Docs: the README now says plainly what is released (v2.3 on `main`) and what is still only a plan, with the M0-M10 table and honest status. It also lists the 38 real agents and the 10 real skills, and names model types instead of a model list that goes stale.
+- Docs: removed the M2 architecture, test report and completion report (they described files, APIs and test counts this repo does not have), the stale handoff, the old plan (`plan-v1.md`) and the PDF copy of `docs/missing.md`. The two root-level audit reports moved into `docs/reports/`.
+- Removed two colour tokens from `tokens.css` that nothing used (`--muted-rgb`, `--r-sm`).
+- Agents page: every agent as a card (what it does, what it may use, when it last ran), grouped like Features, with a detail panel (description, tools and which ones ask you first, last runs with links to their chats) and a list of agents running right now. Status is only what's really true: Running, Waiting for approval, Idle, Off, Off in Features or Stopped.
+- Switch any agent off or on. Prometheus then never plans with it, and refuses it if it's asked for anyway.
+- Pick the agent yourself: start a message with `@` and its name (`@research solar panels`). Typing `@` in the command bar lists the agents. Only that agent can be used for that message (checked in code, not just asked).
+- Tasks: everything you asked, as cards or a table; filter by status (running, paused, done, failed, stopped) and
+  time, search requests and answers; each task's timeline (steps, what each used, results, notes between agents,
+  files it made, the answer, how long it took); stop, cancel a paused one, run again, save the record, delete.
+
+## Prometheus 3.0, M2.1 (on the prometheus-v3 branch, not released yet)
+- Docs: added the Friday Mark 2 research (compared with our plan; the 8 better ideas F1–F8 are added inside M3, M4, M5 and M8; no code copied, nothing built yet).
+- Docs: M2.2 decisions written into the M2 plan (9 sidebar links + gear; Research with Research, Study and Money modes; Files in chats and Memory; Activity in System; Approvals, Phone, Connections in your menu).
+- Docs: `docs/PLAN.md` now shows the status of every step (59 steps; M0 and M1 done, M2 in progress).
+- Fixed: every test run on GitHub failed since the taskbar fix (the dependency check didn't know about pywebview's Windows part).
+- Docs: one plan, `docs/PLAN.md` (vision, design, M0–M10 split into steps), replaces the old roadmap, master plan and the M2 "later milestones" table.
+- Your menu: click your name for Settings, Appearance, Voice, AI models and keys, Connections, keyboard shortcuts,
+  your name, shrinking the menu (also Ctrl+B) and Log out (also at the bottom of Settings). Settings left the sidebar
+  (the gear by your name, Ctrl+,). The window opens maximised with the taskbar visible.
+- A new look built from the owner's design: a sidebar, a large glowing orbital sphere that shows what Prometheus is
+  doing, a command bar with + for files, and a right panel with real readings only (CPU, RAM, disk, network; GPU and
+  temperature when Windows can read them). Phones keep the phone screen.
+- Chats: send and see the answer, Stop for one chat, queue the next message, highlighted code with Copy/Download,
+  tables, maths, diagrams and charts, the steps each answer took, Edit, Again, Delete, export as Markdown/PDF/JSON,
+  files Prometheus made, pin/rename/archive/delete chats.
+- Voice from the command bar (Ctrl+M), a mic mute, a waveform and sphere that follow your voice.
+- Quick actions you can change; "/" and Ctrl+K palettes; keyboard shortcuts (listed in Settings → About),
+  Ctrl+Alt+P from any app.
+- Settings in the new look with every old setting, plus Appearance (glow, sphere quality, motion, text size, density).
+- The window opens fullscreen with its own title bar and remembers its monitor and place; closing keeps it in the tray.
+- A test clicks every button of the new screens in a real browser on Windows, so dead buttons can't come back.
+
 ## Unreleased: Prometheus 3.0 foundations (M0 + M1)
 - Safer building blocks for agents that edit files and run commands (from the 3.0 roadmap; nothing in the app looks
   different yet):

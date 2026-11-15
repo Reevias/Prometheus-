@@ -101,27 +101,29 @@ def test_rename_delete_and_search_in_the_app(app_client):
     cid = store.create_chat("Old")
     store.add_message(cid, "user", "Tell me about volcanoes in Iceland")
     store.add_message(cid, "assistant", "Iceland has about 30 active volcanoes.")
-    page = client.get(f"/chats/{cid}").text
-    assert "Rename" in page and "Delete" in page and f'id="m' in page
+    assert client.get(f"/chats/{cid}", follow_redirects=False).headers["location"] == f"/c/{cid}"
+    assert f'id="m' in client.get(f"/c/{cid}").text
+    listing = client.get("/v3/chats").text                                     # rename and delete live on the chat list
+    assert f'hx-post="/chats/{cid}/rename"' in listing and f'hx-post="/chats/{cid}/delete"' in listing
 
     r = client.post(f"/chats/{cid}/rename", headers={**h, "HX-Prompt": "Iceland volcanoes"})
     assert r.status_code == 204 and store.chat_title(cid) == "Iceland volcanoes"
     assert store.chat_named_by(cid) == "user"
     assert any("Iceland volcanoes" in p.name for p in (services.archive.folder / "chats").iterdir())
 
-    found = client.get(f"/chats/search?q=volcano&current={cid}").text
-    assert "Iceland volcanoes" in found and f"/chats/{cid}#m" in found
+    found = client.get("/v3/chats?q=volcano").text
+    assert "Iceland volcanoes" in found and f'href="/c/{cid}"' in found
     assert "<mark>volcanoes</mark>" in found
     store.add_message(cid, "user", "<script>alert(1)</script> volcano")
-    assert "<script>alert" not in client.get("/chats/search?q=volcano").text      # message text stays escaped
-    assert "No chat mentions" in client.get("/chats/search?q=penguin").text
-    assert "Iceland volcanoes" in client.get("/chats/search?q=").text          # empty search shows all chats
+    assert "<script>alert" not in client.get("/v3/chats?q=volcano").text       # message text stays escaped
+    assert "Nothing found for" in client.get("/v3/chats?q=penguin").text
+    assert "Iceland volcanoes" in client.get("/v3/chats?q=").text              # empty search shows all chats
 
     services.running[cid] = object()
     assert client.post(f"/chats/{cid}/delete", headers=h).status_code == 409   # busy chats are kept
     services.running.pop(cid)
     r = client.post(f"/chats/{cid}/delete", headers=h)
-    assert r.status_code == 204 and r.headers["HX-Redirect"] == "/" and cid not in dict(store.chats())
+    assert r.status_code == 204 and r.headers["HX-Redirect"] == "/v3/chats" and cid not in dict(store.chats())
 
 
 def test_rename_and_delete_need_csrf(app_client):
@@ -137,6 +139,6 @@ def test_first_message_gives_quick_name(app_client):
     client, services = app_client()
     csrf = login(client)
     cid = services.store.create_chat("New chat")
-    client.post(f"/chats/{cid}/send", data={"text": "hey can you find cheap flights to Goa"},
+    client.post("/api/v3/send", data={"text": "hey can you find cheap flights to Goa", "chat_id": str(cid)},
                 headers={"X-CSRF-Token": csrf})
     assert services.store.chat_title(cid) == "Find cheap flights to Goa"

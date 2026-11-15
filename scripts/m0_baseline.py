@@ -33,7 +33,7 @@ PROVIDED_BY = {
     "msvcrt": "stdlib", "_winapi": "stdlib", "fcntl": "stdlib", "termios": "stdlib", "pwd": "stdlib",
     "grp": "stdlib", "resource": "stdlib", "winsound": "stdlib", "nt": "stdlib", "posix": "stdlib",
     "py_vapid": "pywebpush", "http_ece": "pywebpush", "cffi": "sounddevice",
-    "av": "faster-whisper",
+    "av": "faster-whisper", "System": "pythonnet (pywebview's Windows backend; prometheus/desktop.py)",
 }
 # imported only inside an optional path that falls back or explains itself when the package is missing
 OPTIONAL_UNDECLARED = {

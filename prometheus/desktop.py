@@ -2,13 +2,16 @@
 from __future__ import annotations
 
 import socket
+import sys
 import threading
 import time
 
 from prometheus.config import Settings
 from prometheus.launcher import version
 
-BACKGROUND = "#0d0709"
+BACKGROUND = "#0B0B10"                   # the palette base, so there is no flash on opening
+ACTIVE_WINDOW = None
+ACTIVE_TRAY = None                 # set when the tray icon is running (closing then only hides)
 
 
 class LocalServer:
@@ -116,6 +119,56 @@ def windows_identity(window=None, title: str = "") -> None:
         pass
 
 
+def on_a_screen(x, y, screens) -> bool:
+    """True when (x, y) is on one of the screens connected now (a monitor may have been unplugged since)."""
+    for s in screens or []:
+        sx, sy = getattr(s, "x", 0) or 0, getattr(s, "y", 0) or 0
+        w, h = getattr(s, "width", 0) or 0, getattr(s, "height", 0) or 0
+        if sx <= x < sx + w and sy <= y < sy + h:
+            return True
+    return False
+
+
+def start_position(settings, webview) -> dict:
+    """x/y for the new window: where it was last, if that place is on a screen now; otherwise Windows decides."""
+    x, y = getattr(settings, "window_x", None), getattr(settings, "window_y", None)
+    if x is None or y is None:
+        return {}
+    try:
+        screens = list(getattr(webview, "screens", []) or [])
+    except Exception:
+        screens = []
+    return {"x": int(x), "y": int(y)} if on_a_screen(x + 40, y + 20, screens) else {}
+
+
+def remember_position(window, settings, save=None, delay: float = 1.0) -> None:
+    """Keep where the window is (its monitor and place), saved a moment after it stops moving."""
+    import threading as _threading
+
+    if save is None:
+        from prometheus.config import save_settings as save
+    state = {"timer": None}
+
+    def store(x, y):
+        settings.window_x, settings.window_y = int(x), int(y)
+        try:
+            save(settings)
+        except Exception:
+            pass
+
+    def moved(x, y):
+        if state["timer"] is not None:
+            state["timer"].cancel()
+        state["timer"] = _threading.Timer(delay, store, args=(x, y))
+        state["timer"].daemon = True
+        state["timer"].start()
+
+    try:
+        window.events.moved += moved
+    except Exception:
+        pass
+
+
 def attach_tray(window, settings, pystray=None):
     """Icon by the clock. With it on, closing the window only hides it (voice and reminders keep working)."""
     if not getattr(settings, "tray", True):
@@ -146,6 +199,91 @@ def attach_tray(window, settings, pystray=None):
     return tray
 
 
+def work_area_bounds(screen_bounds, working_area) -> tuple[int, int, int, int]:
+    """Where a maximised window may go on a monitor: its working area (the screen minus the taskbar), measured from
+    the monitor's own top-left corner, which is how Windows reads it for every monitor, not only the main one."""
+    bx, by = screen_bounds
+    wx, wy, ww, wh = working_area
+    return wx - bx, wy - by, ww, wh
+
+
+GWL_STYLE, WS_MINIMIZEBOX, WS_MAXIMIZEBOX, WS_SYSMENU = -16, 0x00020000, 0x00010000, 0x00080000
+SWP_FRAME_ONLY = 0x0001 | 0x0002 | 0x0004 | 0x0020        # no size, no move, no z-order, frame changed
+
+
+def minimisable_style(style: int) -> int:
+    """The window style that lets Windows minimise the window when its taskbar button is clicked (and Win+Down,
+    Win+Up and snapping work). A frameless window has none of these by default; no title bar is added."""
+    return (style | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_SYSMENU) & 0xFFFFFFFF
+
+
+def let_taskbar_minimise(hwnd: int) -> bool:
+    if sys.platform != "win32" or not hwnd:
+        return False
+    import ctypes
+    from ctypes import wintypes
+
+    user32 = ctypes.WinDLL("user32", use_last_error=True)
+    user32.GetWindowLongW.argtypes, user32.GetWindowLongW.restype = [wintypes.HWND, ctypes.c_int], ctypes.c_long
+    user32.SetWindowLongW.argtypes, user32.SetWindowLongW.restype = [wintypes.HWND, ctypes.c_int, ctypes.c_long], ctypes.c_long
+    user32.SetWindowPos.argtypes = [wintypes.HWND, wintypes.HWND, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
+                                    wintypes.UINT]
+    handle = wintypes.HWND(hwnd)
+    style = user32.GetWindowLongW(handle, GWL_STYLE) & 0xFFFFFFFF
+    new = minimisable_style(style)
+    if new != style:
+        user32.SetWindowLongW(handle, GWL_STYLE, ctypes.c_long(new - (1 << 32) if new >= 1 << 31 else new).value)
+        user32.SetWindowPos(handle, None, 0, 0, 0, 0, SWP_FRAME_ONLY)
+    return True
+
+
+def maximise_above_taskbar(window) -> bool:
+    """Windows: a frameless window maximised by WinForms covers the whole screen, taskbar included. Limit "maximised"
+    to the working area (again whenever the window moves to another monitor), then maximise. False elsewhere."""
+    if sys.platform != "win32" or window is None:
+        return False
+
+    def setup():
+        try:
+            import System.Windows.Forms as WinForms  # provided by pywebview's Windows backend (pythonnet)
+            from System import Action
+            from System.Drawing import Rectangle
+
+            form = window.native
+
+            def fit(*_):
+                screen = WinForms.Screen.FromControl(form)
+                b, wa = screen.Bounds, screen.WorkingArea
+                form.MaximizedBounds = Rectangle(*work_area_bounds((b.X, b.Y), (wa.X, wa.Y, wa.Width, wa.Height)))
+
+            def attach():
+                fit()
+                form.LocationChanged += fit
+                try:
+                    let_taskbar_minimise(int(form.Handle.ToInt64()))   # taskbar click minimises it again
+                except Exception:
+                    pass
+                form.WindowState = WinForms.FormWindowState.Maximized
+
+            form.Invoke(Action(attach))
+        except Exception:
+            pass                       # a nicety: the window still opens at its normal size
+
+    try:
+        window.events.shown += setup
+    except Exception:                  # a window without events (tests, other backends)
+        return False
+    return True
+
+
+def is_maximised(window) -> bool:
+    try:
+        import System.Windows.Forms as WinForms
+        return window.native.WindowState == WinForms.FormWindowState.Maximized
+    except Exception:
+        return False
+
+
 def run_desktop(settings: Settings, webview=None, server=None) -> int:
     if webview is None:
         import webview  # pywebview
@@ -157,13 +295,35 @@ def run_desktop(settings: Settings, webview=None, server=None) -> int:
         windows_identity()                       # before the window exists, so the taskbar groups it as Prometheus
         window = webview.create_window(title, f"http://127.0.0.1:{port}/", width=1220,
                                        height=780, min_size=(860, 560), background_color=BACKGROUND,
-                                       text_select=True)  # pywebview blocks selecting and copying text unless asked
+                                       text_select=True,  # pywebview blocks selecting and copying text unless asked
+                                       frameless=True,    # the app draws its own themed title bar (M2)
+                                       easy_drag=False,   # dragging only from the title bar, not from everywhere
+                                       **start_position(settings, webview))   # on the monitor it was last on
+        maximise_above_taskbar(window)           # opens maximised, the taskbar stays visible; F11 for fullscreen
         windows_identity(window, title)
+        remember_position(window, settings)
+        from prometheus.hotkey import GlobalHotkey
+
+        hotkey = GlobalHotkey()
+
+        def bring_to_front():
+            window.show()
+            try:
+                window.restore()
+            except Exception:
+                pass
+
+        hotkey.start(bring_to_front)          # Ctrl+Alt+P from any app; off if another app owns it
+        global ACTIVE_WINDOW
+        ACTIVE_WINDOW = window
         try:
             tray = attach_tray(window, settings) if window is not None else None
+            global ACTIVE_TRAY
+            ACTIVE_TRAY = tray if tray is not None and getattr(tray, 'icon', None) is not None else None
         except Exception:                       # the tray is a nicety: never let it stop the window
             tray = None
         webview.start()
+        hotkey.stop()
         if tray is not None and tray.icon is not None:
             tray.icon.stop()
         return 0

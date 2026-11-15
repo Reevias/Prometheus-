@@ -77,7 +77,16 @@ class Services:
     terminal: AsyncTerminal | None = None
 
     def notify(self, kind: str, text: str) -> bool:
-        """A Windows notification, if the owner wants this kind (Settings → Notifications)."""
+        """A Windows notification, if the owner wants this kind (Settings → Notifications). Every notification is
+        also kept for the bell in the app (the last 20)."""
+        try:
+            if self.store is not None:
+                kept = self.store.kv_get("notifications", [])
+                kept = (kept if isinstance(kept, list) else [])[-19:]
+                kept.append({"kind": kind, "text": str(text)[:300], "at": time.time(), "read": False})
+                self.store.kv_set("notifications", kept)
+        except Exception:
+            pass
         if self.focus is not None and kind != "reminder" and self.focus.hold(text):
             return False                       # focus mode: kept for the summary at the end
         wanted = {"task": "notify_tasks", "waiting": "notify_waiting", "briefing": "notify_briefing",
@@ -121,6 +130,27 @@ class Services:
                 self.running.pop(chat_id, None)
             if outcome is not None:
                 self.after_task(outcome, text, time.monotonic() - started)
+
+        thread = threading.Thread(target=work, daemon=True)
+        thread.start()
+        return thread
+
+    def resume_task(self, task_id: int) -> threading.Thread:
+        """Carry on a task the owner paused, from the step it stopped at (Tasks page: Carry on)."""
+        t = self.store.task(task_id) or {}
+        chat_id = t.get("chat_id")
+        if chat_id is not None:
+            self.running[chat_id] = True      # taken now, so a second Carry on can't run the same steps twice
+
+        def work():
+            started, outcome = time.monotonic(), None
+            try:
+                outcome = self.orchestrator.resume_paused(task_id)
+            finally:
+                if chat_id is not None:
+                    self.running.pop(chat_id, None)
+            if outcome is not None:
+                self.after_task(outcome, t.get("text") or "", time.monotonic() - started)
 
         thread = threading.Thread(target=work, daemon=True)
         thread.start()
@@ -201,6 +231,10 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
 
     memory_folder = Path(settings.memory_folder).expanduser() if settings.memory_folder else default_folder(home)
     archive = ChatArchive(store, memory_folder)
+    from prometheus.features import memory_collects
+
+    archive.allowed = lambda chat_id: memory_collects(settings, chat_id)      # replaced below by the live settings
+    archive.left_out = lambda chat_id: chat_id in (settings.memory_off_chats or [])
     store.listeners.append(archive.sync)
     threading.Thread(target=archive.sync_all, daemon=True).start()   # file away chats from older versions
     policy = PathPolicy(home=home, data_dir=data, code_dir=CODE_DIR, protected=(memory_folder,),
@@ -293,6 +327,11 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
     orchestrator.task_budget = max(0.01, min(float(settings.task_budget_usd), 10.0))
     services = Services(settings, home, store, policy, journal, files, permissions, approvals, budget, killswitch,
                         router, orchestrator, patcher, prompts, skills)
+    from prometheus.features import skill_on
+    skills.is_off = lambda name: not skill_on(services.settings, name)   # the Skills page's switches
+    archive.allowed = lambda chat_id: memory_collects(services.settings, chat_id)       # Memory → Privacy
+    archive.left_out = lambda chat_id: chat_id in (services.settings.memory_off_chats or [])
+    store.hidden_chats = lambda: set(services.settings.memory_off_chats or [])     # never recalled anywhere
     services.atomic_files = AtomicFiles(policy=policy, backup_dir=data / "backups")
     services.terminal = AsyncTerminal(policy=policy)
     services.archive = archive
@@ -351,6 +390,15 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
             store.add_message(chat, "assistant", f"💸 {text}", "budget")
 
     budget.on_warn = _budget_warning
+    from prometheus import automations as _automations
+
+    _automations.ready(store)                     # automations you build (M2.3): rules and the ask-first switch
+    from prometheus import projects as _projects
+
+    _projects.ready(store)                        # projects (M2.3): folders, chats, notes and instructions
+    _projects.empty_old_trash(store)              # projects in the trash for over 30 days (records only; files stay)
+    orchestrator.project_context = lambda chat_id: _projects.context(store, chat_id)
+    approvals.register(_automations.APPROVAL_KIND, lambda payload: _automations.approved(services, payload))
     services.reminders = ReminderClock(services, notify=_notify)
     import sys as _sys
 

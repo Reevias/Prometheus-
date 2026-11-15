@@ -162,7 +162,8 @@ def test_memory_page_shows_topics_and_topic_page(app_client):
     m = services.store.add_message(cid, "user", "Will it rain?")
     services.store.set_message_topic(m, "weather")
     services.store.add_message(cid, "assistant", "Yes.", topic="weather")
-    page = client.get("/memory").text
+    page = client.get("/v3/memory?tab=topics").text
     assert "weather" in page and "Prometheus memory" in page
-    topic = client.get("/memory/topic?t=weather").text
-    assert "Rainy day" in topic and "Will it rain?" in topic and f"/chats/{cid}" in topic
+    assert "Rainy day" in page and f'href="/c/{cid}"' in page                 # the topic links to its chats
+    [seg] = services.store.segments(topic="weather")                           # "Will it rain?" is in that part
+    assert seg["chat_id"] == cid and seg["first_msg"] <= m <= seg["last_msg"]
