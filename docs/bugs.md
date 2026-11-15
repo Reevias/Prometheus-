@@ -4,6 +4,16 @@ Every bug found and fixed, newest first, so the count is always exact. Add a lin
 
 **Total fixed: 58** (as of 14 November 2026)
 
+## Found, not fixed yet (15 November 2026): 4
+Audit of the M2.2 build (full test suite green: 1214 passed, 44 skipped). Listed here so nothing is lost; not counted in "total fixed" until they're fixed.
+
+| # | Bug | Where |
+|---|---|---|
+| F4 | A chat left out in Memory → Privacy still shows its notes in Memory search: `chat_note` and `agent_note` hits aren't filtered, only `message` hits are | web/pages_v3.py ~411-415 |
+| F3 | Memory's Topics and Answers tabs aren't filtered by left-out chats | web/pages_v3.py ~434-440 |
+| F2 | System → Activity: the "Waiting for you" link goes to `/approvals` instead of `/v3/approvals` (an extra redirect) | templates/v3/system.html:41 |
+| F1 | Skills → GitHub tab: "Add" and "Get today's list now" post to the old `/skills/trending/*` with `hx-target="body"`, so a whole page is swapped into `<body>` (works, but not a proper swap) | templates/v3/skills.html:53, 57 |
+
 ## 14 November 2026 (4)
 | # | Bug | Fixed by |
 |---|---|---|
