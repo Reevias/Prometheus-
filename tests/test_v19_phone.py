@@ -16,8 +16,11 @@ def test_installable_app(app_client):
     assert sw.status_code == 200 and "showNotification" in sw.text
     login(client)
     phone = {"user-agent": "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 Mobile Safari/537.36"}
-    page = client.get("/", headers=phone).text            # phones keep the phone screen (the new one is desktop)
-    assert 'rel="manifest"' in page and "phone.js" in page and "Hold to talk" in page and 'name="file"' in page
+    page = client.get("/", headers=phone).text            # phones get the v3 screens (templates/v3/layout.html)
+    assert 'rel="manifest"' in page and 'data-sphere="hero"' in page and "/static/v3/app.js" in page
+    assert "Hold to talk" in page and 'id="file-input"' in page and 'id="notify-btn"' in page
+    js = client.get("/static/v3/app.js").text             # the v3 script registers the worker and does push + talk
+    assert 'serviceWorker.register("/sw.js")' in js and "/push/key" in js and "/push/subscribe" in js
     desktop = client.get("/").text
     assert 'rel="manifest"' in desktop and 'data-sphere="hero"' in desktop
 
@@ -38,18 +41,27 @@ def test_push_subscribe_and_send(app_client):
 
 
 def test_upload_from_the_phone(app_client):
+    # v3: a phone uploads through the command bar like the laptop does (POST /api/v3/send with files).
+    from pathlib import Path
+
     client, services = app_client()
     h = {"X-CSRF-Token": login(client)}
+    ua = {"user-agent": "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 Mobile Safari/537.36"}
     chat = services.store.create_chat("c")
     asked = []
     services.start_task = lambda c, t, read_only=False: asked.append(t)
-    r = client.post(f"/chats/{chat}/upload", files={"file": ("receipt.jpg", PNG, "image/jpeg")}, data={"text": ""},
-                    headers=h)
-    assert r.status_code == 200 and "receipt" in asked[0] and "homework" in asked[0]
-    saved = list((services.home / phone.UPLOADS / "Photos").glob("*receipt.jpg"))
-    assert saved and saved[0].read_bytes() == PNG
-    client.post(f"/chats/{chat}/upload", files={"file": ("x.exe", b"MZ", "application/octet-stream")}, headers=h)
-    assert "not .exe" in services.store.messages(chat)[-1].text
+    photo = [("files", ("receipt.jpg", PNG, "image/jpeg"))]
+    assert client.post("/api/v3/send", data={"text": "", "chat_id": str(chat)}, files=photo,
+                       headers=ua).status_code == 403                                   # needs CSRF
+    assert asked == []
+    r = client.post("/api/v3/send", data={"text": "", "chat_id": str(chat)}, files=photo, headers={**h, **ua})
+    assert r.status_code == 200 and r.json()["chat_id"] == chat and "receipt.jpg" in asked[0]
+    line = next(x for x in asked[0].splitlines() if "receipt.jpg" in x)
+    saved = Path(line[2:line.rindex(" (")])
+    assert saved.name.endswith("receipt.jpg") and saved.read_bytes() == PNG
+    r = client.post("/api/v3/send", data={"text": "x", "chat_id": str(chat)},
+                    files=[("files", ("x.exe", b"MZ", "application/octet-stream"))], headers={**h, **ua})
+    assert r.status_code == 400 and ".exe" in r.json()["error"] and len(asked) == 1     # programs are refused
 
 
 def test_bank_sms(app_client):

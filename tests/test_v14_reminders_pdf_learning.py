@@ -71,10 +71,12 @@ def test_reminder_panel_and_cancel(app_client):
     client, services = app_client()
     h = {"X-CSRF-Token": login(client)}
     cid = services.store.create_chat("c")
-    rid = services.store.add_reminder(cid, "drink water", time.time() + 3600)
-    assert "drink water" in client.get("/reminders/list").text
-    assert "Coming up" in client.get(f"/chats/{cid}").text
-    assert "drink water" not in client.post(f"/reminders/{rid}/cancel", headers=h).text
+    rid = services.store.add_reminder(cid, "call grandma", time.time() + 3600)
+    page = client.get("/v3/automations").text                                    # v3: reminders live on Automations
+    assert "call grandma" in page and f"/api/v3/automations/{rid}/delete" in page
+    assert client.post(f"/api/v3/automations/{rid}/delete").status_code == 403    # needs CSRF
+    assert client.post(f"/api/v3/automations/{rid}/delete", headers=h).status_code == 200
+    assert "call grandma" not in client.get("/v3/automations").text
 
 
 def test_pdf_with_links(make_ctx, tmp_home):
@@ -109,10 +111,10 @@ def test_rating_rewrites_and_nightly_learning(app_client):
     cid = services.store.create_chat("c")
     services.orchestrator.run(cid, "capital of france?")
     answer = services.store.messages(cid)[-1]
-    page = client.get(f"/chats/{cid}/messages").text
+    page = client.get(f"/c/{cid}/messages").text
     assert f"/messages/{answer.id}/rate" in page
     r = client.post(f"/messages/{answer.id}/rate", data={"rating": "-1"}, headers={**h, "HX-Prompt": "too long"})
-    assert r.status_code == 200
+    assert r.status_code == 204
     for _ in range(50):
         if cid not in services.running and services.store.messages(cid)[-1].id != answer.id:
             break
@@ -127,7 +129,9 @@ def test_rating_rewrites_and_nightly_learning(app_client):
     assert learned == ["Answer in at most three sentences unless asked for detail."]   # the password rule is dropped
     assert learn(services) == ""                                                       # nothing new
     assert "three sentences" in services.orchestrator._style()                          # used for every answer
-    mem = client.get("/memory?view=classic").text
+    mem = client.get("/v3/memory?tab=answers").text
     assert "How Prometheus answers you" in mem and "three sentences" in mem
-    client.post("/memory/lessons-reset", headers=h)
+    assert client.post("/api/v3/memory/lessons/reset").status_code == 403           # needs CSRF
+    assert "three sentences" in services.prompts.get("learned")
+    assert client.post("/api/v3/memory/lessons/reset", headers=h).status_code == 200
     assert current_rules(services.prompts.get("learned")) == []

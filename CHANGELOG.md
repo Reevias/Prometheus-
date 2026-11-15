@@ -7,6 +7,9 @@
 - System → **Devices**: the health of each device, as far as Prometheus can really read it: this laptop (live CPU,
   memory, disk), the cloud copy (Check now asks it for real) and the phone (notifications on, and its battery when
   phone control is set up).
+- **The old screens are gone.** Everything they did has a place in the new look (checklist:
+  `docs/m2/M2_4_SWITCHOVER.md`); their old addresses take you to the new place, so bookmarks, notifications and the
+  phone app keep working. The light theme is retired (the new look is dark only).
 - Moved from the old screens into the new ones: the reader's controls and the browser's Stop in a chat, chat notes,
   quiz sheets and Export to Anki in Study, and Research's "To project".
 

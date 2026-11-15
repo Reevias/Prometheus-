@@ -18,9 +18,10 @@
 <p align="center">Or in PowerShell: <code>irm https://raw.githubusercontent.com/Reevias/Prometheus-/main/scripts/install-windows.ps1 | iex</code><br>
 <sub>by <a href="https://github.com/Reevias">Reevias</a></sub></p>
 
-> **Where this is.** v2.3 is the stable release, on `main`. The new desktop interface (Prometheus 3.0, milestone M2) is
-> being built on the `prometheus-v3` branch: it is not released yet, so the downloads above are still v2.3.
-> The full plan is in [`docs/PLAN.md`](docs/PLAN.md).
+> **Where this is.** `main` now has the new interface (Prometheus 3.0, milestone M2): the orange core, a sidebar with
+> every page, Projects, an automation builder and a task board. It is not released yet (the version stays 2.3.0 until
+> the plan is done), so the downloads above are still the v2.3 release; installing from `main` or updating gets the
+> new look. The full plan is in [`docs/PLAN.md`](docs/PLAN.md).
 
 ## Why Prometheus
 
@@ -118,11 +119,25 @@ desktop and in the Start menu. Run it again any time to update.
 irm https://raw.githubusercontent.com/Reevias/Prometheus-/main/scripts/uninstall-windows.ps1 | iex
 ```
 
+## The interface
+
+One look on the laptop and the phone (dark, with an orange core):
+
+- **Home**: ask anything; `/` opens commands and `@` picks an agent. On the laptop a right panel shows live CPU,
+  memory and disk, the agent at work and the current task.
+- **Chats** and **Projects** (a folder, its chats, notes and your instructions together; export and import as .zip).
+- **Agents**, **Skills**, **Memory** (saved facts, documents, topics, what it learned), **Tasks** (list, board,
+  timeline or table; pause and carry on), **Automations** (once, repeating, or when something happens, like a new file
+  or a low battery; each can ask you first), **Research** (with Study and Money modes) and **System** (this laptop,
+  your devices, and everything Prometheus did, with undo).
+- Your name at the bottom opens Settings, Connections, Approvals and more. Stop all is always at the top.
+
 ## On your phone
 
 **Android:** download [Prometheus.apk](https://github.com/Reevias/Prometheus-/releases/latest/download/Prometheus.apk)
 in Chrome and open it (Android asks once to allow installing from Chrome). **iPhone:** add it to the home screen from
-Safari. Either way you get notifications, hold-to-talk and sending photos:
+Safari. It's the same interface as the laptop, laid out for a phone (the menu opens from the top left). You get
+notifications (the bell), hold-to-talk and sending photos:
 
 1. Set up the always-on **cloud copy** once (free Oracle Cloud machine): [`docs/cloud-setup.md`](docs/cloud-setup.md).
 2. Install **Tailscale** on the phone and sign in.
@@ -194,33 +209,29 @@ OneDrive. Only the matching parts of earlier chats are fetched for a new questio
 
 ## Where it's going
 
-The plan is one document, [`docs/PLAN.md`](docs/PLAN.md), with 11 milestones and 59 steps. **Only M0 and M1 are
+The plan is one document, [`docs/PLAN.md`](docs/PLAN.md), with 11 milestones and 60 steps. **M0, M1 and M2 are
 finished; everything below that is a plan, not a feature.**
 
 | Milestone | Steps | Status |
 |---|---|---|
 | M0 Baseline | 5 | ✅ Done |
 | M1 Tool primitives | 5 | ✅ Done |
-| M2 Desktop interface | 5 | 🚧 In progress, on `prometheus-v3` |
+| M2 Desktop interface | 5 | ✅ Done (not yet checked on the owner's laptop) |
 | M3 Orchestration and model routing | 6 | ⬜ Not started |
 | M4 Repository-to-skill | 7 | ⬜ Not started |
 | M5 Many agents | 6 | ⬜ Not started |
-| M6 Runtime and Cloudroom | 4 | ⬜ Not started |
+| M6 Runtime and Cloudroom | 5 | ⬜ Not started |
 | M7 Security hardening | 5 | ⬜ Not started |
 | M8 Memory engine | 7 | ⬜ Not started |
 | M9 Evaluation and release | 6 | ⬜ Not started |
 | M10 Autonomy | 3 | ⬜ Reserved until M0–M9 are done |
 
-**Next up in M2:** the rest of the pages in the new interface (Skills, Tasks, Memory, Automations, Research,
-Integrations, System, Files, Activity), then Projects, a task runner with pause/resume and a board, and an automation
-builder. M2 ends when the new screens replace the old ones, an audit passes, and it merges into `main`.
-
-**After M2:** M3 brings a router that picks simple, medium or complex handling, a typed tool registry, a
+**Next up, M3:** brings a router that picks simple, medium or complex handling, a typed tool registry, a
 think-act-observe loop, **streaming answers**, and live context in the prompt.
 
 ## Documentation
 
-- [The plan and roadmap](docs/PLAN.md) · [M2 build plan](docs/m2/M2_PLAN.md)
+- [The plan and roadmap](docs/PLAN.md) · [M2 build plan](docs/m2/M2_PLAN.md) · [M2 report](docs/reports/M2_REPORT.md)
 - [Step-by-step setup guide](docs/guide.md) · [Cloud copy](docs/cloud-setup.md) · [Phone](docs/phone-setup.md)
 - [Changelog](CHANGELOG.md) · [Security](SECURITY.md) · [Contributing](CONTRIBUTING.md)
 

@@ -1969,7 +1969,6 @@ def quiz_sheets(services) -> list[dict]:
 
 def register_switchover_pages(app: FastAPI, services, shell) -> None:
     import threading
-    import time as _t
 
     from fastapi import Form
 

@@ -43,11 +43,12 @@ def test_small_things_ask_in_chat_and_are_remembered_everywhere(setup):
     res = Opener(launcher=opened.append).run("open it", {"target": "https://docs.example.com/page"}, ctx_for(services, a))
     assert res.status == "waiting_approval" and "in the chat" in res.summary
     assert services.store.big_approvals() == []                       # not on the Approvals page
-    page = client.get(f"/chats/{a}/messages").text
+    page = client.get(f"/c/{a}/messages").text
     ask = services.store.asks_for_chat(a)[0]
     assert "Always allow: Any page on docs.example.com" in page and f"/ask/{ask.id}" in page
     r = client.post(f"/ask/{ask.id}", data={"decision": "allow"}, headers=h)
-    assert opened == ["https://docs.example.com/page"] and "Opened" in r.text
+    assert r.status_code == 204 and opened == ["https://docs.example.com/page"]
+    assert "Opened" in services.store.messages(a)[-1].text                  # the result is said in the chat
     # the same link in ANOTHER chat opens straight away
     b = services.store.create_chat("second")
     res = Opener(launcher=opened.append).run("open it", {"target": "https://docs.example.com/page"}, ctx_for(services, b))
@@ -80,7 +81,8 @@ def test_dont_allow_does_nothing_and_remembers_nothing(setup):
     Opener(launcher=opened.append).run("x", {"target": "https://shop.example.com/"}, ctx_for(services, a))
     ask = services.store.asks_for_chat(a)[0]
     r = client.post(f"/ask/{ask.id}", data={"decision": "deny"}, headers=h)
-    assert opened == [] and "you said no" in r.text and services.store.allow_rules() == []
+    assert r.status_code == 204 and opened == [] and services.store.allow_rules() == []
+    assert "you said no" in services.store.messages(a)[-1].text
     assert client.post(f"/ask/{ask.id}", data={"decision": "allow"}).status_code == 403        # needs CSRF
 
 
@@ -102,5 +104,5 @@ def test_approvals_page_lists_only_big_things(app_client):
     services.approvals.ask("open_link", "Open this website: https://x.example.com/", {"url": "https://x.example.com/"},
                            ("https://x.example.com/", "x.example.com"), chat_id=cid)
     services.approvals.request("clone_repo", "Clone a/b into quarantine", {"repo": "a/b"})
-    page = client.get("/approvals").text
+    page = client.get("/v3/approvals").text
     assert "Clone a/b" in page and "x.example.com" not in page

@@ -13,9 +13,14 @@ def authed(app_client, **kw):
 
 def test_pages_render(app_client):
     client, _, _ = authed(app_client)
-    for url in ("/", "/approvals", "/memory", "/history", "/settings", "/status"):
+    for url in ("/", "/v3/approvals", "/v3/memory", "/v3/system?tab=activity", "/settings", "/api/v3/state"):
         resp = client.get(url)
         assert resp.status_code == 200, url
+    # the old addresses now lead to their new homes
+    for old, new in (("/approvals", "/v3/approvals"), ("/memory", "/v3/memory"),
+                     ("/history", "/v3/system?tab=activity")):
+        resp = client.get(old, follow_redirects=False)
+        assert resp.status_code == 303 and resp.headers["location"].startswith(new), old
 
 
 def test_send_message_runs_task_and_shows_answer(app_client):
@@ -30,9 +35,9 @@ def test_send_message_runs_task_and_shows_answer(app_client):
     services.orchestrator = FakeOrchestrator()
     services.start_task = lambda chat_id, text: services.orchestrator.run(chat_id, text)
     chat = services.store.create_chat("Main")
-    resp = client.post(f"/chats/{chat}/send", data={"text": "sort my Downloads"}, headers=h)
-    assert resp.status_code == 200
-    page = client.get(f"/chats/{chat}/messages").text
+    resp = client.post("/api/v3/send", data={"text": "sort my Downloads", "chat_id": str(chat)}, headers=h)
+    assert resp.status_code == 200 and resp.json()["chat_id"] == chat
+    page = client.get(f"/c/{chat}/messages").text
     assert "sort my Downloads" in page and "Sorted 3 files." in page
 
 
@@ -40,14 +45,14 @@ def test_messages_are_escaped(app_client):
     client, services, _ = authed(app_client)
     chat = services.store.create_chat("c")
     services.store.add_message(chat, "assistant", "<script>alert(1)</script>")
-    page = client.get(f"/chats/{chat}/messages").text
+    page = client.get(f"/c/{chat}/messages").text
     assert "<script>alert(1)</script>" not in page and "&lt;script&gt;" in page
 
 
 def test_chat_notes(app_client):
     client, services, h = authed(app_client)
     chat = services.store.create_chat("c")
-    client.post(f"/chats/{chat}/notes", data={"text": "answer in short"}, headers=h)
+    client.post(f"/api/v3/chats/{chat}/notes", data={"text": "answer in short"}, headers=h)
     assert [n.text for n in services.store.chat_notes(chat)] == ["answer in short"]
 
 
@@ -56,10 +61,10 @@ def test_approve_runs_handler(app_client):
     ran = []
     services.approvals.register("test_kind", lambda p: ran.append(p) or "done it")
     aid = services.approvals.request("test_kind", "Do the thing", {"x": 1})
-    assert "Do the thing" in client.get("/approvals").text
-    resp = client.post(f"/approvals/{aid}", data={"decision": "approve"}, headers=h)
+    assert "Do the thing" in client.get("/v3/approvals").text
+    resp = client.post(f"/api/v3/approvals/{aid}", data={"decision": "approve"}, headers=h)
     assert resp.status_code == 200 and ran == [{"x": 1}]
-    assert "done it" in resp.text
+    assert "done it" in resp.json()["message"]
 
 
 def test_reject_does_not_run(app_client):
@@ -67,18 +72,20 @@ def test_reject_does_not_run(app_client):
     ran = []
     services.approvals.register("test_kind", lambda p: ran.append(p) or "x")
     aid = services.approvals.request("test_kind", "s", {})
-    client.post(f"/approvals/{aid}", data={"decision": "reject"}, headers=h)
+    client.post(f"/api/v3/approvals/{aid}", data={"decision": "reject"}, headers=h)
     assert ran == []
 
 
 def test_memory_add_delete_wipe(app_client):
     client, services, h = authed(app_client)
-    client.post("/memory", data={"text": "I like short answers"}, headers=h)
+    client.post("/api/v3/memory/add", data={"text": "I like short answers"}, headers=h)
     [m] = services.store.memories()
-    client.post("/memory", data={"text": "second"}, headers=h)
-    client.post(f"/memory/{m.id}/delete", headers=h)
+    client.post("/api/v3/memory/add", data={"text": "second"}, headers=h)
+    client.post(f"/api/v3/memory/{m.id}/delete", headers=h)
     assert [x.text for x in services.store.memories()] == ["second"]
-    client.post("/memory/wipe", headers=h)
+    assert client.post("/api/v3/memory/wipe", headers=h).status_code == 400       # needs the typed confirmation
+    assert [x.text for x in services.store.memories()] == ["second"]
+    client.post("/api/v3/memory/wipe", data={"confirm": "forget everything"}, headers=h)
     assert services.store.memories() == []
 
 
@@ -90,8 +97,8 @@ def test_undo_from_history(app_client, tmp_home):
     run = services.journal.start(root)
     services.files.move(run, root / "a.pdf", root / "Documents", root)
     services.journal.finish(run)
-    assert run in client.get("/history").text
-    resp = client.post(f"/history/{run}/undo", headers=h)
+    assert run in client.get("/v3/system?tab=activity").text
+    resp = client.post("/api/v3/activity/undo", data={"source": "files", "id": run}, headers=h)
     assert resp.status_code == 200
     assert (root / "a.pdf").exists()
 
@@ -126,6 +133,6 @@ def test_settings_rejects_bad_budget(app_client):
 def test_no_external_urls_in_pages(app_client):
     client, services, _ = authed(app_client)
     services.store.create_chat("c")
-    for url in ("/", "/approvals", "/memory", "/history", "/settings", "/login"):
+    for url in ("/", "/v3/approvals", "/v3/memory", "/v3/system?tab=activity", "/settings", "/login"):
         page = client.get(url).text
         assert not re.search(r'(src|href)=["\']https?://', page), url

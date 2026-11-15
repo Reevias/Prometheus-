@@ -145,7 +145,13 @@ def test_search_survives_nul_byte(tmp_path):
 
 def test_forget_everything_works_from_search_results(app_client):
     client, services = app_client()
-    login(client)
+    csrf = login(client)
     services.store.add_memory("tea")
-    page = client.get("/memory?view=classic&q=tea").text
-    assert 'hx-post="/memory/wipe"' in page and 'id="memory"' in page
+    assert "tea" in client.get("/v3/memory?q=tea").text.split("Results for", 1)[1]
+    privacy = client.get("/v3/memory?tab=privacy").text
+    assert 'data-api="/api/v3/memory/wipe"' in privacy and 'data-type-confirm="forget everything"' in privacy
+    h = {"X-CSRF-Token": csrf}
+    assert client.post("/api/v3/memory/wipe", headers=h).status_code == 400            # the typed words are needed
+    assert [m.text for m in services.store.memories()] == ["tea"]
+    r = client.post("/api/v3/memory/wipe", data={"confirm": "forget everything"}, headers=h)
+    assert r.status_code == 200 and services.store.memories() == []

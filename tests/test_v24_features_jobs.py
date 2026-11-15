@@ -182,13 +182,11 @@ def test_page_scripts_survive_being_run_twice_and_errors_never_replace_the_page(
 
     client, _ = app_client()
     login(client)
-    for page in (client.get("/settings").text, client.get("/settings?view=classic").text):
+    for page in (client.get("/settings").text, client.get("/").text):     # the classic screens are gone (v3 only)
         scripts = re.findall(r"<script>(.*?)</script>", page, re.S)
         # buttons that reload the page run these scripts again: a top-level const/let would crash the second time
         assert not any(re.search(r"^  (?:const|let) ", s, re.M) for s in scripts)
-    classic = client.get("/settings?view=classic").text
-    assert "promErrorsReady" in classic and "htmx:beforeSwap" in classic and "shouldSwap = false" in classic
-    js = client.get("/static/v3/app.js").text                 # the new screen does the same in its script
+    js = client.get("/static/v3/app.js").text                 # errors never replace the page: done in the v3 script
     assert "htmx:beforeSwap" in js and "shouldSwap = false" in js and "htmx:sendError" in js
 
 

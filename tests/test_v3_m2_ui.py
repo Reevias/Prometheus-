@@ -205,7 +205,19 @@ def test_window_buttons_refuse_outside_the_desktop_window(app_client):
 def test_classic_view_still_reachable_until_switch_over(app_client):
     client, _ = app_client()
     login(client)
-    assert 'id="messages"' in client.get("/?view=classic").text
+    # the switch-over happened (M2.4b): the classic screens are gone and every old address points at its new home
+    for old, new in (("/approvals", "/v3/approvals"), ("/skills", "/v3/skills"), ("/memory?q=x", "/v3/memory?q=x"),
+                     ("/money", "/v3/research?mode=money"), ("/history", "/v3/system?tab=activity"),
+                     ("/costs", "/settings#costs")):
+        r = client.get(old, follow_redirects=False)
+        assert r.status_code == 303 and r.headers["location"] == new, old
+    cid = client.post("/chats", headers={"X-CSRF-Token": client.cookies.get("csrf_token")}, follow_redirects=False)
+    assert cid.status_code == 303 and cid.headers["location"].startswith("/c/")
+    chat = client.get(cid.headers["location"].replace("/c/", "/chats/"), follow_redirects=False)
+    assert chat.status_code == 303 and chat.headers["location"] == cid.headers["location"]
+    for page in (client.get("/?view=classic").text,
+                 client.get("/", headers={"user-agent": "Mozilla/5.0 (Linux; Android 14; Pixel 8) Mobile"}).text):
+        assert 'data-sphere="hero"' in page and 'class="sidebar"' in page      # the new home (v3/home.html)
 
 
 # ---- design rules ---------------------------------------------------------------------------------------------
@@ -385,8 +397,9 @@ def test_settings_in_the_new_look_keep_every_section(app_client):
     client, _ = app_client()
     login(client)
     new = client.get("/settings").text
-    classic = client.get("/settings?view=classic").text
-    old_ids = set(_re.findall(r'<section class="set[^"]*" id="([^"]+)"', classic))
+    # the classic Settings screen is gone; its sections came from settings_sections.html, which v3 Settings reuses
+    classic = (WEB / "templates" / "settings_sections.html").read_text(encoding="utf-8")
+    old_ids = {i for i in _re.findall(r'<section class="set[^"]*" id="([^"]+)"', classic) if "{" not in i}
     new_ids = set(_re.findall(r'<section class="set[^"]*" id="([^"]+)"', new))
     assert old_ids and old_ids <= new_ids                           # nothing dropped
     assert {"appearance", "about"} <= new_ids
@@ -397,7 +410,7 @@ def test_settings_in_the_new_look_keep_every_section(app_client):
         assert f">{cat}<" in nav
     assert ">Agents<" not in nav and ">Tools<" not in nav            # empty categories aren't shown
     phone = {"user-agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0) Mobile"}
-    assert 'id="v3-settings"' not in client.get("/settings", headers=phone).text
+    assert 'id="v3-settings"' in client.get("/settings", headers=phone).text   # phones get the v3 Settings too
 
 
 def test_appearance_is_saved_and_applied(app_client):

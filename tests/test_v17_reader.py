@@ -85,7 +85,11 @@ def test_panel_and_buttons(app_client, monkeypatch):
     monkeypatch.setattr(rd, "CURRENT", r)
     r.load(TEXT, "Optics chapter")
     r.state = "paused"
-    html = client.get("/reader/panel").text
+    cid = services.store.create_chat("c")
+    html = client.get(f"/c/{cid}/live").text                          # v3: the reader card above the chat
     assert "Optics chapter" in html and "reader-now" in html and "Continue" in html
-    client.post("/reader/stop", headers=h)
+    assert "/api/v3/reader/stop" in html
+    assert client.post("/api/v3/reader/stop").status_code == 403       # needs CSRF
+    assert r.state == "paused"
+    assert client.post("/api/v3/reader/stop", headers=h).status_code == 200
     assert r.state == "off"

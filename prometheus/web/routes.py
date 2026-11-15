@@ -60,21 +60,6 @@ def register_routes(app: FastAPI, services: Services) -> None:
         running = [s for s in store.steps(task["id"]) if s.status == "running"]
         return f"{running[-1].agent.replace('_', ' ')}: {running[-1].goal}" if running else "Planning"
 
-    def messages_partial(request: Request, chat_id: int):
-        busy = chat_id in services.running
-        return page(request, "messages.html", messages=store.messages(chat_id), busy=busy,
-                    asks=store.asks_for_chat(chat_id),
-                    ratings=store.ratings_for(chat_id),
-                    doing=current_step(chat_id) if busy else "")
-
-    def chat_page(request: Request, chat_id: int):
-        busy = chat_id in services.running
-        return page(request, "chat.html", chats=store.chats(), chat_id=chat_id, chat_title=store.chat_title(chat_id),
-                    heads=head_choices(services.router), head=services.settings.head_model,
-                    messages=store.messages(chat_id), ratings=store.ratings_for(chat_id),
-                    asks=store.asks_for_chat(chat_id),
-                    notes=store.chat_notes(chat_id), busy=busy, doing=current_step(chat_id) if busy else "")
-
     # ---- Prometheus 3.0 interface (M2) ---------------------------------------------------------------------------
     def chat_flags() -> dict:
         """Pinned and archived chats (kept as two lists of chat ids)."""
@@ -104,16 +89,9 @@ def register_routes(app: FastAPI, services: Services) -> None:
                              for n, c in services.orchestrator._usable_agents()]}
         return page(request, name, status_code, active=active, **{**base, **ctx})
 
-    PHONE = re.compile(r"Android|iPhone|iPad|Mobile", re.I)
-
     @app.get("/", response_class=HTMLResponse)
-    def home(request: Request, view: str = ""):
-        # The new interface is for the desktop. Phones (the Android app, a phone browser) keep the phone-friendly
-        # 2.x screen with notifications, hold-to-talk and photo sending. "?view=classic" opens it anywhere.
-        if view == "classic" or (view != "v3" and PHONE.search(request.headers.get("user-agent", ""))):
-            chats = store.chats()
-            chat_id = chats[0][0] if chats else store.create_chat("First chat")
-            return chat_page(request, chat_id)
+    def home(request: Request):
+        # one look everywhere (M2.4): phones get the same screens, laid out for a small screen
         from prometheus.services.ui_state import QUICK_ICONS, quick_actions
         return shell(request, "v3/home.html", "home", quick=quick_actions(services.settings), quick_icons=QUICK_ICONS)
 
@@ -519,54 +497,11 @@ def register_routes(app: FastAPI, services: Services) -> None:
 
     @app.post("/chats")
     def new_chat():
-        return RedirectResponse(f"/chats/{store.create_chat('New chat')}", status_code=303)
+        return RedirectResponse(f"/c/{store.create_chat('New chat')}", status_code=303)
 
-    @app.get("/chats/search", response_class=HTMLResponse)
-    def search_chats(request: Request, q: str = "", current: int = 0):
-        q = q.strip()[:200]
-        if not q:
-            return page(request, "chat_list.html", chats=store.chats(), chat_id=current)
-        return page(request, "chat_search.html", hits=store.search_chats(q), q=q, chat_id=current)
-
-    @app.get("/chats/{chat_id}", response_class=HTMLResponse)
-    def show_chat(request: Request, chat_id: int):
-        return chat_page(request, chat_id)
-
-    @app.get("/chats/{chat_id}/messages", response_class=HTMLResponse)
-    def messages(request: Request, chat_id: int, have: int = -1, busy: int = -1):
-        # The page tells us what it already shows; if nothing changed we send nothing, so it doesn't flicker.
-        shown = len(store.messages(chat_id)) + len(store.asks_for_chat(chat_id))
-        if have == shown and busy == int(chat_id in services.running) and not busy:
-            return Response(status_code=204)
-        return messages_partial(request, chat_id)
-
-    @app.post("/chats/{chat_id}/send", response_class=HTMLResponse)
-    def send(request: Request, chat_id: int, text: str = Form(...)):
-        text = text.strip()[:4000]
-        if text and chat_id not in services.running:
-            title = dict(store.chats()).get(chat_id, "")
-            if title in PLACEHOLDERS and not store.messages(chat_id) and store.chat_named_by(chat_id) != "user":
-                store.rename_chat(chat_id, quick_title(text))      # the planner may improve it in a moment
-            services.start_task(chat_id, text)
-        return messages_partial(request, chat_id)
-
-    @app.post("/chats/{chat_id}/upload", response_class=HTMLResponse)
-    async def upload(request: Request, chat_id: int):
-        from prometheus.phone import save_upload, what_to_do
-
-        form = await request.form()
-        f = form.get("file")
-        if f is None or not getattr(f, "filename", ""):
-            return messages_partial(request, chat_id)
-        data = await f.read()
-        try:
-            path = save_upload(services.home, f.filename, data)
-        except ValueError as e:
-            store.add_message(chat_id, "assistant", str(e), "phone")
-            return messages_partial(request, chat_id)
-        if chat_id not in services.running:
-            services.start_task(chat_id, what_to_do(path, str(form.get("text") or "")))
-        return messages_partial(request, chat_id)
+    @app.get("/chats/{chat_id}")
+    def show_chat(chat_id: int):
+        return RedirectResponse(f"/c/{chat_id}", status_code=303)      # the old screen's new home (M2.4)
 
     @app.get("/push/key")
     def push_key():
@@ -618,8 +553,7 @@ def register_routes(app: FastAPI, services: Services) -> None:
         # stay where you were: a list just refreshes; from inside that chat you go to the chat list (Home on phones)
         here = urlsplit(request.headers.get("HX-Current-URL", "")).path
         if here in (f"/c/{chat_id}", f"/chats/{chat_id}") or not here:
-            phone = PHONE.search(request.headers.get("user-agent", "")) or here.startswith("/chats/")
-            return Response(status_code=204, headers={"HX-Redirect": "/" if phone else "/v3/chats"})
+            return Response(status_code=204, headers={"HX-Redirect": "/v3/chats"})
         return Response(status_code=204, headers={"HX-Refresh": "true"})
 
     @app.post("/messages/{message_id}/rate", response_class=HTMLResponse)
@@ -633,94 +567,7 @@ def register_routes(app: FastAPI, services: Services) -> None:
         store.audit("user", "rate", {"message": message_id, "rating": value})
         if value < 0 and msg.chat_id not in services.running:
             services.start_rewrite(msg.chat_id, message_id, note)
-        return page(request, "rate.html", m=msg, r=store.rating(message_id))
-
-    @app.post("/memory/learn", response_class=HTMLResponse)
-    def learn_now(request: Request):
-        from prometheus.learning import learn
-
-        try:
-            done = learn(services) or "Nothing new to learn yet: rate a few answers first."
-        except Exception as e:
-            done = f"Couldn't learn right now ({type(e).__name__}). It will try again tonight."
-        return memory_page(request, lesson=done)
-
-    @app.post("/memory/lessons/{commit}", response_class=HTMLResponse)
-    def restore_lessons(request: Request, commit: str):
-        try:
-            services.prompts.rollback("learned", commit)
-        except (ValueError, RuntimeError):
-            return memory_page(request, lesson="That version couldn't be restored.")
-        store.audit("user", "lessons_restored", {"commit": commit[:12]})
-        return memory_page(request, lesson="Restored that version.")
-
-    @app.post("/memory/task-lessons/{lesson_id}/delete", response_class=HTMLResponse)
-    def delete_task_lesson(request: Request, lesson_id: int):
-        store.delete_lesson(lesson_id)
-        return memory_page(request)
-
-    @app.post("/memory/lessons-reset", response_class=HTMLResponse)
-    def reset_lessons(request: Request):
-        from prometheus.learning import HEADER
-
-        services.prompts.set("learned", HEADER + "(Reset by the owner.)\n", "Reset by the owner")
-        return memory_page(request, lesson="Cleared what Prometheus learned. Older versions can still be restored.")
-
-    @app.get("/reader/panel", response_class=HTMLResponse)
-    def reader_panel(request: Request):
-        from prometheus.voice import reader as _reader
-
-        r = _reader.CURRENT
-        return page(request, "reader_panel.html", r=r.status() if r is not None else None)
-
-    @app.post("/reader/{action}", response_class=HTMLResponse)
-    def reader_action(request: Request, action: str):
-        import threading as _th
-
-        from prometheus.voice import reader as _reader
-
-        r = _reader.CURRENT
-        if r is not None:
-            act = {"pause": r.pause, "continue": r.resume, "back": lambda: r.move(-1), "skip": lambda: r.move(1),
-                   "slower": lambda: r.set_speed(False), "faster": lambda: r.set_speed(True), "stop": r.stop,
-                   "explain": lambda: _th.Thread(target=r.explain, daemon=True).start()}.get(action)
-            if act is not None:
-                act()
-        return reader_panel(request)
-
-    @app.get("/browser/control", response_class=HTMLResponse)
-    def browser_control(request: Request):
-        b = services.browser
-        started = b is not None and b._thread is not None and b._thread.is_alive()
-        return page(request, "browser_ctl.html", started=started, paused=bool(b and b.paused))
-
-    @app.post("/browser/control", response_class=HTMLResponse)
-    def browser_toggle(request: Request):
-        if services.browser is not None:
-            services.browser.paused = not services.browser.paused
-            store.audit("user", "browser_takeover", {"paused": services.browser.paused})
-        return browser_control(request)
-
-    @app.get("/reminders/list", response_class=HTMLResponse)
-    def reminder_list(request: Request):
-        from prometheus.reminders import describe
-
-        items = [dict(r, when=describe(r["due"])) for r in store.reminders()]
-        return page(request, "reminders.html", reminders=items)
-
-    @app.post("/reminders/{reminder_id}/cancel", response_class=HTMLResponse)
-    def cancel_reminder(request: Request, reminder_id: int):
-        store.cancel_reminder(reminder_id)
-        return reminder_list(request)
-
-    @app.get("/chats/{chat_id}/outputs", response_class=HTMLResponse)
-    def chat_outputs(request: Request, chat_id: int):
-        items = []
-        for o in store.outputs(chat_id):
-            o["name"] = Path(o["path"]).name or o["path"]
-            o["exists"] = Path(o["path"]).exists()
-            items.append(o)
-        return page(request, "outputs.html", outputs=items)
+        return Response(status_code=204)          # the chat redraws itself
 
     @app.post("/outputs/{output_id}/{how}")
     def open_an_output(request: Request, output_id: int, how: str):
@@ -751,33 +598,9 @@ def register_routes(app: FastAPI, services: Services) -> None:
         store.audit("user", "open_output", {"path": item["path"], "how": how})
         return Response(text, status_code=200)
 
-    @app.post("/chats/{chat_id}/notes", response_class=HTMLResponse)
-    def add_note(request: Request, chat_id: int, text: str = Form(...)):
-        if text.strip():
-            store.add_chat_note(chat_id, text.strip()[:500])
-        return page(request, "notes.html", notes=store.chat_notes(chat_id))
-
-    @app.get("/status", response_class=HTMLResponse)
-    def status(request: Request, chat: int | None = None, mini: int = 0, core: int = 0):
-        task = store.latest_task(chat) if chat else {}
-        voice = services.voice.state() if services.voice is not None else "off"
-        return page(request, "status.html", mini=bool(mini), core=bool(core), busy=bool(services.running), task=task,
-                    voice=voice, updated=services.updater.updated if services.updater is not None else "",
-                    steps=store.steps(task["id"]) if task else [], budget=services.budget.state(),
-                    pending=len(store.big_approvals()),
-                    models=services.router.status_detail() if not (mini or core) else [])
-
-    @app.get("/approvals", response_class=HTMLResponse)
-    def approvals(request: Request):
-        if request.query_params.get("view") != "classic" and not PHONE.search(request.headers.get("user-agent", "")):
-            return RedirectResponse("/v3/approvals", status_code=303)
-        return page(request, "approvals.html", approvals=store.big_approvals(), result="")
-
-    @app.post("/approvals/{approval_id}", response_class=HTMLResponse)
-    def decide(request: Request, approval_id: int, decision: str = Form(...), secret: str = Form("")):
-        secret = secret[:200]
-        result = services.approvals.resolve(approval_id, approved=(decision == "approve"), secret=secret)
-        return page(request, "approval_list.html", approvals=store.big_approvals(), result=result)
+    @app.get("/approvals")
+    def approvals():
+        return RedirectResponse("/v3/approvals", status_code=303)      # the old screen's new home (M2.4)
 
     @app.post("/ask/{approval_id}", response_class=HTMLResponse)
     def answer_ask(request: Request, approval_id: int, decision: str = Form(...)):
@@ -792,7 +615,7 @@ def register_routes(app: FastAPI, services: Services) -> None:
         text = ("Not done: you said no." if not approved else
                 (result if not str(result).startswith("Failed") else f"That didn't work: {result}"))
         store.add_message(chat_id, "assistant", str(text), "approval")
-        return messages_partial(request, chat_id)
+        return Response(status_code=204)          # the chat redraws itself
 
     @app.post("/settings/allowed/{rule_id}/remove", response_class=HTMLResponse)
     def remove_allowed(request: Request, rule_id: int):
@@ -824,124 +647,17 @@ def register_routes(app: FastAPI, services: Services) -> None:
         store.audit("user", "repo_of_day", {"on": bool(on)})
         return settings_page(request, saved=True)
 
-    def memory_page(request: Request, lesson: str = ""):
-        return memory(request, "", lesson)
+    @app.get("/memory")
+    def memory(q: str = ""):
+        from urllib.parse import quote
 
-    @app.get("/memory", response_class=HTMLResponse)
-    def memory(request: Request, q: str = "", lesson: str = ""):
-        if request.query_params.get("view") != "classic" and not PHONE.search(request.headers.get("user-agent", "")) \
-                and not request.headers.get("HX-Request"):
-            return RedirectResponse("/v3/memory" + (f"?q={__import__('urllib.parse').parse.quote(q)}" if q else ""),
-                                    status_code=303)
-        q = q.strip()[:200]
-        found = store.recall(q, limit=30, kinds=("memory", "chat_note", "agent_note", "message")) if q else []
-        passages = store.search_chunks(q, limit=10, include_private=True) if q else []
-        archive = services.archive
-        from prometheus.learning import current_rules
+        return RedirectResponse("/v3/memory" + (f"?q={quote(q.strip()[:200])}" if q.strip() else ""), status_code=303)
 
-        try:
-            lessons_text, lessons_history = services.prompts.get("learned"), services.prompts.history("learned")[:8]
-        except (OSError, RuntimeError, ValueError):
-            lessons_text, lessons_history = "", []
-        return page(request, "memory.html", memories=store.memories(), q=q, found=found, passages=passages,
-                    lessons=current_rules(lessons_text), lessons_history=lessons_history, lesson=lesson,
-                    task_lessons=store.lessons(30),
-                    documents=store.documents(), topics=store.topics(),
-                    folder=str(archive.folder) if archive else "", **facts_view())
+    @app.get("/skills")
+    def skills_page(said: str = ""):
+        from urllib.parse import quote
 
-    def facts_view() -> dict:
-        import time as _t
-
-        facts = services.orchestrator.facts
-        people = []
-        for subject in facts.subjects():
-            rows = [dict(vars(f), since=_t.strftime("%d %b %Y", _t.localtime(f.created)),
-                         ended=_t.strftime("%d %b %Y", _t.localtime(f.until or 0))) for f in facts.about(subject)]
-            rows = [type("F", (), r) for r in rows]
-            people.append({"name": "You" if subject == "me" else subject,
-                           "now": [f for f in rows if f.until is None],
-                           "past": [f for f in rows if f.until is not None]})
-        return {"people": people, "fact_changes": facts.changes()}
-
-    @app.post("/memory/facts/{fact_id}/forget", response_class=HTMLResponse)
-    def forget_fact(request: Request, fact_id: int):
-        services.orchestrator.facts.forget(fact_id)
-        store.audit("user", "forget_fact", {"id": fact_id})
-        return memory_page(request)
-
-    @app.post("/memory/facts/changes/{change_id}/undo", response_class=HTMLResponse)
-    def undo_fact_change(request: Request, change_id: int):
-        services.orchestrator.facts.undo_change(change_id)
-        store.audit("user", "undo_fact_change", {"id": change_id})
-        return memory_page(request)
-
-    @app.get("/memory/topic", response_class=HTMLResponse)
-    def memory_topic(request: Request, t: str = ""):
-        t = t.strip()[:60]
-        parts = store.segments(topic=t) if t else []
-        for p in parts:
-            first = next((m for m in store.messages(p["chat_id"]) if m.id >= p["first_msg"] and m.role == "user"),
-                         None)
-            p["asked"] = first.text[:200] if first else ""
-        return page(request, "memory_topic.html", topic=t, parts=parts)
-
-    @app.post("/documents/{doc_id}/delete", response_class=HTMLResponse)
-    def delete_document(request: Request, doc_id: int):
-        store.delete_document(doc_id)
-        return page(request, "document_list.html", documents=store.documents())
-
-    @app.post("/memory", response_class=HTMLResponse)
-    def add_memory(request: Request, text: str = Form(...)):
-        if text.strip():
-            store.add_memory(text.strip()[:1000], source="added by you")
-        return page(request, "memory_list.html", memories=store.memories())
-
-    @app.post("/memory/{memory_id}/delete", response_class=HTMLResponse)
-    def delete_memory(request: Request, memory_id: int):
-        store.delete_memory(memory_id)
-        return page(request, "memory_list.html", memories=store.memories())
-
-    @app.post("/memory/wipe", response_class=HTMLResponse)
-    def wipe(request: Request):
-        store.wipe_memories()
-        for d in store.documents(limit=100000):
-            store.delete_document(d.id)
-        store.audit("user", "wipe_memories", {})
-        return page(request, "memory_list.html", memories=[])
-
-    @app.get("/skills", response_class=HTMLResponse)
-    def skills_page(request: Request):
-        from prometheus.agents import tools_agent
-
-        if request.query_params.get("view") != "classic" and not PHONE.search(request.headers.get("user-agent", "")):
-            said = request.query_params.get("said", "")
-            return RedirectResponse("/v3/skills" + (f"?tab=github&said={__import__('urllib.parse').parse.quote(said)}"
-                                                    if said else ""), status_code=303)
-
-        from prometheus.repo_of_day import RepoOfTheDay
-
-        return page(request, "skills.html", skills=services.skills.catalog(), shown=None, text="",
-                    user_folder=str(services.skills.user), trending=RepoOfTheDay(services).todays(),
-                    trending_said=request.query_params.get("said", ""),
-                    own_tools=tools_agent.TOOLS.all() if tools_agent.TOOLS else [])
-
-    @app.post("/skills/trending/add", response_class=HTMLResponse)
-    def add_trending(request: Request, n: int = Form(...)):
-        from prometheus.repo_of_day import RepoOfTheDay
-
-        said = RepoOfTheDay(services).add_numbers([n])
-        store.audit("user", "repo_added", {"n": n})
-        return RedirectResponse(f"/skills?said={__import__('urllib.parse').parse.quote(said[:300])}", status_code=303)
-
-    @app.post("/skills/trending/refresh", response_class=HTMLResponse)
-    def refresh_trending(request: Request):
-        from prometheus.repo_of_day import RepoOfTheDay
-
-        try:
-            said = RepoOfTheDay(services).suggest()
-        except Exception:
-            said = "I couldn't reach GitHub trending just now."
-        return RedirectResponse(f"/skills?said={__import__('urllib.parse').parse.quote(said)}", status_code=303)
+        return RedirectResponse("/v3/skills" + (f"?tab=github&said={quote(said)}" if said else ""), status_code=303)
 
     @app.post("/tools/{name}/remove", response_class=HTMLResponse)
     def remove_tool(request: Request, name: str):
@@ -953,186 +669,20 @@ def register_routes(app: FastAPI, services: Services) -> None:
         except ToolError:
             pass
         store.audit("user", "remove_tool", {"name": name})
-        if not PHONE.search(request.headers.get("user-agent", "")):
-            return RedirectResponse("/v3/skills?tab=tools", status_code=303)
-        return skills_page(request)
-
-    @app.get("/skills/{name}/{ref}", response_class=HTMLResponse)
-    def skill_reference(request: Request, name: str, ref: str):
-        skill = services.skills.get(name)
-        if skill is None:
-            return HTMLResponse("Not found", status_code=404)
-        try:
-            text = skill.body if ref == "SKILL.md" else services.skills.reference(name, ref)
-        except ValueError:
-            return HTMLResponse("Not found", status_code=404)
-        return page(request, "skills.html", skills=services.skills.catalog(), shown=f"{name} / {ref}", text=text,
-                    user_folder=str(services.skills.user))
+        return RedirectResponse("/v3/skills?tab=tools", status_code=303)
 
     # -- feature pages: study, money, exams and deadlines ---------------------------------------
-    def _study_chat() -> int:
-        return services.briefing.study_chat()
+    @app.get("/study")
+    def study_page():
+        return RedirectResponse("/v3/research?mode=study", status_code=303)      # the old screen's new home (M2.4)
 
-    @app.get("/study", response_class=HTMLResponse)
-    def study_page(request: Request, notice: str = "", error: str = ""):
-        if request.query_params.get("view") != "classic" and not PHONE.search(request.headers.get("user-agent", "")) \
-                and request.method == "GET" and not request.headers.get("HX-Request"):
-            return RedirectResponse("/v3/research?mode=study", status_code=303)          # its new home (M2.2)
-        import json as _json
-        import time as _t
+    @app.get("/money")
+    def money_page():
+        return RedirectResponse("/v3/research?mode=money", status_code=303)      # the old screen's new home (M2.4)
 
-        from prometheus.agents import study_agent
-
-        st = study_agent.STUDY
-        decks = st.decks() if st else []
-        pdfs = []
-        if st is not None and st.folder is not None and st.folder.exists():
-            for pth in sorted(st.folder.glob("Quiz *.pdf"), key=lambda x: -x.stat().st_mtime)[:20]:
-                rows = store._rows("SELECT id FROM outputs WHERE path = ? ORDER BY id DESC LIMIT 1", (str(pth),))
-                pdfs.append({"name": pth.stem, "id": rows[0]["id"] if rows else 0,
-                             "when": _t.strftime("%d %b %H:%M", _t.localtime(pth.stat().st_mtime))})
-        try:
-            last = _json.loads(store.kv_get("study_last") or "null")
-        except ValueError:
-            last = None
-        return page(request, "study.html", decks=decks, due_total=sum(d["due"] or 0 for d in decks), last=last,
-                    pdfs=pdfs, cloud=services.settings.study_cloud, notice=notice, error=error)
-
-    @app.post("/study/make", response_class=HTMLResponse)
-    def study_make(request: Request, path: str = Form(...), deck: str = Form("")):
-        text = f"make flashcards from {path.strip()}" + (f" in the deck {deck.strip()}" if deck.strip() else "")
-        services.start_task(_study_chat(), text)
-        return study_page(request, notice="Making the cards. They'll show here in a minute (progress is in the Study chat).")
-
-    @app.post("/study/quiz")
-    def study_quiz(deck: str = Form("")):
-        from prometheus.agents import study_agent
-
-        chat = _study_chat()
-        services.store.add_message(chat, "user", f"Quiz me on {deck}")
-        services.store.add_message(chat, "assistant", study_agent.STUDY.start_quiz(chat, deck), "instant")
-        return RedirectResponse(f"/chats/{chat}", status_code=303)
-
-    @app.post("/study/export", response_class=HTMLResponse)
-    def study_export(request: Request, deck: str = Form(...)):
-        from prometheus.agents import study_agent
-
-        path = study_agent.STUDY.export_anki(deck, services.home / "Documents" / "Prometheus Study")
-        return study_page(request, notice=f"Saved {path.name} in Documents/Prometheus Study. In Anki: File → Import.")
-
-    @app.get("/money", response_class=HTMLResponse)
-    def money_page(request: Request, notice: str = "", error: str = ""):
-        if request.query_params.get("view") != "classic" and not PHONE.search(request.headers.get("user-agent", "")) \
-                and request.method == "GET" and not request.headers.get("HX-Request"):
-            return RedirectResponse("/v3/research?mode=money", status_code=303)          # its new home (M2.2)
-        import time as _t
-
-        from prometheus.agents import money_agent
-
-        m = money_agent.MONEY
-        now = _t.time()
-        cats, recent, total, today = [], [], 0.0, 0.0
-        if m is not None:
-            by = m.by_category(m.month_start(now))
-            budgets = services.settings.money_budgets or {}
-            top = max(list(by.values()) + [b for b in budgets.values() if b] + [1])
-            for name, amount in by.items():
-                b = budgets.get(name)
-                cats.append({"name": name, "amount": amount, "budget": b,
-                             "pct": round(100 * amount / (b or top)) if (b or top) else 0,
-                             "over": bool(b and amount >= b), "near": bool(b and amount >= 0.8 * b)})
-            total = sum(by.values())
-            today = sum(r["amount"] for r in m._since(m.day_start(now)))
-            recent = [{**dict(r), "when": _t.strftime("%d %b %H:%M", _t.localtime(r["created"]))}
-                      for r in store._rows("SELECT * FROM spending ORDER BY created DESC LIMIT 25")]
-        for c in cats:
-            c["pct"] = min(100, c["pct"])
-        return page(request, "money.html", cats=cats, recent=recent, total=total, today=today,
-                    month_name=_t.strftime("%B %Y"), notice=notice, error=error)
-
-    @app.post("/money/add", response_class=HTMLResponse)
-    def money_add(request: Request, amount: str = Form(...), what: str = Form(...)):
-        from prometheus.agents import money_agent
-
-        try:
-            value = float(amount.replace(",", "").replace("₹", "").strip())
-            if not 0 < value < 10_000_000:
-                raise ValueError
-        except ValueError:
-            return money_page(request, error="The amount should be a number, like 250.")
-        money_agent.MONEY.add(value, what.strip()[:40], said=what)
-        return money_page(request, notice=f"Added ₹{value:,.0f} on {what.strip()[:40]}.")
-
-    @app.post("/money/scan", response_class=HTMLResponse)
-    def money_scan(request: Request):
-        from prometheus.agents import money_agent
-        from prometheus.agents.email_agent import mailbox
-
-        if not services.settings.email_address:
-            return money_page(request, error="Connect your email in Settings first.")
-        try:
-            added = money_agent.MONEY.scan_email(mailbox(), days=7)
-        except Exception as e:
-            return money_page(request, error=f"Couldn't read your email ({type(e).__name__}).")
-        return money_page(request, notice=f"Found {added} new bank or UPI alert(s).")
-
-    @app.post("/money/excel", response_class=HTMLResponse)
-    def money_excel(request: Request):
-        from prometheus.agents import money_agent
-
-        path = money_agent.MONEY.write_excel(services.home / "Documents" / "Prometheus Money")
-        try:
-            if services.laptop is not None:
-                import os as _os
-
-                _os.startfile(str(path))           # our own sheet, made just now
-        except Exception:
-            pass
-        return money_page(request, notice=f"Saved {path.name} in Documents/Prometheus Money.")
-
-    @app.get("/plans", response_class=HTMLResponse)
-    def plans_page(request: Request, notice: str = "", error: str = ""):
-        if request.query_params.get("view") != "classic" and not PHONE.search(request.headers.get("user-agent", "")) \
-                and request.method == "GET" and not request.headers.get("HX-Request"):
-            return RedirectResponse("/v3/research?mode=study", status_code=303)          # its new home (M2.2)
-        import time as _t
-        from datetime import date as _date
-
-        from prometheus.agents import assignments_agent, exams_agent
-        from prometheus.assignments import _when
-
-        tr, ex = assignments_agent.TRACKER, exams_agent.EXAMS
-        assigns = [{**a, "when": _when(a["due"]), "soon": a["due"] - _t.time() < 3 * 86400}
-                   for a in (tr.upcoming(60) if tr else [])]
-        exams = []
-        for p in (ex.plans() if ex else []):
-            days = [{"label": _date.fromisoformat(d["day"]).strftime("%a %d %b"), "topics": ", ".join(d["topics"]),
-                     "today": d["day"] == ex.today().isoformat(), "done": d["done"]} for d in ex.days(p["id"])]
-            exams.append({"exam": p["exam"], "date": p["exam_date"], "days": days,
-                          "left": (_date.fromisoformat(p["exam_date"]) - ex.today()).days})
-        return page(request, "plans.html", assignments=assigns, exams=exams, notice=notice, error=error)
-
-    @app.post("/plans/add", response_class=HTMLResponse)
-    def plans_add(request: Request, title: str = Form(...), due: str = Form(...)):
-        from prometheus.agents import assignments_agent
-
-        said = assignments_agent.TRACKER.tell(f"{title.strip()[:100]} due {due.strip()[:60]}")
-        if said is None:
-            return plans_page(request, error="I couldn't tell when it's due. Try 'Friday', '15 Nov' or '20/11 5pm'.")
-        return plans_page(request, notice=said)
-
-    @app.post("/plans/done", response_class=HTMLResponse)
-    def plans_done(request: Request, id: int = Form(...)):
-        from prometheus.agents import assignments_agent
-
-        tr = assignments_agent.TRACKER
-        rows = store._rows("SELECT title FROM assignments WHERE id = ?", (id,))
-        if rows:
-            store._write("UPDATE assignments SET done = 1 WHERE id = ?", (id,))
-            for r in store.reminders():
-                if rows[0]["title"] in r["text"]:
-                    store.cancel_reminder(r["id"])
-        return plans_page(request, notice=f"Marked {rows[0]['title']} as done." if rows else "")
+    @app.get("/plans")
+    def plans_page():
+        return RedirectResponse("/v3/research?mode=study", status_code=303)      # the old screen's new home (M2.4)
 
     @app.get("/phone", response_class=HTMLResponse)
     def phone_page(request: Request):
@@ -1152,39 +702,15 @@ def register_routes(app: FastAPI, services: Services) -> None:
             img.save(buf, format="PNG")
             qr = _b64.b64encode(buf.getvalue()).decode()
         apk = "https://github.com/Reevias/Prometheus-/releases/latest/download/Prometheus.apk"
-        if request.query_params.get("view") != "classic" and not PHONE.search(request.headers.get("user-agent", "")):
-            return shell(request, "v3/phone.html", "phone", address=address, qr=qr, apk_url=apk)
-        return page(request, "phone.html", address=address, qr=qr, apk_url=apk)
+        return shell(request, "v3/phone.html", "phone", address=address, qr=qr, apk_url=apk)
 
-    @app.get("/costs", response_class=HTMLResponse)
-    def costs(request: Request):
-        import time as _t
+    @app.get("/costs")
+    def costs():
+        return RedirectResponse("/settings#costs", status_code=303)      # the old screen's new home (M2.4)
 
-        if request.query_params.get("view") != "classic" and not PHONE.search(request.headers.get("user-agent", "")):
-            return RedirectResponse("/settings#costs", status_code=303)        # Costs live in AI models and keys
-
-        from prometheus.safety.budget import month_start
-
-        state = services.budget.state()
-        report = store.cost_report(month_start())
-        days = store.cost_report(_t.time() - 30 * 86400)["by_day"]
-        top = max((d["usd"] for d in days), default=0)
-        pct = round(100 * state.spent / state.cap) if state.cap else 0
-        return page(request, "costs.html", budget=state, report=report, days=days, top=top, pct=pct,
-                    all_time=store.total_cost())
-
-    @app.get("/history", response_class=HTMLResponse)
-    def history(request: Request):
-        if request.query_params.get("view") != "classic" and not PHONE.search(request.headers.get("user-agent", "")):
-            return RedirectResponse("/v3/system?tab=activity", status_code=303)       # Activity is a tab of System
-        return page(request, "history.html", runs=services.journal.runs(), result="")
-
-    @app.post("/history/{run_id}/undo", response_class=HTMLResponse)
-    def undo(request: Request, run_id: str):
-        report = services.files.undo_run(run_id)
-        store.audit("user", "undo", {"run_id": run_id, "restored": report.restored})
-        result = f"Put back {report.restored} files." + (" " + "; ".join(report.problems) if report.problems else "")
-        return page(request, "history_list.html", runs=services.journal.runs(), result=result)
+    @app.get("/history")
+    def history():
+        return RedirectResponse("/v3/system?tab=activity", status_code=303)      # the old screen's new home (M2.4)
 
     def settings_page(request: Request, status_code: int = 200, **extra):
         have = secrets_set()
@@ -1268,8 +794,6 @@ def register_routes(app: FastAPI, services: Services) -> None:
                     research_brains=list(__import__("prometheus.models.router", fromlist=["x"]).RESEARCH_LABELS.items()),
                     file_index_status=(getattr(services.file_index, "status", "") or store.kv_get("file_index_status")
                                        or "Not read yet."), **extra)
-        if request.query_params.get("view") == "classic" or PHONE.search(request.headers.get("user-agent", "")):
-            return page(request, "settings.html", status_code, **ctx)
         from prometheus.config import data_dir
         return shell(request, "v3/settings.html", "settings", status_code=status_code,
                      data_folder=str(data_dir()), costs=costs_view(), **ctx)
@@ -1449,18 +973,6 @@ def register_routes(app: FastAPI, services: Services) -> None:
         apply_settings(services)
         store.audit("user", "head_model", {"head": head or "auto"})
         return Response(status_code=204)
-
-    @app.get("/voice/pill", response_class=HTMLResponse)
-    def voice_pill(request: Request):
-        info = services.voice.describe() if services.voice is not None else {"state": "off"}
-        return page(request, "voice_pill.html", v=info)
-
-    @app.post("/voice/mute", response_class=HTMLResponse)
-    def voice_mute(request: Request):
-        if services.voice is not None:
-            muted = services.voice.toggle_mute()
-            store.audit("user", "voice_mute", {"muted": muted})
-        return voice_pill(request)
 
     def _train_view(request: Request):
         v = services.voice

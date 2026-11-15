@@ -111,8 +111,8 @@ def test_brain_picker_in_chat_and_settings(app_client):
     client, services = app_client()
     h = {"X-CSRF-Token": login(client)}
     cid = services.store.create_chat("c")
-    page = client.get(f"/chats/{cid}").text
-    assert 'name="head"' in page and "Auto (best available)" in page
+    page = client.get(f"/c/{cid}").text                         # the v3 chat: the model chip in the command bar
+    assert 'id="model-chip"' in page and "Automatic" in page
     choices = [e for e, _ in head_choices(services.router)]
     assert client.post("/settings/head", data={"head": choices[0]}, headers=h).status_code == 204
     assert services.settings.head_model == choices[0] and services.router.head == choices[0]

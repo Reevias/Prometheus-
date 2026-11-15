@@ -116,7 +116,10 @@ def test_memory_page_search(app_client):
     login(client)
     services.store.add_memory("My accountant is Ravi")
     services.store.add_memory("I like tea")
-    page = client.get("/memory?view=classic&q=accountant").text
-    assert "Ravi" in page and "I like tea" not in page
-    full = client.get("/memory?view=classic").text
-    assert "Ravi" in full and "I like tea" in full and 'name="q"' in full
+    page = client.get("/v3/memory?q=accountant").text
+    # the results section holds only the match (the full list of memories is shown below it)
+    results = page.split("Results for", 1)[1].split('<h2 class="section">Memories', 1)[0]
+    assert "Ravi" in results and "I like tea" not in results
+    full = client.get("/v3/memory").text
+    assert "Ravi" in full and "I like tea" in full and 'name="q"' in full and "Results for" not in full
+    assert client.get("/memory?q=accountant", follow_redirects=False).headers["location"] == "/v3/memory?q=accountant"

@@ -115,7 +115,7 @@ def test_the_approved_switch_changes_and_saves_the_model(app_client):
     h = {"X-CSRF-Token": login(client)}
     services.router.providers["openrouter"] = FakeProvider(["x"], name="openrouter", is_local=False)
     aid = services.approvals.request("set_model", "Use X", {"provider": "openrouter", "model": "deepseek/x"})
-    client.post(f"/approvals/{aid}", data={"decision": "approve"}, headers=h)
+    assert client.post(f"/api/v3/approvals/{aid}", data={"decision": "approve"}, headers=h).status_code == 200
     assert services.settings.openrouter_model == "deepseek/x"
     assert services.router.providers["openrouter"].model == "deepseek/x"
     from prometheus.config import load_settings

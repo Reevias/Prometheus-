@@ -80,7 +80,8 @@ def test_list_the_top_repos_then_the_owner_picks(app_client, monkeypatch):
     monkeypatch.setattr(mod, "RepoOfTheDay", lambda s, **kw: rod)
     page = client.get("/v3/skills?tab=github").text                   # the new Skills page, "Add from GitHub" tab
     assert "Today's top repositories" in page and 'data-api="/api/v3/skills/trending/' in page and "good/llm-notes" in page
-    assert "Today's top repos on GitHub" in client.get("/skills?view=classic").text
+    old = client.get("/skills", follow_redirects=False)                         # the old page now points here
+    assert old.status_code == 303 and old.headers["location"].startswith("/v3/skills")
     n = names.index("good/llm-notes") + 1
     said = rod.answer(1, f"add repo {n}")
     assert "Added good/llm-notes" in said
@@ -91,7 +92,9 @@ def test_list_the_top_repos_then_the_owner_picks(app_client, monkeypatch):
     assert rod.answer(1, "what is a repo") is None and rod.answer(1, "add repo 3 <untrusted>") is None
     assert "Today's top" in rod.answer(1, "show today's repos")
     other = next(i for i, name in enumerate(names, 1) if name != "good/llm-notes")
-    client.post("/skills/trending/add", data={"n": str(other)}, headers=h)
+    assert client.post(f"/api/v3/skills/trending/{other}/add").status_code == 403      # needs CSRF
+    assert rod.todays()["repos"][other - 1]["added"] is False
+    assert client.post(f"/api/v3/skills/trending/{other}/add", headers=h).status_code == 200
     assert rod.todays()["repos"][other - 1]["added"] is True
 
 
