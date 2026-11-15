@@ -1,6 +1,11 @@
 # Changelog
 
 ## Prometheus 3.0, M2.3 (on the prometheus-v3 branch, not released yet)
+- Automation builder (Automations → New automation): four steps. When (once on a date and time; repeating every day,
+  weekday or week; or when something happens: a new file in a folder, the battery low, the disk almost full, the CPU
+  busy), what (remind you, or do something as a task), whether to ask you first (on Approvals; without it, risky
+  steps still ask), and a name. Automations that wait for something can be paused, edited, run now or deleted;
+  timed goals can ask first too.
 - Tasks: **Pause** a running task and **Carry on** later. Pause stops it at the next safe point and keeps the steps it
   hasn't run; Carry on does only those (never the whole request again). "Don't carry on" throws the kept steps away.
 - Tasks: a **Board** view (one column per state: Running, Paused, Done, Failed, Stopped) and a **Timeline** view

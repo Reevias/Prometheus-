@@ -881,3 +881,25 @@ html[data-motion="reduced"] *, html[data-motion="reduced"] *::before { animation
 .board-item .board-card { margin-bottom: 2px; }
 .board-actions { opacity: 0.75; flex-wrap: wrap; padding-left: 4px; }
 .board-item:hover .board-actions { opacity: 1; }
+
+/* ---- Automation builder ---------------------------------------------------------------------------------- */
+.builder { max-width: 900px; display: flex; flex-direction: column; gap: 14px; }
+.b-step { border: 1px solid rgb(var(--text-rgb) / 0.07); border-radius: var(--r-md); padding: 16px 18px 18px;
+          background: rgb(var(--surface-rgb) / 0.5); margin: 0; }
+.b-step legend { font-size: 16px; padding: 0 6px; display: flex; align-items: center; gap: 10px; }
+.b-num { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; font-size: 13px;
+         background: rgb(var(--orange-rgb) / 0.15); color: var(--amber); }
+.b-choices { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin: 8px 0 12px; }
+.b-choice { display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 12px; cursor: pointer;
+            border: 1px solid rgb(var(--text-rgb) / 0.1); background: rgb(var(--base-rgb) / 0.4); }
+.b-choice.on { border-color: var(--orange); background: rgb(var(--orange-rgb) / 0.08); }
+.b-choice input { position: absolute; opacity: 0; pointer-events: none; }
+.b-choice small { color: var(--muted); font-size: 12.5px; }
+.b-more { display: flex; flex-wrap: wrap; gap: 14px; }
+.b-more label, .b-text { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--muted); }
+.builder input:not([type=radio]), .builder select, .builder textarea {
+  background: rgb(var(--base-rgb) / 0.7); color: var(--text); border: 1px solid rgb(var(--text-rgb) / 0.14);
+  border-radius: 10px; padding: 9px 11px; font: inherit; color-scheme: dark; }
+.b-text textarea { width: 100%; resize: vertical; }
+.b-name { width: min(420px, 100%); }
+.b-more [data-folder] input { width: min(460px, 70vw); }

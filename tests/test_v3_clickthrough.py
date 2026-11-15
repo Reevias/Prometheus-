@@ -158,7 +158,8 @@ def test_every_control_does_something_and_nothing_breaks(live, browser):
                  "/v3/skills", "/v3/skills/research", "/v3/skills?tab=tools", "/v3/memory", "/v3/memory?tab=files",
                  "/v3/memory?tab=answers", "/v3/memory?tab=topics", "/v3/system", "/v3/system?tab=activity", "/v3/approvals",
                  "/v3/automations", "/v3/research", "/v3/research?mode=study", "/v3/research?mode=money",
-                 "/v3/connections", "/v3/tasks?view=board", "/v3/tasks?view=timeline", "/v3/tasks?view=table"):
+                 "/v3/connections", "/v3/tasks?view=board", "/v3/tasks?view=timeline", "/v3/tasks?view=table",
+                 "/v3/automations/new"):
         click_all(page, base + path, problems, seen)
 
     # Settings: the category menu leads to a real section every time (its forms are tested elsewhere)

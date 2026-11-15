@@ -175,11 +175,18 @@ class ReminderClock:
         if r["chat_id"] in getattr(self.services, "running", {}):
             store.reminder_fired(r["id"], self.clock() + 300)          # that chat is busy: try again in 5 minutes
             return
-        store.add_message(r["chat_id"], "assistant", f"Running your standing goal: {r['text']}", "goal")
+        from prometheus.automations import goal_needs_yes
+
         try:
-            self.services.start_task(r["chat_id"], r["text"])
+            asked = goal_needs_yes(self.services, r)          # "ask me first": it waits for your yes on Approvals
         except Exception:
-            pass
+            asked = False
+        if not asked:
+            store.add_message(r["chat_id"], "assistant", f"Running your standing goal: {r['text']}", "goal")
+            try:
+                self.services.start_task(r["chat_id"], r["text"])
+            except Exception:
+                pass
         nxt = next_time(r["due"], r["repeat"])
         while nxt is not None and nxt <= self.clock():
             nxt = next_time(nxt, r["repeat"])

@@ -390,6 +390,10 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
             store.add_message(chat, "assistant", f"💸 {text}", "budget")
 
     budget.on_warn = _budget_warning
+    from prometheus import automations as _automations
+
+    _automations.ready(store)                     # automations you build (M2.3): rules and the ask-first switch
+    approvals.register(_automations.APPROVAL_KIND, lambda payload: _automations.approved(services, payload))
     services.reminders = ReminderClock(services, notify=_notify)
     import sys as _sys
 

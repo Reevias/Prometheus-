@@ -9,8 +9,8 @@
     {% if not running %}<b>The reminder clock isn't running right now</b>, so nothing rings until Prometheus restarts.{% endif %}</p>
 
   <div class="task-filters">
-    <button type="button" class="pill" id="add-reminder">{{ icon("plus") }}New reminder</button>
-    <button type="button" class="pill" id="add-goal">{{ icon("automations") }}New goal</button>
+    <a class="pill ok" href="/v3/automations/new">{{ icon("automations") }}New automation</a>
+    <button type="button" class="pill" id="add-reminder">{{ icon("plus") }}Quick reminder</button>
     <span class="muted small">Or just say it in a chat: “remind me every day at 8 to drink water”, “every Friday at 6pm, tidy Downloads”.</span>
   </div>
 
@@ -22,6 +22,7 @@
         <span class="state {{ 's-paused' if a.state == 'paused' else 's-done' }}">{{ "Paused" if a.state == "paused" else "On" }}</span></div>
       <dl class="facts auto-facts">
         <dt>Kind</dt><dd>{{ a.kind_label }} <span class="muted">{{ "(runs it as a task)" if a.kind == "goal" else "(rings and says it)" }}</span></dd>
+        {% if a.kind == "goal" %}<dt>Asks first</dt><dd>{{ "Yes, on Approvals" if a.ask_first else "No (risky steps still ask)" }}</dd>{% endif %}
         <dt>Repeats</dt><dd>{{ a.repeat_label }}</dd>
         <dt>Next</dt><dd>{{ "—" if a.state == "paused" else a.next }}</dd>
         <dt>Last ran</dt><dd>{% if a.last_fired %}{{ a.last_fired|day }} {{ a.last_fired|clock }}{% else %}Not yet{% endif %}
@@ -31,6 +32,7 @@
       <div class="row-actions">
         {% if a.state == "paused" %}<button type="button" data-api="/api/v3/automations/{{ a.id }}/pause">Resume</button>
         {% else %}<button type="button" data-api="/api/v3/automations/{{ a.id }}/pause" data-send='{"on": "1"}'>Pause</button>{% endif %}
+        {% if a.kind == "goal" %}<button type="button" data-api="/api/v3/automations/{{ a.id }}/ask" {% if not a.ask_first %}data-send='{"on": "1"}'{% endif %}>{{ "Don't ask first" if a.ask_first else "Ask first" }}</button>{% endif %}
         {% if a.kind == "goal" %}<button type="button" data-api="/api/v3/automations/{{ a.id }}/run" data-confirm="Run this goal now? Its schedule stays the same.">Run now</button>{% endif %}
         <button type="button" data-api="/api/v3/automations/{{ a.id }}/edit" data-prompt="Change what it says or does" data-value="{{ a.text }}">Edit</button>
         <button type="button" data-api="/api/v3/automations/{{ a.id }}/when" data-prompt="When? (e.g. “tomorrow at 8am”, “every weekday at 7pm”)">Change time</button>
@@ -38,6 +40,28 @@
       </div>
     </div>
   {% else %}<p class="muted empty">Nothing scheduled. Add a reminder or a goal above.</p>{% endfor %}
+  </div>
+
+  <h2 class="section">When something happens <span class="muted">{{ rules|length }}</span></h2>
+  <div class="auto-grid">
+  {% for r in rules %}
+    <div class="auto-card {{ '' if r.enabled else 'paused' }}">
+      <div class="skill-top"><b>{{ r.name }}</b><span class="state {{ 's-done' if r.enabled else 's-paused' }}">{{ "On" if r.enabled else "Paused" }}</span></div>
+      <dl class="facts auto-facts">
+        <dt>Waits for</dt><dd>{{ r.event_label }}{% if r.folder %}<br><span class="muted">{{ r.folder }}</span>{% endif %}</dd>
+        <dt>Then</dt><dd>{{ r.action_label }}: {{ r.text }}</dd>
+        {% if r.action == "do" %}<dt>Asks first</dt><dd>{{ "Yes, on Approvals" if r.ask_first else "No (risky steps still ask)" }}</dd>{% endif %}
+        <dt>Last ran</dt><dd>{% if r.last_run %}{{ r.last_run|day }} {{ r.last_run|clock }} · {{ r.last_result }}{% else %}Not yet{% endif %}</dd>
+      </dl>
+      <div class="row-actions">
+        <button type="button" data-api="/api/v3/automations/rules/{{ r.id }}/switch" {% if not r.enabled %}data-send='{"on": "1"}'{% endif %}>{{ "Pause" if r.enabled else "Switch on" }}</button>
+        {% if r.action == "do" %}<button type="button" data-api="/api/v3/automations/rules/{{ r.id }}/ask" {% if not r.ask_first %}data-send='{"on": "1"}'{% endif %}>{{ "Don't ask first" if r.ask_first else "Ask first" }}</button>{% endif %}
+        <button type="button" data-api="/api/v3/automations/rules/{{ r.id }}/run" data-confirm="Run it now?">Run now</button>
+        <button type="button" data-api="/api/v3/automations/rules/{{ r.id }}/edit" data-prompt="Change what it does" data-value="{{ r.text }}">Edit</button>
+        <button type="button" class="danger" data-api="/api/v3/automations/rules/{{ r.id }}/delete" data-confirm="Delete this automation?">Delete</button>
+      </div>
+    </div>
+  {% else %}<p class="muted empty">None yet. <a href="/v3/automations/new">New automation</a> → When something happens.</p>{% endfor %}
   </div>
 
   <h2 class="section">Watchers</h2>
@@ -85,7 +109,6 @@
     });
   }
   document.getElementById("add-reminder").addEventListener("click", function () { add("reminder"); });
-  document.getElementById("add-goal").addEventListener("click", function () { add("goal"); });
   document.querySelectorAll("[data-watch]").forEach(function (box) {
     box.addEventListener("change", function () {
       var f = new FormData(); if (box.checked) f.append("on", "1");

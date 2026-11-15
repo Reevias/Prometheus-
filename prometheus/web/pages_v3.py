@@ -91,6 +91,7 @@ def register_pages(app: FastAPI, services, shell) -> None:
     register_automation_pages(app, services, shell)
     register_research_pages(app, services, shell)
     register_connection_pages(app, services, shell)
+    register_builder_pages(app, services, shell)
 
     # ---- Tasks ---------------------------------------------------------------------------------------------------
     def task_rows(status: str, q: str, period: str) -> list[dict]:
@@ -940,7 +941,10 @@ def register_automation_pages(app: FastAPI, services, shell) -> None:
         s = services.settings
         alerts_id = chat_named("Prometheus alerts")
         alerts = [m for m in store.messages(alerts_id)][-8:][::-1] if alerts_id else []
-        return shell(request, "v3/automations.html", "automations", items=items,
+        from prometheus import automations as _auto
+
+        rules = [_auto.describe(r) for r in _auto.rules(store)]
+        return shell(request, "v3/automations.html", "automations", items=items, rules=rules,
                      switches=[(k, label, about, bool(getattr(s, k, False))) for k, label, about in WATCH_SWITCHES],
                      folders=list(s.watch_folders or []), alerts=alerts, alerts_chat=alerts_id,
                      running="prometheus-reminders" in {t.name for t in __import__("threading").enumerate()})
@@ -1550,3 +1554,137 @@ def register_connection_pages(app: FastAPI, services, shell) -> None:
                 store.audit("user", "connection_enable", {"what": key[:60]})
                 return {"ok": True, "message": "Switched on: it starts the next time it's needed."}
         return bad("No such app.", 404)
+
+
+# ---- Automation builder (M2.3) ---------------------------------------------------------------------------------------
+WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+
+
+def next_at(hour: int, minute: int, repeat: str, weekday: int = 0, now: float | None = None) -> float:
+    """The next time a repeating automation runs: every day, every weekday (Mon-Fri) or every week on a weekday."""
+    import datetime as dt
+
+    now_dt = dt.datetime.fromtimestamp(time.time() if now is None else now)
+    cand = now_dt.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    for _ in range(15):
+        ok = cand > now_dt and (repeat == "daily" or (repeat == "weekdays" and cand.weekday() < 5)
+                                or (repeat == "weekly" and cand.weekday() == weekday))
+        if ok:
+            return cand.timestamp()
+        cand += dt.timedelta(days=1)
+    raise ValueError("Couldn't work out the next time.")
+
+
+def register_builder_pages(app: FastAPI, services, shell) -> None:
+    import datetime as dt
+    from pathlib import Path
+
+    from fastapi import Form
+
+    from prometheus import automations as auto
+
+    store = services.store
+
+    @app.get("/v3/automations/new")
+    def builder_page(request: Request):
+        auto.ready(store)
+        return shell(request, "v3/automation_new.html", "automations", events=auto.EVENTS, weekdays=WEEKDAYS,
+                     folders=[f.get("path", "") for f in services.settings.watch_folders or []])
+
+    def bad(text: str, code: int = 400):
+        return JSONResponse({"error": text}, status_code=code)
+
+    @app.post("/api/v3/automations/build")
+    def api_build(when: str = Form(""), at: str = Form(""), time_of_day: str = Form(""), repeat: str = Form(""),
+                  weekday: int = Form(0), event: str = Form(""), folder: str = Form(""), action: str = Form("do"),
+                  text: str = Form(""), name: str = Form(""), ask_first: str = Form("1")):
+        """Make an automation from the builder's four steps (When, What, Ask first, Name)."""
+        auto.ready(store)
+        text = auto.clean(text)
+        if not text:
+            return bad("Step 2: say what it should remind you of, or do.")
+        action = "remind" if action == "remind" else "do"
+        ask = bool(ask_first) and action == "do"
+        if when == "event":
+            if event == "new_file":
+                try:
+                    folder_path = services.policy.check_read(Path(folder.strip()))
+                except Exception:
+                    return bad("Step 1: Prometheus may not look in that folder. Add it in Settings → Places Prometheus "
+                               "may use first.", 409)
+                if not Path(folder_path).is_dir():
+                    return bad("Step 1: that folder doesn't exist.")
+                folder = str(folder_path)
+            try:
+                rid = auto.add_rule(store, name, event, action, text, folder, ask)
+            except ValueError as e:
+                return bad(str(e))
+            store.audit("user", "add_automation", {"rule": rid, "event": event})
+            return {"ok": True, "message": f"Made “{auto.rule(store, rid)['name']}”: it waits for {auto.EVENTS[event].lower()}."}
+        try:
+            if when == "once":
+                due = dt.datetime.fromisoformat(at.strip()).timestamp()
+                if due <= time.time():
+                    return bad("Step 1: that time has already passed.")
+                rep = ""
+            elif when == "repeat":
+                hh, mm = (int(x) for x in time_of_day.split(":")[:2])
+                rep = repeat if repeat in ("daily", "weekdays", "weekly") else "daily"
+                due = next_at(hh, mm, rep, max(0, min(6, weekday)))
+            else:
+                return bad("Step 1: choose when it runs.")
+        except (ValueError, TypeError):
+            return bad("Step 1: choose a date and time.")
+        from prometheus.reminders import describe
+
+        rid = store.add_reminder(auto.chat_id(store), text, due, rep, "goal" if action == "do" else "reminder")
+        if ask:
+            store._write("UPDATE reminders SET ask_first = 1 WHERE id = ?", (rid,))
+        store.audit("user", "add_automation", {"id": rid, "kind": "timed"})
+        return {"ok": True, "message": f"Made it: next {describe(due)}."}
+
+    @app.post("/api/v3/automations/rules/{rule_id}/switch")
+    def api_rule_switch(rule_id: int, on: str = Form("")):
+        if not auto.set_rule(store, rule_id, enabled=1 if on else 0):
+            return bad("It's gone.", 404)
+        store.audit("user", "switch_automation", {"rule": rule_id, "on": bool(on)})
+        return {"ok": True, "message": "On." if on else "Paused: it won't run until you switch it on."}
+
+    @app.post("/api/v3/automations/rules/{rule_id}/ask")
+    def api_rule_ask(rule_id: int, on: str = Form("")):
+        if not auto.set_rule(store, rule_id, ask_first=1 if on else 0):
+            return bad("It's gone.", 404)
+        return {"ok": True, "message": "It asks you before each run." if on else "It runs by itself; risky steps still ask."}
+
+    @app.post("/api/v3/automations/rules/{rule_id}/edit")
+    def api_rule_edit(rule_id: int, text: str = Form("")):
+        text = auto.clean(text)
+        if not text:
+            return bad("It needs some words: delete it instead.")
+        if not auto.set_rule(store, rule_id, text=text):
+            return bad("It's gone.", 404)
+        return {"ok": True}
+
+    @app.post("/api/v3/automations/rules/{rule_id}/run")
+    def api_rule_run(rule_id: int):
+        r = auto.rule(store, rule_id)
+        if r is None:
+            return bad("It's gone.", 404)
+        return {"ok": True, "message": auto.run(services, r, by_hand=True)}
+
+    @app.post("/api/v3/automations/rules/{rule_id}/delete")
+    def api_rule_delete(rule_id: int):
+        if not auto.delete_rule(store, rule_id):
+            return bad("It's gone.", 404)
+        store.audit("user", "delete_automation", {"rule": rule_id})
+        return {"ok": True}
+
+    @app.post("/api/v3/automations/{reminder_id}/ask")
+    def api_goal_ask(reminder_id: int, on: str = Form("")):
+        rows = store._rows("SELECT kind FROM reminders WHERE id = ? AND state IN ('waiting', 'paused')", (reminder_id,))
+        if not rows:
+            return bad("It's gone.", 404)
+        if rows[0]["kind"] != "goal":
+            return bad("Only goals can ask first; a reminder just rings.", 409)
+        store._write("UPDATE reminders SET ask_first = ? WHERE id = ?", (1 if on else 0, reminder_id))
+        return {"ok": True, "message": "It asks you before each run." if on else "It runs by itself; risky steps still ask."}

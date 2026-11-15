@@ -12,6 +12,8 @@ import threading
 import time
 from pathlib import Path
 
+from prometheus.features import on
+
 CHECK_EVERY = 60
 BATTERY_LOW, BATTERY_OK = 20, 25
 DISK_FULL = 0.90
@@ -35,6 +37,7 @@ class Watchers:
         self.services, self.laptop, self.notify, self.clock = services, laptop, notify, clock
         self.said: set[str] = set()
         self.cpu_high = 0
+        self.fired: set[str] = set()      # events that already ran the automations waiting for them (until it clears)
         self.seen: dict[str, set[str]] = {}
         self.ticks = 0
         self._stop = threading.Event()
@@ -68,6 +71,27 @@ class Watchers:
                 pass
         return True
 
+    def event(self, key: str, happening: bool, detail: dict | None = None) -> None:
+        """Automations you built (Automations → New): run once each time this starts happening."""
+        if not happening:
+            self.fired.discard(key)
+            return
+        if key in self.fired:
+            return
+        self.fired.add(key)
+        try:
+            from prometheus import automations
+            automations.fire(self.services, key, detail)
+        except Exception:
+            pass
+
+    def _wanted(self, event: str) -> bool:
+        try:
+            from prometheus import automations
+            return bool(automations.rules(self.services.store, event, enabled_only=True))
+        except Exception:
+            return False
+
     # -- the checks ------------------------------------------------------------------------
     def check_battery(self) -> None:
         try:
@@ -76,8 +100,11 @@ class Watchers:
             return
         if b["charging"] or b["percent"] >= BATTERY_OK:
             self.said.discard("battery")
+            self.event("battery", False)
         elif b["percent"] < BATTERY_LOW:
-            self.alert("battery", f"Battery is at {b['percent']}%. Plug in the charger soon.")
+            if self.services.settings.watch_battery:
+                self.alert("battery", f"Battery is at {b['percent']}%. Plug in the charger soon.")
+            self.event("battery", True, {"percent": b["percent"]})
 
     def check_disk(self) -> None:
         try:
@@ -87,10 +114,13 @@ class Watchers:
         used = usage.used / usage.total if usage.total else 0
         if used < DISK_FULL - 0.02:
             self.said.discard("disk")
+            self.event("disk", False)
         elif used >= DISK_FULL:
             free_gb = usage.free / 1024 ** 3
-            self.alert("disk", f"Your main drive is {used:.0%} full ({free_gb:.1f} GB left). Ask me to find big files "
-                               "to clear.")
+            if self.services.settings.watch_disk:
+                self.alert("disk", f"Your main drive is {used:.0%} full ({free_gb:.1f} GB left). Ask me to find big "
+                                   "files to clear.")
+            self.event("disk", True, {"used": round(used, 3)})
 
     def check_cpu(self) -> None:
         try:
@@ -100,13 +130,23 @@ class Watchers:
         self.cpu_high = self.cpu_high + 1 if load >= CPU_BUSY else 0
         if self.cpu_high == 0:
             self.said.discard("cpu")
+            self.event("cpu", False)
         elif self.cpu_high * CHECK_EVERY >= CPU_MINUTES * 60:
-            self.alert("cpu", f"The CPU has been over {CPU_BUSY}% for {CPU_MINUTES} minutes. Ask me which apps are "
-                              "open if you want to close something.")
+            if self.services.settings.watch_cpu:
+                self.alert("cpu", f"The CPU has been over {CPU_BUSY}% for {CPU_MINUTES} minutes. Ask me which apps "
+                                  "are open if you want to close something.")
+            self.event("cpu", True)
 
     def check_folders(self) -> None:
         policy = self.services.policy
-        for w in self.services.settings.watch_folders or []:
+        own = list(self.services.settings.watch_folders or []) if on(self.services.settings, "watch_folders") else []
+        try:
+            from prometheus import automations
+            extra = [{"path": f, "goal": "", "rule_only": True} for f in automations.watched_folders(self.services)
+                     if f not in {w.get("path") for w in own}]
+        except Exception:
+            extra = []
+        for w in own + extra:
             folder = Path(w.get("path", ""))
             try:
                 policy.check_read(folder)
@@ -123,6 +163,14 @@ class Watchers:
             if not new:
                 continue
             paths = [str(folder / n) for n in new[:NEW_FILES_SHOWN]]
+            self.fired.discard(f"new_file:{key}")
+            try:
+                from prometheus import automations
+                automations.fire(self.services, "new_file", {"folder": str(folder), "files": paths})
+            except Exception:
+                pass
+            if w.get("rule_only"):
+                continue
             goal = " ".join(str(w.get("goal") or "").split())
             chat = self.alerts_chat()
             if goal and chat not in self.services.running:
@@ -184,13 +232,13 @@ class Watchers:
         self.ticks += 1
         if (self.ticks % EMAIL_EVERY == 1 or EMAIL_EVERY == 1) and on(s, "email_alerts"):
             self.check_email()
-        if s.watch_battery and self.laptop is not None:
+        if (s.watch_battery or self._wanted("battery")) and self.laptop is not None:
             self.check_battery()
-        if s.watch_disk:
+        if s.watch_disk or self._wanted("disk"):
             self.check_disk()
-        if s.watch_cpu and self.laptop is not None:
+        if (s.watch_cpu or self._wanted("cpu")) and self.laptop is not None:
             self.check_cpu()
-        if s.watch_folders and on(s, "watch_folders"):
+        if (s.watch_folders and on(s, "watch_folders")) or self._wanted("new_file"):
             self.check_folders()
 
     def loop(self) -> None:
