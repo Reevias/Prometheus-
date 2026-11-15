@@ -2,15 +2,16 @@
 
 Every bug found and fixed, newest first, so the count is always exact. Add a line for each new one.
 
-**Total fixed: 61** (as of 15 November 2026)
+**Total fixed: 62** (as of 15 November 2026)
 
-## 15 November 2026 (3)
+## 15 November 2026 (4)
 From the M2.2 audit (F1-F4). F3 checked: Topics come from a chat's searchable parts, which are removed when the chat
 is left out, so the tab is already clean; "How it answers" holds general rules and task lessons that aren't tied to
 any chat, so there is nothing to filter.
 
 | # | Bug | Fixed by |
 |---|---|---|
+| 62 | The evening revision post test failed whenever it ran after 20:00 (the planner starts a plan tomorrow that late, so it found no study day "today") | the test pins the planner's clock to midday and picks a post time that can't fall before midnight |
 | 61 | A chat left out in Memory → Privacy still showed its notes in Memory search, and Prometheus (and other AI apps through MCP) still used them | one filter in the store's recall: notes, agent notes and messages from left-out chats are hidden everywhere; including the chat again brings them back |
 | 60 | Skills → GitHub tab: Add and Get today's list now swapped a whole page into the body | JSON actions like the other new pages |
 | 59 | System's "Waiting for you" link went to the old /approvals (an extra redirect) | links to /v3/approvals |
