@@ -54,8 +54,9 @@ files and web pages, what's on screen; memory = "remember…/update memory…" a
 
 ## Project direction: Prometheus 3.0 (owner's roadmap PDF, 12 Nov 2026)
 Development branch: `prometheus-v3` (branched from main at 8fe8ae2; holds M1 + M2 work). Main is the current 2.x line.
-**M0 and M1 are merged into main (12 Nov 2026)**, copied commit by commit from the branch (files identical). M2 stays on
-the branch until it is audited.
+**M0 and M1 are merged into main (12 Nov 2026)**, copied commit by commit from the branch (files identical). **M2 is
+merged into main (15 Nov 2026)** after an independent bug review (report `docs/reports/M2_REPORT.md`); not yet run on
+the owner's laptop. The old 2.x screens are gone: phones get the new look too.
 Rules: preserve the Python/FastAPI/Jinja2/HTMX/Canvas/PyWebView stack; evidence over claims (code + tests + real
 runs + report); a milestone starts only after the previous one is accepted and audited; never fabricate telemetry,
 progress or results; enforce security in code, not prompts; logical commits on the branch, no force-push or
@@ -67,7 +68,7 @@ minimal; LocalRuntime default, Cloudroom optional).
 |---|---|---|
 | M0 | Baseline, test isolation | Done, merged into main |
 | M1 | Tool primitives: path hardening, atomic FS, bounded reader/diff, async terminal, services integration | Done, merged into main: 5 findings + 16 from a second independent audit fixed; tests pass on Windows and Linux (docs/reports/PROMETHEUS_M1_FINDINGS_FIX_REPORT.md) |
-| M2 | Desktop UI from the owner's orange-orbital screenshot (sidebar: Home, Agents, Skills, Tasks, Projects, Memory, Automations, Research, Integrations, System; orbital core; command bar; slash palette; right panel with real health/CPU/RAM/GPU; bottom wave; native window controls) | Spec exists; commits on branch (31a4aac…34793a3) but not audited; audit only after M1 approval |
+| M2 | Desktop UI from the owner's orange-orbital screenshot (sidebar: Home, Agents, Skills, Tasks, Projects, Memory, Automations, Research, Integrations, System; orbital core; command bar; slash palette; right panel with real health/CPU/RAM/GPU; bottom wave; native window controls) | Done, merged into main 15 Nov (bug review: 14 fixes; laptop check to come) |
 | M3 | ReAct orchestrator and model routing | Planned |
 | M4 | Repository-to-skill intelligence (separate repo hub for candidates) | Planned |
 | M5 | DAG orchestration, concurrent child agents | Planned |
