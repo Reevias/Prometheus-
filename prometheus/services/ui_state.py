@@ -39,6 +39,8 @@ COMMANDS: List[Dict[str, str]] = [
      "description": "All your chats"},
     {"command": "/agents", "label": "Agents", "group": "Go", "kind": "go", "value": "/v3/agents",
      "description": "What each agent does, and switching them on or off"},
+    {"command": "/projects", "label": "Projects", "group": "Go", "kind": "go", "value": "/v3/projects",
+     "description": "Folders, chats and notes kept together"},
     {"command": "/tasks", "label": "Tasks", "group": "Go", "kind": "go", "value": "/v3/tasks",
      "description": "Everything you asked, with each step"},
     {"command": "/skills", "label": "Skills", "group": "Go", "kind": "go", "value": "/v3/skills",

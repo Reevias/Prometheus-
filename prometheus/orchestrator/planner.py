@@ -294,6 +294,7 @@ class Orchestrator:
         self.interceptors: list = []       # callables (chat_id, text) -> answer or None: e.g. a quiz in progress
         self.before_steps = None           # callable (chat_id, text, plan) -> answer to stop with, or "" to go on
         self.stopping: set[int] = set()    # chats whose reply the owner stopped (Stop button): ends before the next step
+        self.project_context = None        # callable (chat_id) -> text about the chat's project (M2.3), or None
         self.pausing: set[int] = set()     # chats the owner paused: ends before the next step, the rest is kept
         self.skills = skills
         from prometheus.memory.facts import Facts
@@ -453,6 +454,11 @@ class Orchestrator:
                 f"- {f}" for f in known_facts) + "\n\n"
         # Passages from web pages read before (never private files: this goes to the planning model).
         content += self._earlier_chats(text, chat_id)
+        if self.project_context is not None and chat_id is not None:
+            try:
+                content += self.project_context(chat_id)      # the chat's project: folder, instructions, notes
+            except Exception:
+                pass
         lessons = self.store.relevant_lessons(text)
         if lessons:
             content += "Lessons from earlier tasks (follow them):\n" + "\n".join(f"- {l}" for l in lessons) + "\n\n"

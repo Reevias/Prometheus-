@@ -190,6 +190,23 @@
     plus.addEventListener("click", function () {
       var open = plusMenu.hidden; closeMenus(); plusMenu.hidden = !open; plus.setAttribute("aria-expanded", String(open));
     });
+    // In a project's chat, the + menu also lists the project's files: picking one mentions it in the request
+    var pfiles = $("#project-files");
+    if (pfiles && chatId) fetch("/api/v3/chats/" + chatId + "/project-files", { credentials: "same-origin" })
+      .then(function (r) { return r.ok ? r.json() : { files: [] }; })
+      .then(function (j) {
+        if (!j.files || !j.files.length) return;
+        j.files.slice(0, 12).forEach(function (f) {
+          var b = document.createElement("button"); b.type = "button"; b.setAttribute("role", "menuitem");
+          b.textContent = f.rel; b.title = f.path;
+          b.addEventListener("click", function () {
+            input.value = (input.value ? input.value.replace(/\s*$/, " ") : "") + "the project file " + f.path + " ";
+            plusMenu.hidden = true; grow(); sendState(); input.focus();
+          });
+          pfiles.appendChild(b);
+        });
+        pfiles.hidden = false;
+      }).catch(function () {});
     $$("button[data-accept]", plusMenu).forEach(function (b) {
       b.addEventListener("click", function () {
         fileInput.accept = b.dataset.accept === "*" ? "" : b.dataset.accept; plusMenu.hidden = true; fileInput.click();

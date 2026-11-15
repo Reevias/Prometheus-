@@ -38,6 +38,7 @@
           <small class="muted">{{ h.created|day }} {{ h.created|clock }} · {{ h.sources }} source{{ "s" if h.sources != 1 }} · <a href="/c/{{ h.chat_id }}">chat</a></small></div>
           <div class="row-actions export-row">
             {% for fmt, label in [("md", "MD"), ("pdf", "PDF"), ("docx", "Word"), ("html", "HTML")] %}<a href="/api/v3/research/{{ h.id }}/export?fmt={{ fmt }}" download title="Save as {{ label }}">{{ label }}</a>{% endfor %}
+            {% if projects %}<button type="button" data-to-project="{{ h.id }}" title="Save this report into a project's folder">To project</button>{% endif %}
             <button type="button" class="danger" data-api="/api/v3/tasks/{{ h.id }}/delete" data-confirm="Delete this research from the history? Its chat stays.">Delete</button>
           </div></div>
         {% else %}<p class="muted empty">{% if q %}Nothing matches.{% else %}No research yet. Ask something above: answers come with numbered sources.{% endif %}</p>{% endfor %}
@@ -156,6 +157,17 @@
       fetch("/api/v3/study/quiz", { method: "POST", credentials: "same-origin", body: f, headers: { "X-CSRF-Token": csrf } })
         .then(function (r) { return r.json().then(function (j) { return [r.ok, j]; }); })
         .then(function (x) { if (x[0]) location.href = x[1].url; else promToast(x[1].error || "Couldn't start the quiz.", true); });
+    });
+  });
+  document.querySelectorAll("[data-to-project]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      var names = {{ (projects or [])|tojson }};
+      var pick = prompt("Save into which project? Type its number:\n" + names.map(function (p, i) { return (i + 1) + ". " + p.name; }).join("\n"));
+      var i = parseInt(pick, 10) - 1; if (!(i >= 0 && i < names.length)) return;
+      var f = new FormData(); f.append("project_id", names[i].id);
+      fetch("/api/v3/research/" + b.dataset.toProject + "/to-project", { method: "POST", credentials: "same-origin", body: f,
+            headers: { "X-CSRF-Token": csrf } }).then(function (r) { return r.json().then(function (j) { return [r.ok, j]; }); })
+        .then(function (x) { promToast(x[0] ? x[1].message : (x[1].error || "Couldn't save it."), !x[0]); });
     });
   });
   var add = document.getElementById("add-source");

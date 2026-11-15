@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 import time
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, UploadFile
 from fastapi.responses import JSONResponse
 
 # What the owner sees for each stored task status. "new" is a request that hasn't started its first step yet.
@@ -92,6 +92,7 @@ def register_pages(app: FastAPI, services, shell) -> None:
     register_research_pages(app, services, shell)
     register_connection_pages(app, services, shell)
     register_builder_pages(app, services, shell)
+    register_project_pages(app, services, shell)
 
     # ---- Tasks ---------------------------------------------------------------------------------------------------
     def task_rows(status: str, q: str, period: str) -> list[dict]:
@@ -1128,7 +1129,9 @@ def register_research_pages(app: FastAPI, services, shell) -> None:
         ctx: dict = {"mode": mode, "modes": RESEARCH_MODES, "m": RESEARCH_MODES[mode], "chat_id": cid,
                      "recent": recent, "q": q.strip()[:100]}
         if mode == "research":
-            ctx.update(sources=sources(), history=history(ctx["q"]), excluded=kv_list("research_excluded"))
+            from prometheus import projects as _pj
+            ctx.update(sources=sources(), history=history(ctx["q"]), excluded=kv_list("research_excluded"),
+                       projects=[{"id": p["id"], "name": p["name"]} for p in _pj.all_projects(store)])
         elif mode == "study":
             ctx.update(study_view())
         else:
@@ -1604,7 +1607,7 @@ def register_builder_pages(app: FastAPI, services, shell) -> None:
         if not text:
             return bad("Step 2: say what it should remind you of, or do.")
         action = "remind" if action == "remind" else "do"
-        ask = bool(ask_first) and action == "do"
+        ask = ask_first not in ("0", "") and action == "do"          # "0" = just run; missing = ask first (safe)
         if when == "event":
             if event == "new_file":
                 try:
@@ -1688,3 +1691,216 @@ def register_builder_pages(app: FastAPI, services, shell) -> None:
             return bad("Only goals can ask first; a reminder just rings.", 409)
         store._write("UPDATE reminders SET ask_first = ? WHERE id = ?", (1 if on else 0, reminder_id))
         return {"ok": True, "message": "It asks you before each run." if on else "It runs by itself; risky steps still ask."}
+
+
+# ---- Projects (M2.3) -------------------------------------------------------------------------------------------------
+PROJECT_TABS = ("files", "chats", "tasks", "agents", "notes", "settings")
+
+
+def register_project_pages(app: FastAPI, services, shell) -> None:
+    from pathlib import Path
+
+    from fastapi import File, Form
+    from fastapi.responses import Response
+
+    from prometheus import projects as pj
+
+    store = services.store
+
+    def bad(text: str, code: int = 400):
+        return JSONResponse({"error": text}, status_code=code)
+
+    def card(p: dict) -> dict:
+        ts = pj.tasks(store, p["id"])
+        done = sum(1 for t in ts if t["status"] in ("done", "instant", "phone"))
+        fs = pj.files(p, limit=1000)
+        return {**p, "chats": len(pj.chats(store, p["id"])), "tasks_done": done, "tasks_total": len(ts),
+                "files": sum(1 for f in fs if not f["dir"]), "agents": [a for a, _ in pj.agents_used(store, p["id"])][:4],
+                "last": pj.last_activity(store, p["id"]) or p["created"], "folder_ok": Path(p["folder"]).is_dir()}
+
+    @app.get("/v3/projects")
+    def projects_page(request: Request):
+        return shell(request, "v3/projects.html", "projects", cards=[card(p) for p in pj.all_projects(store)],
+                     trash=pj.all_projects(store, trashed=True), trash_days=pj.TRASH_DAYS)
+
+    @app.get("/v3/projects/{project_id}")
+    def project_page(request: Request, project_id: int, tab: str = "files"):
+        p = pj.get(store, project_id)
+        if p is None or p["trashed"]:
+            return shell(request, "v3/project_missing.html", "projects", status_code=404)
+        tab = tab if tab in PROJECT_TABS else "files"
+        ctx: dict = {"p": card(p), "tab": tab}
+        if tab == "files":
+            ctx["files"] = pj.files(p)
+        elif tab == "chats":
+            ctx["chats"] = pj.chats(store, project_id)
+            ctx["others"] = [(cid, t) for cid, t in store.chats() if not pj.chat_project(store, cid)][:200]
+        elif tab == "tasks":
+            ctx["tasks"] = [{**t, "label": STATUS_LABEL.get(t["status"], t["status"].title())}
+                            for t in pj.tasks(store, project_id)]
+            ctx["titles"] = dict(store.chats())
+        elif tab == "agents":
+            ctx["agents"] = pj.agents_used(store, project_id)
+        elif tab == "notes":
+            ctx["notes"] = pj.notes(store, project_id)
+        return shell(request, "v3/project.html", "projects", **ctx)
+
+    def live(project_id: int) -> dict | None:
+        p = pj.get(store, project_id)
+        return None if p is None or p["trashed"] else p
+
+    @app.post("/api/v3/projects")
+    def api_project_create(name: str = Form(""), folder: str = Form(""), about: str = Form("")):
+        try:
+            pid = pj.create(store, services.policy, services.home, name, folder, about)
+        except pj.ProjectError as e:
+            return bad(str(e))
+        store.audit("user", "project_create", {"project": pid, "from_folder": bool(folder.strip())})
+        return {"ok": True, "url": f"/v3/projects/{pid}", "message": f"Made the project. Its files: {pj.get(store, pid)['folder']}"}
+
+    @app.post("/api/v3/projects/{project_id}/edit")
+    def api_project_edit(project_id: int, name: str = Form(None), about: str = Form(None)):
+        if live(project_id) is None:
+            return bad("No such project.", 404)
+        try:
+            pj.update(store, project_id, name, about)
+        except pj.ProjectError as e:
+            return bad(str(e))
+        return {"ok": True, "message": "Saved."}
+
+    @app.post("/api/v3/projects/{project_id}/trash")
+    def api_project_trash(project_id: int, on: str = Form("1")):
+        p = pj.get(store, project_id)
+        if p is None:
+            return bad("No such project.", 404)
+        on = "" if on == "0" else on                     # "0" = restore (an empty value would read as missing)
+        pj.trash(store, project_id, bool(on))
+        store.audit("user", "project_trash" if on else "project_restore", {"project": project_id})
+        return {"ok": True, "message": (f"Moved to the trash. Restore it within {pj.TRASH_DAYS} days; its folder and "
+                                        "files aren't touched.") if on else "Restored."}
+
+    @app.post("/api/v3/projects/{project_id}/delete")
+    def api_project_delete(project_id: int):
+        if not pj.delete_forever(store, project_id):
+            return bad("Only a project in the trash can be deleted for good.", 409)
+        store.audit("user", "project_delete", {"project": project_id})
+        return {"ok": True, "message": "Deleted for good. Its chats are still in Chats, and its folder wasn't touched."}
+
+    @app.post("/api/v3/projects/{project_id}/chats/new")
+    def api_project_new_chat(project_id: int):
+        p = live(project_id)
+        if p is None:
+            return bad("No such project.", 404)
+        cid = store.create_chat(f"{p['name']} chat")
+        pj.set_chat_project(store, cid, project_id)
+        return {"ok": True, "url": f"/c/{cid}"}
+
+    @app.post("/api/v3/projects/{project_id}/chats/{chat_id}")
+    def api_project_add_chat(project_id: int, chat_id: int, on: str = Form("1")):
+        if live(project_id) is None or chat_id not in dict(store.chats()):
+            return bad("No such project or chat.", 404)
+        on = "" if on == "0" else on                     # "0" = take it out
+        pj.set_chat_project(store, chat_id, project_id if on else 0)
+        return {"ok": True, "message": "Added to the project." if on else "Taken out of the project (the chat stays)."}
+
+    @app.post("/api/v3/projects/{project_id}/notes")
+    def api_project_note_add(project_id: int, text: str = Form("")):
+        if live(project_id) is None:
+            return bad("No such project.", 404)
+        try:
+            pj.add_note(store, project_id, text)
+        except pj.ProjectError as e:
+            return bad(str(e))
+        return {"ok": True}
+
+    @app.post("/api/v3/projects/{project_id}/notes/{note_id}/edit")
+    def api_project_note_edit(project_id: int, note_id: int, text: str = Form("")):
+        try:
+            ok = pj.edit_note(store, project_id, note_id, text)
+        except pj.ProjectError as e:
+            return bad(str(e))
+        return {"ok": True} if ok else bad("That note is gone.", 404)
+
+    @app.post("/api/v3/projects/{project_id}/notes/{note_id}/delete")
+    def api_project_note_delete(project_id: int, note_id: int):
+        return {"ok": True} if pj.delete_note(store, project_id, note_id) else bad("That note is gone.", 404)
+
+    def project_file(p: dict, rel: str) -> Path:
+        root = Path(p["folder"]).resolve()
+        path = (root / rel).resolve()
+        path.relative_to(root)                                   # never outside the project folder
+        return Path(services.policy.check_read(path))
+
+    @app.post("/api/v3/projects/{project_id}/files/open")
+    def api_project_file_open(project_id: int, rel: str = Form(""), how: str = Form("open")):
+        from prometheus.agents.opener import open_output
+
+        p = live(project_id)
+        if p is None:
+            return bad("No such project.", 404)
+        try:
+            path = project_file(p, rel) if rel else Path(services.policy.check_read(Path(p["folder"])))
+            said = open_output(str(path), "folder" if how == "folder" else "open", services.policy)
+        except (ValueError, Exception) as e:
+            return bad(f"Couldn't open it: {getattr(e, 'strerror', None) or e}"[:200], 409)
+        store.audit("user", "project_open", {"project": project_id, "rel": rel[:200]})
+        return {"ok": True, "message": said or "Opened."}
+
+    @app.get("/api/v3/projects/{project_id}/export")
+    def api_project_export(project_id: int):
+        import re as _re
+        p = pj.get(store, project_id)
+        if p is None:
+            return bad("No such project.", 404)
+        name = _re.sub(r"[^\w .-]", "_", p["name"])[:60] or "project"
+        return Response(pj.export_zip(store, project_id), media_type="application/zip",
+                        headers={"Content-Disposition": f'attachment; filename="{name} (Prometheus project).zip"'})
+
+    @app.post("/api/v3/projects/import")
+    async def api_project_import(file: UploadFile = File(...)):
+        raw = await file.read(30 * 1024 * 1024 + 1)
+        if len(raw) > 30 * 1024 * 1024:
+            return bad("That file is too big (30 MB at most).")
+        try:
+            pid = pj.import_zip(store, services.policy, services.home, raw)
+        except pj.ProjectError as e:
+            return bad(str(e))
+        store.audit("user", "project_import", {"project": pid})
+        return {"ok": True, "url": f"/v3/projects/{pid}", "message": "Imported."}
+
+    @app.post("/api/v3/research/{task_id}/to-project")
+    def api_research_to_project(task_id: int, project_id: int = Form(0)):
+        """Save a research answer into a project's folder as Markdown (undo in System → Activity)."""
+        import re as _re
+
+        t, p = store.task(task_id), live(project_id)
+        if not t or not t.get("answer"):
+            return bad("No answer to save yet.", 404)
+        if p is None:
+            return bad("Choose a project.", 404)
+        folder = Path(p["folder"])
+        root = services.policy.root_for(folder)
+        if root is None or not folder.is_dir():
+            return bad("The project's folder isn't there or isn't allowed any more.", 409)
+        base = _re.sub(r'[\\/:*?"<>|]', " ", t["text"])[:60].strip(" .") or "Research"
+        target, n = folder / f"{base}.md", 2
+        while target.exists():
+            target, n = folder / f"{base} ({n}).md", n + 1
+        run = services.files.journal.start(root)
+        try:
+            res = services.files.create(run, target, f"# {t['text']}\n\n{t['answer']}\n".encode("utf-8"), root)
+        finally:
+            services.files.journal.finish(run)
+        if res.status != "done":
+            return bad(f"Couldn't save it: {res.detail}", 409)
+        store.audit("user", "research_to_project", {"task": task_id, "project": project_id})
+        return {"ok": True, "message": f"Saved {target.name} in {p['name']}."}
+
+    @app.get("/api/v3/chats/{chat_id}/project-files")
+    def api_chat_project_files(chat_id: int):
+        """For the + menu in a project's chat: the project's newest files (to mention in a request)."""
+        p = pj.chat_project(store, chat_id)
+        if p is None:
+            return {"project": None, "files": []}
+        return {"project": p["name"], "files": [{"rel": f["rel"], "path": f["path"]} for f in pj.files(p, 60)
+                                                if not f["dir"]][:30]}

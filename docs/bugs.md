@@ -2,9 +2,9 @@
 
 Every bug found and fixed, newest first, so the count is always exact. Add a line for each new one.
 
-**Total fixed: 62** (as of 15 November 2026)
+**Total fixed: 64** (as of 15 November 2026)
 
-## 15 November 2026 (4)
+## 15 November 2026 (6)
 From the M2.2 audit (F1-F4). F3 checked: Topics come from a chat's searchable parts, which are removed when the chat
 is left out, so the tab is already clean; "How it answers" holds general rules and task lessons that aren't tied to
 any chat, so there is nothing to filter.

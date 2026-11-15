@@ -133,3 +133,16 @@ def test_rule_run_now_and_edit(app_client):
     assert client.post(f"/api/v3/automations/rules/{rid}/edit", data={"text": "empty the Recycle Bin"}, headers=h).json()["ok"]
     assert auto.rule(st, rid)["text"] == "empty the Recycle Bin"
     assert client.post("/api/v3/automations/rules/999/run", headers=h).status_code == 404
+
+
+def test_just_run_choice_is_kept(app_client):
+    """The builder's "Just run" radio sends "0"; it must not turn into ask-first (an empty value would have)."""
+    client, services = app_client()
+    h = {"X-CSRF-Token": login(client)}
+    client.post("/api/v3/automations/build", data={"when": "repeat", "time_of_day": "09:00", "repeat": "daily",
+                                                  "action": "do", "text": "check the news", "ask_first": "0"}, headers=h)
+    client.post("/api/v3/automations/build", data={"when": "event", "event": "disk", "action": "do",
+                                                  "text": "find big files", "ask_first": "0"}, headers=h)
+    goal = [a for a in services.store.automations() if a["text"] == "check the news"][0]
+    assert goal["ask_first"] == 0 and auto.rules(services.store)[0]["ask_first"] == 0
+    assert 'name="ask_first" value="0"' in client.get("/v3/automations/new").text

@@ -1,0 +1,92 @@
+{% extends "v3/layout.html" %}
+{% from "v3/icons.html" import icon %}
+{% block title %}{{ p.name }} · Projects · Prometheus{% endblock %}
+{% block topbar %}<a class="crumb" href="/v3/projects">Projects</a><span class="muted">/</span><b>{{ p.name }}</b>{% endblock %}
+{% block content %}
+<section class="page project-page" data-project="{{ p.id }}">
+  <div class="task-title"><h1>{{ p.name }}</h1>
+    <button type="button" class="pill ok" data-api="/api/v3/projects/{{ p.id }}/chats/new" data-then="">{{ icon("chats") }}New chat in this project</button></div>
+  <p class="muted lead">{{ p.folder }}{% if not p.folder_ok %} · <b>this folder isn't there any more</b>{% endif %}</p>
+  <div class="tabs" role="tablist">
+    {% for key, label in [("files", "Files"), ("chats", "Chats"), ("tasks", "Tasks"), ("agents", "Agents"), ("notes", "Notes"), ("settings", "Settings")] %}
+    <a role="tab" href="/v3/projects/{{ p.id }}?tab={{ key }}" class="{{ 'on' if tab == key }}">{{ label }}</a>
+    {% endfor %}
+  </div>
+
+{% if tab == "files" %}
+  <div class="task-actions"><button type="button" class="pill" data-api="/api/v3/projects/{{ p.id }}/files/open" data-send='{"rel": "", "how": "folder"}'>{{ icon("projects") }}Open the folder</button></div>
+  <div class="mem-list">
+    {% for f in files %}<div class="mem-row"><div><p>{{ f.rel }}{{ "/" if f.dir }}</p><small class="muted">{% if not f.dir %}{{ (f.size / 1024)|round(1) }} KB · {% endif %}{{ f.modified|day }} {{ f.modified|clock }}</small></div>
+      {% if not f.dir %}<div class="row-actions"><button type="button" data-api="/api/v3/projects/{{ p.id }}/files/open" data-send='{{ {"rel": f.rel}|tojson }}'>Open</button>
+        <button type="button" data-api="/api/v3/projects/{{ p.id }}/files/open" data-send='{{ {"rel": f.rel, "how": "folder"}|tojson }}'>Show in folder</button></div>{% endif %}</div>
+    {% else %}<p class="muted empty">No files yet. Ask in a project chat (“make a summary of …”) or drop files into its folder.</p>{% endfor %}
+  </div>
+{% elif tab == "chats" %}
+  <div class="mem-list">
+    {% for cid, title in chats %}<div class="mem-row"><div><p><a href="/c/{{ cid }}">{{ title }}</a></p></div>
+      <div class="row-actions"><button type="button" data-api="/api/v3/projects/{{ p.id }}/chats/{{ cid }}" data-send='{"on": "0"}'>Take out</button></div></div>
+    {% else %}<p class="muted empty">No chats yet: press New chat in this project.</p>{% endfor %}
+  </div>
+  {% if others %}
+  <form class="add-skill" id="add-chat"><select name="chat" aria-label="A chat to add">{% for cid, t in others %}<option value="{{ cid }}">{{ t }}</option>{% endfor %}</select>
+    <button type="submit" class="pill">{{ icon("plus") }}Add this chat</button></form>
+  {% endif %}
+{% elif tab == "tasks" %}
+  <div class="mem-list">
+    {% for t in tasks %}<div class="mem-row"><div><p><a href="/v3/tasks/{{ t.id }}">{{ t.text[:140] }}</a></p><small class="muted">{{ titles.get(t.chat_id, "Chat") }} · {{ t.created|day }} {{ t.created|clock }}</small></div>
+      <span class="state s-{{ t.status }}">{{ t.label }}</span></div>
+    {% else %}<p class="muted empty">No tasks yet.</p>{% endfor %}
+  </div>
+{% elif tab == "agents" %}
+  <div class="mem-list">
+    {% for name, n in agents %}<div class="mem-row"><div><p><a href="/v3/agents?show={{ name }}">{{ name|replace("_", " ")|title }}</a></p><small class="muted">{{ n }} step{{ "s" if n != 1 }} in this project</small></div></div>
+    {% else %}<p class="muted empty">No agent has worked on this project yet.</p>{% endfor %}
+  </div>
+{% elif tab == "notes" %}
+  <p class="muted">Notes are read by Prometheus in every chat of this project.</p>
+  <div class="mem-list">
+    {% for n in notes %}<div class="mem-row"><div><p>{{ n.text }}</p><small class="muted">{{ n.created|day }}</small></div>
+      <div class="row-actions"><button type="button" data-api="/api/v3/projects/{{ p.id }}/notes/{{ n.id }}/edit" data-prompt="Change this note" data-value="{{ n.text }}">Edit</button>
+        <button type="button" class="danger" data-api="/api/v3/projects/{{ p.id }}/notes/{{ n.id }}/delete" data-confirm="Delete this note?">Delete</button></div></div>
+    {% else %}<p class="muted empty">No notes yet.</p>{% endfor %}
+  </div>
+  <button type="button" class="pill" data-api="/api/v3/projects/{{ p.id }}/notes" data-prompt="A note for this project">{{ icon("plus") }}Add a note</button>
+{% else %}
+  <div class="sys-grid">
+    <section class="sys-card">
+      <h2>Name and instructions</h2>
+      <p class="muted small">Instructions are followed in every chat of this project (e.g. “answer in Hindi”, “use the IEEE citation style”).</p>
+      <p><b>{{ p.name }}</b></p><p>{{ p.about or "No instructions." }}</p>
+      <div class="row-actions" style="opacity:1">
+        <button type="button" data-api="/api/v3/projects/{{ p.id }}/edit" data-field="name" data-prompt="New name" data-value="{{ p.name }}">Rename</button>
+        <button type="button" data-api="/api/v3/projects/{{ p.id }}/edit" data-field="about" data-prompt="Instructions for this project" data-value="{{ p.about }}">Edit instructions</button>
+      </div>
+    </section>
+    <section class="sys-card">
+      <h2>Move or keep</h2>
+      <p class="muted small">Export saves its notes, instructions and chats as a .zip; its files stay in the folder (copy the folder to move them).</p>
+      <a class="pill" href="/api/v3/projects/{{ p.id }}/export" download>{{ icon("doc") }}Export</a>
+      <button type="button" class="pill danger" data-api="/api/v3/projects/{{ p.id }}/trash" data-confirm="Move this project to the trash? You can restore it for 30 days. Its folder and files aren't touched." data-then="/v3/projects">Move to trash</button>
+    </section>
+  </div>
+{% endif %}
+</section>
+<script>
+(function () {
+  var page = document.querySelector(".project-page"), id = page.dataset.project, csrf = document.body.dataset.csrf;
+  var add = document.getElementById("add-chat");
+  if (add) add.addEventListener("submit", function (e) {
+    e.preventDefault();
+    fetch("/api/v3/projects/" + id + "/chats/" + add.querySelector("select").value, { method: "POST", credentials: "same-origin",
+          body: new FormData(), headers: { "X-CSRF-Token": csrf } }).then(function (r) { if (r.ok) location.reload(); else promToast("Couldn't add it.", true); });
+  });
+  // "New chat in this project": go to the new chat
+  document.addEventListener("click", function (e) {
+    var b = e.target.closest('[data-api$="/chats/new"]'); if (!b) return;
+    e.stopImmediatePropagation(); e.preventDefault();
+    fetch(b.dataset.api, { method: "POST", credentials: "same-origin", body: new FormData(), headers: { "X-CSRF-Token": csrf } })
+      .then(function (r) { return r.json(); }).then(function (j) { if (j.url) location.href = j.url; else promToast(j.error || "Couldn't make it.", true); });
+  }, true);
+})();
+</script>
+{% endblock %}

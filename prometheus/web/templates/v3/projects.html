@@ -1,0 +1,58 @@
+{% extends "v3/layout.html" %}
+{% from "v3/icons.html" import icon %}
+{% block title %}Projects · Prometheus{% endblock %}
+{% block topbar %}<b>Projects</b>{% endblock %}
+{% block content %}
+<section class="page projects-page">
+  <h1>Projects</h1>
+  <p class="muted lead">A project keeps a folder, its chats, notes and your instructions together. Chats in a project know its folder and notes.</p>
+  <div class="task-filters">
+    <button type="button" class="pill ok" id="new-project">{{ icon("plus") }}New project</button>
+    <button type="button" class="pill" id="from-folder">{{ icon("projects") }}From a folder</button>
+    <label class="pill" id="import-label">{{ icon("doc") }}Import<input type="file" id="import-file" accept=".zip" hidden></label>
+  </div>
+  <div class="skill-grid">
+    {% for c in cards %}
+    <a class="skill-card project-card" href="/v3/projects/{{ c.id }}">
+      <div class="skill-top"><b>{{ c.name }}</b>{% if not c.folder_ok %}<span class="state s-failed">folder missing</span>{% endif %}</div>
+      {% if c.about %}<p>{{ c.about[:140] }}</p>{% endif %}
+      <small class="muted">{{ c.files }} file{{ "s" if c.files != 1 }} · {{ c.chats }} chat{{ "s" if c.chats != 1 }} · {{ c.tasks_done }}/{{ c.tasks_total }} tasks done</small>
+      {% if c.tasks_total %}<div class="cost-meter"><span style="width:{{ (100 * c.tasks_done / c.tasks_total)|round|int }}%"></span></div>{% endif %}
+      <small class="muted">{% if c.agents %}{{ c.agents|join(", ")|replace("_", " ") }} · {% endif %}last active {{ c.last|day }}</small>
+    </a>
+    {% else %}<p class="muted empty">No projects yet. Make one for a subject, an assignment or anything with its own files.</p>{% endfor %}
+  </div>
+  {% if trash %}
+  <h2 class="section">Trash <span class="muted">kept {{ trash_days }} days</span></h2>
+  <div class="mem-list">{% for t in trash %}<div class="mem-row past"><div><p>{{ t.name }}</p><small class="muted">{{ t.folder }} · moved to the trash {{ t.trashed|day }}</small></div>
+    <div class="row-actions"><button type="button" data-api="/api/v3/projects/{{ t.id }}/trash" data-send='{"on": "0"}'>Restore</button>
+      <button type="button" class="danger" data-api="/api/v3/projects/{{ t.id }}/delete" data-confirm="Delete this project for good? Its chats stay in Chats, and its folder and files are not touched.">Delete for good</button></div></div>{% endfor %}</div>
+  {% endif %}
+</section>
+<script>
+(function () {
+  var csrf = document.body.dataset.csrf;
+  function make(folder) {
+    var name = prompt("Name of the project?"); if (!name || !name.trim()) return;
+    var f = new FormData(); f.append("name", name);
+    if (folder) { var path = prompt("Which folder? (its full path, e.g. C:\\Users\\you\\Documents\\Physics)"); if (!path || !path.trim()) return; f.append("folder", path); }
+    send("/api/v3/projects", f);
+  }
+  function send(url, f) {
+    fetch(url, { method: "POST", credentials: "same-origin", body: f, headers: { "X-CSRF-Token": csrf } })
+      .then(function (r) { return r.json().then(function (j) { return [r.ok, j]; }); })
+      .then(function (x) {
+        if (!x[0]) { promToast(x[1].error || "That didn't work.", true); return; }
+        try { sessionStorage.setItem("prom-said", x[1].message); } catch (z) {}
+        location.href = x[1].url;
+      });
+  }
+  document.getElementById("new-project").addEventListener("click", function () { make(false); });
+  document.getElementById("from-folder").addEventListener("click", function () { make(true); });
+  document.getElementById("import-file").addEventListener("change", function (e) {
+    if (!e.target.files.length) return;
+    var f = new FormData(); f.append("file", e.target.files[0]); send("/api/v3/projects/import", f);
+  });
+})();
+</script>
+{% endblock %}

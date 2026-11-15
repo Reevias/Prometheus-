@@ -1,6 +1,12 @@
 # Changelog
 
 ## Prometheus 3.0, M2.3 (on the prometheus-v3 branch, not released yet)
+- Projects (in the menu after Chats): a folder, its chats, notes and your instructions together. New project (its files
+  go in Documents\Prometheus Projects\<name>) or from a folder you choose (it must be a place Prometheus may use).
+  Tabs: Files (open, show in folder), Chats (new chat in the project, add or take out chats), Tasks, Agents, Notes,
+  Settings (rename, instructions, export, move to trash). Chats in a project know its folder, instructions and notes;
+  their + menu lists the project's files; Research can save a report into a project. Trash keeps a project 30 days;
+  deleting for good never touches its folder or chats. Export and import as a .zip.
 - Automation builder (Automations → New automation): four steps. When (once on a date and time; repeating every day,
   weekday or week; or when something happens: a new file in a folder, the battery low, the disk almost full, the CPU
   busy), what (remind you, or do something as a task), whether to ask you first (on Approvals; without it, risky

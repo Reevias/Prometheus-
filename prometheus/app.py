@@ -393,6 +393,11 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
     from prometheus import automations as _automations
 
     _automations.ready(store)                     # automations you build (M2.3): rules and the ask-first switch
+    from prometheus import projects as _projects
+
+    _projects.ready(store)                        # projects (M2.3): folders, chats, notes and instructions
+    _projects.empty_old_trash(store)              # projects in the trash for over 30 days (records only; files stay)
+    orchestrator.project_context = lambda chat_id: _projects.context(store, chat_id)
     approvals.register(_automations.APPROVAL_KIND, lambda payload: _automations.approved(services, payload))
     services.reminders = ReminderClock(services, notify=_notify)
     import sys as _sys

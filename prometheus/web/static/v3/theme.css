@@ -903,3 +903,10 @@ html[data-motion="reduced"] *, html[data-motion="reduced"] *::before { animation
 .b-text textarea { width: 100%; resize: vertical; }
 .b-name { width: min(420px, 100%); }
 .b-more [data-folder] input { width: min(460px, 70vw); }
+
+/* ---- Projects -------------------------------------------------------------------------------------------- */
+.project-card .cost-meter { margin: 2px 0; }
+.project-chip { margin-left: 8px; text-decoration: none; }
+.project-files { border-top: 1px solid rgb(var(--text-rgb) / 0.08); margin-top: 4px; padding-top: 6px; max-height: 240px; overflow: auto; }
+.project-files small { display: block; padding: 2px 12px 4px; }
+#import-label { cursor: pointer; }

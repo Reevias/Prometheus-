@@ -1,6 +1,7 @@
 {% extends "v3/layout.html" %}
 {% block title %}{{ chat_title }} · Prometheus{% endblock %}
 {% block topbar %}<canvas data-sphere="mini" aria-hidden="true"></canvas><b>{{ chat_title }}</b>
+{% if project %}<a class="chip small project-chip" href="/v3/projects/{{ project.id }}" title="This chat is in the project {{ project.name }}">{{ project.name }}</a>{% endif %}
 <button type="button" class="chip small" id="export" aria-haspopup="menu" aria-expanded="false" title="Download this chat">Export</button>
 <div class="menu" id="export-menu" role="menu" hidden style="top: 52px">
   <a role="menuitem" href="/api/v3/chats/{{ chat_id }}/export?fmt=md" download>Markdown (.md)</a>

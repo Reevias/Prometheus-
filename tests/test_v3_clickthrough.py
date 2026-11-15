@@ -9,6 +9,7 @@ never clicked.
 from __future__ import annotations
 
 import socket
+from pathlib import Path
 import threading
 import time
 
@@ -58,6 +59,11 @@ def live(tmp_home):
     st.finish_step(sid, "done", "Wrote it")
     st.set_task_status(tid, "done")
     st.add_message(chat, "assistant", "Here:\n\n```python\nprint(1)\n```\n\n| a | b |\n|---|---|\n| 1 | 2 |", "fake")
+    from prometheus import projects as pj                         # a project to click through (M2.3)
+    pid = pj.create(st, services.policy, tmp_home.home, "Demo project", about="short answers")
+    pj.add_note(st, pid, "a note")
+    pj.set_chat_project(st, chat, pid)
+    (Path(pj.get(st, pid)["folder"]) / "notes.txt").write_text("hello")
     port = free_port()
     server = uvicorn.Server(uvicorn.Config(create_app(services), host="127.0.0.1", port=port, log_level="warning"))
     thread = threading.Thread(target=server.run, daemon=True)
@@ -159,7 +165,9 @@ def test_every_control_does_something_and_nothing_breaks(live, browser):
                  "/v3/memory?tab=answers", "/v3/memory?tab=topics", "/v3/system", "/v3/system?tab=activity", "/v3/approvals",
                  "/v3/automations", "/v3/research", "/v3/research?mode=study", "/v3/research?mode=money",
                  "/v3/connections", "/v3/tasks?view=board", "/v3/tasks?view=timeline", "/v3/tasks?view=table",
-                 "/v3/automations/new"):
+                 "/v3/automations/new", "/v3/projects", "/v3/projects/1", "/v3/projects/1?tab=chats",
+                 "/v3/projects/1?tab=tasks", "/v3/projects/1?tab=agents", "/v3/projects/1?tab=notes",
+                 "/v3/projects/1?tab=settings"):
         click_all(page, base + path, problems, seen)
 
     # Settings: the category menu leads to a real section every time (its forms are tested elsewhere)
