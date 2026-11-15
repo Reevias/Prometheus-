@@ -6,7 +6,8 @@ import pytest
 from prometheus.agents.base import Agent, StepResult
 from prometheus.models.base import ProviderUnavailable
 from prometheus.models.fake import FakeProvider
-from prometheus.orchestrator.planner import PlanError, Orchestrator, resolve_inputs, validate_plan
+from prometheus.orchestrator.planner import (PlanError, Orchestrator, paused_run, resolve_inputs,
+                                             validate_plan)
 
 PROMPTS = None  # use the package prompts
 
@@ -140,9 +141,66 @@ def test_no_planner_pauses_task(make_ctx):
     assert out.status == "paused" and "No AI model" in out.answer
 
 
+def test_pause_keeps_what_is_left_and_carry_on_finishes_it(make_ctx):
+    class Pauser(Agent):
+        name = "pauser"
+        description = "asks to pause"
+        tools = set()
+        ask = None
+
+        def run(self, goal, inputs, ctx):
+            if Pauser.ask:
+                Pauser.ask()
+            return StepResult("done", "one")
+
+    REGISTRY["pauser"] = Pauser
+    try:
+        orch, ctx, chat, _, _ = build(make_ctx, [plan(step(1, "pauser"), step(2, "lister"))])
+        Pauser.ask = lambda: orch.request_pause(chat)
+        out = orch.run(chat, "do two things")
+        assert out.status == "paused" and "Paused" in out.answer
+        assert [s.agent for s in ctx.store.steps(out.task_id)] == ["pauser"]     # the second never ran
+        kept = paused_run(ctx.store, out.task_id)
+        assert [s["agent"] for s in kept["steps"]] == ["lister"]
+        Pauser.ask = None
+        done = orch.resume_paused(out.task_id)
+        assert done.status == "done" and done.answer == "All done."
+        assert [s.agent for s in ctx.store.steps(out.task_id)] == ["pauser", "lister"]
+        assert paused_run(ctx.store, out.task_id) is None                     # taken: can't run twice
+        assert orch.resume_paused(out.task_id) is None
+    finally:
+        Pauser.ask = None
+        del REGISTRY["pauser"]
+
+
+def test_pause_pressed_during_the_last_step_still_finishes_the_answer(make_ctx):
+    class Late(Agent):
+        name = "late"
+        description = "pauses at the end"
+        tools = set()
+        ask = None
+
+        def run(self, goal, inputs, ctx):
+            if Late.ask:
+                Late.ask()
+            return StepResult("done", "one")
+
+    REGISTRY["late"] = Late
+    try:
+        orch, ctx, chat, _, _ = build(make_ctx, [plan(step(1, "late"))])
+        Late.ask = lambda: orch.request_pause(chat)
+        out = orch.run(chat, "one thing")
+        assert out.status == "paused"
+        assert paused_run(ctx.store, out.task_id)["steps"] == []              # all steps done, only the answer is left
+        Late.ask = None
+        assert orch.resume_paused(out.task_id).answer == "All done."
+    finally:
+        Late.ask = None
+        del REGISTRY["late"]
+
+
 def test_kill_switch_stops_between_steps(make_ctx):
     class Killer(Agent):
-        name = "killer"
         description = "stops"
         tools = set()
 

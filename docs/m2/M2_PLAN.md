@@ -34,9 +34,11 @@ on narrow windows; multi-monitor with different resolutions.
 
 **Sidebar** — expanded with icons and labels by default, collapsible to icons (labels never lost). Items as
 decided for M2.2 (see "M2.2 decisions" below): Home, Agents, Chats, Skills, Tasks, Memory, Automations, System,
-Research, plus the gear for Settings; Projects joins in M2.3. Active item: orange left bar, orange-tinted fill, orange text and icon. Profile at the bottom (the
-owner's name from Settings, asked on first run), gear for Settings, bell with unread badge, last 20 notifications in
-a dropdown, toasts. Ctrl+1…Ctrl+0 jump to the first ten; arrow keys move through items; visible focus outlines.
+Research, plus the gear for Settings; Projects joins in M2.3 **after Chats** (owner, 15 Nov 2026). Active item: orange
+left bar, orange-tinted fill, orange text and icon. Profile at the bottom (the owner's name from Settings, asked on
+first run), gear for Settings, bell with unread badge, last 20 notifications in a dropdown, toasts.
+Ctrl+1…Ctrl+0 jump to the first ten (all ten, Home to Research); arrow keys move through items; visible focus
+outlines.
 
 **Home** (before the first message) — large orbital sphere slightly above centre, greeting below, command bar,
 quick actions, recent chats, suggested prompts, real system status summary.
@@ -151,8 +153,12 @@ not added, so the scope freeze holds.
 ## M2.3 — New basics (don't exist yet)
 - **Projects** — cards (name, last activity, files, task progress, agents); workspace tabs: files, chats, tasks,
   agents, memory notes, settings; create blank or from a folder; import/export; delete to a restorable trash;
-  research reports saved into projects; project files in the `+` menu.
-- **Task runner** — pause/resume for running tasks; Kanban and timeline views.
+  research reports saved into projects; project files in the `+` menu. Projects goes after Chats in the menu (owner,
+  15 Nov 2026).
+- **Task runner** — **built (15 Nov 2026):** Pause and Carry on a running task (it stops at the next safe point and
+  keeps only the steps it hasn't run — owner chose "stop at once"; a step already talking to an AI finishes first
+  because it can't be cut in half safely), Board and Timeline views on the Tasks page. Kanban is read-only on
+  purpose: the state belongs to Prometheus, so nothing drags.
 - **Automation builder** — one-time, recurring and conditional (on today's watcher triggers), with approvals.
 
 ## M2.4 — Switch-over

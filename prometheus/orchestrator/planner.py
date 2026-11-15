@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Callable
 
@@ -100,6 +100,44 @@ def read_only_ok(step: dict) -> bool:
 
 class PlanError(Exception):
     pass
+
+
+class Paused(Exception):
+    """The owner pressed Pause: the task stops and its remaining steps are kept for Carry on."""
+
+
+# ---- pausing a task the owner started: where each paused task stopped, so it can carry on ------------------
+PAUSED_KV = "paused_runs"
+PAUSED_MAX = 20                  # the newest few are kept; older ones just can't carry on
+
+
+def paused_runs(store) -> dict:
+    try:
+        kept = store.kv_get(PAUSED_KV, {})
+    except Exception:
+        return {}
+    return kept if isinstance(kept, dict) else {}
+
+
+def paused_run(store, task_id: int) -> dict | None:
+    """What a paused task has left to do (None if it can't carry on, e.g. it was stopped by an AI limit)."""
+    found = paused_runs(store).get(str(int(task_id)))
+    return found if isinstance(found, dict) else None
+
+
+def save_paused_run(store, task_id: int, data: dict) -> None:
+    kept = paused_runs(store)
+    kept[str(int(task_id))] = data
+    for old in sorted(kept, key=lambda k: int(k))[:-PAUSED_MAX]:
+        kept.pop(old, None)
+    store.kv_set(PAUSED_KV, kept)
+
+
+def drop_paused_run(store, task_id: int) -> None:
+    kept = paused_runs(store)
+    if kept.pop(str(int(task_id)), None) is not None:
+        store.kv_set(PAUSED_KV, kept)
+
 
 
 @dataclass
@@ -256,6 +294,7 @@ class Orchestrator:
         self.interceptors: list = []       # callables (chat_id, text) -> answer or None: e.g. a quiz in progress
         self.before_steps = None           # callable (chat_id, text, plan) -> answer to stop with, or "" to go on
         self.stopping: set[int] = set()    # chats whose reply the owner stopped (Stop button): ends before the next step
+        self.pausing: set[int] = set()     # chats the owner paused: ends before the next step, the rest is kept
         self.skills = skills
         from prometheus.memory.facts import Facts
 
@@ -479,6 +518,7 @@ class Orchestrator:
     def _finish(self, chat_id: int, task_id: int, status: str, answer: str, model: str = "",
                 private: bool = False, topic: str = "") -> TaskOutcome:
         self.stopping.discard(chat_id)
+        self.pausing.discard(chat_id)
         # the markers around outside text are for the AIs; the owner sees only the words
         answer = re.sub(r"</?untrusted(?: source=\"[^\"\n]*\")?>\n?", "", answer or "").replace("&lt;/untrusted", "</untrusted")
         noted = self._remembered.pop(task_id, [])
@@ -627,11 +667,16 @@ class Orchestrator:
         a step already running finishes first."""
         self.stopping.add(chat_id)
 
+    def request_pause(self, chat_id: int) -> None:
+        """Pause this chat's reply (the Tasks page's Pause): it stops at the next safe point and keeps what's left."""
+        self.pausing.add(chat_id)
+
     def run(self, chat_id: int, text: str, read_only: bool = False) -> TaskOutcome:
         """read_only: another app asked; only reading steps run, nothing is remembered or changed."""
         from prometheus.safety.budget import for_chat
 
         self.stopping.discard(chat_id)            # a stop pressed for an earlier reply doesn't stop this one
+        self.pausing.discard(chat_id)             # nor a pause pressed for an earlier one
 
         for_chat(chat_id)                         # costs from this task count for this chat
         history = self._history(chat_id)          # taken before this message is added
@@ -732,13 +777,22 @@ class Orchestrator:
         results: dict[int, StepResult] = {}
         bad: set[int] = set()
         private: set[int] = set()
+        return self._execute(chat_id, task_id, text, plan, read_only, only, fast, topic, results, bad, private)
+
+    def _execute(self, chat_id: int, task_id: int, text: str, plan: Plan, read_only: bool, only: str,
+                 fast, topic: str, results: dict[int, StepResult], bad: set[int],
+                 private: set[int]) -> TaskOutcome:
+        """Run the plan's steps (all of them, or the ones left after a pause) and write one answer."""
+        pos = 0                                   # the step about to run; what a pause keeps
         try:
             spent_at_start = self._spent()
             executed = 0
-            for st in plan.steps:
+            for pos, st in enumerate(plan.steps):
                 self.killswitch.check()
                 if chat_id in self.stopping:
                     raise Stopped("Stopped. Ask again whenever you like.")
+                if chat_id in self.pausing:
+                    raise Paused("Paused by you.")
                 if any(d in bad for d in st["depends_on"]):
                     sid = self.store.add_step(task_id, st["agent"], st["goal"], st["inputs"])
                     self.store.finish_step(sid, "skipped", "Skipped because an earlier step failed.")
@@ -784,6 +838,16 @@ class Orchestrator:
             return self._finish(chat_id, task_id, "paused", self._paused_text(chat_id, text, e, read_only))
         except Stopped as e:
             return self._finish(chat_id, task_id, "stopped", str(e))
+        except Paused:
+            self._keep_for_carry_on(task_id, text, plan, pos, results, bad, private, read_only, only, topic)
+            return self._finish(chat_id, task_id, "paused",
+                                "Paused. Everything it needed is done; press Carry on and I'll write the answer.")
+
+        if chat_id in self.pausing:                # pressed while the last step ran: keep it for Carry on
+            self._keep_for_carry_on(task_id, text, plan, len(plan.steps), results, bad, private, read_only, only,
+                                    topic)
+            return self._finish(chat_id, task_id, "paused",
+                                "Paused. Everything it needed is done; press Carry on and I'll write the answer.")
 
         if fast is not None:                                  # an instant command: say what the step said
             steps = self.store.steps(task_id)
@@ -808,3 +872,35 @@ class Orchestrator:
         status = "failed" if bad and len(bad) == len(plan.steps) else "done"
         return self._finish(chat_id, task_id, status, answer or "Done.", written_by, private=bool(private),
                             topic=topic)
+
+    def _keep_for_carry_on(self, task_id: int, text: str, plan: Plan, pos: int, results: dict[int, StepResult],
+                           bad: set[int], private: set[int], read_only: bool, only: str, topic: str) -> None:
+        """Write down what's left of a paused task, so Carry on runs only that (never the whole request again)."""
+        try:
+            save_paused_run(self.store, task_id, {
+                "text": text, "topic": topic, "read_only": bool(read_only), "only": only or "",
+                "steps": list(plan.steps[pos:]),
+                "done": {str(k): asdict(v) for k, v in results.items()},
+                "bad": sorted(bad), "private": sorted(private)})
+        except (TypeError, ValueError):
+            pass            # a step's answer can't be written down: Carry on says so, and Run again still works
+
+    def resume_paused(self, task_id: int) -> TaskOutcome | None:
+        """Carry on a task the owner paused, from the step it stopped at. None when nothing was kept."""
+        saved = paused_run(self.store, task_id)
+        t = self.store.task(task_id)
+        if saved is None or not t:
+            drop_paused_run(self.store, task_id)
+            return None
+        drop_paused_run(self.store, task_id)          # taken now: a double click can't run it twice
+        chat_id = int(t["chat_id"])
+        self.stopping.discard(chat_id)
+        self.pausing.discard(chat_id)
+        self.store.set_task_status(task_id, "running")
+        self.store.add_message(chat_id, "assistant", "Carrying on from where I stopped.", "paused")
+        plan = Plan(steps=list(saved.get("steps") or []), topic=str(saved.get("topic") or ""))
+        results = {int(k): StepResult(**v) for k, v in (saved.get("done") or {}).items() if isinstance(v, dict)}
+        return self._execute(chat_id, task_id, str(saved.get("text") or t["text"]), plan,
+                             bool(saved.get("read_only")), str(saved.get("only") or ""), None,
+                             str(saved.get("topic") or ""), results, set(saved.get("bad") or []),
+                             set(saved.get("private") or []))

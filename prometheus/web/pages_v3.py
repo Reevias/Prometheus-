@@ -43,6 +43,45 @@ def took(start: float, end: float) -> str:
     return f"{secs // 3600} h {(secs % 3600) // 60} min"
 
 
+# ---- Tasks page views: cards and table are the same rows styled two ways; board and timeline are their own ----
+TASK_VIEWS = {"cards": "v3/tasks_list.html", "table": "v3/tasks_list.html",
+              "board": "v3/tasks_board.html", "timeline": "v3/tasks_timeline.html"}
+STATUS_OF_GROUP = {s: key for key, (_, statuses) in STATUS_GROUPS.items() for s in statuses}
+
+
+def board_of(rows: list[dict]) -> list[dict]:
+    """The same rows as five columns of cards (Running, Paused, Done, Failed, Stopped)."""
+    return [{"key": key, "label": label, "cards": [r for r in rows if r["status"] in statuses]}
+            for key, (label, statuses) in STATUS_GROUPS.items()]
+
+
+def timeline_window(period: str, rows: list[dict], now: float | None = None) -> tuple[float, float]:
+    """The stretch of time the timeline shows: the chosen period, or the last two weeks of tasks."""
+    now = time.time() if now is None else now
+    start = since_for(period, now)
+    if not start:
+        newest = max((r["created"] for r in rows), default=0.0)
+        start = min(now - 14 * 86400, newest - 86400) if newest else now - 14 * 86400
+    return start, now
+
+
+def timeline_bars(rows: list[dict], start: float, end: float, now: float | None = None) -> list[dict]:
+    """One bar per task that overlaps the window: where it began and how long it took (still running: up to now)."""
+    now = time.time() if now is None else now
+    span = max(end - start, 1.0)
+    out = []
+    for r in sorted(rows, key=lambda r: (r["created"], r["id"])):
+        began = max(float(r["created"] or 0.0), start)
+        ended = min(float(r["finished"] or now) if r["status"] not in ("new", "running") else now, end)
+        if ended < start or began > end:
+            continue
+        out.append({**r, "group": STATUS_OF_GROUP.get(r["status"], "failed"),
+                    "left": round((began - start) / span * 100, 3),
+                    "width": round(max((ended - began) / span * 100, 0.35), 3),
+                    "began": began, "ended": ended, "how": took(began, ended) or "just now"})
+    return out[:80]
+
+
 def register_pages(app: FastAPI, services, shell) -> None:
     store = services.store
     register_skill_pages(app, services, shell)
@@ -64,19 +103,25 @@ def register_pages(app: FastAPI, services, shell) -> None:
         return rows
 
     @app.get("/v3/tasks")
-    def tasks_page(request: Request, status: str = "all", q: str = "", period: str = "all", view: str = ""):
+    def tasks_page(request: Request, status: str = "all", q: str = "", period: str = "all", view: str = "cards"):
         status = status if status in STATUS_GROUPS else "all"
         period = period if period in PERIODS else "all"
+        view = view if view in TASK_VIEWS else "cards"
         counts = store.task_status_counts()
         groups = {k: sum(counts.get(s, 0) for s in v[1]) for k, v in STATUS_GROUPS.items()}
         rows = task_rows(status, q, period)
+        start, end = timeline_window(period, rows)
         ctx = dict(rows=rows, status=status, q=q, period=period, groups=groups, total=sum(counts.values()),
-                   STATUS_GROUPS=STATUS_GROUPS, PERIODS=PERIODS, live=any(r["live"] for r in rows))
+                   STATUS_GROUPS=STATUS_GROUPS, PERIODS=PERIODS, live=any(r["live"] for r in rows),
+                   view=view, part=TASK_VIEWS[view], board=board_of(rows),
+                   bars=timeline_bars(rows, start, end), span=(start, end))
         if request.headers.get("HX-Request") and request.headers.get("HX-Target") == "task-list":
-            return shell(request, "v3/tasks_list.html", "tasks", **ctx)
+            return shell(request, TASK_VIEWS[view], "tasks", **ctx)
         return shell(request, "v3/tasks.html", "tasks", **ctx)
 
     def task_detail(task_id: int) -> dict | None:
+        from prometheus.orchestrator.planner import paused_run
+
         t = store.task(task_id)
         if not t:
             return None
@@ -91,8 +136,10 @@ def register_pages(app: FastAPI, services, shell) -> None:
             "ORDER BY id", (t["chat_id"], t["created"], end or time.time()))]
         return {**t, "label": STATUS_LABEL.get(t["status"], t["status"].title()),
                 "live": t["status"] in ("new", "running") and t["chat_id"] in services.running,
+                "pausing": t["chat_id"] in services.orchestrator.pausing,
                 "took": took(t["created"], end), "steps": steps, "notes": store.agent_notes(task_id),
                 "outputs": outputs, "chat": store.chat_title(t["chat_id"]) or "Chat",
+                "resumable": t["status"] == "paused" and paused_run(store, task_id) is not None,
                 "resume_booked": t["status"] == "paused" and _resume_booked(t["chat_id"])}
 
     def _resume_booked(chat_id: int) -> bool:
@@ -126,11 +173,47 @@ def register_pages(app: FastAPI, services, shell) -> None:
             return {"stopping": task_id, "message": "Stopping after the current step."}
         if t["status"] == "paused":
             from prometheus import resume
+            from prometheus.orchestrator.planner import drop_paused_run
+
             resume.cancel(store, t["chat_id"])
+            drop_paused_run(store, task_id)          # nothing kept to carry on with now
             store.set_task_status(task_id, "stopped", t.get("answer") or "")
             store.audit("user", "cancel_task", {"task": task_id})
             return {"stopped": task_id, "message": "Cancelled: it won't resume by itself."}
         return JSONResponse({"error": "That task isn't running."}, status_code=409)
+
+    @app.post("/api/v3/tasks/{task_id}/pause")
+    def api_task_pause(task_id: int):
+        """Pauses a running task: it stops at the next safe point and keeps the steps it hasn't run."""
+        t = store.task(task_id)
+        if not t:
+            return _gone()
+        if t["status"] in ("new", "running") and t["chat_id"] in services.running:
+            services.orchestrator.request_pause(t["chat_id"])
+            store.audit("user", "pause_task", {"task": task_id})
+            return {"pausing": task_id, "message": "Pausing: it stops at the next safe point and keeps what's left."}
+        return JSONResponse({"error": "That task isn't running."}, status_code=409)
+
+    @app.post("/api/v3/tasks/{task_id}/resume")
+    def api_task_resume(task_id: int):
+        """Carries on a task the owner paused, from the step it stopped at."""
+        from prometheus.orchestrator.planner import paused_run
+
+        t = store.task(task_id)
+        if not t:
+            return _gone()
+        if t["status"] != "paused":
+            return JSONResponse({"error": "Only a paused task can carry on."}, status_code=409)
+        if t["chat_id"] in services.running:
+            return JSONResponse({"error": "Prometheus is already working in that chat."}, status_code=409)
+        if t["chat_id"] not in dict(store.chats()):
+            return JSONResponse({"error": "Its chat was deleted, so it can't carry on there."}, status_code=409)
+        if paused_run(store, task_id) is None:
+            return JSONResponse({"error": "That one has nothing kept to carry on with: run it again instead."},
+                                status_code=409)
+        services.resume_task(task_id)
+        store.audit("user", "resume_task", {"task": task_id})
+        return {"resumed": task_id, "message": "Carrying on from where it stopped."}
 
     @app.post("/api/v3/tasks/{task_id}/retry")
     def api_task_retry(task_id: int):
@@ -156,7 +239,10 @@ def register_pages(app: FastAPI, services, shell) -> None:
             return JSONResponse({"error": "Stop it first: it's still running."}, status_code=409)
         if t["status"] == "paused":
             from prometheus import resume
+            from prometheus.orchestrator.planner import drop_paused_run
+
             resume.cancel(store, t["chat_id"])
+            drop_paused_run(store, task_id)
         store.delete_task(task_id)
         store.audit("user", "delete_task", {"task": task_id, "text": t["text"][:200]})
         return {"deleted": task_id}

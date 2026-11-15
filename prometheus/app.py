@@ -135,6 +135,27 @@ class Services:
         thread.start()
         return thread
 
+    def resume_task(self, task_id: int) -> threading.Thread:
+        """Carry on a task the owner paused, from the step it stopped at (Tasks page: Carry on)."""
+        t = self.store.task(task_id) or {}
+        chat_id = t.get("chat_id")
+        if chat_id is not None:
+            self.running[chat_id] = True      # taken now, so a second Carry on can't run the same steps twice
+
+        def work():
+            started, outcome = time.monotonic(), None
+            try:
+                outcome = self.orchestrator.resume_paused(task_id)
+            finally:
+                if chat_id is not None:
+                    self.running.pop(chat_id, None)
+            if outcome is not None:
+                self.after_task(outcome, t.get("text") or "", time.monotonic() - started)
+
+        thread = threading.Thread(target=work, daemon=True)
+        thread.start()
+        return thread
+
 
 LONG_TASK = 30          # seconds: a task that took longer gets a "done" notification
 

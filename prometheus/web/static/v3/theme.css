@@ -845,3 +845,35 @@ html[data-motion="reduced"] *, html[data-motion="reduced"] *::before { animation
 .task-del svg { width: 16px; height: 16px; stroke: currentColor; }
 .tasks-page[data-view=table] .task-row { padding-right: 48px; }
 .tasks-page[data-view=table] .task-del { bottom: auto; top: 50%; transform: translateY(-50%); right: 8px; }
+
+/* The board: one column per state, scrolled sideways on a narrow window. Cards open the task; nothing drags. */
+.task-list.board { max-width: none; }
+.board-cols { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(230px, 1fr); gap: 12px; overflow-x: auto;
+              padding-bottom: 6px; }
+.board-col { background: var(--surface); border: 1px solid rgb(var(--text-rgb) / 0.06); border-radius: var(--r-md);
+             padding: 12px; min-height: 120px; }
+.board-col h3 { margin: 0 0 10px; font-size: 13px; font-weight: 600; color: var(--muted); letter-spacing: 0.02em; }
+.board-card { display: grid; gap: 6px; padding: 11px 12px; margin-bottom: 8px; border-radius: 12px; text-decoration: none;
+              background: var(--raised); border: 1px solid rgb(var(--text-rgb) / 0.06); }
+.board-card:hover { border-color: rgb(var(--orange-rgb) / 0.45); }
+.board-card b { font-size: 13.5px; font-weight: 600; line-height: 1.35; color: var(--text); }
+.board-card small { font-size: 11.5px; line-height: 1.4; }
+.board-card .state { justify-self: start; }
+.board-col .empty-col { font-size: 12px; margin: 4px 0 0; }
+
+/* The timeline: a bar per task, from when you asked to when it finished. */
+.task-list.tlview { max-width: 1100px; }
+.tl-head { display: flex; justify-content: space-between; padding: 0 0 6px 150px; }
+.tl-rows { display: grid; gap: 6px; }
+.tl-row { display: grid; grid-template-columns: 140px 1fr 72px; gap: 10px; align-items: center; text-decoration: none;
+          padding: 3px 0; }
+.tl-name { font-size: 12.5px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tl-track { position: relative; height: 12px; border-radius: 6px; background: rgb(var(--text-rgb) / 0.05); }
+.tl-bar { position: absolute; top: 0; height: 12px; border-radius: 6px; background: var(--muted); min-width: 2px; }
+.tl-bar.b-running { background: var(--amber); }
+.tl-bar.b-paused { background: var(--orange); }
+.tl-bar.b-done { background: var(--ok); }
+.tl-bar.b-failed { background: var(--bad); }
+.tl-bar.b-stopped { background: var(--muted); }
+.tl-row:hover .tl-track { outline: 1px solid rgb(var(--orange-rgb) / 0.45); outline-offset: 1px; }
+.tl-how { text-align: right; }

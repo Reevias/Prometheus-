@@ -1,5 +1,12 @@
 # Changelog
 
+## Prometheus 3.0, M2.3 (on the prometheus-v3 branch, not released yet)
+- Tasks: **Pause** a running task and **Carry on** later. Pause stops it at the next safe point and keeps the steps it
+  hasn't run; Carry on does only those (never the whole request again). "Don't carry on" throws the kept steps away.
+- Tasks: a **Board** view (one column per state: Running, Paused, Done, Failed, Stopped) and a **Timeline** view
+  (a bar per task, from when you asked to when it finished), from the same real rows as the list. The view you pick
+  is remembered.
+
 ## Prometheus 3.0, M2.2 (on the prometheus-v3 branch, not released yet)
 - Privacy fix (audit): a chat you leave out of memory is now hidden everywhere: Memory search, Prometheus's own
   answers and other AI apps never see its notes or messages. Include it again and they come back. The chat stays in

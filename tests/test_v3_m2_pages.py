@@ -99,6 +99,80 @@ def test_task_actions(app_client):
     assert client.post(f"/api/v3/tasks/{orphan}/retry", headers=h).status_code == 409
 
 
+def test_task_board_and_timeline_views(app_client):
+    client, services = app_client()
+    login(client)
+    st = services.store
+    _, tid = _task(st, "sort my downloads")
+    r = client.get("/v3/tasks?view=board")
+    assert r.status_code == 200 and 'class="board-cols"' in r.text
+    assert 'href="/v3/tasks/%d"' % tid in r.text and 'data-state="done"' in r.text
+    r = client.get("/v3/tasks?view=timeline&period=week")
+    assert 'class="tl-row"' in r.text and "tl-bar b-done" in r.text
+    assert f'href="/v3/tasks/{tid}"' in r.text
+    # anything else is the list, and the HTMX refresh brings back the same view
+    assert 'class="task-row"' in client.get("/v3/tasks?view=banana").text
+    h = {"HX-Request": "true", "HX-Target": "task-list"}
+    assert 'class="board-cols"' in client.get("/v3/tasks?view=board", headers=h).text
+    assert "tl-rows" in client.get("/v3/tasks?view=timeline", headers=h).text
+    assert "tl-bar" not in client.get("/v3/tasks?view=cards", headers=h).text
+
+
+def test_board_and_timeline_put_each_task_in_the_right_place():
+    from prometheus.web.pages_v3 import board_of, timeline_bars, timeline_window
+
+    rows = [{"id": 1, "created": 1000.0, "finished": 1060.0, "status": "done", "label": "Done"},
+            {"id": 2, "created": 1030.0, "finished": 0.0, "status": "running", "label": "Running"},
+            {"id": 3, "created": 1040.0, "finished": 1050.0, "status": "failed", "label": "Failed"}]
+    cols = {c["key"]: [r["id"] for r in c["cards"]] for c in board_of(rows)}
+    assert cols == {"running": [2], "paused": [], "done": [1], "failed": [3], "stopped": []}
+    start, end = timeline_window("all", rows, now=1100.0)
+    assert end == 1100.0 and start <= 1000.0
+    bars = timeline_bars(rows, start, end, now=1100.0)
+    assert [b["id"] for b in bars] == [1, 2, 3]                    # oldest first, like a timeline
+    assert bars[1]["group"] == "running" and bars[1]["ended"] == 1100.0   # a running task goes up to now
+    assert all(0 <= b["width"] <= 100 for b in bars)
+    assert timeline_bars([{"id": 9, "created": 10.0, "finished": 20.0, "status": "done", "label": "Done"}],
+                         1000.0, 1100.0, now=1100.0) == []           # before the window: not drawn
+
+
+def test_pause_and_carry_on(app_client):
+    client, services = app_client()
+    h = {"X-CSRF-Token": login(client)}
+    st = services.store
+    chat, tid = _task(st)
+    # pause: only a task running in its chat, and the page offers it
+    assert client.post(f"/api/v3/tasks/{tid}/pause", headers=h).status_code == 409
+    st.set_task_status(tid, "running")
+    services.running[chat] = True
+    assert 'data-task="pause"' in client.get(f"/v3/tasks/{tid}").text
+    assert client.post(f"/api/v3/tasks/{tid}/pause", headers=h).json()["pausing"] == tid
+    assert chat in services.orchestrator.pausing
+    services.orchestrator.pausing.discard(chat)
+    services.running.pop(chat, None)
+    # carry on: only a paused task that kept something, and only from its own chat
+    assert client.post(f"/api/v3/tasks/{tid}/resume", headers=h).status_code == 409
+    st.set_task_status(tid, "paused", "Paused by you.")
+    assert client.post(f"/api/v3/tasks/{tid}/resume", headers=h).status_code == 409      # nothing kept
+    from prometheus.orchestrator.planner import paused_run, save_paused_run
+
+    save_paused_run(st, tid, {"text": "sort my downloads", "steps": [], "done": {}, "bad": [], "private": []})
+    assert 'data-task="resume"' in client.get(f"/v3/tasks/{tid}").text
+    r = client.post(f"/api/v3/tasks/{tid}/resume", headers=h)
+    assert r.status_code == 200 and r.json()["resumed"] == tid
+    for _ in range(200):
+        if chat not in services.running and st.task(tid)["status"] != "running":
+            break
+        time.sleep(0.05)
+    assert st.task(tid)["status"] in ("done", "failed")
+    assert paused_run(st, tid) is None
+    # don't carry on: a paused task with something kept can be stopped for good, and the kept steps go
+    st.set_task_status(tid, "paused", "Paused by you.")
+    save_paused_run(st, tid, {"text": "sort my downloads", "steps": [], "done": {}, "bad": [], "private": []})
+    assert client.post(f"/api/v3/tasks/{tid}/stop", headers=h).status_code == 200
+    assert st.task(tid)["status"] == "stopped" and paused_run(st, tid) is None
+
+
 def test_actions_need_the_csrf_token(app_client):
     client, services = app_client()
     login(client)

@@ -3,7 +3,7 @@
 {% block title %}Tasks · Prometheus{% endblock %}
 {% block topbar %}<b>Tasks</b>{% endblock %}
 {% block content %}
-<section class="page tasks-page">
+<section class="page tasks-page" data-view="{{ view }}">
   <h1>Tasks</h1>
   <p class="muted lead">Everything you asked Prometheus to do, newest first. Open one to see each step, what it used and what it made.</p>
   <form class="task-filters" id="task-filters" hx-get="/v3/tasks" hx-target="#task-list" hx-trigger="input changed delay:300ms from:input, change"
@@ -16,24 +16,51 @@
       {% endfor %}
     </div>
     <select name="period" aria-label="When">{% for key, (label, _) in PERIODS.items() %}<option value="{{ key }}" {{ 'selected' if period == key }}>{{ label }}</option>{% endfor %}</select>
+    <input type="hidden" name="view" id="task-view" value="{{ view }}">
     <div class="view-toggle" role="group" aria-label="Show as">
-      <button type="button" data-view="cards" title="Cards">{{ icon("grid") }}</button>
-      <button type="button" data-view="table" title="Table">{{ icon("list") }}</button>
+      <button type="button" data-view="cards" title="Cards" aria-pressed="{{ 'true' if view == 'cards' }}">{{ icon("grid") }}</button>
+      <button type="button" data-view="table" title="Table" aria-pressed="{{ 'true' if view == 'table' }}">{{ icon("list") }}</button>
+      <button type="button" data-view="board" title="Board (one column per status)" aria-pressed="{{ 'true' if view == 'board' }}">{{ icon("board") }}</button>
+      <button type="button" data-view="timeline" title="Timeline (when each one ran)" aria-pressed="{{ 'true' if view == 'timeline' }}">{{ icon("timeline") }}</button>
     </div>
   </form>
-  <div id="task-list">{% include "v3/tasks_list.html" %}</div>
+  <div id="task-list">{% include part %}</div>
 </section>
 <script>
 (function () {
-  var page = document.querySelector(".tasks-page"), KEY = "prom-tasks-view";
+  var page = document.querySelector(".tasks-page"), KEY = "prom-tasks-view", form = document.getElementById("task-filters");
+  var known = ["cards", "table", "board", "timeline"];
   function show(v) {
     page.dataset.view = v;
-    page.querySelectorAll("[data-view]").forEach(function (b) { b.classList.toggle("on", b.dataset.view === v); b.disabled = b.dataset.view === v; });
+    document.getElementById("task-view").value = v;
+    page.querySelectorAll(".view-toggle [data-view]").forEach(function (b) {
+      var on = b.dataset.view === v;
+      b.classList.toggle("on", on);
+      b.setAttribute("aria-pressed", on ? "true" : "false");
+    });
     try { localStorage.setItem(KEY, v); } catch (e) {}
   }
-  var saved = "cards"; try { saved = localStorage.getItem(KEY) || "cards"; } catch (e) {}
-  show(saved);
-  page.addEventListener("click", function (e) { var b = e.target.closest("[data-view]"); if (b) show(b.dataset.view); });
+  show("{{ view }}");
+  // No choice in the address: use the one remembered from last time (board and timeline need the server, so reload once)
+  var asked = new URLSearchParams(location.search).get("view");
+  if (!asked) {
+    var saved = null; try { saved = localStorage.getItem(KEY); } catch (e) {}
+    if (saved && known.indexOf(saved) >= 0 && saved !== "{{ view }}") {
+      if (saved === "board" || saved === "timeline") {
+        var qs = new URLSearchParams(new FormData(form)); qs.set("view", saved);
+        location.replace("/v3/tasks?" + qs.toString());
+        return;
+      }
+      show(saved);
+    }
+  }
+  page.addEventListener("click", function (e) {
+    var b = e.target.closest(".view-toggle [data-view]"); if (!b) return;
+    var v = b.dataset.view;
+    show(v);
+    var qs = new URLSearchParams(new FormData(form)); qs.set("view", v);   // cards, table, board, timeline: ask the server
+    htmx.ajax("GET", "/v3/tasks?" + qs.toString(), { target: "#task-list", pushUrl: "/v3/tasks?" + qs.toString() });
+  });
   page.addEventListener("change", function (e) {          // the status chips light up as you pick one
     if (e.target.name !== "status") return;
     page.querySelectorAll(".seg label").forEach(function (l) { l.classList.toggle("on", l.querySelector("input").checked); });

@@ -9,11 +9,18 @@
     <dt>Started</dt><dd>{{ t.created|day }} {{ t.created|clock }}</dd>
     {% if t.finished %}<dt>Finished</dt><dd>{{ t.finished|day }} {{ t.finished|clock }} · took {{ t.took }}</dd>{% endif %}
     <dt>Steps</dt><dd>{{ t.steps|length }}</dd>
-    {% if t.status == "paused" %}<dt>Resumes</dt><dd>{{ "By itself when the AI limit resets" if t.resume_booked else "Not booked: retry it yourself" }}</dd>{% endif %}
+    {% if t.status == "paused" %}<dt>Resumes</dt><dd>{% if t.resumable %}When you press Carry on{% elif t.resume_booked %}By itself when the AI limit resets{% else %}Not booked: run it again yourself{% endif %}</dd>{% endif %}
   </dl>
   <div class="task-actions">
+    {% if t.live %}
+      {% if t.pausing %}<button type="button" class="pill" disabled>Pausing…</button>
+      {% else %}<button type="button" class="pill" data-task="pause" data-id="{{ t.id }}" title="Stop it now and keep the steps it hasn't run">{{ icon("pause") }}Pause</button>{% endif %}
+    {% endif %}
+    {% if t.resumable %}
+    <button type="button" class="pill" data-task="resume" data-id="{{ t.id }}" title="Carry on from the step it stopped at">{{ icon("play") }}Carry on</button>
+    {% endif %}
     {% if t.live or t.status == "paused" %}
-    <button type="button" class="pill" data-task="stop" data-id="{{ t.id }}">{{ icon("stop") }}{{ "Stop" if t.live else "Cancel resuming" }}</button>
+    <button type="button" class="pill" data-task="stop" data-id="{{ t.id }}">{{ icon("stop") }}{{ "Stop" if t.live else "Don't carry on" }}</button>
     {% endif %}
     {% if not t.live %}
     <button type="button" class="pill" data-task="retry" data-id="{{ t.id }}" title="Ask the same thing again in its chat">{{ icon("send") }}Run again</button>
