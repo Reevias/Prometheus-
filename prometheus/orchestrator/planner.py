@@ -321,6 +321,7 @@ class Orchestrator:
         self.front_door = False            # M3.1: rules first, a free fast AI when unsure (on in the real app)
         self.loop = None                   # M3.3: the think-act-look loop for complex jobs
         self.live_text: dict[int, str] = {}  # M3.5: an answer being written, per chat
+        self.live_context = None           # M3.6: callable -> "Right now: ..." (counts only, no titles)
         self.pausing: set[int] = set()     # chats the owner paused: ends before the next step, the rest is kept
         self.skills = skills
         from prometheus.memory.facts import Facts
@@ -444,7 +445,13 @@ class Orchestrator:
         memories = "\n".join(f"- {m[:400]}" for m in remembered) or "(none)"
         from prometheus.quick import now_line
 
-        content = f"{now_line()}\n\nThings to remember about the user:\n{memories}\n\n"
+        live = ""
+        if self.live_context is not None:            # M3.6: counts only (reminders, tasks, approvals, battery)
+            try:
+                live = self.live_context() or ""
+            except Exception:
+                live = ""
+        content = f"{now_line()}{' ' + live if live else ''}\n\nThings to remember about the user:\n{memories}\n\n"
         known_facts = self.facts.relevant(text)
         if known_facts:
             content += "Known facts (people, places and things in the owner's life):\n" + "\n".join(

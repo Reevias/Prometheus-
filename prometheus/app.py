@@ -333,6 +333,9 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
     from prometheus.orchestrator.loop import ThinkActLoop
 
     orchestrator.loop = ThinkActLoop(orchestrator)     # M3.3: complex jobs, up to 12 rounds
+    from prometheus.orchestrator.live_context import line as _live_line
+
+    orchestrator.live_context = lambda: _live_line(services)   # M3.6 (services is filled in below)
     orchestrator.extra_catalog = apps_agent.MANAGER.catalog_text
     orchestrator.settings = settings          # Features switches and Stop everything
     from prometheus import features as _features
