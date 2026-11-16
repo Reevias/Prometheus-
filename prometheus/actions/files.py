@@ -111,10 +111,17 @@ class FileActions:
         root = Path(root).resolve()
         if not new_name or "/" in new_name or "\\" in new_name or new_name in (".", ".."):
             return ActionResult("skipped", "Invalid new name.")
+        # a name Windows would change or read differently ("a.exe." loses its dot; "a.txt:x" is a hidden stream)
+        if ":" in new_name or new_name != new_name.rstrip(" ."):
+            return ActionResult("skipped", "Invalid new name (no colons, and no dot or space at the end).")
         path, problem = self._precheck(src, root, expected)
         if problem:
             return problem
-        return self._relocate(run_id, "rename", path, path.with_name(new_name), root)
+        try:
+            target = self.policy.check_change(path.with_name(new_name), root)   # the new name gets the same checks
+        except PathBlocked as e:
+            return ActionResult("skipped", str(e))
+        return self._relocate(run_id, "rename", path, target, root)
 
     def copy(self, run_id: str, src: Path, dest_dir: Path, root: Path) -> ActionResult:
         """Copy a file or folder into dest_dir (inside root). The source may be anywhere Prometheus may read.
@@ -135,7 +142,10 @@ class FileActions:
             self._make_dirs(run_id, root, target_dir)
             target = _unique(target_dir / source.name)
             if source.is_dir():
-                shutil.copytree(source, target, symlinks=True)
+                # protected places inside a folder (.ssh, AppData, browser profiles...) are never copied out
+                def skip_protected(folder, names):
+                    return [n for n in names if self.policy.is_blocked(Path(folder) / n)]
+                shutil.copytree(source, target, symlinks=True, ignore=skip_protected)
             else:
                 shutil.copy2(source, target)
         except OSError as e:

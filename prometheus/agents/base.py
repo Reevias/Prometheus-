@@ -1,6 +1,7 @@
 """What every agent gets and returns."""
 from __future__ import annotations
 
+import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -15,7 +16,7 @@ UNTRUSTED_RULE = (
 
 
 def untrusted(text: str, source: str) -> str:
-    safe = text.replace("</untrusted", "&lt;/untrusted")
+    safe = re.sub(r"</untrusted", "&lt;/untrusted", text, flags=re.I)        # any capitals
     src = source.replace('"', "'")
     return f'<untrusted source="{src}">\n{safe}\n</untrusted>'
 
@@ -72,6 +73,7 @@ class Agent(ABC):
     description: ClassVar[str]
     tools: ClassVar[set[str]]
     private_outputs: ClassVar[bool] = False   # results contain personal data (file names, document text)
+    private_with_files: ClassVar[bool] = False   # results are private when the step is given the owner's files
     required_inputs: ClassVar[tuple] = ()     # inputs a plan must always give this agent
     accepts_private: ClassVar[bool] = True    # False for agents that send inputs to the web or the cloud
 

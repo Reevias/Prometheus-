@@ -23,6 +23,7 @@ class CodeAgent(Agent):
                    "owner's files to copy in). Files it saves show in Outputs.")
     tools = {"run_code"}
     accepts_private = True          # the owner's data stays on the laptop
+    private_with_files = True       # a script given your files: what it prints is private, so only the laptop's AI reads it
     required_inputs = ("code",)
 
     def run(self, goal: str, inputs: dict, ctx: AgentContext) -> StepResult:
@@ -45,7 +46,7 @@ class CodeAgent(Agent):
                 return StepResult("failed", f"There's no file at {f}.")
             files.append(str(p))
         digest = hashlib.sha256(code.encode()).hexdigest()[:16]
-        shown = code if len(code) < 1500 else code[:1500] + "\n# ... (more)"
+        shown = code          # the WHOLE script, never a cut-down one: what you approve is exactly what runs
         payload = {"code": code, "files": files, "task_id": ctx.task_id, "chat_id": ctx.chat_id(), "network": False}
         return ctx.ask("code_run", f"Run this Python script (no internet, only its own folder):\n```python\n{shown}\n```",
                        payload, exact=f"code:{digest}", broad="code:any",

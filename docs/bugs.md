@@ -2,7 +2,30 @@
 
 Every bug found and fixed, newest first, so the count is always exact. Add a line for each new one.
 
-**Total fixed: 80** (as of 15 November 2026)
+**Total fixed: 95** (as of 16 November 2026)
+
+## 16 November 2026, security audit (15)
+Five reviewers read the whole app against the Claude-BugHunter vulnerability classes (files and paths, XSS/CSRF/login,
+commands and web requests, SQL and secrets, prompt injection and approvals). Each fix has a test that failed first.
+Report: `docs/reports/SECURITY_AUDIT_16NOV.md`.
+
+| # | Bug | Fixed by |
+|---|---|---|
+| 95 | Chat export crashed (server error) for a chat with a Hindi or other non-Latin title | one safe download-name helper for every export |
+| 94 | A page's text containing </UNTRUSTED> in capitals could close the outside-text wrapper early | the wrapper is case-blind |
+| 93 | The browser password approval didn't say which site gets the password, and didn't re-check it | it names the real page and refuses if the page changed |
+| 92 | An MCP app's request showed only the first 300 characters on Approvals, but ran up to 2000 | the whole request is shown |
+| 91 | Scripts and own tools given your files weren't treated as private, so what they printed could reach a cloud AI | private when given your files |
+| 90 | Quiz and exam answers made from private notes were stored as not private and sent to the cloud planner later | stored private |
+| 89 | Translate fell back to a cloud AI for text taken from your private files when the laptop AI was down | never for text from your files (typed words still may) |
+| 88 | An error reply naming an Obsidian note wasn't escaped | escaped, plain text |
+| 87 | Login cookies had no Secure flag on the https cloud copy | Secure when the proxy says https |
+| 86 | On the cloud copy, 5 wrong passwords from any one device locked everyone out | attempts counted per device |
+| 85 | The MCP web-address check was a prefix match (http://localhost.evil.com passed) | the host is compared exactly |
+| 84 | The script approval showed only the first 1500 characters, so a script could hide its second half | the whole script is shown |
+| 83 | A script could run any command through ctypes (libc system/popen/exec) and slip past every sandbox rule | dangerous system calls refused |
+| 82 | Renaming a file accepted names Windows reads differently (a.exe. , a.txt:stream, reserved names) and skipped the safety checks | such names refused; the new name gets the same checks |
+| 81 | Copying a folder (e.g. your home) copied protected files inside it (.ssh keys, Prometheus's own keys) out | protected places are skipped |
 
 ## 15 November 2026, M2.4 bug hunt (14)
 An independent review of M2.3 and M2.4 before the merge. Each fix has a test that failed before it.

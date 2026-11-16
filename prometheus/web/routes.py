@@ -17,6 +17,7 @@ from markupsafe import Markup, escape
 from prometheus.app import Services, apply_settings
 from prometheus.auth import verify_password
 from prometheus.catalog import catalog_updated, load_catalog
+from prometheus.web.download import attachment
 from prometheus.memory.store import MARK_END, MARK_START
 from prometheus.models.router import head_choices
 from prometheus.memory.titles import PLACEHOLDERS, clean_title, quick_title
@@ -387,24 +388,23 @@ def register_routes(app: FastAPI, services: Services) -> None:
             return JSONResponse({"error": "No such chat."}, status_code=404)
         title = store.chat_title(chat_id) or "Chat"
         msgs = store.messages(chat_id)
-        safe = re.sub(r"[^\w .-]", "_", title)[:60].strip() or "chat"
         if fmt == "json":
             body = _json.dumps({"title": title, "messages": [
                 {"role": m.role, "text": m.text, "time": m.created, "model": m.model} for m in msgs]},
                 ensure_ascii=False, indent=2)
             return Response(body, media_type="application/json",
-                            headers={"Content-Disposition": f'attachment; filename="{safe}.json"'})
+                            headers={"Content-Disposition": attachment(title, "json")})
         md = f"# {title}\n\n" + "\n\n".join(
             f"**{'You' if m.role == 'user' else 'Prometheus'}** ({time.strftime('%Y-%m-%d %H:%M', time.localtime(m.created))})\n\n{m.text}"
             for m in msgs)
         if fmt == "pdf":
             from prometheus.actions.pdf import markdown_pdf
             return Response(markdown_pdf(md, title), media_type="application/pdf",
-                            headers={"Content-Disposition": f'attachment; filename="{safe}.pdf"'})
+                            headers={"Content-Disposition": attachment(title, "pdf")})
         if fmt != "md":
             return JSONResponse({"error": "Use md, json or pdf."}, status_code=400)
         return Response(md, media_type="text/markdown; charset=utf-8",
-                        headers={"Content-Disposition": f'attachment; filename="{safe}.md"'})
+                        headers={"Content-Disposition": attachment(title, "md")})
 
     @app.post("/api/v3/chats/{chat_id}/stop")
     def api_v3_stop(chat_id: int):
@@ -586,7 +586,7 @@ def register_routes(app: FastAPI, services: Services) -> None:
                 note.resolve().relative_to(folder.resolve())
                 services.policy.check_read(note)
                 obsidian.open_uri(obsidian.Vault(folder.resolve()).uri(note.resolve()))
-                return Response(f"Opened {note.stem} in Obsidian.", status_code=200)
+                return Response("Opened " + __import__("html").escape(note.stem) + " in Obsidian.", status_code=200, media_type="text/plain")
             except (ValueError, PathBlocked):
                 pass
         try:

@@ -263,6 +263,18 @@ def validate_plan(raw: str, registry: dict) -> Plan:
     return Plan(clean, answer=answer, remember=remember, topic=topic, title=title, facts=facts)
 
 
+def step_is_private(agent_cls, inputs) -> bool:
+    """Does this step's result hold personal data? Some agents always do; a script does when it is given your files."""
+    if getattr(agent_cls, "private_outputs", False):
+        return True
+    if not getattr(agent_cls, "private_with_files", False):
+        return False
+    files = inputs.get("files") if isinstance(inputs, dict) else None
+    if files is None and isinstance(inputs, list):                      # the plan's [{"key", "value"}] form
+        files = next((i.get("value") for i in inputs if isinstance(i, dict) and i.get("key") == "files"), None)
+    return bool(files)
+
+
 def resolve_inputs(inputs: dict, results: dict[int, StepResult], private_steps: frozenset[int] = frozenset(),
                    allow_private: bool = True) -> dict:
     out = {}
@@ -272,6 +284,8 @@ def resolve_inputs(inputs: dict, results: dict[int, StepResult], private_steps: 
             sid, field = int(m.group(1)), m.group(2)
             if sid in private_steps and not allow_private:
                 raise PlanError(f"Step {sid} holds private data from your files; it can't be sent to the web or cloud.")
+            if sid in private_steps:
+                out["_from_private"] = True          # an agent that could use the cloud must not, for this text
             if sid in results and field == "summary" and field not in results[sid].data:
                 out[key] = results[sid].summary          # the text a step wrote, e.g. to save it in a file
                 continue
@@ -586,7 +600,7 @@ class Orchestrator:
             if blocked:
                 self.store.finish_step(sid, "failed", blocked)
                 return StepResult("failed", blocked), agent_cls
-            if agent_cls.private_outputs:
+            if step_is_private(agent_cls, st["inputs"]):
                 private.add(st["id"])
             inputs = resolve_inputs(st["inputs"], results, frozenset(private),
                                     getattr(agent_cls, "accepts_private", True))
@@ -702,7 +716,8 @@ class Orchestrator:
             except Exception:
                 said = None
             if said:
-                return self._finish(chat_id, task_id, "done", said, "instant")
+                # a quiz or exam check-in repeats a card's question and answer, which come from your notes
+                return self._finish(chat_id, task_id, "done", said, "instant", private=True)
         if not read_only and "<untrusted" not in text:
             # "remember…", "update memory…", "forget…": always done, at once, without any AI
             from prometheus.remember import handle as memory_command

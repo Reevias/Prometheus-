@@ -89,7 +89,14 @@ class HttpServer:
     """A server at a web address (streamable HTTP). A token, if any, is sent as a Bearer header."""
 
     def __init__(self, url: str, token: str = "", http: httpx.Client | None = None):
-        if not url.startswith(("https://", "http://127.0.0.1", "http://localhost")):
+        from urllib.parse import urlsplit
+
+        try:
+            parts = urlsplit(url)
+            local = parts.scheme == "http" and parts.hostname in ("127.0.0.1", "localhost") and "@" not in parts.netloc
+        except ValueError:
+            parts, local = None, False
+        if parts is None or not (local or (parts.scheme == "https" and parts.hostname)):
             raise MCPError("Use an https:// address (or a local http://127.0.0.1 one).")
         self.url, self.token = url, token
         self.http = http or httpx.Client(timeout=CALL_TIMEOUT)

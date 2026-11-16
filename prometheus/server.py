@@ -172,6 +172,12 @@ def create_app(services: Services, background: bool = False) -> FastAPI:
     @app.post("/login")
     def login(request: Request, password: str = Form("")):
         client = request.client.host if request.client else "unknown"
+        if client in ("127.0.0.1", "::1"):
+            # behind the cloud copy's proxy every device arrives from 127.0.0.1: count each device on its own, so
+            # one device guessing can't lock the owner out (the proxy sets this header; a local process could fake
+            # it, but a local process can already do more than guess)
+            fwd = request.headers.get("x-forwarded-for", "").split(",")[0].strip()[:64]
+            client = fwd or client
         if not limiter.attempt(client):
             return HTMLResponse(_login_page("Too many tries. Wait 5 minutes."), status_code=429)
         if not services.settings.password_hash or not verify_password(password, services.settings.password_hash):
@@ -179,8 +185,9 @@ def create_app(services: Services, background: bool = False) -> FastAPI:
         limiter.reset(client)
         sid, csrf = sessions.create()
         resp = RedirectResponse("/", status_code=303)
-        resp.set_cookie(SESSION_COOKIE, sid, httponly=True, samesite="strict", max_age=12 * 3600)
-        resp.set_cookie(CSRF_COOKIE, csrf, httponly=False, samesite="strict", max_age=12 * 3600)
+        secure = request.url.scheme == "https" or request.headers.get("x-forwarded-proto", "").lower() == "https"
+        resp.set_cookie(SESSION_COOKIE, sid, httponly=True, samesite="strict", max_age=12 * 3600, secure=secure)
+        resp.set_cookie(CSRF_COOKIE, csrf, httponly=False, samesite="strict", max_age=12 * 3600, secure=secure)
         services.store.audit("user", "login", {"client": client})
         return resp
 

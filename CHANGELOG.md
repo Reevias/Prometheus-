@@ -1,6 +1,11 @@
 # Changelog
 
 ## After M2 (16 November 2026)
+- **Security audit** (five independent reviewers, the Claude-BugHunter checklists on Prometheus's own code): 15 bugs
+  fixed, each with a test that failed first (bug log 81-95). The main ones: private text from your files can no
+  longer reach a cloud AI through translate, quizzes or scripts; the code runner can't be escaped through `ctypes`
+  and its approval shows the whole script; copying a folder skips protected files; the browser-password approval
+  names the real site. The rest of the findings are listed in `docs/reports/SECURITY_AUDIT_16NOV.md`.
 - **Coarena** can be linked with a free key (Settings → AI models and keys; get the key at coarena.ai/account/api).
   Its models (Gemini, GPT, Claude, DeepSeek, Kimi and more) appear in the ask box's AI picker and are used only when
   you pick one. Free daily use only: when it's used up, Prometheus moves on to your other AIs; it never buys credits.
