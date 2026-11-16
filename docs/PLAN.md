@@ -102,11 +102,15 @@ Exit gate: click-through test passes on Windows; every 2.x feature reachable; M2
   plain rules decide if it is slow or fails, but rules alone never judge nuanced requests.
 - **M3.2 Tool and agent registry [F2].** Every tool has typed inputs, outputs and errors plus a permission scope.
   Keywords only make a shortlist; the choice is checked against capabilities and permissions. Registers
-  `browser_action` (Playwright browser control, accessibility tree, snapshots) **[found]**.
+  `browser_action` (Playwright browser control, accessibility tree, snapshots) **[found]**. Every tool also says where it
+  runs: laptop, phone or both (owner, 16 Nov), so laptop and phone jobs aren't mixed up.
 - **M3.3 ReAct loop.** Think → act → observe, with step limits, cancel at any step and visible steps (plans, tool
   calls, status, short explanations; never hidden reasoning).
 - **M3.4 Model routing.** Default model per agent and task type; fallback when a model is down or out of quota (free
-  first); smarter agent choice; `@` mention still overrides.
+  first); smarter agent choice; `@` mention still overrides. **Model capability table** (owner, 16 Nov): every model has
+  a card with its exact name and what it is good at (research, code, planning, vision, images, speed, cost, limits);
+  the main brain matches each task to a card, so strong models don't get weak tasks, weak models don't get strong
+  tasks, and an image model never gets research.
 - **M3.5 Streaming answers.** Words appear as they come (moved from M2.1).
 - **M3.6 Live context [F3].** A small line for the model: time, due reminders, conflicts, running tasks.
 
