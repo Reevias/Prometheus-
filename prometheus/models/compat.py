@@ -55,6 +55,27 @@ class OpenAICompatProvider:
             return reply
         raise last or ProviderUnavailable(f"{self.info.name} has no working model.")
 
+    def stream(self, messages: list[dict], system: str, on_text, max_tokens: int = 4096,
+               model: str | None = None) -> Reply:
+        """The answer word by word (M3.5). Falls back to the whole answer if streaming doesn't work out."""
+        if not self.available():
+            raise ProviderUnavailable(f"{self.info.name} is not set up.")
+        from prometheus.models.streaming import openai_sse
+
+        use = model or self.model
+        key = self._key()
+        try:
+            text, usage, _ = openai_sse(self.http, f"{self.info.base_url}/chat/completions",
+                                        {"model": use, "messages": [{"role": "system", "content": system}, *messages],
+                                         "max_tokens": max_tokens},
+                                        {"Authorization": f"Bearer {key}"} if key else {}, on_text, self.info.name)
+        except ProviderUnavailable:
+            return self.complete(messages, system, max_tokens=max_tokens, model=model)
+        if not text.strip():
+            return self.complete(messages, system, max_tokens=max_tokens, model=model)
+        return Reply(text=text, provider=self.name, model=use, tokens_in=int(usage.get("prompt_tokens") or 0),
+                     tokens_out=int(usage.get("completion_tokens") or 0), usd=0.0)
+
     def _call(self, messages: list[dict], system: str, json_schema: dict | None, max_tokens: int,
               model: str) -> Reply:
         sys_text = system + ("\n\nReply with JSON only, no other text." if json_schema is not None else "")

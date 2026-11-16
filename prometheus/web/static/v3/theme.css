@@ -972,3 +972,6 @@ html[data-motion="reduced"] *, html[data-motion="reduced"] *::before { animation
 .note-row button { width: auto; padding: 0 6px; }
 .mini-head { font-size: 13px; font-weight: 500; color: var(--muted); margin: 14px 0 6px; }
 @media (min-width: 1500px) { .chat:has(.files-strip) .chat-live { grid-column: 1; grid-row: 1; align-self: start; z-index: 3; } }
+
+/* the answer as it is being written (M3.5) */
+.live-answer { white-space: pre-wrap; margin: 8px 0 4px; line-height: 1.55; color: var(--text); }

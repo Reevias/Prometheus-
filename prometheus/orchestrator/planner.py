@@ -595,8 +595,8 @@ class Orchestrator:
             return self.router.complete(purpose, messages, system, max_tokens=max_tokens)
         self.live_text[chat_id] = ""
 
-        def piece(text: str) -> None:
-            self.live_text[chat_id] = self.live_text.get(chat_id, "") + text
+        def piece(text: str | None) -> None:
+            self.live_text[chat_id] = "" if text is None else self.live_text.get(chat_id, "") + text
         try:
             return stream(purpose, messages, system, on_text=piece, max_tokens=max_tokens)
         finally:
@@ -971,9 +971,10 @@ class Orchestrator:
         # If any step read personal files, the answer is written by a local model only (or not by a model at all).
         purpose = "private" if private else "combine"
         try:
-            reply = self.router.complete(purpose, [{"role": "user", "content": f"Request: {text}\n\n{report}"}],
-                                         f"{self._prompt('combine')}\n\nWriting rules:\n{self._style()}\n\n{UNTRUSTED_RULE}",
-                                         max_tokens=3000)
+            reply = self._complete_streamed(chat_id, purpose,
+                                            [{"role": "user", "content": f"Request: {text}\n\n{report}"}],
+                                            f"{self._prompt('combine')}\n\nWriting rules:\n{self._style()}\n\n"
+                                            f"{UNTRUSTED_RULE}", max_tokens=3000)
             answer = reply.text.strip()
             written_by = f"{reply.provider} · {reply.model}"
         except (ProviderUnavailable, BudgetExceeded):

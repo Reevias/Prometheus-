@@ -173,8 +173,13 @@ class ModelRouter:
         ok = [e for e in entries if self.is_free(e) or e == self.head or self.heavy_ok(e, kind)]
         return ok + [e for e in entries if e not in ok]
 
+    def stream(self, purpose: str, messages: list[dict], system: str, on_text, max_tokens: int = 4096) -> Reply:
+        """Like complete, but the answer comes word by word through on_text (M3.5). on_text(None) means: start
+        again (the first AI failed part way and the next one is answering)."""
+        return self.complete(purpose, messages, system, max_tokens=max_tokens, on_text=on_text)
+
     def complete(self, purpose: str, messages: list[dict], system: str, json_schema: dict | None = None,
-                 max_tokens: int = 4096, skip: frozenset[str] = frozenset()) -> Reply:
+                 max_tokens: int = 4096, skip: frozenset[str] = frozenset(), on_text=None) -> Reply:
         self.killswitch.check()
         errors: list[str] = []
         empty: list[str] = []
@@ -203,8 +208,12 @@ class ModelRouter:
                 waiting_yes.append(f"{name} · {used_model}" if used_model else name)
                 continue             # paid: only after the owner's yes
             try:
-                reply = provider.complete(messages, system, json_schema=json_schema, max_tokens=max_tokens,
-                                          model=model)
+                if on_text is not None and json_schema is None and hasattr(provider, "stream"):
+                    on_text(None)                 # a fresh start (an earlier AI may have failed part way)
+                    reply = provider.stream(messages, system, on_text=on_text, max_tokens=max_tokens, model=model)
+                else:
+                    reply = provider.complete(messages, system, json_schema=json_schema, max_tokens=max_tokens,
+                                              model=model)
             except ProviderUnavailable as e:
                 # a wrong model name rests only that model; the provider's other models keep working
                 key = f"{name}/{used_model}" if BAD_MODEL.search(str(e)) else name

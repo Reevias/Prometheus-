@@ -550,6 +550,21 @@
       copyText(body.innerText, "Copied.");
     });
     setBusy(!!$(".working", msgs));
+    // the answer as it is being written (M3.5): shown in the "working" bubble, word by word
+    var liveText = "";
+    function showLive() {
+      var box = $("[data-live]", msgs); if (!box) return;
+      box.textContent = liveText; box.hidden = !liveText;
+      if (liveText) msgs.scrollTop = msgs.scrollHeight;
+    }
+    setInterval(function () {
+      if (!busy || !chatId || !visible()) { liveText = ""; return; }
+      fetch("/api/v3/chats/" + chatId + "/live-text", { credentials: "same-origin" })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (j) { if (j && j.text !== liveText) { liveText = j.text; showLive(); } })
+        .catch(function () {});
+    }, 450);
+    document.body.addEventListener("htmx:afterSwap", function (e) { if (e.target === msgs) showLive(); });
   }
   // Errors from the server: a short message, never a broken page. Plain-text errors become a toast instead of
   // replacing part of the page; a lost connection says so.

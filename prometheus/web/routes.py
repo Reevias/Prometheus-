@@ -406,6 +406,15 @@ def register_routes(app: FastAPI, services: Services) -> None:
         return Response(md, media_type="text/markdown; charset=utf-8",
                         headers={"Content-Disposition": attachment(title, "md")})
 
+    @app.get("/api/v3/chats/{chat_id}/live-text")
+    def api_v3_live_text(chat_id: int):
+        """The answer being written right now, so the chat can show it word by word (M3.5)."""
+        import re as _re
+
+        text = getattr(services.orchestrator, "live_text", {}).get(chat_id, "")
+        text = _re.sub(r"</?untrusted(?: source=\"[^\"\n]*\")?>\n?", "", text)
+        return {"text": text[-20000:], "busy": chat_id in services.running}
+
     @app.post("/api/v3/chats/{chat_id}/stop")
     def api_v3_stop(chat_id: int):
         services.orchestrator.request_stop(chat_id)
