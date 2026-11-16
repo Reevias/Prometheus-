@@ -28,7 +28,12 @@ def test_ctypes_cannot_reach_other_process_starters(tmp_path):
 
 def test_ordinary_scripts_with_ctypes_still_work(tmp_path):
     r = run(tmp_path, "import ctypes\nprint(ctypes.sizeof(ctypes.c_int))\n")
-    assert r.ok and "4" in r.output
+    if sys.platform == "win32":
+        # on Windows `import ctypes` itself loads kernel32, which the sandbox has always refused (system DLLs):
+        # ctypes can't be used there at all, which is stricter still
+        assert not r.ok and "kernel32" in r.output
+    else:
+        assert r.ok and "4" in r.output
 
 
 def test_the_approval_shows_the_whole_script():
