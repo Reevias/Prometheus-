@@ -17,6 +17,15 @@ UNSUPPORTED = {
     "Cohere": "uses its own request format, not the common one",
     "Cloudflare Workers AI": "needs your Cloudflare account id inside the address",
 }
+# Providers added by hand (not in the upstream list). Same request format as the rest.
+EXTRA = (
+    {"name": "Coarena", "baseUrl": "https://coarena.ai/api/v1", "signupUrl": "https://coarena.ai/account/api",
+     "description": "Free key, no card. Many strong models with free use each day (resets 00:00 UTC), 30 requests a "
+                    "minute. Used only when you pick it in the ask box. Prometheus never buys credits there.",
+     "models": ['gemini-3-8-flash', 'deepseek-v4-1-flash-1017', 'claude-fable-5', 'claude-fable-5-1', 'claude-fable-5-2', 'claude-haiku-5-5', 'claude-opus-5-5', 'claude-sonnet-5-5', 'gemini-4-argon', 'gemini-4-carbon', 'gpt-6-1-sol', 'gpt-6-1-terra', 'gpt-6-astra', 'gpt-6-luna', 'grok-4-7', 'hy4', 'kimi-k3-1-pro', 'mimo-v2-6-pro']},
+)
+# Used only when the owner picks one of its models in the ask box: never joins the automatic routes (owner, 16 Nov)
+PICK_ONLY = {"Coarena"}
 LOG_WORDS = ("train", "improve products", "log prompts", "logged", "retained")
 KNOWN_TO_LOG = {"Google Gemini", "Mistral AI", "Kilo Code", "LLM7.io"}
 
@@ -34,6 +43,7 @@ class ProviderInfo:
     logs_prompts: bool = False
     supported: bool = True
     why_unsupported: str = ""
+    pick_only: bool = False
 
 
 def _slug(name: str) -> str:
@@ -44,7 +54,7 @@ def _slug(name: str) -> str:
 def load_catalog() -> tuple[ProviderInfo, ...]:
     raw = json.loads(DATA.read_text(encoding="utf-8"))
     out = []
-    for p in raw["providers"]:
+    for p in list(raw["providers"]) + list(EXTRA):
         name = p["name"]
         if name in SKIP:
             continue
@@ -55,7 +65,7 @@ def load_catalog() -> tuple[ProviderInfo, ...]:
             key_name=pid.upper().replace("-", "_") + "_API_KEY", keyless=name in KEYLESS,
             signup_url=p.get("signupUrl", ""), description=desc, models=tuple(p.get("models", [])),
             logs_prompts=True,   # free tiers: assume prompts may be kept or used for training unless proven otherwise
-            supported=name not in UNSUPPORTED, why_unsupported=UNSUPPORTED.get(name, "")))
+            supported=name not in UNSUPPORTED, why_unsupported=UNSUPPORTED.get(name, ""), pick_only=name in PICK_ONLY))
     return tuple(out)
 
 

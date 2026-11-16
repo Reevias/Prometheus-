@@ -223,3 +223,5 @@ better than ours; M10 stays as planned.
 - 13 Nov 2026: this file replaced `docs/implementation/ROADMAP.md`, `docs/architecture/PROMETHEUS_3_MASTER_PLAN.md`
   and the M2 "later milestones" table, after every item was checked to be here.
 - 14 Nov 2026: status marked per step; M0–M2 split into steps.
+- 16 Nov 2026: owner's exception to the freeze: Coarena added as an AI you can link with a free key (one
+  provider-list entry; used only when picked in the ask box; free use only, never credits).

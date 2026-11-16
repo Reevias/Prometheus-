@@ -194,6 +194,8 @@ def head_choices(router: "ModelRouter") -> list[tuple[str, str]]:
             info = getattr(p, "info", None)
             for m in (info.models if info else (model,)):
                 out.append((f"ollama-cloud:{m}", f"Ollama cloud: {m} (free plan with limits; not for private files)"))
+        elif getattr(getattr(p, "info", None), "pick_only", False):
+            out += [(f"{name}:{m}", f"{p.info.name}: {m} (free daily use)") for m in p.info.models]
         else:
             info = getattr(p, "info", None)
             label = info.name if info else name
@@ -250,7 +252,7 @@ def build_routes(settings: Settings) -> dict[str, list[str]]:
         first = RESEARCH_BRAINS[brain]
         # the chosen research brain goes first; the old route stays behind it as the fallback
         routes["research"] = [first] + [e for e in routes["research"] if e != first]
-    on = [p for p in load_catalog() if provider_on(p, settings)]
+    on = [p for p in load_catalog() if provider_on(p, settings) and not p.pick_only]   # pick-only: never by itself
     keyed = [p for p in on if not p.keyless and get_secret(p.key_name)]
     keyless = [p for p in on if p.keyless]
     for info in keyed + keyless:

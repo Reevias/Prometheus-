@@ -1,5 +1,10 @@
 # Changelog
 
+## After M2 (16 November 2026)
+- **Coarena** can be linked with a free key (Settings → AI models and keys; get the key at coarena.ai/account/api).
+  Its models (Gemini, GPT, Claude, DeepSeek, Kimi and more) appear in the ask box's AI picker and are used only when
+  you pick one. Free daily use only: when it's used up, Prometheus moves on to your other AIs; it never buys credits.
+
 ## Prometheus 3.0, M2.4 (on the prometheus-v3 branch, not released yet)
 - Phones get the new look: the menu opens from a button at the top left as a drawer, the right panel is gone, the ask
   box puts its buttons under the text, and pages stack into one column. Hold-to-talk and spoken answers where the
