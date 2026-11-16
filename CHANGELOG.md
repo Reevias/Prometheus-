@@ -1,5 +1,23 @@
 # Changelog
 
+## Prometheus 3.0, M3 (on the prometheus-v3 branch, not released yet)
+- **The right AI for each job** (model cards): every AI has a card with its exact name, what it's good at (quick
+  talk, planning, research, code, pictures, summaries, your files) and its price. Each job goes to the strongest one
+  that fits and is set up; free first when equal. Your files only ever go to the laptop's AI; a picture-making AI
+  never gets research. Cheap paid AIs (at most $1/$4 per million tokens) may take heavy jobs without asking, up to
+  $0.10 a task, inside your monthly cap (switch: Features → "Cheap paid AI for heavy jobs"). Cards: Settings → AI →
+  Advanced, with "Check cards".
+- **The front door**: chat and general questions get a quick direct answer; one or two actions get the normal plan;
+  long jobs get a step-by-step loop; if something needed is missing and guessing would change what happens, it asks
+  one question first.
+- **Step by step for long jobs**: think, act, look, up to 12 rounds, each one visible on the task; approvals, Stop,
+  Pause and your privacy rules apply to every round.
+- **Answers appear word by word** while they're written (most AIs; Claude gives the whole answer at the end).
+- **Laptop and phone**: every tool knows where it runs. A phone job asked while the phone is away waits for it (up
+  to a day) and runs when it's back; you're told both times. Laptop jobs from the phone already worked this way.
+- **Live context**: the AI is told the time and counts (reminders due today, tasks running, approvals waiting,
+  battery), never titles.
+
 ## After M2 (16 November 2026)
 - **Security audit** (five independent reviewers, the Claude-BugHunter checklists on Prometheus's own code): 15 bugs
   fixed, each with a test that failed first (bug log 81-95). The main ones: private text from your files can no
