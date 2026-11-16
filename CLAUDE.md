@@ -69,7 +69,7 @@ minimal; LocalRuntime default, Cloudroom optional).
 | M0 | Baseline, test isolation | Done, merged into main |
 | M1 | Tool primitives: path hardening, atomic FS, bounded reader/diff, async terminal, services integration | Done, merged into main: 5 findings + 16 from a second independent audit fixed; tests pass on Windows and Linux (docs/reports/PROMETHEUS_M1_FINDINGS_FIX_REPORT.md) |
 | M2 | Desktop UI from the owner's orange-orbital screenshot (sidebar: Home, Agents, Skills, Tasks, Projects, Memory, Automations, Research, Integrations, System; orbital core; command bar; slash palette; right panel with real health/CPU/RAM/GPU; bottom wave; native window controls) | Done, merged into main 15 Nov (bug review: 14 fixes; laptop check to come) |
-| M3 | ReAct orchestrator and model routing | Planned |
+| M3 | ReAct orchestrator and model routing | Built 16 Nov on the branch (cards, front door, loop, streaming, tool list, live context; review: 13 fixes); report docs/reports/M3_REPORT.md; not on main yet |
 | M4 | Repository-to-skill intelligence (separate repo hub for candidates) | Planned |
 | M5 | DAG orchestration, concurrent child agents | Planned |
 | M6 | ExecutionRuntime / Cloudroom | Planned |

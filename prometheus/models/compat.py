@@ -70,8 +70,10 @@ class OpenAICompatProvider:
                                          "max_tokens": max_tokens},
                                         {"Authorization": f"Bearer {key}"} if key else {}, on_text, self.info.name)
         except ProviderUnavailable:
+            on_text(None)                      # start the shown text again
             return self.complete(messages, system, max_tokens=max_tokens, model=model)
         if not text.strip():
+            on_text(None)
             return self.complete(messages, system, max_tokens=max_tokens, model=model)
         return Reply(text=text, provider=self.name, model=use, tokens_in=int(usage.get("prompt_tokens") or 0),
                      tokens_out=int(usage.get("completion_tokens") or 0), usd=0.0)

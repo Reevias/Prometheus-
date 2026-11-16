@@ -32,7 +32,13 @@ ACTION = re.compile(
     r"set|change|update|sort|organi[sz]e|tidy|clean|scan|translate|summari[sz]e (this|my|the file)|read (my|this|"
     r"the) |screenshot|screen|phone|laptop|wifi|bluetooth|volume|brightness|battery|calendar|meeting|weather|news|"
     r"price|stock|today|tomorrow|yesterday|latest|current|right now|this week|repo|github|run|code|script|"
-    r"chart|spreadsheet|excel|slides|pptx|docx|pdf|folder|file|files|download)\b", re.I)
+    r"chart|spreadsheet|excel|slides|pptx|docx|pdf|folder|file|files|download)s?\b", re.I)
+# fresh facts or the owner's own machine and accounts: these need a tool, so never a direct answer (M3 review)
+FRESH = re.compile(
+    r"\b(any|new|inbox|unread|downloads|desktop|documents|disk|storage|space left|ram|memory|cpu|apps?|"
+    r"process(es)?|score|scores|match|game|won|win|winner|result|results|headlines?|rain|forecast|temperature|"
+    r"worth|rate|rates|bitcoin|crypto|sensex|nifty|trending|tonight|last night|now|recent|recently|this year|"
+    r"election|live|status|traffic|flight|train)\b", re.I)
 PERSONAL = re.compile(r"\b(my|mine|me|i am|i'm|i have|i've|our|we)\b", re.I)
 LINK = re.compile(r"https?://|www\.|\b[\w-]+\.(com|in|org|net|io|dev|app)\b", re.I)
 CHAIN = re.compile(r"\b(and then|then|after that|afterwards|step by step|first\b.*\bthen|finally|compare|"
@@ -57,8 +63,8 @@ def by_rules(text: str) -> Decision | None:
     actions = len(ACTION.findall(t))
     if GREETING.match(t):
         return Decision("simple", "rules", why="a greeting")
-    if actions == 0 and not LINK.search(t) and not PERSONAL.search(t) and len(t) <= 300 and (
-            QUESTION.match(t) or t.endswith("?")):
+    if actions == 0 and not FRESH.search(t) and not LINK.search(t) and not PERSONAL.search(t) and len(t) <= 300 \
+            and QUESTION.match(t):
         return Decision("simple", "rules", why="a general question")
     if actions >= 3 and (CHAIN.search(t) or len(t) > 200):
         return Decision("complex", "rules", why=f"{actions} actions in a row")
@@ -90,14 +96,19 @@ def by_ai(router, text: str, history: list[dict] | None = None, seconds: float =
     def ask():
         try:
             msgs = list(history or [])[-4:] + [{"role": "user", "content": f"Message: {text[:2000]}"}]
-            ctx = router.step_kind("summarise") if hasattr(router, "step_kind") else _null()
-            with ctx:
-                reply = router.complete("combine", msgs, CLASSIFY_SYSTEM, json_schema=CLASSIFY_SCHEMA, max_tokens=200)
+            # "research" is never the hand-picked lead AI; free_only: a classifier never costs money (M3 review)
+            kind = router.step_kind("summarise") if hasattr(router, "step_kind") else _null()
+            cheap = router.free_only() if hasattr(router, "free_only") else _null()
+            with kind, cheap:
+                reply = router.complete("research", msgs, CLASSIFY_SYSTEM, json_schema=CLASSIFY_SCHEMA, max_tokens=200)
             box["reply"] = reply.text
         except Exception as e:           # no free AI, a paid one would be needed, the kill switch: rules decide
             box["error"] = e
 
-    worker = threading.Thread(target=ask, name="prometheus-front-door", daemon=True)
+    import contextvars
+
+    worker = threading.Thread(target=contextvars.copy_context().run, args=(ask,), name="prometheus-front-door",
+                              daemon=True)
     worker.start()
     worker.join(seconds)
     raw = box.get("reply")

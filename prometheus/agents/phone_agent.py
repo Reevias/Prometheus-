@@ -159,8 +159,8 @@ class PhoneAgent(Agent):
                         SERVICES.notify("phone", "Your phone isn't reachable; that request waits for it.")
                     except Exception:
                         pass
-                return StepResult("waiting_approval", "Your phone isn't reachable right now, so this waits: I'll do "
-                                                      "it as soon as the phone is back (within a day) and tell you.")
+                return StepResult("waiting_approval", f"{phone_wait.WAIT_TEXT}: I'll do it as soon as the phone is "
+                                                      "back (within a day) and tell you.")
             return StepResult("failed", str(e))
         return StepResult("failed", "I can: open_app, open_url, look, tap, type, swipe, key, setting, alarm, timer, "
                                     "message, call, notifications, battery.")

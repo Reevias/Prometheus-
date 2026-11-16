@@ -11,6 +11,10 @@ import time
 import uuid
 
 KV = "phone_waiting"
+TRIED = "phone_waiting_tried"            # {chat:text: [first time, tries]}: so a job that keeps failing ends
+MAX_TRIES = 3
+_LOCK = threading.Lock()
+WAIT_TEXT = "Your phone isn't reachable right now, so this waits"
 CHECK_EVERY = 120
 MAX_WAIT = 24 * 3600
 MAX_JOBS = 20
@@ -26,15 +30,25 @@ def jobs(store) -> list[dict]:
     return [j for j in got if isinstance(j, dict) and j.get("text") and j.get("chat_id")] if isinstance(got, list) else []
 
 
+def _key(chat_id: int, text: str) -> str:
+    return f"{chat_id}:{text[:4000]}"
+
+
 def queue(store, chat_id: int, text: str, now: float | None = None) -> bool:
-    """Keep a request for when the phone is back. False if it was already waiting or the list is full."""
+    """Keep a request for when the phone is back. False if it was already waiting, the list is full, or it was
+    already tried 3 times (a phone that answers but keeps failing must not repeat the request for ever)."""
     now = time.time() if now is None else now
-    waiting = jobs(store)
-    if any(j["chat_id"] == chat_id and j["text"] == text for j in waiting) or len(waiting) >= MAX_JOBS:
-        return False
-    waiting.append({"id": uuid.uuid4().hex, "chat_id": chat_id, "text": text[:4000], "at": now})
-    store.kv_set(KV, waiting)
-    return True
+    with _LOCK:
+        waiting = jobs(store)
+        if any(j["chat_id"] == chat_id and j["text"] == text for j in waiting) or len(waiting) >= MAX_JOBS:
+            return False
+        tried = store.kv_get(TRIED, {}) or {}
+        first, tries = (tried.get(_key(chat_id, text)) or [now, 0])[:2]
+        if tries >= MAX_TRIES or now - float(first) >= MAX_WAIT:
+            return False
+        waiting.append({"id": uuid.uuid4().hex, "chat_id": chat_id, "text": text[:4000], "at": float(first)})
+        store.kv_set(KV, waiting)
+        return True
 
 
 def phone_back(phone) -> bool:
@@ -70,7 +84,8 @@ class PhoneWaiter:
         """Run the waiting requests if the phone is back. Returns how many were started."""
         store = self.services.store
         now = time.time() if now is None else now
-        waiting = jobs(store)
+        with _LOCK:
+            waiting = jobs(store)
         if not waiting:
             return 0
         fresh = [j for j in waiting if now - float(j.get("at", now)) < MAX_WAIT]
@@ -80,14 +95,21 @@ class PhoneWaiter:
                                                              f"“{j['text'][:200]}”. Ask again when the phone is on.",
                                   "phone")
         if len(fresh) != len(waiting):
-            store.kv_set(KV, fresh)
+            with _LOCK:
+                store.kv_set(KV, [j for j in jobs(store) if j in fresh or j not in waiting])
         if not fresh or not phone_back(self._phone()):
             return 0
-        store.kv_set(KV, [])
+        chats = dict(store.chats())
+        go = [j for j in fresh if j["chat_id"] not in self.services.running and j["chat_id"] in chats]
+        with _LOCK:                                   # busy chats keep their job for the next check
+            store.kv_set(KV, [j for j in jobs(store) if j not in go])
+            tried = store.kv_get(TRIED, {}) or {}
+            for j in go:
+                first, tries = (tried.get(_key(j["chat_id"], j["text"])) or [j.get("at", now), 0])[:2]
+                tried[_key(j["chat_id"], j["text"])] = [first, tries + 1]
+            store.kv_set(TRIED, {k: v for k, v in tried.items() if now - float(v[0]) < MAX_WAIT})
         started = 0
-        for j in fresh:
-            if j["chat_id"] in self.services.running or j["chat_id"] not in dict(store.chats()):
-                continue
+        for j in go:
             store.add_message(j["chat_id"], "assistant", "Your phone is back, so I'm doing this now.", "phone")
             self.services.start_task(j["chat_id"], j["text"])
             started += 1

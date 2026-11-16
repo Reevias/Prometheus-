@@ -43,7 +43,11 @@ class OpenRouterProvider:
             {"Authorization": f"Bearer {get_secret('OPENROUTER_API_KEY')}", "X-Title": "Prometheus"}, on_text,
             "OpenRouter")
         if not text.strip():
-            return self.complete(messages, system, max_tokens=max_tokens, model=model)
+            on_text(None)                      # start the shown text again
+            whole = self.complete(messages, system, max_tokens=max_tokens, model=model)
+            # the streamed call was billed too, even with no words: count both (M3 review)
+            from dataclasses import replace
+            return replace(whole, usd=whole.usd + float(usage.get("cost") or 0.0))
         return Reply(text=text, provider=self.name, model=got or use, tokens_in=int(usage.get("prompt_tokens") or 0),
                      tokens_out=int(usage.get("completion_tokens") or 0), usd=float(usage.get("cost") or 0.0))
 

@@ -582,6 +582,9 @@ class Orchestrator:
                 return self.loop.run(chat_id, task_id, text, history)
             except NotImplementedError:
                 return None
+            except Exception as e:            # never leave a task "running" (M3 review)
+                return self._finish(chat_id, task_id, "failed", f"Something went wrong part way through ({type(e).__name__})."
+                                                                " Try again, or ask in smaller steps.")
         return None
 
     def _answer_directly(self, chat_id: int, task_id: int, text: str, history: list[dict]) -> TaskOutcome:
@@ -592,6 +595,8 @@ class Orchestrator:
         messages = list(history or []) + [{"role": "user", "content": content + f"Message: {text}"}]
         with self.router.step_kind("chat"):
             reply = self._complete_streamed(chat_id, "combine", messages, system)
+        if chat_id in self.stopping:                 # Stop pressed while it was answering
+            return self._finish(chat_id, task_id, "stopped", "Stopped. Ask again whenever you like.")
         self._name_chat(chat_id, text[:60])
         return self._finish(chat_id, task_id, "done", reply.text, f"{reply.provider} · {reply.model}")
 

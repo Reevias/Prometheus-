@@ -36,6 +36,9 @@ def openai_sse(http: httpx.Client, url: str, body: dict, headers: dict, on_text:
                     chunk = json.loads(data)
                 except ValueError:
                     continue
+                if chunk.get("error") or any((c or {}).get("finish_reason") == "error"
+                                             for c in chunk.get("choices") or []):
+                    raise ProviderUnavailable(f"{who}: the answer broke off part way.")
                 usage = chunk.get("usage") or usage
                 model = str(chunk.get("model") or model)
                 for choice in chunk.get("choices") or []:

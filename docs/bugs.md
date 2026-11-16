@@ -2,7 +2,26 @@
 
 Every bug found and fixed, newest first, so the count is always exact. Add a line for each new one.
 
-**Total fixed: 95** (as of 16 November 2026)
+**Total fixed: 108** (as of 16 November 2026)
+
+## 16 November 2026, M3 review (13)
+An independent review of M3. Each fix has a test that failed before it (`tests/test_v3_m3_review.py`).
+
+| # | Bug | Fixed by |
+|---|---|---|
+| 108 | The front door answered questions that need a tool ("any new emails?", "who won the match?", "how much disk space?") without the tool | such questions always get the normal plan |
+| 107 | Stop during a quick answer still posted the answer | Stop is checked when it arrives |
+| 106 | A provider-wide model card could stand in for an expensive model's own card | the exact model's card wins |
+| 105 | An oddly tagged step could send a non-picture job to a picture-making AI | odd tags ignored; picture AIs filtered from every list |
+| 104 | An error inside a streamed answer was saved as if the answer were complete | it counts as a failure and the next AI answers |
+| 103 | A streamed OpenRouter call with no words wasn't counted in spending | both calls counted |
+| 102 | One big paid call could take a task past its $0.10 limit | the call's most possible cost is checked first |
+| 101 | The front door's quick check could use the hand-picked (paid) lead AI | free AI only, never the lead AI |
+| 100 | Model cards put a stronger paid AI before free ones on light jobs, and before your own Settings picks | free first for light jobs; your picks stay first |
+| 99 | On the cloud copy, a long job could run laptop tools on the server instead of waiting for the laptop | no step-by-step loop on the cloud copy |
+| 98 | Waiting for the phone was announced as "waiting for your yes" | it isn't any more |
+| 97 | A phone job that kept failing re-ran every 2 minutes for ever; a busy chat's job was dropped | at most 3 tries; busy chats keep it |
+| 96 | A crash in the step-by-step loop left the task "running" for ever | the task ends with a plain message |
 
 ## 16 November 2026, security audit (15)
 Five reviewers read the whole app against the Claude-BugHunter vulnerability classes (files and paths, XSS/CSRF/login,

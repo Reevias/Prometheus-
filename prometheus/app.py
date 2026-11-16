@@ -164,7 +164,11 @@ LONG_TASK = 30          # seconds: a task that took longer gets a "done" notific
 def _after_task(self, outcome, text: str, took: float) -> None:
     short = " ".join(text.split())[:70]
     try:
-        waiting = any(s.status == "waiting_approval" for s in self.store.steps(outcome.task_id))
+        from prometheus.phone_wait import WAIT_TEXT
+
+        # waiting for the phone is not waiting for a yes (M3 review)
+        waiting = any(s.status == "waiting_approval" and not (s.result or "").startswith(WAIT_TEXT)
+                      for s in self.store.steps(outcome.task_id))
     except Exception:
         waiting = False
     if waiting:
@@ -176,6 +180,16 @@ def _after_task(self, outcome, text: str, took: float) -> None:
 Services.after_task = _after_task
 
 
+def make_loop(orchestrator, settings):
+    """The step-by-step loop, except on the cloud copy: there a long job that needs the laptop must wait for the
+    laptop (the plan's hand-off), never run its laptop tools on the server (M3 review)."""
+    if getattr(settings, "role", "laptop") == "cloud":
+        return None
+    from prometheus.orchestrator.loop import ThinkActLoop
+
+    return ThinkActLoop(orchestrator)
+
+
 def _apply_cards(router, settings) -> None:
     """Model cards (M3.4) and the "cheap paid AI for heavy jobs" switch."""
     from prometheus.config import data_dir
@@ -184,6 +198,20 @@ def _apply_cards(router, settings) -> None:
 
     router.cards, router.cards_note = load_cards(data_dir())
     router.paid_heavy = on(settings, "paid_heavy")
+    # the owner's own picks in Settings stay first; cards only fill in after them (M3 review)
+    from prometheus.models.router import CODE_BRAINS, RESEARCH_BRAINS
+
+    pinned = {}
+    brain = getattr(settings, "research_brain", "auto")
+    if RESEARCH_BRAINS.get(brain):
+        pinned["research"] = RESEARCH_BRAINS[brain]
+    elif getattr(settings, "openrouter_fast_model", ""):
+        pinned["research"] = f"openrouter:{settings.openrouter_fast_model}"
+    code = getattr(settings, "code_brain", "auto")
+    router.cards_off = {"code"} if code == "off" else set()
+    if code not in ("auto", "off") and code:
+        pinned["code"] = CODE_BRAINS.get(code, code)
+    router.pinned = pinned
 
 
 def apply_settings(services: "Services") -> None:
@@ -330,9 +358,8 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
 
     orchestrator = Orchestrator(store, router, REGISTRY, make_context, killswitch, prompts.folder, skills=skills)
     orchestrator.front_door = providers is None        # M3.1 (tests with stand-in AIs switch it on themselves)
-    from prometheus.orchestrator.loop import ThinkActLoop
 
-    orchestrator.loop = ThinkActLoop(orchestrator)     # M3.3: complex jobs, up to 12 rounds
+    orchestrator.loop = make_loop(orchestrator, settings)    # M3.3: complex jobs, up to 12 rounds
     from prometheus.orchestrator.live_context import line as _live_line
 
     orchestrator.live_context = lambda: _live_line(services)   # M3.6 (services is filled in below)

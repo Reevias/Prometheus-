@@ -77,7 +77,7 @@ class ThinkActLoop:
             return {"_bad": reply.text}
 
     def run(self, chat_id: int, task_id: int, text: str, history: list[dict]) -> "TaskOutcome":  # noqa: F821
-        from prometheus.orchestrator.planner import PlanError, Stopped, _inputs, resolve_inputs  # noqa: F401
+        from prometheus.orchestrator.planner import JOB_KINDS, PlanError, Stopped, _inputs
         from prometheus.safety.budget import BudgetExceeded
 
         o = self.o
@@ -122,9 +122,14 @@ class ThinkActLoop:
                     messages.append({"role": "user", "content": f"There is no agent '{agent}' you can use. "
                                                                 "Pick one from the list, or give the answer."})
                     continue
+                try:
+                    inputs = _round_refs(_inputs(step.get("inputs") or []))
+                except PlanError as e:               # a badly shaped reply costs a round, not the task
+                    messages.append({"role": "user", "content": f"Those inputs weren't usable: {e} Try again."})
+                    continue
+                kind = str(step.get("kind") or "")
                 st = {"id": n, "agent": agent, "goal": str(step.get("goal") or "")[:300], "skill": "",
-                      "inputs": _round_refs(_inputs(step.get("inputs") or [])), "depends_on": [],
-                      "kind": str(step.get("kind") or "")}
+                      "inputs": inputs, "depends_on": [], "kind": kind if kind in JOB_KINDS else ""}
                 res, _cls = o._run_step(task_id, st, results, private, label=f"Round {n}: ")
                 results[n] = res
                 seen.append(f"Round {n} ({agent}): {res.summary[:300]}")

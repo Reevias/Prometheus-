@@ -104,8 +104,22 @@ def load_cards(data_folder: Path | None = None) -> tuple[list[Card], str]:
     return [], problem or "No model cards found."
 
 
+STEP_KINDS = ("chat", "plan", "research", "code", "vision", "summarise")   # what a step may be tagged
+
+
 def rank(cards: list[Card], kind: str, usable) -> list[Card]:
-    """Cards that fit this kind of job and are set up right now, best first. `usable(entry)` says if one is set up.
-    Ties: free before paid, then the cheaper one."""
+    """Cards that fit this kind of job and are set up right now. Heavy jobs: best fit first (owner), free first when
+    equal. Light jobs: free ones first, then the best (the owner's "free first" rule). `usable(entry)` says if one is
+    set up."""
     fit = [c for c in cards if c.fits(kind) and usable(c.entry)]
-    return sorted(fit, key=lambda c: (-c.level, not c.free, c.price_out or 0.0))
+    if kind in HEAVY:
+        return sorted(fit, key=lambda c: (-c.level, not c.free, c.price_out or 0.0))
+    return sorted(fit, key=lambda c: (not c.free, -c.level, c.price_out or 0.0))
+
+
+def estimate_usd(card: Card, messages: list, system: str, max_tokens: int) -> float:
+    """The most a call could cost on this card: its text in (about 4 characters a token) and its room out."""
+    if card.free:
+        return 0.0
+    chars = len(system or "") + sum(len(str(m.get("content", ""))) for m in messages if isinstance(m, dict))
+    return (chars / 4 * (card.price_in or 0) + max_tokens * (card.price_out or 0)) / 1_000_000
