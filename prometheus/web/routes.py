@@ -712,6 +712,73 @@ def register_routes(app: FastAPI, services: Services) -> None:
     def history():
         return RedirectResponse("/v3/system?tab=activity", status_code=303)      # the old screen's new home (M2.4)
 
+    def model_cards_view() -> list[dict]:
+        """Settings → AI → Advanced: each model card, and whether it can be used right now (M3.4)."""
+        from prometheus.models.cards import KIND_LABELS
+
+        r = services.router
+        out = []
+        for c in getattr(r, "cards", []):
+            p = r.providers.get(c.provider)
+            if p is None:
+                state = "not in Prometheus"
+            elif getattr(getattr(p, "info", None), "pick_only", False):
+                state = "only when you pick it"
+            else:
+                try:
+                    state = "ready" if p.available() else "not set up"
+                except Exception:
+                    state = "not set up"
+            price = "free" if c.free else f"${c.price_in:g} / ${c.price_out:g}" + (" (cheap)" if c.cheap else " (asks first)")
+            out.append({"name": c.name, "entry": c.entry, "level": c.level, "price": price, "state": state,
+                        "kinds": ", ".join(KIND_LABELS.get(k, k) for k in c.kinds), "note": c.note})
+        out.sort(key=lambda x: (x["state"] != "ready", -x["level"], x["name"].lower()))
+        return out
+
+    @app.get("/settings/model-cards/check", response_class=HTMLResponse)
+    def check_model_cards():
+        """Checks every card against what its provider really offers now (asks the provider when it can)."""
+        from html import escape
+
+        import httpx
+
+        from prometheus.config import get_secret
+        from prometheus.models.router import CLAUDE_CHOICES, openrouter_models
+
+        r = services.router
+        offered: dict[str, set | None] = {"anthropic": {m for m, _ in CLAUDE_CHOICES},
+                                          "openrouter": {m["id"] for m in openrouter_models()}}
+        rows = []
+        for c in getattr(r, "cards", []):
+            p = r.providers.get(c.provider)
+            info = getattr(p, "info", None)
+            if p is None:
+                rows.append((c, "not in Prometheus"))
+                continue
+            if info is not None and c.provider not in offered:
+                listed = None
+                key = get_secret(info.key_name) if not info.keyless else ""
+                if key or info.keyless:
+                    try:      # the provider's own list of models (OpenAI-style /models)
+                        resp = httpx.get(f"{info.base_url}/models", timeout=6,
+                                         headers={"Authorization": f"Bearer {key}"} if key else {})
+                        if resp.status_code == 200:
+                            listed = {m.get("id") for m in resp.json().get("data", []) if isinstance(m, dict)}
+                    except (httpx.HTTPError, ValueError):
+                        listed = None
+                offered[c.provider] = listed if listed else set(info.models)
+            model = c.model or getattr(p, "model", "")
+            known = offered.get(c.provider)
+            if c.local or not model or known is None:
+                rows.append((c, "ok"))
+            elif model in known:
+                rows.append((c, "ok: offered"))
+            else:
+                rows.append((c, "not offered any more? edit your models.json"))
+        body = "".join(f"<li><b>{escape(c.name)}</b> <small class='muted'>{escape(c.entry)}</small>: {escape(why)}</li>"
+                       for c, why in rows)
+        return HTMLResponse(f"<ul class='card-check'>{body}</ul>")
+
     def settings_page(request: Request, status_code: int = 200, **extra):
         have = secrets_set()
         state = {m["name"]: m for m in services.router.status_detail()}
@@ -792,6 +859,7 @@ def register_routes(app: FastAPI, services: Services) -> None:
                     safety=_safety_results(), mcp_config=_mcp_config(), money_categories=_money_categories(),
                     **_backup_view(),
                     research_brains=list(__import__("prometheus.models.router", fromlist=["x"]).RESEARCH_LABELS.items()),
+                    model_cards=model_cards_view(), cards_note=getattr(services.router, "cards_note", ""),
                     file_index_status=(getattr(services.file_index, "status", "") or store.kv_get("file_index_status")
                                        or "Not read yet."), **extra)
         from prometheus.config import data_dir

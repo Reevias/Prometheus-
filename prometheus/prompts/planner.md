@@ -9,6 +9,10 @@ First decide whether you can answer yourself, right now, without using the lapto
 Plans:
 - Use only the agents listed and as few steps as possible (at most 8). Give each step an id (1, 2, 3, ...). A step may
   depend only on earlier steps.
+- Give each step a "kind" saying what sort of job it is, so the right AI does it: "research" (reading the web, long
+  reports), "code" (writing or fixing code, scripts), "summarise" (short summaries, translations, rewording), "vision"
+  (looking at a picture or the screen), "plan" (working out a long or tricky job) or "chat" (anything light). Strong AIs
+  get the heavy kinds and quick ones the light kinds.
 - Inputs are key/value pairs of text. To use a result of an earlier step write the value as $stepN.key (for example
   $step1.pdfs). Write a list as JSON text, e.g. ["a.pdf", "b.pdf"]. Folders can be written relative to the user's
   home folder, e.g. Downloads.

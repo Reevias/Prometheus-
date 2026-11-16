@@ -558,6 +558,20 @@
         <label>OpenRouter cheaper model for research (optional) <input name="openrouter_fast_model" value="{{ s.openrouter_fast_model }}"></label>
       </div>
     </details>
+    <details id="model-cards">
+      <summary class="muted">Advanced: model cards (which AI gets which job)</summary>
+      <p class="muted small">Each job goes to the strongest set-up model that fits it; equal ones: free first. Your files only
+        ever go to the laptop's model. Cheap paid models (at most $1/$4 per million tokens) may take heavy jobs without
+        asking, up to $0.10 a task, inside your monthly cap: switch it off in Features. Strength is Prometheus's own
+        estimate. To change a card, copy <code>models.json</code> from the app's <code>data</code> folder into your data
+        folder and edit it. {{ cards_note }}</p>
+      <table class="cards-table"><tr><th>Model</th><th>Good at</th><th>Strength</th><th>Price</th><th>Now</th></tr>
+        {% for c in model_cards %}<tr><td>{{ c.name }}<br><small class="muted">{{ c.entry }}</small></td><td>{{ c.kinds }}</td>
+          <td>{{ "●" * c.level }}</td><td>{{ c.price }}</td><td>{{ c.state }}</td></tr>{% endfor %}
+      </table>
+      <button type="button" hx-get="/settings/model-cards/check" hx-target="#card-check" hx-swap="innerHTML">Check cards</button>
+      <div id="card-check"></div>
+    </details>
     <button type="submit" class="primary">Save settings</button>
   </form>
   </section>

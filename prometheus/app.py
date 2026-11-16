@@ -175,6 +175,16 @@ def _after_task(self, outcome, text: str, took: float) -> None:
 Services.after_task = _after_task
 
 
+def _apply_cards(router, settings) -> None:
+    """Model cards (M3.4) and the "cheap paid AI for heavy jobs" switch."""
+    from prometheus.config import data_dir
+    from prometheus.features import on
+    from prometheus.models.cards import load_cards
+
+    router.cards, router.cards_note = load_cards(data_dir())
+    router.paid_heavy = on(settings, "paid_heavy")
+
+
 def apply_settings(services: "Services") -> None:
     """Make changed models, providers and the budget cap take effect without a restart."""
     from prometheus.models.router import build_routes
@@ -188,6 +198,7 @@ def apply_settings(services: "Services") -> None:
     services.orchestrator.task_budget = max(0.01, min(float(s.task_budget_usd), 10.0))
     router.head = s.head_model
     router.paid_needs_yes = bool(getattr(s, "paid_needs_yes", True))
+    _apply_cards(router, s)
     services.policy.extra_roots = usable_extra_folders(s, services.home)
     for name, model in (("openrouter", s.openrouter_model), ("anthropic", s.anthropic_model),
                         ("ollama", s.ollama_model)):
@@ -251,6 +262,7 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
         router = ModelRouter(providers, settings.routes, budget, killswitch)
     router.head = settings.head_model
     router.paid_needs_yes = bool(getattr(settings, "paid_needs_yes", True))
+    _apply_cards(router, settings)
     prompts = PromptStore(data / "prompts")
     patcher = Patcher(PACKAGE_DIR, approvals, data / "backups")
     approvals.register("apply_patch", patcher.apply)

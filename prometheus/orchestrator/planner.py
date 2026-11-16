@@ -1,6 +1,7 @@
 """Lead AI (HuggingGPT pattern): plan -> pick agent -> run steps -> combine one answer."""
 from __future__ import annotations
 
+import contextlib
 import json
 import re
 from dataclasses import asdict, dataclass, field
@@ -13,6 +14,7 @@ from prometheus.safety.budget import BudgetExceeded
 from prometheus.safety.killswitch import Stopped
 
 MAX_STEPS = 8
+JOB_KINDS = ("chat", "plan", "research", "code", "vision", "summarise")   # what a step may be tagged (M3.4)
 PACKAGE_PROMPTS = Path(__file__).resolve().parent.parent / "prompts"
 REF = re.compile(r"^\$step(\d+)\.(\w+)$")
 
@@ -60,8 +62,9 @@ PLAN_SCHEMA = {
                 "additionalProperties": False,
             }},
             "depends_on": {"type": "array", "items": {"type": "integer"}},
+            "kind": {"type": "string", "enum": ["chat", "plan", "research", "code", "vision", "summarise", ""]},
         },
-        "required": ["id", "agent", "goal", "skill", "inputs", "depends_on"],
+        "required": ["id", "agent", "goal", "skill", "inputs", "depends_on", "kind"],
         "additionalProperties": False,
     }}},
     "required": ["answer", "topic", "title", "remember", "facts", "steps"],
@@ -256,7 +259,9 @@ def validate_plan(raw: str, registry: dict) -> Plan:
             if value is None or (isinstance(value, str) and not value.strip()) or value == []:
                 raise PlanError(f"Step {sid} ({s['agent']}) needs the input '{key}'. Give it a real value, "
                                 "for example a link for the opener or an app name for the system agent.")
+        kind = str(s.get("kind") or "").strip().lower()
         clean.append({"id": sid, "agent": s["agent"], "goal": str(s.get("goal", "")),
+                      "kind": kind if kind in JOB_KINDS else "",
                       "skill": str(s.get("skill") or "").strip(),
                       "inputs": inputs, "depends_on": list(deps)})
         seen.add(sid)
@@ -610,7 +615,8 @@ class Orchestrator:
             ctx.skill = skill.body if skill else ""
             if ctx.skills is None:
                 ctx.skills = self.skills
-            res = agent.run(st["goal"], inputs, ctx)
+            with self.router.step_kind(st.get("kind", "")):        # the job kind picks the model (M3.4)
+                res = agent.run(st["goal"], inputs, ctx)
             if skill is not None:                  # the Skills page shows when each guide was used
                 res.data = {**(res.data or {}), "skill": skill.name}
         except (ProviderUnavailable, BudgetExceeded) as e:
@@ -699,6 +705,11 @@ class Orchestrator:
         self.pausing.add(chat_id)
 
     def run(self, chat_id: int, text: str, read_only: bool = False) -> TaskOutcome:
+        """One request. Paid AI used without asking (cheap models, heavy jobs) is counted for this task only."""
+        with self.router.task_spending() if hasattr(self.router, "task_spending") else contextlib.nullcontext():
+            return self._run(chat_id, text, read_only)
+
+    def _run(self, chat_id: int, text: str, read_only: bool = False) -> TaskOutcome:
         """read_only: another app asked; only reading steps run, nothing is remembered or changed."""
         from prometheus.safety.budget import for_chat
 

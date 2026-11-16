@@ -15,6 +15,7 @@ from prometheus.config import Settings
 from prometheus.models.anthropic_provider import AnthropicProvider
 from prometheus.models.base import PaidNeedsYes, PrivacyViolation, Provider, ProviderUnavailable, Reply
 from prometheus.catalog import load_catalog
+from prometheus.models import cards as _cards
 from prometheus.models.compat import OpenAICompatProvider
 from prometheus.models.ollama import OllamaProvider
 from prometheus.models.openrouter import OpenRouterProvider
@@ -33,6 +34,10 @@ def split_entry(entry: str) -> tuple[str, str | None]:
 
 
 _PAID_OK: contextvars.ContextVar[bool] = contextvars.ContextVar("prometheus_paid_ok", default=False)
+# the kind of job the current step is (the planner tags steps; "" = use the purpose's own kind)
+_KIND: contextvars.ContextVar[str] = contextvars.ContextVar("prometheus_job_kind", default="")
+# what paid AI this task has spent so far (None = not inside a task: no paid AI without asking)
+_TASK_SPEND: contextvars.ContextVar[list | None] = contextvars.ContextVar("prometheus_task_spend", default=None)
 
 
 class ModelRouter:
@@ -46,6 +51,8 @@ class ModelRouter:
         self._resting: dict[str, tuple[float, str]] = {}
         self.head = ""          # the lead AI chosen by hand ("" = follow the routes)
         self.paid_needs_yes = False   # paid AI only after the owner says yes (a paid Brain picked by hand is a yes)
+        self.cards: list = []         # model cards (M3.4): which AI suits which job
+        self.paid_heavy = False       # cheap paid AI may take heavy jobs without asking (Features switch)
         for entry in routes.get("private", []):
             p = providers.get(split_entry(entry)[0])
             if p is None or not p.is_local:
@@ -76,13 +83,77 @@ class ModelRouter:
         model = model or getattr(p, "model", "") or ""
         return bool(p.is_local or getattr(p, "is_free", False) or (name == "openrouter" and model.endswith(":free")))
 
+    # -- model cards (M3.4) -------------------------------------------------------------------------------------
+    def kind_for(self, purpose: str) -> str:
+        """The kind of job: private and vision always stay what they are; otherwise the step's tag, else the
+        purpose's own kind."""
+        if purpose in ("private", "vision"):
+            return purpose
+        return _KIND.get() or _cards.PURPOSE_KIND.get(purpose, "")
+
+    def _usable(self, entry: str, kind: str = "") -> bool:
+        name, _ = split_entry(entry)
+        p = self.providers.get(name)
+        if p is None or getattr(getattr(p, "info", None), "pick_only", False):
+            return False                      # only when the owner picks it (Coarena)
+        if kind == "private" and not p.is_local:
+            return False
+        try:
+            return bool(p.available())
+        except Exception:
+            return False
+
+    def card_for(self, entry: str):
+        name, model = split_entry(entry)
+        if not model:
+            model = getattr(self.providers.get(name), "model", "") or ""
+        for c in self.cards:
+            if c.entry == entry or (model and c.entry == f"{name}:{model}") or (c.entry == name and not c.model):
+                return c
+        return None
+
+    def card_entries(self, kind: str) -> list[str]:
+        if not self.cards or not kind:
+            return []
+        return [c.entry for c in _cards.rank(self.cards, kind, lambda e: self._usable(e, kind))]
+
+    def heavy_ok(self, entry: str, kind: str) -> bool:
+        """A cheap paid model may take a heavy job without asking: switch on, cheap card, task under its cap."""
+        if not self.paid_heavy or kind not in _cards.HEAVY:
+            return False
+        spent = _TASK_SPEND.get()
+        card = self.card_for(entry)
+        return spent is not None and card is not None and card.cheap and spent[0] < _cards.TASK_CAP
+
+    @contextlib.contextmanager
+    def step_kind(self, kind: str):
+        token = _KIND.set(kind if kind in _cards.KINDS else "")
+        try:
+            yield
+        finally:
+            _KIND.reset(token)
+
+    @contextlib.contextmanager
+    def task_spending(self):
+        """One task: paid AI it uses without asking is counted against the per-task limit."""
+        token = _TASK_SPEND.set([0.0])
+        try:
+            yield
+        finally:
+            _TASK_SPEND.reset(token)
+
     def entries_for(self, purpose: str) -> list[str]:
-        """The order to try. With a hand-picked lead AI, planning and answers use it first and then only free or
-        local models, so a choice made to save money never falls back to a paid one."""
+        """The order to try: the cards that fit the job first (best first, free before paid when equal), then the
+        purpose's own route as the fallback. With a hand-picked lead AI, planning and answers use it first and then
+        only free or local models, so a choice made to save money never falls back to a paid one."""
         route = list(self.routes.get(purpose, []))
+        kind = self.kind_for(purpose)
+        fitted = list(dict.fromkeys(self.card_entries(kind) + route))
+        if purpose == "private":
+            fitted = [e for e in fitted if self._usable(e, "private") or e in route]
         if self.head and purpose in HEAD_PURPOSES:
-            return [self.head] + [e for e in route if e != self.head and self.is_free(e)]
-        return route
+            return [self.head] + [e for e in fitted if e != self.head and self.is_free(e)]
+        return fitted
 
     @contextlib.contextmanager
     def paid_allowed(self):
@@ -98,8 +169,9 @@ class ModelRouter:
         entries = self.entries_for(purpose)
         if not self.paid_needs_yes or _PAID_OK.get():
             return entries
-        return [e for e in entries if self.is_free(e) or e == self.head] + \
-               [e for e in entries if not (self.is_free(e) or e == self.head)]
+        kind = self.kind_for(purpose)
+        ok = [e for e in entries if self.is_free(e) or e == self.head or self.heavy_ok(e, kind)]
+        return ok + [e for e in entries if e not in ok]
 
     def complete(self, purpose: str, messages: list[dict], system: str, json_schema: dict | None = None,
                  max_tokens: int = 4096, skip: frozenset[str] = frozenset()) -> Reply:
@@ -126,7 +198,8 @@ class ModelRouter:
             if not free and self.budget.state().stopped:
                 over_budget = True   # cap reached: skip paid models, keep looking for a free or local one
                 continue
-            if not free and self.paid_needs_yes and not _PAID_OK.get() and entry != self.head:
+            if not free and self.paid_needs_yes and not _PAID_OK.get() and entry != self.head \
+                    and not self.heavy_ok(entry, self.kind_for(purpose)):
                 waiting_yes.append(f"{name} · {used_model}" if used_model else name)
                 continue             # paid: only after the owner's yes
             try:
@@ -141,6 +214,9 @@ class ModelRouter:
             self._resting.pop(name, None)
             if not provider.is_local:
                 self.budget.record(reply.provider, reply.model, reply.usd, reply.tokens_in, reply.tokens_out)
+                spent = _TASK_SPEND.get()
+                if spent is not None and not free:
+                    spent[0] += float(reply.usd or 0.0)
             if not (reply.text or "").strip():
                 # an empty answer (a thinking model that used all its room, a free model that timed out) is a
                 # failure: try the next AI rather than hand back nothing
