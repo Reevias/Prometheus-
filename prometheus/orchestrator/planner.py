@@ -435,7 +435,9 @@ class Orchestrator:
     def _plan(self, text: str, history: list[dict] | None = None, chat_id: int | None = None, only: str = "") -> Plan:
         usable = [(n, c) for n, c in self._usable_agents() if not only or n == only]
         registry = dict(usable) if only else self.registry
-        agents = "\n".join(f"- {name}: {cls.description}" for name, cls in usable)
+        from prometheus.orchestrator.registry import planner_line
+
+        agents = "\n".join(planner_line(name, cls) for name, cls in usable)
         if only:
             agents += (f"\n\nThe owner chose the {only} agent for this message (they wrote @{only}). Use only that "
                        "agent, or answer directly when no step is needed.")
@@ -663,7 +665,9 @@ class Orchestrator:
     def _repair(self, text: str, st: dict, tries: list, agent_cls, only: str = "") -> dict | None:
         """Ask the lead AI for ONE different way to reach the same goal, or None to stop."""
         usable = [(n, c) for n, c in self._usable_agents() if not only or n == only]
-        agents = "\n".join(f"- {name}: {cls.description}" for name, cls in usable)
+        from prometheus.orchestrator.registry import planner_line
+
+        agents = "\n".join(planner_line(name, cls) for name, cls in usable)
         lines = []
         for a, r in tries:
             hidden = getattr(self.registry.get(a["agent"]), "private_outputs", False)

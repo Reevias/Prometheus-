@@ -67,6 +67,7 @@ class Services:
     clips: object = None
     sync: object = None
     laptop_jobs: object = None
+    phone_waiter: object = None
     resumer: object = None
     focus: object = None
     photos: object = None
@@ -536,6 +537,9 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
     from prometheus import phone as _phone
 
     services.laptop_jobs = _phone.LaptopJobs(services)
+    from prometheus.phone_wait import PhoneWaiter
+
+    services.phone_waiter = PhoneWaiter(services)          # phone jobs asked while the phone was away (M3.2)
     from prometheus.agents import phone_agent as _pa
 
     _pa.SERVICES = services
@@ -545,7 +549,9 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
         """On the cloud copy: a request that needs the laptop (its screen, files or apps) waits for the laptop."""
         if getattr(settings, "role", "laptop") != "cloud":
             return ""
-        if not any(st["agent"] in _phone.LAPTOP_AGENTS for st in plan.steps):
+        from prometheus.orchestrator.registry import needs_laptop
+
+        if not needs_laptop(plan.steps):              # every tool says where it runs (M3.2)
             return ""
         _phone.queue_for_laptop(store, dict(store.chats()).get(chat_id, _phone.PHONE_CHAT), text, read_only=read_only)
         from prometheus.sync import laptop_away

@@ -112,6 +112,8 @@ def create_app(services: Services, background: bool = False) -> FastAPI:
             services.sync.start()
         if getattr(services, "laptop_jobs", None) is not None and not cloud:
             services.laptop_jobs.start()
+        if getattr(services, "phone_waiter", None) is not None:
+            services.phone_waiter.start()
         if services.photos is not None and cloud:
             services.photos.start()            # on the cloud copy: only photos sent from the phone
         if services.focus is not None:
@@ -121,6 +123,8 @@ def create_app(services: Services, background: bool = False) -> FastAPI:
         yield
         if getattr(services, "resumer", None) is not None:
             services.resumer.stop()
+        if getattr(services, "phone_waiter", None) is not None:
+            services.phone_waiter.stop()
         if services.focus is not None:
             services.focus.stop_clock()
         if services.clips is not None:
