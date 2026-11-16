@@ -330,6 +330,9 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
 
     orchestrator = Orchestrator(store, router, REGISTRY, make_context, killswitch, prompts.folder, skills=skills)
     orchestrator.front_door = providers is None        # M3.1 (tests with stand-in AIs switch it on themselves)
+    from prometheus.orchestrator.loop import ThinkActLoop
+
+    orchestrator.loop = ThinkActLoop(orchestrator)     # M3.3: complex jobs, up to 12 rounds
     orchestrator.extra_catalog = apps_agent.MANAGER.catalog_text
     orchestrator.settings = settings          # Features switches and Stop everything
     from prometheus import features as _features
