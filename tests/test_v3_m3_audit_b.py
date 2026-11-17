@@ -234,3 +234,37 @@ def test_b7_two_jobs_cannot_both_pass_a_cap_meant_for_one(tmp_path):
     assert r.reserved_usd > 0
     pending[0]()                                              # the first job finishes: its hold is let go
     assert r.reserved_usd == 0
+
+
+# ---- B8: a job from the cloud that could change something waits for a yes on the laptop --------------------------
+def test_b8_cloud_jobs_that_change_things_wait_for_a_yes(app_client):
+    from types import SimpleNamespace
+
+    from prometheus.config import set_secret
+
+    _, services = app_client()
+    services.settings.cloud_url = "https://cloud.example"
+    set_secret("SYNC_TOKEN", "sync-token-0123456789abcdef")
+    jobs = [{"id": 1, "chat_title": "Phone", "text": "what is in my Downloads?", "read_only": 1},
+            {"id": 2, "chat_title": "Phone", "text": "delete my old photos", "read_only": 0}]
+
+    class Http:
+        def post(self, url, headers=None):
+            return SimpleNamespace(status_code=200, json=lambda: {"jobs": jobs})
+
+    started = []
+    services.start_task = lambda chat, text, read_only=False: (started.append((text, read_only)),
+                                                                SimpleNamespace(join=lambda timeout=None: None))[1]
+    services.sync = None
+    services.laptop_jobs.http = Http()
+    assert services.laptop_jobs.once() == 2
+    assert started == [("what is in my Downloads?", True)]                 # reading runs as before
+    waiting = services.store.big_approvals()
+    assert [a.kind for a in waiting] == ["laptop_job"] and "delete my old photos" in waiting[0].summary
+    services.approvals.resolve(waiting[0].id, True)                       # one tap
+    assert started[-1] == ("delete my old photos", False)
+    rejected_job = {"id": 3, "chat_title": "Phone", "text": "wipe it", "read_only": 0}
+    jobs[:] = [rejected_job]
+    services.laptop_jobs.once()
+    services.approvals.resolve(services.store.big_approvals()[0].id, False)
+    assert ("wipe it", False) not in started

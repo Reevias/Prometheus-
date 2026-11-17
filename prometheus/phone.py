@@ -194,14 +194,37 @@ class LaptopJobs:
         store = self.services.store
         threads = []
         for job in jobs:
-            chat = next((c for c, t in store.chats() if t == job["chat_title"]), None) or store.create_chat(
-                job["chat_title"])
-            threads.append(self.services.start_task(chat, job["text"], read_only=bool(job.get("read_only", 1))))
+            if not bool(job.get("read_only", 1)):
+                # the cloud copy is less trusted than the laptop: a job that could change something waits for a
+                # one-tap yes here (the Approvals page, and a notification). Reading jobs run as before. (M3 B8)
+                self._ask_first(job)
+                continue
+            threads.append(self.services.start_task(self._chat_for(job), job["text"], read_only=True))
         for t in threads:
             t.join(timeout=300)
         if self.services.sync is not None:
             self.services.sync.once()                 # the answers go back to the phone now, not in 10 minutes
         return len(jobs)
+
+    def _chat_for(self, job: dict) -> int:
+        store = self.services.store
+        title = str(job.get("chat_title") or PHONE_CHAT)
+        return next((c for c, t in store.chats() if t == title), None) or store.create_chat(title)
+
+    def _ask_first(self, job: dict) -> None:
+        text = str(job.get("text") or "")[:4000]
+        self.services.approvals.request(
+            "laptop_job", f"Do this on the laptop, asked from your phone/cloud copy: {text[:200]}",
+            {"chat_title": str(job.get("chat_title") or PHONE_CHAT), "text": text})
+        try:
+            self.services.notify("waiting", f"Your phone asked the laptop to: {text[:80]}. Approve it first.")
+        except Exception:
+            pass
+
+    def run_approved(self, payload: dict) -> str:
+        """The owner said yes to a job from the cloud: now it runs, with the normal safety checks."""
+        self.services.start_task(self._chat_for(payload), str(payload.get("text") or ""))
+        return "Started on the laptop."
 
     def loop(self) -> None:
         from prometheus.features import running

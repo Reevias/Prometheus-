@@ -584,6 +584,7 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
     from prometheus import phone as _phone
 
     services.laptop_jobs = _phone.LaptopJobs(services)
+    approvals.register("laptop_job", lambda payload: services.laptop_jobs.run_approved(payload))
     from prometheus.phone_wait import PhoneWaiter
 
     services.phone_waiter = PhoneWaiter(services)          # phone jobs asked while the phone was away (M3.2)
