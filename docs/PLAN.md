@@ -102,7 +102,7 @@ Exit gate: click-through test passes on Windows; every 2.x feature reachable; M2
   plain rules decide if it is slow or fails, but rules alone never judge nuanced requests.
 - **M3.2 Tool and agent registry [F2].** Every tool has typed inputs, outputs and errors plus a permission scope.
   Keywords only make a shortlist; the choice is checked against capabilities and permissions. Registers
-  `browser_action` (Playwright browser control, accessibility tree, snapshots) **[found]**. Every tool also says where it
+  the existing browser agent (Playwright; it reads the page's buttons, fields, labels and aria text, and checks the real element before a click). It has **no accessibility-tree or snapshot tool yet**; that moved to M5 (audit, 17 Nov) **[found]**. Every tool also says where it
   runs: laptop, phone or both (owner, 16 Nov), so laptop and phone jobs aren't mixed up.
 - **M3.3 ReAct loop.** Think → act → observe, with step limits, cancel at any step and visible steps (plans, tool
   calls, status, short explanations; never hidden reasoning).
@@ -141,6 +141,7 @@ Exit gate: skills made from repos validate and run in the sandbox; repo-map test
 - **M5.4** Create, edit and remove your own agents.
 - **M5.5** Full multi-agent view (replaces M2's simple "running now" list).
 - **M5.6** Conversation branching.
+- *Moved here from M3 (audit, 17 Nov 2026): an accessibility-tree browser tool with snapshots. M3 claimed it; it was never built.*
 
 Study: `execution/engine.py`, `parallel_executor.py`, `series_executor.py`, `state_manager.py`,
 `subagent_registry.py`, `memory_aware_executor.py`.

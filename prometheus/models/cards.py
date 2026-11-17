@@ -123,3 +123,30 @@ def estimate_usd(card: Card, messages: list, system: str, max_tokens: int) -> fl
         return 0.0
     chars = len(system or "") + sum(len(str(m.get("content", ""))) for m in messages if isinstance(m, dict))
     return (chars / 4 * (card.price_in or 0) + max_tokens * (card.price_out or 0)) / 1_000_000
+
+
+def _usd(v: float | None) -> str:
+    return "free" if v is None else f"${v:g}"
+
+
+def price_drift(cards, live: dict) -> dict[str, str]:
+    """Cards whose price no longer matches OpenRouter's live list: {card name: what changed}. live maps a model id to
+    (USD in, USD out) per million tokens. Only OpenRouter cards can be compared; prices are a snapshot (D4)."""
+    out: dict[str, str] = {}
+    for c in cards:
+        if c.provider != "openrouter" or c.local:
+            continue
+        now = live.get(c.model)
+        if now is None:
+            out[c.name] = "not listed on OpenRouter any more"
+            continue
+        card = (c.price_in, c.price_out)
+        n_in, n_out = float(now[0]), float(now[1])
+        same = (all(v is None for v in card) and n_in == 0 and n_out == 0) or (
+            None not in card and abs(card[0] - n_in) <= 0.01 * max(n_in, 0.01)
+            and abs(card[1] - n_out) <= 0.01 * max(n_out, 0.01))
+        if not same:
+            now_text = "free" if n_in == 0 and n_out == 0 else f"${n_in:g} / ${n_out:g}"
+            card_text = "free" if c.price_in is None else f"${c.price_in:g} / ${c.price_out:g}"
+            out[c.name] = f"price now {now_text} (card says {card_text})"
+    return out

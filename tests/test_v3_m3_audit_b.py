@@ -268,3 +268,36 @@ def test_b8_cloud_jobs_that_change_things_wait_for_a_yes(app_client):
     services.laptop_jobs.once()
     services.approvals.resolve(services.store.big_approvals()[0].id, False)
     assert ("wipe it", False) not in started
+
+
+# ---- D4: card prices are a snapshot; "Check cards" compares them with OpenRouter's live list ----------------------
+def test_d4_price_drift_compares_cards_with_the_live_list():
+    from prometheus.models.cards import Card, price_drift
+
+    cards = [Card("openrouter:a/cheap", "Cheap", ("chat",), price_in=0.15, price_out=0.47),
+             Card("openrouter:a/moved", "Moved", ("chat",), price_in=0.15, price_out=0.47),
+             Card("openrouter:a/free", "Was free", ("chat",)),
+             Card("openrouter:a/gone", "Gone", ("chat",), price_in=1.0, price_out=2.0),
+             Card("anthropic:claude-x", "Claude", ("plan",), price_in=1.0, price_out=5.0)]
+    live = {"a/cheap": (0.15, 0.47), "a/moved": (0.30, 0.47), "a/free": (0.1, 0.2)}
+    said = price_drift(cards, live)
+    assert "Cheap" not in said and "Claude" not in said               # same price, or no live list for it
+    assert "$0.15 / $0.47" in said["Moved"] and "$0.3 / $0.47" in said["Moved"]
+    assert "free" in said["Was free"] and "$0.1 / $0.2" in said["Was free"]
+    assert "not listed" in said["Gone"]
+
+
+def test_d4_the_check_page_shows_the_difference_and_the_snapshot_note(app_client, monkeypatch):
+    from conftest import login
+
+    from prometheus.models import router as router_mod
+
+    client, services = app_client()
+    login(client)
+    first = next(c for c in services.router.cards if c.provider == "openrouter" and not c.free)
+    live = {first.model: ((first.price_in or 0) * 3, first.price_out or 0)}
+    monkeypatch.setattr(router_mod, "live_openrouter_prices", lambda: live)
+    text = client.get("/settings/model-cards/check").text
+    assert "price now" in text and "snapshot" in text.lower()
+    monkeypatch.setattr(router_mod, "live_openrouter_prices", lambda: None)       # offline: says so, never guesses
+    assert "reach openrouter" in client.get("/settings/model-cards/check").text.lower()

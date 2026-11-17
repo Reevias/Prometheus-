@@ -784,9 +784,18 @@ def register_routes(app: FastAPI, services: Services) -> None:
                 rows.append((c, "ok: offered"))
             else:
                 rows.append((c, "not offered any more? edit your models.json"))
-        body = "".join(f"<li><b>{escape(c.name)}</b> <small class='muted'>{escape(c.entry)}</small>: {escape(why)}</li>"
-                       for c, why in rows)
-        return HTMLResponse(f"<ul class='card-check'>{body}</ul>")
+        from prometheus.models import router as _router_mod
+        from prometheus.models.cards import price_drift
+
+        live = _router_mod.live_openrouter_prices()
+        drift = price_drift(getattr(r, "cards", []), live) if live else {}
+        body = "".join(f"<li><b>{escape(c.name)}</b> <small class='muted'>{escape(c.entry)}</small>: {escape(why)}"
+                       + (f"; <b>{escape(drift[c.name])}</b>" if c.name in drift else "") + "</li>" for c, why in rows)
+        price_note = ("Prices on the cards are a snapshot. Compared with OpenRouter's live list just now: "
+                      + ("nothing has changed." if live and not drift else "differences are in bold above.")
+                      if live else "Prices on the cards are a snapshot, and I couldn't reach OpenRouter's live "
+                                   "list to compare them.")
+        return HTMLResponse(f"<ul class='card-check'>{body}</ul><p class='muted small'>{escape(price_note)}</p>")
 
     def settings_page(request: Request, status_code: int = 200, **extra):
         have = secrets_set()

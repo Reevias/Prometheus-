@@ -1,6 +1,10 @@
 # Changelog
 
 ## Prometheus 3.0, M3 (on the prometheus-v3 branch, not released yet)
+- **M3 audit fixes, truth in the documents (D1, D2, D4, D5 part):** the M3 report now lists only test numbers a run
+  produced and where; the plan no longer claims an accessibility-tree browser tool (moved to M5); "Check cards" now
+  compares OpenRouter prices with OpenRouter's live list and says prices are a snapshot; `THIRD_PARTY_LICENSES.md`
+  lists the three copyleft libraries with a blank sign-off line for you (fpdf2 is not replaced yet).
 - **M3 audit fixes, Phase B** (8 fixes): the step-by-step loop now waits for your yes (or Pause) and carries on from
   the same round instead of saying "done"; AIs that need no key are off for new installs and never get your memories
   or notes; the webhook token can go in a header and is hidden in the access log; every saved token is hidden in

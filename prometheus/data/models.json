@@ -1,6 +1,6 @@
 {
  "updated": "2026-11-16",
- "note": "Model cards (M3.4). level = Prometheus's own estimate (1 light, 2 medium, 3 strong), not a benchmark. price = USD per million tokens [in, out]; none = free. Prices come from openrouter_models.json and Anthropic's list (checked 11 Nov 2026). Kinds: chat, plan, research, code, vision, images, summarise, private. To change them, copy this file into Prometheus's data folder as models.json and edit that copy.",
+ "note": "Model cards (M3.4). level = Prometheus's own estimate (1 light, 2 medium, 3 strong), not a benchmark. price = USD per million tokens [in, out]; none = free. Prices are a snapshot (taken 11 Nov 2026 from openrouter_models.json and Anthropic's list) and drift: Settings → AI → Advanced → Check cards compares the OpenRouter ones with OpenRouter's live list. Kinds: chat, plan, research, code, vision, images, summarise, private. To change them, copy this file into Prometheus's data folder as models.json and edit that copy.",
  "cards": [
   {
    "entry": "openrouter:ricursiveai/ripple-65b-preview",

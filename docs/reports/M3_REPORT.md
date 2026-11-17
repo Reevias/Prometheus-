@@ -27,12 +27,22 @@ failure since the security audit (a test assumed `ctypes` can be imported in the
 stricter).
 
 ## Tests
-1353 tests pass, plus 4 browser tests. New M3 tests: cards 10, tool list 5, front door 14, loop 6, streaming 6, live
-context 3, review fixes 30.
+Only numbers that a run produced, and where it ran (corrected 17 Nov by the M3 audit fix plan, D1):
+
+| Where | Result | When |
+|---|---|---|
+| This cloud session (Linux, Python 3.14.6): the full suite | **1361 passed, 41 skipped** | 17 Nov, after audit Phase B |
+| Browser (click-through) tests | not re-run in that session; earlier runs are not counted here | NOT VERIFIED since Phase B |
+| GitHub `windows-latest` (not your laptop) | see the Actions tab for each push | the owner's laptop: **not yet** |
+
+Earlier versions of this report said "1353 tests pass, plus 4 browser tests". That number came from the build session
+and is replaced by the table above. New M3 tests (written with the features): cards, tool list, front door, loop,
+streaming, live context and the review fixes, in `tests/test_v3_m3_*.py`; the audit fixes are in
+`tests/test_v3_m3_audit_b.py`.
 
 ## Not done / known limits
 - Claude doesn't stream yet (its official library with adaptive thinking; a separate change).
-- Pause in the step-by-step loop stops it; "carry on" starts it again from the request (a plan's Carry on is exact).
+- (Fixed in audit Phase B1, 17 Nov: Pause in the step-by-step loop now keeps its place and Carry on continues from that round.)
 - Strength levels on the cards are Prometheus's own estimate, not a benchmark. Edit your own copy to change them.
 - "Cheap paid AI for heavy jobs" is **on** after updating (your choice). Turn it off in Features if you'd rather be
   asked every time.

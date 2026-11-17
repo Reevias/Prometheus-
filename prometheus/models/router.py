@@ -367,6 +367,27 @@ def price_text(price: str) -> str:
     return "free, with daily limits" if str(price).strip().lower() == "free" else f"${price} per M tokens"
 
 
+def live_openrouter_prices() -> dict | None:
+    """OpenRouter's own current prices, USD per million tokens {model id: (in, out)}; None if it can't be reached.
+    The list is public (no key) and is only asked for when the owner presses "Check cards"."""
+    import httpx
+
+    try:
+        resp = httpx.get("https://openrouter.ai/api/v1/models", timeout=8)
+        if resp.status_code != 200:
+            return None
+        found = {}
+        for m in resp.json().get("data", []):
+            pricing = m.get("pricing") or {}
+            try:
+                found[str(m["id"])] = (float(pricing["prompt"]) * 1e6, float(pricing["completion"]) * 1e6)
+            except (KeyError, TypeError, ValueError):
+                continue
+        return found or None
+    except (httpx.HTTPError, ValueError):
+        return None
+
+
 def openrouter_models() -> list[dict]:
     """A hand-picked list of strong models on OpenRouter (prometheus/data/openrouter_models.json)."""
     import json as _json
