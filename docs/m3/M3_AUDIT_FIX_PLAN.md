@@ -10,6 +10,12 @@ Checked in the code before writing this (17 Nov): sandbox `ActiveProcessLimit = 
 has no Stop-all check (safety/approvals.py:51); `update_self` runs without an approval (agents/github.py:51); seven
 case-sensitive `"<untrusted"` checks; fpdf2, pywebpush and pystray in pyproject.toml. All audit claims held.
 
+## Who builds what (owner, 17 Nov)
+- **Phases A and C:** this Claude session, scheduled for **Sunday 22 Nov, 10 pm India time**.
+- **Phases B and D:** another Claude session, given by the owner.
+- Both work on `prometheus-v3`: `git pull` before starting and before every push, adopt the other's work, never
+  overwrite it, never force-push. Phase D's exit gate (D6) runs after A, B and C are all in.
+
 ## Phase A: blockers (before the branch is used on the laptop)
 
 | # | Audit item | Fix | Test (fails first) |
