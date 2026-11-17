@@ -285,6 +285,14 @@ def delete_secret(name: str) -> None:
             pass                                  # it wasn't there
 
 
+def saved_secret_values() -> list[str]:
+    """Every secret value Prometheus holds: all of <data>/.env (AI keys, MCP_* app tokens, the sync and tool-server
+    tokens, the phone key) and any known key set in the environment. For finding and hiding them in text."""
+    values = list(_read_env_file().values())
+    values += [os.environ.get(name) or "" for name in KEY_NAMES]
+    return [v for v in dict.fromkeys(values) if v]
+
+
 def secrets_set() -> dict[str, bool]:
     """Which keys exist (names only, never values)."""
     return {name: bool(get_secret(name)) for name in KEY_NAMES}

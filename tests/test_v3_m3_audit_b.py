@@ -127,3 +127,36 @@ def test_b3_the_token_is_hidden_in_the_access_log(caplog):
     text = caplog.text
     assert "tok-SECRET-123" not in text and "/hooks/***" in text and "/hooks/***/sms" in text
     assert "/v3/tasks" in text                                                       # other lines are untouched
+
+
+# ---- B4: every saved secret is scrubbed from terminal output (MCP, webhook, sync tokens too) ---------------------
+def test_b4_terminal_output_hides_every_saved_token(tmp_home):
+    from prometheus import features
+    from prometheus.actions.terminal import scrub_secrets
+    from prometheus.config import Settings, set_secret
+    from prometheus.safety.secrets import find_secrets
+
+    set_secret("MCP_GITHUB", "mcp-token-AAAA1111BBBB")
+    set_secret("MCP_SERVER_TOKEN", "mcpserver-CCCC2222DDDD")
+    set_secret("SYNC_TOKEN", "sync-token-EEEE3333FFFF")
+    old = features.CURRENT
+    features.CURRENT = Settings(webhook_token="webhook-GGGG4444HHHH")
+    try:
+        text = ("a mcp-token-AAAA1111BBBB b mcpserver-CCCC2222DDDD c sync-token-EEEE3333FFFF "
+                "d webhook-GGGG4444HHHH e")
+        out = scrub_secrets(text)
+        for token in ("AAAA1111", "CCCC2222", "EEEE3333", "GGGG4444"):
+            assert token not in out
+        assert out.startswith("a ") and out.endswith(" e")           # the rest of the text is kept
+        assert find_secrets("curl /x/webhook-GGGG4444HHHH") == ["one of your saved keys"]
+    finally:
+        features.CURRENT = old
+
+
+def test_b4_a_harmless_env_override_is_still_allowed_and_a_saved_token_is_refused(tmp_home):
+    from prometheus.actions.terminal import overrides_allowed
+    from prometheus.config import set_secret
+
+    set_secret("MCP_GITHUB", "mcp-token-AAAA1111BBBB")
+    assert overrides_allowed("MY_MODE", "fast")
+    assert not overrides_allowed("MY_MODE", "x mcp-token-AAAA1111BBBB")
