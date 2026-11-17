@@ -298,6 +298,9 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
     from prometheus.agents.files import recycle_handler
 
     approvals.register("recycle_files", lambda payload: recycle_handler(payload, policy, files))
+    from prometheus.agents.files import copy_move_handler
+
+    approvals.register("copy_move_runnable", lambda payload: copy_move_handler(payload, policy, files))
     approvals.register("clone_repo", lambda payload: clone_handler(payload, data / "quarantine"))
     approvals.register("open_link", open_link_handler)
     approvals.register("open_local", lambda payload: open_local_handler(payload, policy))

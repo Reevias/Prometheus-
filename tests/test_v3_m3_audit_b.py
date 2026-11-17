@@ -160,3 +160,24 @@ def test_b4_a_harmless_env_override_is_still_allowed_and_a_saved_token_is_refuse
     set_secret("MCP_GITHUB", "mcp-token-AAAA1111BBBB")
     assert overrides_allowed("MY_MODE", "fast")
     assert not overrides_allowed("MY_MODE", "x mcp-token-AAAA1111BBBB")
+
+
+# ---- B5: moving or copying a file Windows would run asks first ---------------------------------------------------
+def test_b5_moving_or_copying_a_script_waits_for_a_yes(make_ctx, tmp_home):
+    from prometheus.agents.files import Files, copy_move_handler
+
+    ctx = make_ctx()
+    home = tmp_home.home
+    for rel in ("Downloads/tool.ps1", "Downloads/setup.bat", "Downloads/notes.txt"):
+        (home / rel).parent.mkdir(parents=True, exist_ok=True)
+        (home / rel).write_text("echo hi")
+    moved = Files().run("t", {"action": "move", "paths": ["Downloads/tool.ps1"], "to": "Desktop"}, ctx)
+    assert moved.status == "waiting_approval" and (home / "Downloads/tool.ps1").exists()
+    copied = Files().run("t", {"action": "copy", "paths": ["Downloads/setup.bat"], "to": "Desktop"}, ctx)
+    assert copied.status == "waiting_approval" and not (home / "Desktop/setup.bat").exists()
+    pending = ctx.store.big_approvals()
+    assert [p.kind for p in pending] == ["copy_move_runnable"] * 2
+    out = copy_move_handler(pending[0].payload, ctx.policy, ctx.files)           # what the owner's yes runs
+    assert (home / "Desktop/tool.ps1").exists() and not (home / "Downloads/tool.ps1").exists() and "Moved" in out
+    plain = Files().run("t", {"action": "move", "paths": ["Downloads/notes.txt"], "to": "Desktop"}, ctx)
+    assert plain.status == "done" and (home / "Desktop/notes.txt").exists()        # a normal file still just moves

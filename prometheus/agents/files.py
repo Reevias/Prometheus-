@@ -349,20 +349,18 @@ class Files(Agent):
             return StepResult("failed", "Say which files and the folder to put them in (inputs: paths, to).")
         dest = resolve_place(str(inputs["to"]), ctx.home)
         dest_root = self._root(ctx.policy.check_read(dest), ctx)
-        work = []
-        for raw in sources:
-            src = resolve_place(raw, ctx.home)
-            name = Path(raw).name
-            if move:
-                src_root = ctx.policy.root_for(src)
-                if src_root is not None and src_root != dest_root:
-                    # across drives or places: copy here, the original stays where it was
-                    work.append((name + " (copied: moving between drives keeps the original)",
-                                 lambda run, s=src: ctx.files.copy(run, s, dest, dest_root)))
-                    continue
-                work.append((name, lambda run, s=src: ctx.files.move(run, s, dest, dest_root)))
-            else:
-                work.append((name, lambda run, s=src: ctx.files.copy(run, s, dest, dest_root)))
+        resolved = [resolve_place(raw, ctx.home) for raw in sources]
+        for src in resolved:                    # refuse early, before anything is queued
+            ctx.policy.check_read(src)
+        runnable = [s for s in resolved if s.suffix.lower() in RUNNABLE]
+        if runnable:                            # Windows runs these when opened: copying or moving one asks first
+            verb = "Move" if move else "Copy"
+            names = ", ".join(s.name for s in runnable[:5]) + ("…" if len(runnable) > 5 else "")
+            ctx.approvals.request("copy_move_runnable", f"{verb} {names} to {dest}",
+                                  {"sources": [str(s) for s in resolved], "to": str(dest), "move": bool(move)})
+            return StepResult("waiting_approval", f"{verb} of {names} is waiting for your approval on the Approvals "
+                                                  "page: Windows can run that kind of file.")
+        work = _copy_move_work(resolved, dest, dest_root, move, ctx.policy, ctx.files)
         done, problems = self._run_changes(ctx, dest_root, work, "moved" if move else "created")
         return self._report("Moved" if move else "Copied", done, problems)
 
@@ -434,6 +432,51 @@ class Files(Agent):
             return StepResult("waiting_approval", f"Sending {len(sources)} items to the Recycle Bin is waiting for "
                                                   "your approval on the Approvals page.")
         return recycle_paths(sources, ctx.policy, ctx.files, ctx.killswitch)
+
+
+def _copy_move_work(sources: list[Path], dest: Path, dest_root: Path, move: bool, policy: PathPolicy,
+                    files: FileActions) -> list:
+    work = []
+    for src in sources:
+        name = src.name
+        if move:
+            src_root = policy.root_for(src)
+            if src_root is not None and src_root != dest_root:
+                # across drives or places: copy here, the original stays where it was
+                work.append((name + " (copied: moving between drives keeps the original)",
+                             lambda run, s=src: files.copy(run, s, dest, dest_root)))
+                continue
+            work.append((name, lambda run, s=src: files.move(run, s, dest, dest_root)))
+        else:
+            work.append((name, lambda run, s=src: files.copy(run, s, dest, dest_root)))
+    return work
+
+
+def copy_move_handler(payload: dict, policy: PathPolicy, files: FileActions) -> str:
+    """Runs after the owner approves copying or moving a runnable file. Everything is checked again now."""
+    dest = Path(str(payload.get("to") or ""))
+    move = bool(payload.get("move"))
+    dest_root = policy.root_for(policy.check_read(dest))
+    if dest_root is None:
+        raise PathBlocked(f"Not allowed: {dest}")
+    sources = [Path(str(s)) for s in (payload.get("sources") or [])][:500]
+    for src in sources:
+        policy.check_read(src)
+    run = files.journal.start(dest_root)
+    done, problems = [], []
+    try:
+        for label, call in _copy_move_work(sources, dest, dest_root, move, policy, files):
+            res = call(run)
+            (done if res.status == "done" else problems).append(label if res.status == "done" else
+                                                                f"{label}: {res.detail}")
+    finally:
+        files.journal.finish(run)
+    text = f"{'Moved' if move else 'Copied'} {len(done)} item(s)."
+    if done:
+        text += "\n" + "\n".join(f"- {d}" for d in done[:50])
+    if problems:
+        text += "\nSkipped:\n" + "\n".join(f"- {p}" for p in problems[:50])
+    return text
 
 
 def word_document(text: str) -> bytes:
