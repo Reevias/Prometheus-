@@ -1017,6 +1017,8 @@ class Orchestrator:
             drop_paused_run(self.store, task_id)
             return None
         drop_paused_run(self.store, task_id)          # taken now: a double click can't run it twice
+        if saved.get("loop") and self.loop is not None:     # a think-act-look loop carries on from its round (M3 B1)
+            return self.loop.resume(task_id, saved)
         chat_id = int(t["chat_id"])
         self.stopping.discard(chat_id)
         self.pausing.discard(chat_id)

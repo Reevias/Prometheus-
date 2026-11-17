@@ -77,24 +77,74 @@ class ThinkActLoop:
             return {"_bad": reply.text}
 
     def run(self, chat_id: int, task_id: int, text: str, history: list[dict]) -> "TaskOutcome":  # noqa: F821
+        o = self.o
+        messages = list(history or []) + [{"role": "user", "content": o._context(text, chat_id) + f"Request: {text}"}]
+        return self._go(chat_id, task_id, text, messages, {}, set(), [], 1)
+
+    def resume(self, task_id: int, saved: dict) -> "TaskOutcome":  # noqa: F821
+        """Carry on a loop that was paused, or that waited for a yes, from the round it had reached (B1)."""
+        from prometheus.agents.base import StepResult as _SR
+
+        o = self.o
+        t = o.store.task(task_id)
+        chat_id = int(t["chat_id"])
+        st = saved.get("loop") or {}
+        o.stopping.discard(chat_id)
+        o.pausing.discard(chat_id)
+        o.store.set_task_status(task_id, "running")
+        o.store.add_message(chat_id, "assistant", "Carrying on from where I stopped.", "paused")
+        messages = list(st.get("messages") or [])
+        if st.get("observe"):                       # a round was waiting for a yes: tell the AI what came of it
+            messages.append({"role": "user", "content": self._after_yes(st)})
+        results = {int(k): _SR(**v) for k, v in (st.get("results") or {}).items() if isinstance(v, dict)}
+        return self._go(chat_id, task_id, str(st.get("text") or t["text"]), messages, results,
+                        set(int(x) for x in st.get("private") or []), list(st.get("seen") or []),
+                        int(st.get("next") or 1))
+
+    def _after_yes(self, st: dict) -> str:
+        said = []
+        for aid in st.get("waiting") or []:
+            outcome = (st.get("outcomes") or {}).get(str(aid))
+            if outcome:
+                said.append(f"The owner answered {outcome['status']}: {str(outcome['result'])[:500]}")
+            else:
+                said.append("The owner has not answered yet.")
+        return (f"Round {int(st.get('next') or 1) - 1} was waiting for the owner's yes. "
+                + " ".join(said) + " Carry on from here (never repeat an action that already worked).")
+
+    def _keep(self, task_id: int, text: str, messages: list[dict], nxt: int, results: dict, private: set,
+              seen: list[str], waiting: list[int] | None = None, observe: bool = False) -> None:
+        """Write down where the loop is, so Carry on (or the yes) continues it instead of starting again."""
+        from dataclasses import asdict
+
+        from prometheus.orchestrator.planner import save_paused_run
+
+        try:
+            save_paused_run(self.o.store, task_id, {
+                "text": text, "steps": [], "loop": {
+                    "text": text, "messages": messages, "next": nxt, "observe": observe,
+                    "results": {str(k): asdict(v) for k, v in results.items()}, "private": sorted(private),
+                    "seen": seen, "waiting": list(waiting or []), "outcomes": {}}})
+        except (TypeError, ValueError):
+            pass            # something can't be written down: Run again still works
+
+    def _go(self, chat_id: int, task_id: int, text: str, messages: list[dict], results: dict, private: set,
+            seen: list[str], first_round: int) -> "TaskOutcome":  # noqa: F821
         from prometheus.orchestrator.planner import JOB_KINDS, PlanError, Stopped, _inputs
         from prometheus.safety.budget import BudgetExceeded
 
         o = self.o
         system = self._system()
-        messages = list(history or []) + [{"role": "user", "content": o._context(text, chat_id) + f"Request: {text}"}]
-        results: dict[int, StepResult] = {}
-        private: set[int] = set()
-        seen: list[str] = []                      # what each round did, for the owner if it has to stop early
         spent_at_start = o._spent()
         try:
-            for n in range(1, self.max_rounds + 1):
+            for n in range(first_round, self.max_rounds + 1):
                 o.killswitch.check()
                 if chat_id in o.stopping:
                     return o._finish(chat_id, task_id, "stopped", "Stopped. Ask again whenever you like.")
                 if chat_id in o.pausing:
-                    return o._finish(chat_id, task_id, "paused", self._so_far(seen, "Paused. Ask again (or say carry "
-                                                                                    "on) and I'll start from here."))
+                    self._keep(task_id, text, messages, n, results, private, seen)
+                    return o._finish(chat_id, task_id, "paused", self._so_far(seen, "Paused. Press Carry on and I'll "
+                                                                                    "start from here."))
                 if o._spent() - spent_at_start >= o.task_budget:
                     return o._finish(chat_id, task_id, "failed", self._so_far(
                         seen, f"Stopped: this task reached its ${o.task_budget:.2f} spending limit."))
@@ -130,11 +180,15 @@ class ThinkActLoop:
                 kind = str(step.get("kind") or "")
                 st = {"id": n, "agent": agent, "goal": str(step.get("goal") or "")[:300], "skill": "",
                       "inputs": inputs, "depends_on": [], "kind": kind if kind in JOB_KINDS else ""}
+                last_approval = self._last_approval()
                 res, _cls = o._run_step(task_id, st, results, private, label=f"Round {n}: ")
                 results[n] = res
                 seen.append(f"Round {n} ({agent}): {res.summary[:300]}")
                 if res.status == "waiting_approval":
-                    return o._finish(chat_id, task_id, "done", res.summary, "loop", private=bool(private))
+                    # not finished: it keeps its place and carries on after the yes (or Carry on)
+                    waiting = self._new_pending(last_approval)
+                    self._keep(task_id, text, messages, n + 1, results, private, seen, waiting, observe=True)
+                    return o._finish(chat_id, task_id, "paused", res.summary, "loop", private=bool(private))
                 observation = (f"Round {n} result ({agent}, {res.status}):\n"
                                + untrusted(res.summary[:OBSERVATION_CHARS], agent))
                 if res.data:
@@ -153,6 +207,19 @@ class ThinkActLoop:
         except (ProviderUnavailable, BudgetExceeded) as e:
             return o._finish(chat_id, task_id, "paused", o._paused_text(chat_id, text, e, False))
 
+    def _last_approval(self) -> int:
+        try:
+            return int(self.o.store._rows("SELECT COALESCE(MAX(id), 0) AS m FROM approvals")[0]["m"])
+        except Exception:
+            return 0
+
+    def _new_pending(self, after_id: int) -> list[int]:
+        try:
+            return [int(r["id"]) for r in self.o.store._rows(
+                "SELECT id FROM approvals WHERE id > ? AND status = 'pending' ORDER BY id", (after_id,))]
+        except Exception:
+            return []
+
     @staticmethod
     def _so_far(seen: list[str], head: str) -> str:
         return head + ("\n\n" + "\n".join(f"- {s}" for s in seen) if seen else "")
@@ -163,3 +230,19 @@ def _round_refs(inputs: dict) -> dict:
     import re
 
     return {k: (re.sub(r"^\$round(\d+)\.", r"$step\1.", v) if isinstance(v, str) else v) for k, v in inputs.items()}
+
+
+def approval_resolved(store, approval_id: int, status: str, result: str) -> list[int]:
+    """Called when a yes/no is given. Returns the loop tasks that were waiting only for this and can now carry on."""
+    from prometheus.orchestrator.planner import paused_runs, save_paused_run
+
+    ready = []
+    for key, saved in paused_runs(store).items():
+        st = saved.get("loop") if isinstance(saved, dict) else None
+        if not st or approval_id not in (st.get("waiting") or []):
+            continue
+        st.setdefault("outcomes", {})[str(approval_id)] = {"status": status, "result": result}
+        save_paused_run(store, int(key), saved)
+        if all(str(a) in st["outcomes"] for a in st["waiting"]):
+            ready.append(int(key))
+    return ready

@@ -15,6 +15,7 @@ class Approvals:
         self.store = store
         self._handlers: dict[str, Callable] = {}
         self._needs_secret: set[str] = set()
+        self.on_resolved: list[Callable[[int, str, str], None]] = []    # (id, status, result), after a yes or no
 
     def register(self, kind: str, handler: Callable, needs_secret: bool = False) -> None:
         """needs_secret: the handler is called as handler(payload, secret) with what the owner typed."""
@@ -82,4 +83,9 @@ class Approvals:
                 self.store.add_allow_rule(item.kind, key, label or key)
         self.store.audit("user", "approval", {"id": approval_id, "kind": item.kind, "status": status,
                                               "result": result})
+        for hook in list(self.on_resolved):
+            try:
+                hook(approval_id, status, result)
+            except Exception:       # a listener never breaks the owner's answer
+                pass
         return result

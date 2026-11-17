@@ -382,6 +382,16 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
     services.atomic_files = AtomicFiles(policy=policy, backup_dir=data / "backups")
     services.terminal = AsyncTerminal(policy=policy)
     services.archive = archive
+
+    def _carry_on_after_answer(approval_id: int, status: str, result: str) -> None:
+        """A loop task that waited for this yes carries on by itself once everything it waited for is answered."""
+        from prometheus.orchestrator.loop import approval_resolved
+
+        for task_id in approval_resolved(store, approval_id, status, result):
+            t = store.task(task_id) or {}
+            if t.get("status") == "paused" and t.get("chat_id") not in services.running:
+                services.resume_task(task_id)
+    approvals.on_resolved.append(_carry_on_after_answer)
     from prometheus.voice.service import VoiceService
 
     services.voice = VoiceService(services, data / "voice")
