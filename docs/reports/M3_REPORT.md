@@ -31,7 +31,7 @@ Only numbers that a run produced, and where it ran (corrected 17 Nov by the M3 a
 
 | Where | Result | When |
 |---|---|---|
-| This cloud session (Linux, Python 3.14.6): the full suite | **1361 passed, 41 skipped** | 17 Nov, after audit Phase B |
+| This cloud session (Linux, Python 3.14.6): the full suite | **1365 passed, 41 skipped** | 17 Nov, after audit Phase B and D1-D5 |
 | Browser (click-through) tests | not re-run in that session; earlier runs are not counted here | NOT VERIFIED since Phase B |
 | GitHub `windows-latest` (not your laptop) | see the Actions tab for each push | the owner's laptop: **not yet** |
 

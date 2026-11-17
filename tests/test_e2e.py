@@ -4,7 +4,6 @@ import os
 import time
 
 import pytest
-from fpdf import FPDF
 from PIL import Image
 
 from prometheus import cli
@@ -15,11 +14,12 @@ from prometheus.models.fake import FakeProvider
 
 
 def make_pdf(path, text):
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_font("Helvetica", size=12)
-    pdf.cell(0, 10, text)
-    pdf.output(str(path))
+    from reportlab.pdfgen import canvas
+
+    c = canvas.Canvas(str(path))
+    c.setFont("Helvetica", 12)
+    c.drawString(72, 750, text)
+    c.save()
 
 
 def listing(root):

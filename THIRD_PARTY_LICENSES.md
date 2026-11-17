@@ -7,7 +7,7 @@ them, or bundles it inside one file with Prometheus's code, this needs a fresh l
 
 | Library | Licence | Where it is used | What the licence asks | Status |
 |---|---|---|---|---|
-| fpdf2 | LGPL-3.0 | `prometheus/actions/pdf.py` (Markdown to PDF); two tests make test PDFs | Keep it a separate, replaceable library; keep its licence text; share any changes made to fpdf2 itself | **Planned to be replaced** by ReportLab (BSD) if the PDF tests pass with it (M3 audit plan D5). Not done yet: see below |
+| ~~fpdf2~~ | ~~LGPL-3.0~~ | was `prometheus/actions/pdf.py` | - | **Replaced (17 Nov) by ReportLab (BSD licence)**: no longer a dependency |
 | pywebpush | MPL-2.0 | `prometheus/phone.py` (phone notifications) | File-level copyleft: changes to pywebpush's own files must be shared; using it unmodified asks nothing more | Keep, unmodified |
 | pystray | LGPL-3.0 | `prometheus/tray.py` (the tray icon) | Same as fpdf2 | Keep, unmodified |
 
@@ -18,7 +18,8 @@ Owner: ____________________   Date: ______________
 
 (Left blank on purpose: only the owner can sign.)
 
-## Why fpdf2 is not replaced yet
-The plan (docs/m3/M3_AUDIT_FIX_PLAN.md, D5) says to swap fpdf2 for ReportLab only if the PDF tests pass with it.
-The session that wrote this could not install ReportLab (the install was blocked), so nothing was swapped or tested.
-Until it is, fpdf2 stays and is listed here.
+## What changed for PDFs (M3 audit plan D5, done 17 Nov 2026)
+fpdf2 (LGPL) was replaced by ReportLab (BSD, permissive: no duties beyond keeping its licence notice). New tests in
+`tests/test_v3_pdf_writer.py` were written against fpdf2 first (text, headings, lists, code, clickable links, accents,
+page breaks), passed, and passed unchanged on ReportLab. The full suite then passed with fpdf2 uninstalled.
+Tested on Linux here and by GitHub's runs; not checked on your laptop.
