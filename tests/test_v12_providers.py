@@ -92,7 +92,7 @@ def router_for(tmp_home, settings):
 def test_providers_with_a_key_or_no_key_join_cloud_routes_but_never_private(tmp_home, monkeypatch):
     monkeypatch.setenv("GROQ_API_KEY", "gsk_test_1234")
     monkeypatch.delenv("MISTRAL_AI_API_KEY", raising=False)
-    router = router_for(tmp_home, Settings())
+    router = router_for(tmp_home, Settings(free_no_key=True))      # off by default now: switched on here
     for purpose in ("plan", "combine", "research"):
         names = [e.split(":")[0] for e in router.routes[purpose]]
         assert "groq" in names and "llm7-io" in names            # a key, and no key needed
@@ -151,8 +151,8 @@ def test_adding_a_key_switches_the_ai_on_at_once(real_client, monkeypatch):
 def test_free_no_key_switch(real_client):
     client, services = real_client
     h = {"X-CSRF-Token": login(client)}
-    assert services.settings.free_no_key
+    assert not services.settings.free_no_key                      # off for a new install (M3 B2)
+    client.post("/settings/free", data={"on": "1"}, headers=h)
+    assert services.settings.free_no_key and services.router.providers["llm7-io"].available()
     client.post("/settings/free", data={}, headers=h)
     assert not services.settings.free_no_key and not services.router.providers["llm7-io"].available()
-    client.post("/settings/free", data={"on": "1"}, headers=h)
-    assert services.router.providers["llm7-io"].available()

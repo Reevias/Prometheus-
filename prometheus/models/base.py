@@ -39,3 +39,7 @@ class Provider(Protocol):
 
     def complete(self, messages: list[dict], system: str, json_schema: dict | None = None,
                  max_tokens: int = 4096, model: str | None = None) -> Reply: ...
+
+
+# marks the part of a message that holds the owner's memories and notes: a provider that needs no key never gets it
+PERSONAL_OPEN, PERSONAL_CLOSE = "<personal-context>", "</personal-context>"

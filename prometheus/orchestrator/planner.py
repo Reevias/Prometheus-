@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Callable
 
 from prometheus.agents.base import UNTRUSTED_RULE, AgentContext, StepResult, untrusted
-from prometheus.models.base import ProviderUnavailable
+from prometheus.models.base import PERSONAL_CLOSE, PERSONAL_OPEN, ProviderUnavailable
 from prometheus.safety.budget import BudgetExceeded
 from prometheus.safety.killswitch import Stopped
 
@@ -451,7 +451,8 @@ class Orchestrator:
                 live = self.live_context() or ""
             except Exception:
                 live = ""
-        content = f"{now_line()}{' ' + live if live else ''}\n\nThings to remember about the user:\n{memories}\n\n"
+        content = f"{now_line()}\n\n{PERSONAL_OPEN}{live + chr(10) + chr(10) if live else ''}" \
+                  f"Things to remember about the user:\n{memories}\n\n"
         known_facts = self.facts.relevant(text)
         if known_facts:
             content += "Known facts (people, places and things in the owner's life):\n" + "\n".join(
@@ -470,7 +471,7 @@ class Orchestrator:
         if passages:
             content += "Saved passages that may help:\n" + "\n".join(
                 untrusted(h.match[:PASSAGE_CHARS], h.source or h.title) for h in passages) + "\n\n"
-        return content
+        return content + PERSONAL_CLOSE
 
     def _plan(self, text: str, history: list[dict] | None = None, chat_id: int | None = None, only: str = "") -> Plan:
         usable = [(n, c) for n, c in self._usable_agents() if not only or n == only]

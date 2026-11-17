@@ -67,3 +67,27 @@ def test_b1_pause_then_carry_on_continues_from_the_next_round(make_ctx):
     after = o.resume_paused(out.task_id)
     assert after.status == "done" and after.answer == "Finished."
     assert [s.goal for s in ctx.store.steps(out.task_id)] == ["Round 1: find", "Round 2: find more"]
+
+
+# ---- B2: no keyless provider by default, and none ever sees memories --------------------------------------------
+def test_b2_free_no_key_providers_are_off_for_a_new_install():
+    from prometheus.config import Settings
+
+    assert Settings().free_no_key is False
+
+
+def test_b2_a_keyless_provider_gets_the_request_but_no_memory_or_facts(make_ctx):
+    keyless = FakeProvider(["plain reply"], name="nokey", is_local=False)
+    keyless.is_free, keyless.keyless = True, True
+    keyed = FakeProvider(["plain reply"], name="keyed", is_local=False)
+    keyed.is_free = True
+    for provider, expect_memory in ((keyless, False), (keyed, True)):
+        ctx = make_ctx(providers=[provider], routes={"plan": [provider.name], "private": []})
+        ctx.store.add_memory("my locker code is 4421")
+        o = Orchestrator(ctx.store, ctx.router, REG, lambda t, s: ctx, ctx.killswitch, PROMPTS)
+        content = o._context("what is my locker code", None) + "Request: what is my locker code"
+        ctx.router.complete("plan", [{"role": "user", "content": content}], "sys")
+        sent = str(provider.calls[-1]["messages"])
+        assert "Request: what is my locker code" in sent
+        assert ("4421" in sent) is expect_memory
+        assert "personal-context" not in sent                    # the markers never reach an AI

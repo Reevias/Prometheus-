@@ -13,7 +13,8 @@ from typing import Callable
 
 from prometheus.config import Settings
 from prometheus.models.anthropic_provider import AnthropicProvider
-from prometheus.models.base import PaidNeedsYes, PrivacyViolation, Provider, ProviderUnavailable, Reply
+from prometheus.models.base import (PERSONAL_CLOSE, PERSONAL_OPEN, PaidNeedsYes, PrivacyViolation, Provider,
+                                    ProviderUnavailable, Reply)
 from prometheus.catalog import load_catalog
 from prometheus.models import cards as _cards
 from prometheus.models.compat import OpenAICompatProvider
@@ -238,12 +239,14 @@ class ModelRouter:
             if not free and self.paid_needs_yes and not _PAID_OK.get() and entry != self.head and not heavy:
                 waiting_yes.append(f"{name} · {used_model}" if used_model else name)
                 continue             # paid: only after the owner's yes
+            keyless = bool(getattr(provider, "keyless", False) or getattr(getattr(provider, "info", None), "keyless", False))
+            sent = personal_for(messages, share=not keyless)    # a keyless provider never gets memories (M3 B2)
             try:
                 if on_text is not None and json_schema is None and hasattr(provider, "stream"):
                     on_text(None)                 # a fresh start (an earlier AI may have failed part way)
-                    reply = provider.stream(messages, system, on_text=on_text, max_tokens=max_tokens, model=model)
+                    reply = provider.stream(sent, system, on_text=on_text, max_tokens=max_tokens, model=model)
                 else:
-                    reply = provider.complete(messages, system, json_schema=json_schema, max_tokens=max_tokens,
+                    reply = provider.complete(sent, system, json_schema=json_schema, max_tokens=max_tokens,
                                               model=model)
             except ProviderUnavailable as e:
                 # a wrong model name rests only that model; the provider's other models keep working
@@ -317,6 +320,38 @@ def head_choices(router: "ModelRouter") -> list[tuple[str, str]]:
             label = info.name if info else name
             out.append((entry, f"{label}: {model} (free)" if model else f"{label} (free)"))
     return out
+
+
+def _personal_split(text: str):
+    """The text with the personal block (memories, facts, project notes) taken out, and the text with it kept."""
+    out, keep, i = [], [], 0
+    while True:
+        a = text.find(PERSONAL_OPEN, i)
+        if a < 0:
+            out.append(text[i:])
+            keep.append(text[i:])
+            break
+        b = text.find(PERSONAL_CLOSE, a)
+        if b < 0:                          # an unclosed block is treated as personal, to the end
+            out.append(text[i:a])
+            keep.append(text[i:a] + text[a + len(PERSONAL_OPEN):])
+            break
+        out.append(text[i:a])
+        keep.append(text[i:a] + text[a + len(PERSONAL_OPEN):b])
+        i = b + len(PERSONAL_CLOSE)
+    return "".join(out), "".join(keep)
+
+
+def personal_for(messages: list[dict], share: bool) -> list[dict]:
+    """The messages as one AI should get them: the personal block kept (share) or left out (a provider that needs no
+    key: its owner is unknown, so it only ever gets the request and the recent turns). The markers never go out."""
+    done = []
+    for m in messages:
+        c = m.get("content")
+        if isinstance(c, str) and PERSONAL_OPEN in c:
+            m = {**m, "content": _personal_split(c)[1 if share else 0]}
+        done.append(m)
+    return done
 
 
 def provider_on(info, settings: Settings) -> bool:
