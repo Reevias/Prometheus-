@@ -425,7 +425,12 @@ class Files(Agent):
             return StepResult("failed", "Say which files to send to the Recycle Bin (input: paths).")
         for s in sources:                       # refuse early, before anything is queued
             ctx.policy.check_change(s, self._root(Path(s), ctx))
-        if len(sources) > RECYCLE_WITHOUT_ASKING:
+        earlier = 0                             # files this task has already recycled in earlier steps (M3 B6)
+        try:
+            earlier = sum(int((st.data or {}).get("recycled") or 0) for st in ctx.store.steps(ctx.task_id))
+        except Exception:
+            earlier = 0
+        if earlier + len(sources) > RECYCLE_WITHOUT_ASKING:
             names = ", ".join(Path(s).name for s in sources[:8]) + ("…" if len(sources) > 8 else "")
             ctx.approvals.request("recycle_files", f"Send {len(sources)} items to the Recycle Bin: {names}",
                                   {"paths": sources})
@@ -525,7 +530,7 @@ def recycle_paths(paths: list[str], policy: PathPolicy, files: FileActions, kill
         text += " Restore them from the Recycle Bin if needed.\n" + "\n".join(f"- {d}" for d in done[:50])
     if problems:
         text += "\nSkipped:\n" + "\n".join(f"- {p}" for p in problems[:50])
-    return StepResult("done" if done or not problems else "failed", text)
+    return StepResult("done" if done or not problems else "failed", text, {"recycled": len(done)})
 
 
 def recycle_handler(payload: dict, policy: PathPolicy, files: FileActions) -> str:

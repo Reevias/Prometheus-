@@ -181,3 +181,32 @@ def test_b5_moving_or_copying_a_script_waits_for_a_yes(make_ctx, tmp_home):
     assert (home / "Desktop/tool.ps1").exists() and not (home / "Downloads/tool.ps1").exists() and "Moved" in out
     plain = Files().run("t", {"action": "move", "paths": ["Downloads/notes.txt"], "to": "Desktop"}, ctx)
     assert plain.status == "done" and (home / "Desktop/notes.txt").exists()        # a normal file still just moves
+
+
+# ---- B6: the 10-file Recycle limit counts the whole task, not each step ------------------------------------------
+def test_b6_recycling_in_small_steps_still_asks_once_the_task_passes_ten(make_ctx, tmp_home):
+    from prometheus.agents.files import Files
+
+    trashed = []
+    ctx = make_ctx(trash=lambda p: (trashed.append(p), __import__("os").remove(p)))
+    home = tmp_home.home
+    batches = []
+    for b in range(3):
+        paths = []
+        for i in range(8):
+            f = home / "Downloads" / f"junk{b}-{i}.tmp"
+            f.parent.mkdir(parents=True, exist_ok=True)
+            f.write_text("j")
+            paths.append(str(f))
+        batches.append(paths)
+    results = []
+    for paths in batches:
+        sid = ctx.store.add_step(ctx.task_id, "files", "recycle", {})
+        ctx.step_id = sid
+        res = Files().run("t", {"action": "recycle", "paths": paths}, ctx)
+        ctx.store.finish_step(sid, res.status, res.summary, res.data)
+        results.append(res)
+    assert results[0].status == "done" and len(trashed) == 8             # 8 so far: under the limit
+    assert results[1].status == "waiting_approval"                       # 16 in one task: asks
+    assert results[2].status == "waiting_approval"
+    assert len(trashed) == 8 and all(__import__("pathlib").Path(p).exists() for p in batches[1] + batches[2])
