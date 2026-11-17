@@ -210,3 +210,27 @@ def test_b6_recycling_in_small_steps_still_asks_once_the_task_passes_ten(make_ct
     assert results[1].status == "waiting_approval"                       # 16 in one task: asks
     assert results[2].status == "waiting_approval"
     assert len(trashed) == 8 and all(__import__("pathlib").Path(p).exists() for p in batches[1] + batches[2])
+
+
+# ---- B7: Antigravity jobs reserve their worst-case cost when they start ------------------------------------------
+def test_b7_two_jobs_cannot_both_pass_a_cap_meant_for_one(tmp_path):
+    import pytest
+
+    from prometheus.agents.antigravity import AntigravityRunner
+    from prometheus.memory.store import Store
+    from prometheus.safety.budget import Budget, BudgetExceeded
+    from prometheus.safety.killswitch import KillSwitch
+    from test_v13_review2 import Google
+
+    store = Store(tmp_path / "m.db")
+    pending = []
+    r = AntigravityRunner(store, Budget(store, 1.0), KillSwitch(), client_factory=lambda: Google(),
+                          sleep=lambda s: None, run_in_thread=pending.append)       # jobs wait, as if still running
+    chat = store.create_chat("c")
+    job = {"task": "t", "model": "gemini-3.8-flash", "max_tokens": 200_000, "chat_id": chat}   # about $0.60 worst case
+    r.submit(job)
+    with pytest.raises(BudgetExceeded):
+        r.submit(job)                                         # the first one's $0.60 is already held back
+    assert r.reserved_usd > 0
+    pending[0]()                                              # the first job finishes: its hold is let go
+    assert r.reserved_usd == 0
