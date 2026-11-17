@@ -1,6 +1,12 @@
 # Changelog
 
 ## Prometheus 3.0, M3 (on the prometheus-v3 branch, not released yet)
+- **M3 audit fixes, Phase B** (8 fixes): the step-by-step loop now waits for your yes (or Pause) and carries on from
+  the same round instead of saying "done"; AIs that need no key are off for new installs and never get your memories
+  or notes; the webhook token can go in a header and is hidden in the access log; every saved token is hidden in
+  terminal output; copying or moving a .bat/.ps1 asks first; the Recycle Bin limit counts the whole task; Antigravity
+  jobs hold back their worst-case cost while they run; jobs sent from the cloud copy that could change things wait for
+  your yes on the laptop.
 - **The right AI for each job** (model cards): every AI has a card with its exact name, what it's good at (quick
   talk, planning, research, code, pictures, summaries, your files) and its price. Each job goes to the strongest one
   that fits and is set up; free first when equal. Your files only ever go to the laptop's AI; a picture-making AI

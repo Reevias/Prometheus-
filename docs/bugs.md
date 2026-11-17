@@ -2,7 +2,21 @@
 
 Every bug found and fixed, newest first, so the count is always exact. Add a line for each new one.
 
-**Total fixed: 108** (as of 16 November 2026)
+**Total fixed: 116** (as of 17 November 2026)
+
+## 17 November 2026, M3 audit fixes, Phase B (8)
+From `docs/m3/M3_AUDIT_FIX_PLAN.md`. Each fix has a test that failed before it (`tests/test_v3_m3_audit_b.py`).
+
+| # | Bug | Fixed by |
+|---|---|---|
+| 116 | A job sent from the cloud copy that could change things ran on the laptop without a yes | it waits for a one-tap approval; reading jobs run as before |
+| 115 | A long job could use up the Antigravity cap twice (cost was checked only at start) | each job holds back its worst-case cost while it runs |
+| 114 | The 10-file Recycle limit was per step, so a task could recycle files in steps of 10 | the limit counts the whole task |
+| 113 | Copying or moving a .bat/.ps1 (or other runnable file) needed no yes | it asks first |
+| 112 | Terminal output didn't hide MCP, webhook, sync or tool-server tokens | every saved secret is hidden |
+| 111 | The webhook token was in the URL and in the access log | it can ride in a header; the log shows /hooks/*** |
+| 110 | AIs that need no key were on for new installs and received memories | off by default; they never get memories or notes |
+| 109 | The step-by-step loop called a task "done" while a yes was waiting, and Pause didn't keep its place | it keeps its place and carries on after the yes or Carry on |
 
 ## 16 November 2026, M3 review (13)
 An independent review of M3. Each fix has a test that failed before it (`tests/test_v3_m3_review.py`).

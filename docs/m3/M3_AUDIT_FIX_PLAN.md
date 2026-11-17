@@ -27,7 +27,7 @@ case-sensitive `"<untrusted"` checks; fpdf2, pywebpush and pystray in pyproject.
 | A5 | **"Update yourself" with no approval; auto-update pulls `main` on this branch; `pip install -e .` runs new code** (B3, Risk 3, open item 3). | (a) Chat "update yourself" asks first, showing the incoming commits. (b) Auto-update pulls **the branch it is on** (not always `main`). (c) If an update changes dependencies (pyproject.toml) or adds new top-level code paths, it **asks** instead of installing silently. (d) Auto-update stays on *(decided: the owner chose it on 12 Nov)*, but only fast-forwards from `origin`, never runs any repo script. Signed-tag checks need a key the owner doesn't have yet: recorded in ideas for M7. | Update via chat creates an approval; auto-update on a branch pulls that branch; a dependency change waits for a yes. |
 | A6 | **Stop all doesn't stop approvals** (B4, open item 11). | `Approvals.resolve` refuses (and the routes say so) while everything is stopped; nothing queued runs until Resume. | Approve while paused gives "Everything is stopped" and the handler doesn't run. |
 
-## Phase B: medium items
+## Phase B: medium items (DONE 17 Nov: B1 to B8, tests in `tests/test_v3_m3_audit_b.py`; full suite here 1359 passed, 41 skipped; GitHub Windows run not yet checked)
 
 | # | Audit item | Fix | Test |
 |---|---|---|---|

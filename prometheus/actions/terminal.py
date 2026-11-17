@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Callable
 
 from prometheus.safety.paths import PathBlocked, PathPolicy
-from prometheus.safety.secrets import PATTERNS, known_secret_values
+from prometheus.safety.secrets import PATTERNS, KEY_NAMES, get_secret, known_secret_values
 
 MAX_TERMINAL_OUTPUT_CHARS = 50_000
 DEFAULT_TIMEOUT = 30.0
@@ -125,7 +125,8 @@ def overrides_allowed(name: object, value: object) -> bool:
         if re.search(rx_pattern, v):
             return False
     try:
-        for saved in known_secret_values():
+        saved_all = [get_secret(secret_name) for secret_name in KEY_NAMES] + known_secret_values()
+        for saved in saved_all:
             if saved and len(saved) >= 12 and saved in v:
                 return False
     except Exception:
