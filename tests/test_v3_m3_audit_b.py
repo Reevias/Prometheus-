@@ -91,3 +91,39 @@ def test_b2_a_keyless_provider_gets_the_request_but_no_memory_or_facts(make_ctx)
         assert "Request: what is my locker code" in sent
         assert ("4421" in sent) is expect_memory
         assert "personal-context" not in sent                    # the markers never reach an AI
+
+
+# ---- B3: the webhook token can ride in a header, and never shows in the access log -------------------------------
+import logging  # noqa: E402
+
+
+def _hook_client(app_client):
+    client, services = app_client()
+    services.settings.webhook_token = "tok-SECRET-123"
+    return client, services
+
+
+def test_b3_token_in_a_header_works_and_a_wrong_one_is_not_found(app_client):
+    client, services = _hook_client(app_client)
+    assert client.post("/hooks", json={"text": "hi"}, headers={"X-Webhook-Token": "tok-SECRET-123"}).status_code == 200
+    assert client.post("/hooks", json={}, headers={"Authorization": "Bearer tok-SECRET-123"}).status_code == 200
+    assert client.post("/hooks", json={}, headers={"X-Webhook-Token": "nope"}).status_code == 404
+    assert client.post("/hooks", json={}).status_code == 404
+    assert client.post("/hooks/tok-SECRET-123", json={}).status_code == 200          # the old address still works
+    assert client.post("/hooks/sms", json={}, headers={"X-Webhook-Token": "nope"}).status_code == 404
+
+
+def test_b3_the_token_is_hidden_in_the_access_log(caplog):
+    import logging.config
+
+    from prometheus.logfilter import install_log_redaction
+
+    install_log_redaction()
+    line = '%s - "%s %s HTTP/%s" %d'
+    caplog.set_level(logging.INFO, logger="uvicorn.access")
+    logging.getLogger("uvicorn.access").info(line, "1.2.3.4:5", "POST", "/hooks/tok-SECRET-123", "1.1", 200)
+    logging.getLogger("uvicorn.access").info(line, "1.2.3.4:5", "POST", "/hooks/tok-SECRET-123/sms", "1.1", 200)
+    logging.getLogger("uvicorn.access").info(line, "1.2.3.4:5", "GET", "/v3/tasks", "1.1", 200)
+    text = caplog.text
+    assert "tok-SECRET-123" not in text and "/hooks/***" in text and "/hooks/***/sms" in text
+    assert "/v3/tasks" in text                                                       # other lines are untouched

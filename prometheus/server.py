@@ -88,6 +88,10 @@ def _say_whats_new(services) -> None:
 
 
 def create_app(services: Services, background: bool = False) -> FastAPI:
+    from prometheus.logfilter import install_log_redaction
+
+    install_log_redaction()                  # the webhook token never shows in the access log (M3 B3)
+
     @asynccontextmanager
     async def lifespan(_app):
         if services.voice is not None:          # listening for "Prometheus" lives as long as the app
@@ -154,7 +158,7 @@ def create_app(services: Services, background: bool = False) -> FastAPI:
     async def guard(request: Request, call_next):
         path = request.url.path
         if path in OPEN_PATHS or path.startswith(("/static/", "/hooks/")) or path in (
-                "/api/mcp", "/api/sync", "/api/notify", "/api/laptop-jobs"):
+                "/hooks", "/api/mcp", "/api/sync", "/api/notify", "/api/laptop-jobs"):
             # hooks and the tool server check their own secret
             return await call_next(request)
         csrf = sessions.get(request.cookies.get(SESSION_COOKIE))
@@ -251,14 +255,25 @@ def create_app(services: Services, background: bool = False) -> FastAPI:
         services.store.kv_set("laptop_seen", _t.time())
         return Response(json.dumps({"jobs": take_jobs(services.store)}), media_type="application/json")
 
+    def hook_token_ok(request: Request, token: str = "") -> bool:
+        """The webhook token, from the address (old way) or from a header (X-Webhook-Token or Bearer), so it
+        needn't sit in a URL that gets logged."""
+        expected = services.settings.webhook_token
+        sent = (token or request.headers.get("X-Webhook-Token")
+                or request.headers.get("Authorization", "").removeprefix("Bearer ").strip())
+        return bool(expected) and bool(sent) and hmac.compare_digest(sent.encode(), expected.encode())
+
+    @app.post("/hooks/sms")
+    async def sms_hook_header(request: Request):
+        return await sms_hook(request, "")
+
     @app.post("/hooks/{token}/sms")
     async def sms_hook(request: Request, token: str):
         """Bank SMS forwarded from the phone (MacroDroid or another SMS forwarder) into the money tracker."""
         from prometheus.agents import money_agent
         from prometheus.phone import sms_to_money
 
-        expected = services.settings.webhook_token
-        if not expected or not hmac.compare_digest(token.encode(), expected.encode()):
+        if not hook_token_ok(request, token):
             return Response(status_code=404)
         raw = (await request.body())[:20000]
         try:
@@ -319,11 +334,14 @@ def create_app(services: Services, background: bool = False) -> FastAPI:
             return Response(status_code=202)
         return Response(json.dumps(reply), media_type="application/json")
 
+    @app.post("/hooks")
+    async def webhook_header(request: Request):
+        return await webhook(request, "")
+
     @app.post("/hooks/{token}")
     async def webhook(request: Request, token: str):
-        """Other apps call this to make Prometheus speak up. The token in the address is the password."""
-        expected = services.settings.webhook_token
-        if not expected or not hmac.compare_digest(token.encode(), expected.encode()):
+        """Other apps call this to make Prometheus speak up. The token (in a header, or in the address) is the password."""
+        if not hook_token_ok(request, token):
             return Response(status_code=404)
         body = (await request.body())[:65536]
         try:
