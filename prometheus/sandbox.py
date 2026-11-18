@@ -16,6 +16,7 @@ import os
 import shutil
 import subprocess
 import sys
+import sysconfig
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -32,6 +33,7 @@ import os, re, sys
 SCRATCH = os.path.realpath(sys.argv[1])
 NET = sys.argv[2] == "1"
 SCRIPT = os.path.join(SCRATCH, "script.py")
+sys.path.extend(sys.argv[4:])
 READ_ROOTS = tuple({os.path.realpath(p) for p in (sys.prefix, sys.base_prefix, sys.exec_prefix, *sys.path) if p}
                    | {SCRATCH})
 # private places: the owner's user folder (and other users'), and Prometheus's own data (keys, memory)
@@ -244,8 +246,13 @@ def run_locked(code: str, folder: Path, network: bool = False, timeout: int = TI
     folder = Path(folder).resolve()
     (folder / SCRIPT_NAME).write_text(code, encoding="utf-8")
     (folder / GUARD_NAME).write_text(GUARD, encoding="utf-8")
-    cmd = [python or sys.executable, "-I", str(folder / GUARD_NAME), str(folder), "1" if network else "0",
-           os.pathsep.join(_private_places(folder))]
+    executable = python or sys.executable
+    packages = []
+    if not python and os.name == "nt" and sys.prefix != sys.base_prefix:
+        executable = sys._base_executable
+        packages = list(dict.fromkeys(sysconfig.get_path(k) for k in ("purelib", "platlib")))
+    cmd = [executable, "-I", str(folder / GUARD_NAME), str(folder), "1" if network else "0",
+           os.pathsep.join(_private_places(folder)), *packages]
     kw = {"cwd": str(folder), "env": _env(folder), "stdin": subprocess.DEVNULL, "stdout": subprocess.PIPE,
           "stderr": subprocess.STDOUT}
     if os.name == "nt":
