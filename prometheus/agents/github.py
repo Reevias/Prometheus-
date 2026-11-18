@@ -14,6 +14,7 @@ import httpx
 import prometheus
 from prometheus.agents.base import Agent, AgentContext, StepResult, register, untrusted
 from prometheus.config import get_secret, load_settings
+from prometheus.launcher import apply_update, review_update
 
 API = "https://api.github.com"
 REPO = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,38}/[A-Za-z0-9._-]{1,100}$")
@@ -48,12 +49,10 @@ def _check_path(path: str, write: bool = False) -> str:
     return p
 
 
-def update_self(code_dir: Path) -> str:
-    """Download the newest version (fast-forward only) and install new packages. Restart afterwards."""
-    from prometheus.launcher import update
-
+def update_self(code_dir: Path, review: dict) -> str:
+    """Apply exactly the revision shown in the approval."""
     try:
-        return update(Path(code_dir))
+        return apply_update(Path(code_dir), review)
     except RuntimeError as e:
         raise GitHubError(str(e)) from e
 
@@ -205,7 +204,7 @@ class GitHubAgent(Agent):
         if action == "propose_change":
             return self._propose_change(p)
         if action == "update_self":
-            return update_self(self.code_dir)
+            return update_self(self.code_dir, p)
         raise GitHubError(f"'{action}' is not a GitHub action I can do.")
 
     # -- the agent ------------------------------------------------------------------
@@ -222,11 +221,17 @@ class GitHubAgent(Agent):
             if other and action in WRITE_ACTIONS:
                 return StepResult("failed", "Prometheus only changes its own repository. For other repositories it "
                                             "can read: about, status, read_file, list_issues, list_prs.")
-            if action == "update_self":                  # updating needs no approval (the owner's choice)
-                ctx.use(self.name, "github_read")
-                text = update_self(self.code_dir)
-                ctx.store.audit(self.name, "update_self", {})
-                return StepResult("done", text)
+            if action == "update_self":
+                ctx.use(self.name, "github_write")
+                try:
+                    review = review_update(self.code_dir)
+                except (RuntimeError, OSError) as exc:
+                    raise GitHubError(str(exc)) from exc
+                if not review:
+                    return StepResult("done", "Already up to date.")
+                ctx.approvals.request("github_action", "Update Prometheus? " + review["summary"],
+                                      {"action": action, **review})
+                return StepResult("waiting_approval", "The incoming commits are ready for your approval.")
             if action in WRITE_ACTIONS:
                 ctx.use(self.name, "github_write")
                 shown = {k: str(inputs.get(k, ""))[:8000] for k in ("title", "body", "number", "path", "content")

@@ -90,3 +90,36 @@ def test_catalog_billing_requires_yes_and_records_both_tiers(tmp_path, monkeypat
         assert r.complete("combine", [], "hi").usd == pytest.approx(0.00006)
     row = r.budget.store.cost_report(0)["by_model"][0]
     assert (row["calls"], row["tin"], row["tout"]) == (2, 40, 20)
+
+
+@pytest.mark.parametrize("filename", ["pyproject.toml", "new_package/module.py"])
+def test_sensitive_update_waits_and_applies_only_reviewed_commit(tmp_path, app_client, filename):
+    import subprocess
+    from prometheus.autoupdate import AutoUpdater
+    from prometheus.launcher import apply_update, review_update
+    from test_v19_updates import git
+
+    origin, mine = tmp_path / "origin", tmp_path / "mine"
+    origin.mkdir()
+    git(origin, "init", "-q", "-b", "v3")
+    git(origin, "config", "user.name", "Test")
+    git(origin, "config", "user.email", "test@example.invalid")
+    (origin / "pyproject.toml").write_text("# version one")
+    git(origin, "add", ".")
+    git(origin, "commit", "-qm", "base")
+    subprocess.run(["git", "clone", "-q", str(origin), str(mine)], check=True)
+    dest = origin / filename
+    dest.parent.mkdir(exist_ok=True)
+    dest.write_text("# changed")
+    git(origin, "add", ".")
+    git(origin, "commit", "-qm", "review me")
+    _, services = app_client()
+    updater = AutoUpdater(services, mine)
+    assert updater.check_once() == updater.check_once() == ""
+    item, = services.store.approvals()
+    assert "review me" in item.summary and (mine / "pyproject.toml").read_text() == "# version one"
+    assert "Updated" in apply_update(mine, item.payload)
+    assert (mine / filename).read_text() == "# changed"
+    assert review_update(mine) == {}
+    with pytest.raises(RuntimeError, match="changed"):
+        apply_update(mine, item.payload)

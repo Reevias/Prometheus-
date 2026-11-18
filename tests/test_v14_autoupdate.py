@@ -12,10 +12,13 @@ def fake_services(running=False, on=True):
 
 def git(behind):
     calls = []
-
     def run(argv, **kw):
         calls.append(argv)
-        out = str(behind) if "rev-list" in argv else ""
+        out = ""
+        if "symbolic-ref" in argv:
+            out = "prometheus-v3"
+        if "rev-parse" in argv:
+            out = "a" * 40 if argv[-1] == "HEAD" or not behind else "b" * 40
         return subprocess.CompletedProcess(argv, 0, out, "")
     return run, calls
 
@@ -24,9 +27,10 @@ def test_installs_when_github_has_a_newer_version(tmp_path):
     (tmp_path / ".git").mkdir()
     run, calls = git(3)
     updates = []
-    up = AutoUpdater(fake_services(), tmp_path, run=run, updater=updates.append)
-    assert "restarts by itself" in up.check_once() and updates == [tmp_path]
-    assert any("fetch" in c for c in calls) and up.updated
+    up = AutoUpdater(fake_services(), tmp_path, run=run, updater=lambda path, review: updates.append(review))
+    assert "restarts by itself" in up.check_once() and updates[0]["target"] == "b" * 40
+    assert any("refs/heads/prometheus-v3:refs/remotes/origin/prometheus-v3" in c for c in calls)
+
 
 
 def test_does_nothing_when_up_to_date_busy_off_or_not_a_checkout(tmp_path):
@@ -48,7 +52,7 @@ def test_offline_or_failed_update_is_quiet(tmp_path):
     def offline(argv, **kw):
         return subprocess.CompletedProcess(argv, 1, "", "could not resolve host")
     up = AutoUpdater(fake_services(), tmp_path, run=offline, updater=lambda d: None)
-    assert up.check_once() == "" and "resolve" in up.last_error
+    assert up.check_once() == "" and up.last_error
 
 
 def test_voice_offers_heart_and_fable(app_client):

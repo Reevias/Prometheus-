@@ -12,7 +12,7 @@ import threading
 import time
 from pathlib import Path
 
-from prometheus.launcher import CODE_DIR, update
+from prometheus.launcher import CODE_DIR, apply_update, review_update
 
 CHECK_EVERY = 6 * 3600       # seconds between checks
 FIRST_CHECK = 90             # seconds after start, so starting up stays fast
@@ -20,7 +20,7 @@ CODE_CHECK = 60              # seconds between looks at whether the code was upd
 
 
 class AutoUpdater:
-    def __init__(self, services, code_dir: Path = CODE_DIR, run=None, updater=update):
+    def __init__(self, services, code_dir: Path = CODE_DIR, run=None, updater=apply_update):
         self.services = services
         self.code_dir = Path(code_dir)
         self.run = run or subprocess.run
@@ -52,10 +52,7 @@ class AutoUpdater:
             raise RuntimeError((proc.stderr or "").strip()[-200:] or "git failed")
         return (proc.stdout or "").strip()
 
-    def behind(self) -> int:
-        """How many new versions (commits) are waiting on GitHub."""
-        self._git("fetch", "--quiet", "origin", "main")
-        return int(self._git("rev-list", "--count", "HEAD..origin/main") or 0)
+
 
     def check_once(self) -> str:
         if not self.services.settings.auto_update or not (self.code_dir / ".git").exists():
@@ -63,9 +60,18 @@ class AutoUpdater:
         if self.services.running:            # never update in the middle of a task
             return ""
         try:
-            if self.behind() <= 0:
+            if getattr(getattr(self.services, "killswitch", None), "is_set", False):
                 return ""
-            self.updater(self.code_dir)
+            review = review_update(self.code_dir, self.run)
+            if not review:
+                return ""
+            if review["sensitive"]:
+                pending = self.services.store.approvals()
+                if not any(a.kind == "github_action" and a.payload.get("target") == review["target"] for a in pending):
+                    self.services.approvals.request("github_action", "Review dependency or top-level changes: " +
+                                                    review["summary"], {"action": "update_self", **review})
+                return ""
+            self.updater(self.code_dir, review)
         except Exception as e:                # offline, signed out of GitHub, local changes…
             self.last_error = str(e)[:200]
             return ""

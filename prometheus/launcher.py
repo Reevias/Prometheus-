@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import sys
 from importlib import metadata
@@ -85,15 +86,17 @@ def update_report(code_dir: Path | None = None, run=None, fetch: bool = True) ->
         return out
     try:
         out["commit"], out["date"] = git("log", "-1", "--format=%h|%cd", "--date=format:%d %b %Y").split("|")
+        branch = git("symbolic-ref", "--short", "HEAD")
+        ref = f"refs/remotes/origin/{branch}"
         if fetch:
-            git("fetch", "--quiet", "origin", "main")
-        out["behind"] = int(git("rev-list", "--count", "HEAD..origin/main") or 0)
-        remote = git("show", "origin/main:pyproject.toml")
+            git("fetch", "--quiet", "origin", f"refs/heads/{branch}:{ref}")
+        out["behind"] = int(git("rev-list", "--count", f"HEAD..{ref}") or 0)
+        remote = git("show", f"{ref}:pyproject.toml")
         m = _re.search(r'^version\s*=\s*"([^"]+)"', remote, _re.M)
         out["latest"] = m.group(1) if m else out["current"]
         if out["behind"]:
             mine = set(git("show", "HEAD:CHANGELOG.md").splitlines())
-            theirs = git("show", "origin/main:CHANGELOG.md").splitlines()
+            theirs = git("show", f"{ref}:CHANGELOG.md").splitlines()
             out["news"] = [l[2:] for l in theirs if l.startswith("- ") and l not in mine][:8]
     except Exception as e:                      # offline, or GitHub sign-in needed
         out["error"] = f"Couldn't check GitHub ({str(e)[:120]})."
@@ -200,33 +203,56 @@ def set_autostart(on: bool, run=None, windows: bool | None = None) -> str:
     return "Prometheus will start with Windows and listen for its name."
 
 
-def update(code_dir: Path = CODE_DIR, run=None) -> str:
-    """Download the newest version from main (fast-forward only) and install any new packages it needs."""
+def _update_git(code_dir: Path, *args: str, run=None) -> str:
     if not (code_dir / ".git").exists():
-        raise RuntimeError("This copy of Prometheus is not a Git checkout, so it can't update itself.")
-    run = run or subprocess.run
-    pull = run(["git", "-C", str(code_dir), "pull", "--ff-only", "origin", "main"], capture_output=True, text=True,
-               encoding="utf-8", errors="replace", timeout=180)
-    if pull.returncode != 0:
-        raise RuntimeError("The update did not go through (you may have local changes). " + (pull.stderr or "")[-300:])
-    extras = []
-    for module, extra in (("webview", "desktop"), ("vosk", "voice"), ("playwright", "browser"),
-                          ("fastembed", "photos")):   # keep the extras this laptop already uses
-        try:
-            __import__(module)
-            extras.append(extra)
-        except Exception:
-            pass
-    target = str(code_dir) + (f"[{','.join(extras)}]" if extras else "")
-    if sys.version_info < (3, 14):
-        # the new code needs Python 3.14+; pip would refuse. The code itself still runs until the installer moves it.
-        return ("Downloaded the newest version. It needs Python 3.14: run the installer once (it moves Prometheus over "
-                "by itself), then restart.\n" + (pull.stdout or "")[-300:])
-    pip = run([sys.executable, "-m", "pip", "install", "--quiet", "-e", target], capture_output=True, text=True,
-              timeout=900)
-    if pip.returncode != 0:
-        raise RuntimeError("Downloaded the new code but installing its packages failed: " + (pip.stderr or "")[-300:])
-    if "voice" in extras:          # the laptop voice, added by itself (its label says <3.14; it works on 3.14)
-        run([sys.executable, "-m", "pip", "install", "--quiet", "--no-deps", "--ignore-requires-python",
-             "kokoro-onnx>=0.4"], capture_output=True, text=True, timeout=600)
-    return "Updated to the newest version. Restart Prometheus to use it.\n" + (pull.stdout or "")[-300:]
+        raise RuntimeError("This copy is not a Git checkout.")
+    proc = (run or subprocess.run)(["git", "-C", str(code_dir), "-c", "core.hooksPath=" + os.devnull,
+                                     *args], capture_output=True, text=True, encoding="utf-8",
+                                    errors="replace", timeout=120)
+    if proc.returncode:
+        raise RuntimeError("The update did not go through. Check the branch, connection and local changes.")
+    return proc.stdout.rstrip("\r\n")
+
+
+def review_update(code_dir: Path, run=None) -> dict:
+    def git(*args):
+        return _update_git(code_dir, *args, run=run)
+
+    branch = git("symbolic-ref", "--short", "HEAD")
+    remote = f"refs/remotes/origin/{branch}"
+    git("fetch", "--no-tags", "origin", f"refs/heads/{branch}:{remote}")
+    base = git("rev-parse", "HEAD")
+    target = git("rev-parse", remote)
+    if base == target:
+        return {}
+    git("merge-base", "--is-ancestor", base, target)
+    roots = set(git("ls-tree", "-z", "--name-only", base).split("\0"))
+    changed = git("diff", "--name-only", "--no-renames", "-z", base, target).split("\0")
+    sensitive = any(p and (p == "pyproject.toml" or p.split("/", 1)[0] not in roots) for p in changed)
+    subjects = git("log", "-12", "--format=%h %s", f"{base}..{target}")
+    return {"branch": branch, "base": base, "target": target, "sensitive": sensitive,
+            "summary": f"{branch} at {target[:12]}\n{subjects[:1600]}"}
+
+
+def apply_update(code_dir: Path, review: dict, run=None) -> str:
+    def git(*args):
+        return _update_git(code_dir, *args, run=run)
+
+    branch = git("symbolic-ref", "--short", "HEAD")
+    target = review.get("target", "")
+    if (not re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", target) or branch != review.get("branch")
+            or git("rev-parse", "HEAD") != review.get("base")
+            or git("rev-parse", f"refs/remotes/origin/{branch}") != target):
+        raise RuntimeError("The update changed. Check again to review the new commits.")
+    if git("status", "--porcelain", "--untracked-files=no"):
+        raise RuntimeError("Save or commit local changes before updating.")
+    git("merge", "--ff-only", "--no-overwrite-ignore", target)
+    if review.get("sensitive"):
+        return "Updated the code. Check the installation instructions for dependency changes before restarting."
+    return "Updated the code. Restart Prometheus to use it."
+
+
+def update(code_dir: Path = CODE_DIR, run=None) -> str:
+    """An explicit update from the command line."""
+    review = review_update(code_dir, run)
+    return apply_update(code_dir, review, run) if review else "Already up to date."
