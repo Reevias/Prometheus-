@@ -17,6 +17,11 @@ import re
 import threading
 from dataclasses import dataclass
 
+OWNER_DATA = re.compile(
+    r"\b(spend(?:ing)?|spent|buy|bought|pay|paid|costs?|budgets?|money|expenses?|study|studied|hours?|"
+    r"revision|data (?:is )?left|my plan|balances?|bills?|salary|marks?|grades?|attendance|exams?|deadlines?|due)\b", re.I)
+OWNER = re.compile(r"\b(my|me|i)\b", re.I)
+QUANTITY = re.compile(r"\b(how (?:much|many|long|often)|number|amount|percentage|total|count)\b", re.I)
 ROUTES = ("simple", "medium", "complex", "ask")
 AI_SECONDS = 4.0
 
@@ -61,13 +66,15 @@ def by_rules(text: str) -> Decision | None:
     if "<untrusted" in t:
         return Decision("medium", "rules", why="has outside text")
     actions = len(ACTION.findall(t))
+    if actions >= 3 and (CHAIN.search(t) or len(t) > 200):
+        return Decision("complex", "rules", why=f"{actions} actions in a row")
+    if OWNER_DATA.search(t) or (OWNER.search(t) and QUANTITY.search(t)):
+        return Decision("medium", "rules", why="needs the owner's data")
     if GREETING.match(t):
         return Decision("simple", "rules", why="a greeting")
     if actions == 0 and not FRESH.search(t) and not LINK.search(t) and not PERSONAL.search(t) and len(t) <= 300 \
             and QUESTION.match(t):
         return Decision("simple", "rules", why="a general question")
-    if actions >= 3 and (CHAIN.search(t) or len(t) > 200):
-        return Decision("complex", "rules", why=f"{actions} actions in a row")
     if 1 <= actions <= 2 and not CHAIN.search(t) and len(t) <= 300:
         return Decision("medium", "rules", why="one or two actions")
     return None
