@@ -941,6 +941,9 @@ def register_approval_pages(app: FastAPI, services, shell) -> None:
         if item.status != "pending":
             return JSONResponse({"error": f"Already {item.status}."}, status_code=409)
         said = services.approvals.resolve(approval_id, approved=decision == "approve", secret=secret[:200])
+        from prometheus.safety.approvals import STOPPED_MESSAGE
+        if said == STOPPED_MESSAGE:
+            return JSONResponse({"error": said}, status_code=409)
         if said == "Type the password first.":
             return JSONResponse({"error": said}, status_code=400)
         return {"ok": True, "message": said}

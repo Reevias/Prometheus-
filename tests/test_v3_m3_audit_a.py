@@ -54,6 +54,18 @@ def test_outside_text_skips_owner_shortcuts(make_ctx, marker, phrase, monkeypatc
     assert received == [(text, "")]
 
 
+def test_stop_holds_pending_approval_until_resume(app_client):
+    _, services = app_client()
+    calls = []
+    services.approvals.register("example", lambda payload: calls.append(payload) or "done")
+    item = services.approvals.request("example", "Example", {})
+    services.killswitch.trigger("Stop all")
+    assert "Everything is stopped" in services.approvals.resolve(item, True)
+    assert services.store.approval(item).status == "pending" and calls == []
+    services.killswitch.reset()
+    assert services.approvals.resolve(item, True) == "done" and calls == [{}]
+
+
 def test_billing_switch_persists_and_can_be_cleared(app_client):
     from conftest import login
     from prometheus.config import load_settings

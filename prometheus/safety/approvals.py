@@ -6,12 +6,16 @@ from typing import Callable
 from prometheus.memory.store import Store
 
 
+STOPPED_MESSAGE = "Everything is stopped. Resume before approving this request."
+
+
 class TryAgain(Exception):
     """A handler raises this when the owner's input was wrong, so the approval stays pending for another go."""
 
 
 class Approvals:
-    def __init__(self, store: Store):
+    def __init__(self, store: Store, killswitch=None):
+        self.killswitch = killswitch
         self.store = store
         self._handlers: dict[str, Callable] = {}
         self._needs_secret: set[str] = set()
@@ -38,7 +42,7 @@ class Approvals:
         broad is its site or folder. If the owner already allowed either, in any chat, it runs straight away:
         returns ("done", result). Otherwise ("waiting", approval id)."""
         exact, broad = keys
-        if self.store.allowed(kind, [exact, broad]):
+        if not (self.killswitch and self.killswitch.is_set) and self.store.allowed(kind, [exact, broad]):
             handler = self._handlers.get(kind)
             if handler is not None:
                 result = handler(payload)
@@ -53,6 +57,8 @@ class Approvals:
         item = self.store.approval(approval_id)
         if item.status != "pending":
             return f"Already {item.status}."
+        if approved and self.killswitch and self.killswitch.is_set:
+            return STOPPED_MESSAGE
         if approved and item.kind in self._needs_secret and not secret:
             return "Type the password first."
         if not self.store.claim_approval(approval_id):        # a second click at the same moment loses here

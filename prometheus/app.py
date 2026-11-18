@@ -283,9 +283,9 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
     journal = Journal(data / "journals")
     files = FileActions(policy, journal)
     permissions = Permissions({name: cls.tools for name, cls in REGISTRY.items()})
-    approvals = Approvals(store)
-    budget = Budget(store, settings.budget_usd)
     killswitch = KillSwitch()
+    approvals = Approvals(store, killswitch)
+    budget = Budget(store, settings.budget_usd)
     if providers is None:
         router = build_router(settings, budget, killswitch)
     else:
