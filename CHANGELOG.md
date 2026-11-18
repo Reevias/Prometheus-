@@ -1,6 +1,8 @@
 # Changelog
 
 ## Prometheus 3.0, M3 (on the prometheus-v3 branch, not released yet)
+- Claude streams answer text while using the existing thinking and fallback settings. The desktop and phone interface shows when the assistant is listening, choosing a route, planning a round, using a tool, answering, waiting for approval or stopped.
+- Phase A fixes the Windows virtual-environment script runner, personal-data routing, outside-text checks, billing for keyed providers, update approval and Stop all for pending approvals. Chat updates show incoming commits. Automatic updates stay on the current branch and ask about dependency changes and new top-level paths.
 - **M3 audit fixes, truth in the documents (D1, D2, D4, D5 part):** the M3 report now lists only test numbers a run
   produced and where; the plan no longer claims an accessibility-tree browser tool (moved to M5); "Check cards" now
   compares OpenRouter prices with OpenRouter's live list and says prices are a snapshot; `THIRD_PARTY_LICENSES.md`
@@ -286,7 +288,7 @@
 - PDF output: the files agent writes PDFs from Markdown with headings, lists and clickable links (Word too). Roadmaps and long answers can be saved straight away, with research first if needed.
 - Learns how you like answers: 👍 / 👎 on every answer (👎 asks what should be better and rewrites it at once). Each night Prometheus turns the ratings into a short list of rules that every answer follows; the Memory page shows them, with Learn now, Reset and earlier versions to restore.
 - Repo of the day: every evening at 23:30 Prometheus reads github.com/trending, picks the new repository gaining the most stars, and puts it on the Approvals page with an Open link button. Approving adds it to the skill library at once (a guide plus its README kept as data); nothing is cloned or run. Nothing is hidden (the owner decides); repositories about tracking people, accounts or security are labelled "sensitive" on the card.
-- Updates run every evening after the repo of the day (or soon after start if the laptop was off), with no approval; "update yourself" in chat also runs straight away.
+- Evening update checks were introduced after the repo of the day. See the M3 entry for the current approval rules.
 - Outputs: under Notes, every file and folder a chat created, found, moved or renamed, with Open and Show in folder. Documents and media open in their app (notes from the vault open in Obsidian); code and other types are only shown in their folder, so nothing is run by accident.
 - Obsidian: connect your vault in Settings (vaults Obsidian knows are found by themselves; needs your password). Search, read and create notes, list recent ones, open a note in Obsidian. New notes never overwrite and can be undone; answers from notes stay on the laptop.
 - Dark and light mode toggle in the top bar (remembered on this laptop).

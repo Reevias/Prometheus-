@@ -11,12 +11,14 @@ has no Stop-all check (safety/approvals.py:51); `update_self` runs without an ap
 case-sensitive `"<untrusted"` checks; fpdf2, pywebpush and pystray in pyproject.toml. All audit claims held.
 
 ## Who builds what (owner, 17 Nov)
-- **Phases A and C:** this Claude session, scheduled for **Sunday 22 Nov, 10 pm India time**.
+- **Phases A and C:** reassigned by the owner on 18–19 November and completed for `prometheus-v3`. The owner will arrange an independent review.
 - **Phases B and D:** another Claude session, given by the owner.
 - Both work on `prometheus-v3`: `git pull` before starting and before every push, adopt the other's work, never
   overwrite it, never force-push. Phase D's exit gate (D6) runs after A, B and C are all in.
 
 ## Phase A: blockers (before the branch is used on the laptop)
+
+Phase A was implemented on 18 November. The local Windows regression tests are in `tests/test_v3_m3_audit_a.py`. See `docs/reports/M3_REPORT.md` for verification results.
 
 | # | Audit item | Fix | Test (fails first) |
 |---|---|---|---|
@@ -42,12 +44,14 @@ case-sensitive `"<untrusted"` checks; fpdf2, pywebpush and pystray in pyproject.
 
 ## Phase C: what the owner wants added to M3
 
+Implemented 19 November. The phone uses the same responsive interface as the laptop. The activity endpoint reports the state of the Prometheus instance the device is connected to.
+
 | # | Addition | What gets built |
 |---|---|---|
 | C1 | **Claude streaming** (named weakness). | `AnthropicProvider.stream` using the SDK's streaming with the same adaptive thinking and fallback; text deltas only. |
 | C2 | **Ambient Intelligence, the M3 part** ("intelligence foundation": understand what is going on and pick the right response; make the assistant's state legible). | An **assistant state** the interface can show: listening, thinking, waiting for your yes, acting, answering, stopped. Exposed in `/api/v3/state` and on the orb/phone, from real events only. The front door and loop report which step they're on. *(decided)* The rest of the proposal stays in its milestones: voice engine and full-duplex talk (M8), security checks like "my password may be exposed" (M7, only with explicit permission and an authorised service), proactive watching (M10). Written into docs/ideas-after-m10.md and PLAN.md's mapping, not built now. |
 
-## Phase D: truth in the documents, licences, and the gate (D1, D2, D4 DONE 17 Nov; D5 DONE: fpdf2 replaced by ReportLab; D3 and D6 wait for Phase A)
+## Phase D: truth in the documents, licences, and the gate (D1–D5 implemented; D6 requires an independent review and verified test runs)
 
 | # | Item | Fix |
 |---|---|---|

@@ -18,3 +18,4 @@ to their own words. "Where it goes" says which milestone it would join.
 | https://liambuilds.ai/asset | Free prompts and Claude Code skills (email needed, no licence found): ideas only, nothing copied | waits |
 | https://anoma.ly/hex/ | A local voice-dictation app (licence not checked): inspiration for the voice fix | waits |
 | Friday_mark2 | Already compared on 13 Nov: F1-F8 are in M3-M8 | done |
+| Ambient intelligence | M3 shows current assistant activity. Permission-based exposure checks with an authorized service belong in M7, full-duplex voice in M8 and proactive watching in M10. | M3 portion implemented |

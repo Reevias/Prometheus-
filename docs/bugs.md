@@ -2,7 +2,18 @@
 
 Every bug found and fixed, newest first, so the count is always exact. Add a line for each new one.
 
-**Total fixed: 116** (as of 17 November 2026)
+**Total fixed: 122** (as of 18 November 2026)
+
+## 18 November 2026, M3 audit fixes, Phase A (6)
+
+| # | Bug | Fixed by |
+|---|---|---|
+| 122 | An approval could run after Stop all | Hold the request until Resume |
+| 121 | Chat updated without approval and automatic updates pulled main and ran pip | Review and fast-forward the exact commit on the current branch, with approval for dependency or top-level additions |
+| 120 | Billed catalog providers were treated as free | Per-provider billing switch, approval and model-card cost accounting |
+| 119 | Mixed-case and escaped outside-text markers missed command checks | Shared marker check across routing and shortcuts |
+| 118 | Spending, study and personal totals could receive a guessed answer | Route them to the planner |
+| 117 | The Windows virtual-environment launcher exceeded the sandbox process limit | Run the base interpreter with the environment's package directories |
 
 ## 17 November 2026, M3 audit fixes, Phase B (8)
 From `docs/m3/M3_AUDIT_FIX_PLAN.md`. Each fix has a test that failed before it (`tests/test_v3_m3_audit_b.py`).

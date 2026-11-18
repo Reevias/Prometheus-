@@ -3,6 +3,10 @@
 Updated 11 November 2026. Version 2.3. Built and tested here: 883 tests pass.
 Not yet run end to end on the owner's real laptop.
 
+## M3 audit, 19 November 2026
+
+Phases A and C are implemented. The independent milestone review is pending. Billed catalog models need rates on their model cards. Local cost estimates can differ from the provider's invoice.
+
 ## Just finished
 - **One-line install, Prometheus-Setup.exe and Prometheus.apk** (built by GitHub on each release), own icon in Windows search, **simpler Settings with Features on and off**, **Stop all that stays stopped**, **weekly report card**, **practice tests** and **ready-made jobs** (everything from the "Build your first AI agent" guide).
 - **Chatbot-level voice**: ElevenLabs hearing (Scribe v2) and speaking (Flash), falling back to the laptop by itself; **double clap** to be greeted with a brief and talk without the name; **talk over it** to interrupt.

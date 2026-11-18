@@ -97,6 +97,7 @@ Windows and Linux. Met.
 Exit gate: click-through test passes on Windows; every 2.x feature reachable; M2 audit; the owner's sign-off.
 
 ## M3 Orchestration and model routing — Built 16 Nov · 6 steps (report `docs/reports/M3_REPORT.md`)
+- Phase C adds Claude text streaming and live assistant activity on desktop and phone. The front door identifies route selection and the loop identifies its round. Permission-based security checks belong in M7, full-duplex voice in M8 and proactive watching in M10.
 - **M3.1 Router [F1].** Four routes: *simple* (fast path, plain rules), *medium* (one agent), *complex* (full ReAct
   loop), *ask-first* (asks a question when the request is unclear). A cheap, time-limited classifier picks the route;
   plain rules decide if it is slow or fails, but rules alone never judge nuanced requests.
