@@ -52,3 +52,41 @@ def test_outside_text_skips_owner_shortcuts(make_ctx, marker, phrase, monkeypatc
     text = f"{phrase} {marker}"
     orch.run(chat, text)
     assert received == [(text, "")]
+
+
+def test_billing_switch_persists_and_can_be_cleared(app_client):
+    from conftest import login
+    from prometheus.config import load_settings
+    client, services = app_client()
+    headers = {"X-CSRF-Token": login(client)}
+    for on in (True, False):
+        data = {"id": "groq", "billed": str(on).lower()}
+        response = client.post("/settings/providers/billing", data=data, headers=headers)
+        assert response.status_code == 200
+        assert ("groq" in load_settings().billed_providers) == on
+
+
+def test_catalog_billing_requires_yes_and_records_both_tiers(tmp_path, monkeypatch):
+    import httpx
+    from prometheus.catalog import load_catalog
+    from prometheus.models.base import PaidNeedsYes
+    from prometheus.models.cards import Card
+    from prometheus.models.compat import OpenAICompatProvider
+    from test_v3_m3_cards import router
+
+    info = next(p for p in load_catalog() if p.id == "groq")
+    data = {"choices": [{"message": {"content": "hello"}}],
+            "usage": {"prompt_tokens": 20, "completion_tokens": 10}}
+    http = httpx.Client(transport=httpx.MockTransport(lambda req: httpx.Response(200, json=data)))
+    p = OpenAICompatProvider(info, model="example", enabled=True, http=http)
+    monkeypatch.setattr(p, "_key", lambda: "test")
+    r = router(tmp_path, [p], {"combine": ["groq"]}, [Card("groq:example", "Test", ("chat",), 1, 1, 4)])
+    assert r.complete("combine", [], "hi").usd == 0
+    p.billing_enabled = True
+    r.head = "groq"
+    with pytest.raises(PaidNeedsYes):
+        r.complete("combine", [], "hi")
+    with r.paid_allowed():
+        assert r.complete("combine", [], "hi").usd == pytest.approx(0.00006)
+    row = r.budget.store.cost_report(0)["by_model"][0]
+    assert (row["calls"], row["tin"], row["tout"]) == (2, 40, 20)

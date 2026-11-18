@@ -1006,6 +1006,16 @@ def register_routes(app: FastAPI, services: Services) -> None:
         store.audit("user", "key_saved", {"name": name})
         return settings_page(request, key_saved=KEY_NAMES[name])
 
+    @app.post("/settings/providers/billing", response_class=HTMLResponse)
+    def provider_billing(request: Request, id: str = Form(...), billed: bool = Form(False)):
+        if not any(p.id == id and p.supported and not p.keyless for p in load_catalog()):
+            return settings_page(request, 400, key_error="Unknown keyed provider.")
+        s = services.settings
+        s.billed_providers = [name for name in s.billed_providers if name != id] + ([id] if billed else [])
+        save_settings(s)
+        apply_settings(services)
+        return settings_page(request, saved=True)
+
     @app.post("/settings/providers", response_class=HTMLResponse)
     def set_provider(request: Request, id: str = Form(...), enabled: str = Form("")):
         """Switch one AI off (or back on). Adding a key is what switches an AI on in the first place."""

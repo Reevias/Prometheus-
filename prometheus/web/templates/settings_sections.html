@@ -79,7 +79,7 @@
       {% else %}<span class="muted">add a key to switch it on</span>{% endif %}
       {% if p.kind == "local" %}<span class="tag">on this laptop, private</span>{% endif %}
       {% if p.kind == "paid" %}<span class="tag">paid per use</span>{% endif %}
-      {% if p.kind == "free" %}<span class="tag">free{{ ", no key" if p.keyless }}</span>{% endif %}
+      {% if p.kind == "free" %}<span class="tag">{{ "billed" if p.id in s.billed_providers else "free" }}{{ ", no key" if p.keyless }}</span>{% endif %}
       {% if p.logs %}<span class="tag warn">may keep prompts</span>{% endif %}
     </div>
     <p class="muted">{{ p.note }}{% if p.ready and p.model %} Using {{ p.model }}.{% endif %}
@@ -93,6 +93,14 @@
       <input type="password" name="password" placeholder="Your Prometheus password" autocomplete="current-password" required>
       <button type="submit" class="primary">{{ "Replace" if p.key_set else "Add key" }}</button>
       {% if p.key_set %}<button type="submit" class="danger" hx-post="/settings/keys/delete" hx-target="body" formnovalidate>Remove</button>{% endif %}
+    </form>
+    {% endif %}
+    {% if p.toggle and not p.keyless %}
+    <form hx-post="/settings/providers/billing" hx-target="body">
+      <input type="hidden" name="id" value="{{ p.id }}">
+      <label><input type="checkbox" name="billed" value="true" {{ "checked" if p.id in s.billed_providers }}> I turned on billing at this provider</label>
+      <button type="submit" class="link">Save billing setting</button>
+      <p class="muted">Billed calls ask first. Set the model's rates on its model card. Costs use those rates and estimate token counts when the provider omits them.</p>
     </form>
     {% endif %}
     {% if p.toggle and (p.keyless or p.key_set or p.off) %}
@@ -545,7 +553,7 @@
     <label class="check"><input type="checkbox" name="allow_lan" value="1" {{ "checked" if s.allow_lan }}> Allow other devices on my Wi-Fi (needs restart, keep a strong password)</label>
     <label class="check"><input type="checkbox" name="auto_update" value="1" {{ "checked" if s.auto_update }}
       hx-post="/settings/autoupdate" hx-vals='js:{on: event.target.checked ? "1" : ""}' hx-target="body" hx-trigger="change">
-      Update by itself, every evening at 23:30 (no approval needed; never during a task)</label>
+      Check for updates every evening at 23:30. Dependency changes and new top-level paths need your approval.</label>
     <label class="check"><input type="checkbox" name="repo_of_day" value="1" {{ "checked" if s.repo_of_day }}
       hx-post="/settings/repo-of-day" hx-vals='js:{on: event.target.checked ? "1" : ""}' hx-target="body" hx-trigger="change">
       Repos of the day: each evening list the top 10 trending GitHub repositories; you pick which to add as skills</label>

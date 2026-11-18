@@ -236,10 +236,15 @@ class ModelRouter:
                 continue
             heavy = (not free and self.heavy_ok(entry, self.kind_for(purpose))
                      and self._fits_task_cap(entry, messages, system, max_tokens))
-            if not free and self.paid_needs_yes and not _PAID_OK.get() and entry != self.head and not heavy:
+            billed = getattr(provider, "billing_enabled", False)
+            if not free and not _PAID_OK.get() and (billed or (self.paid_needs_yes and entry != self.head and not heavy)):
                 waiting_yes.append(f"{name} · {used_model}" if used_model else name)
                 continue             # paid: only after the owner's yes
             keyless = bool(getattr(provider, "keyless", False) or getattr(getattr(provider, "info", None), "keyless", False))
+            card = self.card_for(f"{name}:{used_model}") if billed else None
+            if billed and (card is None or not card.cheap):
+                errors.append(f"{name}: set the billed model's rates on its model card (limit $1 in / $4 out per million)")
+                continue
             sent = personal_for(messages, share=not keyless)    # a keyless provider never gets memories (M3 B2)
             try:
                 if on_text is not None and json_schema is None and hasattr(provider, "stream"):
@@ -256,6 +261,14 @@ class ModelRouter:
                 continue
             self._resting.pop(name, None)
             if not provider.is_local:
+                if billed:
+                    # Some providers omit usage. Estimate missing counts for the local cost ledger.
+                    if not reply.tokens_in:
+                        size = len(system) + sum(len(str(m.get("content", ""))) for m in sent)
+                        reply.tokens_in = max(1, (size + 3) // 4)
+                    if reply.text and not reply.tokens_out:
+                        reply.tokens_out = (len(reply.text) + 3) // 4
+                    reply.usd = (reply.tokens_in * card.price_in + reply.tokens_out * card.price_out) / 1_000_000
                 self.budget.record(reply.provider, reply.model, reply.usd, reply.tokens_in, reply.tokens_out)
                 spent = _TASK_SPEND.get()
                 if spent is not None and not free:
@@ -451,4 +464,5 @@ def build_router(settings: Settings, budget: Budget, killswitch: KillSwitch) -> 
     for info in load_catalog():
         providers[info.id] = OpenAICompatProvider(info, model=settings.provider_models.get(info.id, ""),
                                                   enabled=provider_on(info, settings))
+        providers[info.id].billing_enabled = not info.keyless and info.id in settings.billed_providers
     return ModelRouter(providers, build_routes(settings), budget, killswitch)

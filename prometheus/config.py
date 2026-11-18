@@ -146,6 +146,7 @@ class Settings:
     enabled_providers: list[str] = field(default_factory=list)       # free providers the user switched on (older versions)
     disabled_providers: list[str] = field(default_factory=list)      # providers the user switched off
     free_no_key: bool = False                   # use free providers that need no key (off for new installs; they never get memories)
+    billed_providers: list[str] = field(default_factory=list)
     provider_models: dict[str, str] = field(default_factory=dict)    # chosen model per free provider
     password_hash: str = ""
     task_folders_note: str = ""

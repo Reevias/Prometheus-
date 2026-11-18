@@ -239,6 +239,7 @@ def apply_settings(services: "Services") -> None:
     for name, provider in router.providers.items():
         if hasattr(provider, "enabled") and hasattr(provider, "info"):
             provider.enabled = provider_on(provider.info, s)
+            provider.billing_enabled = not provider.info.keyless and name in s.billed_providers
             if s.provider_models.get(name):
                 provider.model = s.provider_models[name]
     for purpose, entries in build_routes(s).items():
