@@ -251,7 +251,9 @@ def run_locked(code: str, folder: Path, network: bool = False, timeout: int = TI
     if not python and os.name == "nt" and sys.prefix != sys.base_prefix:
         executable = sys._base_executable
         packages = list(dict.fromkeys(sysconfig.get_path(k) for k in ("purelib", "platlib")))
-    cmd = [executable, "-I", str(folder / GUARD_NAME), str(folder), "1" if network else "0",
+    # A base installation may also contain packages. Load only the venv packages after the standard library.
+    flags = ["-I", "-S"] if packages else ["-I"]
+    cmd = [executable, *flags, str(folder / GUARD_NAME), str(folder), "1" if network else "0",
            os.pathsep.join(_private_places(folder)), *packages]
     kw = {"cwd": str(folder), "env": _env(folder), "stdin": subprocess.DEVNULL, "stdout": subprocess.PIPE,
           "stderr": subprocess.STDOUT}

@@ -6,7 +6,7 @@ from typing import Callable
 from prometheus.memory.store import Store
 
 
-STOPPED_MESSAGE = "Everything is stopped. Resume before approving this request."
+STOPPED_MESSAGE = "Everything is stopped. Resume before deciding this request."
 
 
 class TryAgain(Exception):
@@ -57,12 +57,15 @@ class Approvals:
         item = self.store.approval(approval_id)
         if item.status != "pending":
             return f"Already {item.status}."
-        if approved and self.killswitch and self.killswitch.is_set:
+        if self.killswitch and self.killswitch.is_set:
             return STOPPED_MESSAGE
         if approved and item.kind in self._needs_secret and not secret:
             return "Type the password first."
         if not self.store.claim_approval(approval_id):        # a second click at the same moment loses here
             return "Already being handled."
+        if self.killswitch and self.killswitch.is_set:
+            self.store.set_approval_status(approval_id, "pending")
+            return STOPPED_MESSAGE
         if not approved:
             self.store.set_approval_status(approval_id, "rejected")
             result, status = "rejected", "rejected"

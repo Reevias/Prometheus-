@@ -261,13 +261,14 @@ class ModelRouter:
                 continue
             self._resting.pop(name, None)
             if not provider.is_local:
-                if billed:
-                    # Some providers omit usage. Estimate missing counts for the local cost ledger.
+                if isinstance(provider, OpenAICompatProvider):
+                    # Some catalog providers omit usage, including on the free tier.
                     if not reply.tokens_in:
                         size = len(system) + sum(len(str(m.get("content", ""))) for m in sent)
                         reply.tokens_in = max(1, (size + 3) // 4)
                     if reply.text and not reply.tokens_out:
                         reply.tokens_out = (len(reply.text) + 3) // 4
+                if billed:
                     reply.usd = (reply.tokens_in * card.price_in + reply.tokens_out * card.price_out) / 1_000_000
                 self.budget.record(reply.provider, reply.model, reply.usd, reply.tokens_in, reply.tokens_out)
                 spent = _TASK_SPEND.get()

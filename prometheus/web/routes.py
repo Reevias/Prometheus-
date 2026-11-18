@@ -621,6 +621,10 @@ def register_routes(app: FastAPI, services: Services) -> None:
         approved = decision in ("allow", "always")
         result = services.approvals.resolve(approval_id, approved=approved,
                                             remember={"allow": "exact", "always": "broad"}.get(decision, ""))
+        from prometheus.safety.approvals import STOPPED_MESSAGE
+        if result == STOPPED_MESSAGE:
+            store.add_message(chat_id, "assistant", result, "approval")
+            return Response(status_code=204)
         text = ("Not done: you said no." if not approved else
                 (result if not str(result).startswith("Failed") else f"That didn't work: {result}"))
         store.add_message(chat_id, "assistant", str(text), "approval")

@@ -61,6 +61,7 @@ def test_stop_holds_pending_approval_until_resume(app_client):
     item = services.approvals.request("example", "Example", {})
     services.killswitch.trigger("Stop all")
     assert "Everything is stopped" in services.approvals.resolve(item, True)
+    assert "Everything is stopped" in services.approvals.resolve(item, False)
     assert services.store.approval(item).status == "pending" and calls == []
     services.killswitch.reset()
     assert services.approvals.resolve(item, True) == "done" and calls == [{}]
@@ -102,6 +103,10 @@ def test_catalog_billing_requires_yes_and_records_both_tiers(tmp_path, monkeypat
         assert r.complete("combine", [], "hi").usd == pytest.approx(0.00006)
     row = r.budget.store.cost_report(0)["by_model"][0]
     assert (row["calls"], row["tin"], row["tout"]) == (2, 40, 20)
+    data.pop("usage")
+    p.billing_enabled = False
+    reply = r.complete("combine", [], "hi")
+    assert reply.usd == 0 and reply.tokens_in > 0 and reply.tokens_out > 0
 
 
 @pytest.mark.parametrize("filename", ["pyproject.toml", "new_package/module.py"])
