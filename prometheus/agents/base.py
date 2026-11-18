@@ -15,6 +15,10 @@ UNTRUSTED_RULE = (
 )
 
 
+def has_untrusted(text: str) -> bool:
+    return bool(re.search(r"(?:<|&lt;)untrusted", text, re.I))
+
+
 def untrusted(text: str, source: str) -> str:
     safe = re.sub(r"</untrusted", "&lt;/untrusted", text, flags=re.I)        # any capitals
     src = source.replace('"', "'")

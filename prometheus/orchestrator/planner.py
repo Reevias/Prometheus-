@@ -8,7 +8,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Callable
 
-from prometheus.agents.base import UNTRUSTED_RULE, AgentContext, StepResult, untrusted
+from prometheus.agents.base import UNTRUSTED_RULE, AgentContext, StepResult, has_untrusted, untrusted
 from prometheus.models.base import PERSONAL_CLOSE, PERSONAL_OPEN, ProviderUnavailable
 from prometheus.safety.budget import BudgetExceeded
 from prometheus.safety.killswitch import Stopped
@@ -802,7 +802,8 @@ class Orchestrator:
         user_msg = self.store.add_message(chat_id, "user", text)
         task_id = self.store.create_task(chat_id, text)
         self.store.set_task_status(task_id, "running")
-        for intercept in ([] if read_only else self.interceptors):     # a quiz waiting for an answer, for example
+        outside = has_untrusted(text)
+        for intercept in ([] if read_only or outside else self.interceptors):
             try:
                 said = intercept(chat_id, text)
             except Exception:
@@ -810,7 +811,7 @@ class Orchestrator:
             if said:
                 # a quiz or exam check-in repeats a card's question and answer, which come from your notes
                 return self._finish(chat_id, task_id, "done", said, "instant", private=True)
-        if not read_only and "<untrusted" not in text:
+        if not read_only and not has_untrusted(text):
             # "remember…", "update memory…", "forget…": always done, at once, without any AI
             from prometheus.remember import handle as memory_command
 
@@ -824,7 +825,7 @@ class Orchestrator:
                     return self._finish(chat_id, task_id, "done", said, "instant")
                 self.store.add_message(chat_id, "assistant", said, "instant")
                 text = rest                       # "…and can you also …?": carry on with the rest
-        if PAID_YES.match(text or "") and not read_only and "<untrusted" not in text:
+        if PAID_YES.match(text or "") and not read_only and not has_untrusted(text):
             # "yes, use paid": the last request that was waiting for it runs again, with paid AI allowed this once
             rows = self.store._rows("SELECT id, text FROM tasks WHERE chat_id = ? AND id < ? AND status = 'paused' "
                                     "AND answer LIKE '%use paid%' ORDER BY id DESC LIMIT 1", (chat_id, task_id))
@@ -835,14 +836,14 @@ class Orchestrator:
             self.store.set_task_status(rows[0]["id"], "done", "Answered again with a paid AI (see below).")
             with self.router.paid_allowed():
                 return self.run(chat_id, rows[0]["text"], read_only=read_only)
-        if re.search(r"\bsave (?:this|that|it) as a (?:practice )?test\b", text or "", re.I) and "<untrusted" not in text:
+        if re.search(r"\bsave (?:this|that|it) as a (?:practice )?test\b", text or "", re.I) and not has_untrusted(text):
             from prometheus.practice import from_last_task
 
             return self._finish(chat_id, task_id, "done", from_last_task(self.store, chat_id), "instant")
         from prometheus.quick import understand
 
         only = ""
-        mention = MENTION.match(text or "") if not read_only and "<untrusted" not in text else None
+        mention = MENTION.match(text or "") if not read_only and not has_untrusted(text) else None
         if mention and mention.group(1).lower() in self.registry:
             from prometheus.features import agent_blocked
 
@@ -856,7 +857,7 @@ class Orchestrator:
             # instant phrases are for the owner's own words only, never for text that carries outside content
             from prometheus.features import on as _feature_on
 
-            fast = (None if only or "<untrusted" in text or not _feature_on(getattr(self, "settings", None), "instant")
+            fast = (None if only or has_untrusted(text) or not _feature_on(getattr(self, "settings", None), "instant")
                     else understand(text, self.store))
         except Exception:
             fast = None

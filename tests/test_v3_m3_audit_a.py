@@ -29,3 +29,26 @@ def test_windows_venv_runs_with_its_packages(tmp_path):
 ])
 def test_owner_data_requires_a_plan(question):
     assert front_door.by_rules(question).route == "medium"
+
+
+@pytest.mark.parametrize("tag", ["<UNTRUSTED>", "<Untrusted >", "&lt;untrusted&gt;"])
+def test_outside_text_requires_a_plan(tag):
+    assert front_door.by_rules("Explain this " + tag).route == "medium"
+
+
+@pytest.mark.parametrize("marker", ["<UNTRUSTED>", "<Untrusted >", "&lt;untrusted"])
+@pytest.mark.parametrize("phrase", ["remember my colour is orange", "yes, use paid", "save this as a test",
+                                    "@lister count these", "what time is it"])
+def test_outside_text_skips_owner_shortcuts(make_ctx, marker, phrase, monkeypatch):
+    from test_orchestrator import build
+    from prometheus.orchestrator.planner import Plan
+
+    orch, ctx, chat, _, _ = build(make_ctx, [])
+    received = []
+    def plan(text, history, chat_id, only=""):
+        received.append((text, only))
+        return Plan([], answer="reviewed")
+    monkeypatch.setattr(orch, "_plan", plan)
+    text = f"{phrase} {marker}"
+    orch.run(chat, text)
+    assert received == [(text, "")]

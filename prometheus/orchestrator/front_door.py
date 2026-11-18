@@ -17,6 +17,8 @@ import re
 import threading
 from dataclasses import dataclass
 
+from prometheus.agents.base import has_untrusted
+
 OWNER_DATA = re.compile(
     r"\b(spend(?:ing)?|spent|buy|bought|pay|paid|costs?|budgets?|money|expenses?|study|studied|hours?|"
     r"revision|data (?:is )?left|my plan|balances?|bills?|salary|marks?|grades?|attendance|exams?|deadlines?|due)\b", re.I)
@@ -63,7 +65,7 @@ def by_rules(text: str) -> Decision | None:
     t = (text or "").strip()
     if not t:
         return Decision("simple", "rules", why="empty")
-    if "<untrusted" in t:
+    if has_untrusted(t):
         return Decision("medium", "rules", why="has outside text")
     actions = len(ACTION.findall(t))
     if actions >= 3 and (CHAIN.search(t) or len(t) > 200):
