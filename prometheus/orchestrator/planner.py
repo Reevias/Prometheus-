@@ -321,6 +321,7 @@ class Orchestrator:
         self.front_door = False            # M3.1: rules first, a free fast AI when unsure (on in the real app)
         self.loop = None                   # M3.3: the think-act-look loop for complex jobs
         self.live_text: dict[int, str] = {}  # M3.5: an answer being written, per chat
+        self.activities: dict[int, tuple[str, str]] = {}
         self.live_context = None           # M3.6: callable -> "Right now: ..." (counts only, no titles)
         self.pausing: set[int] = set()     # chats the owner paused: ends before the next step, the rest is kept
         self.skills = skills
@@ -556,13 +557,26 @@ class Orchestrator:
         return plan
 
     # -- the front door (M3.1) ------------------------------------------------------------------------------------
+    @contextlib.contextmanager
+    def activity(self, chat_id: int, state: str, label: str):
+        previous = self.activities.get(chat_id)
+        self.activities[chat_id] = (state, label)
+        try:
+            yield
+        finally:
+            if previous is None:
+                self.activities.pop(chat_id, None)
+            else:
+                self.activities[chat_id] = previous
+
     def _front_door(self, chat_id: int, task_id: int, text: str, history: list[dict]) -> TaskOutcome | None:
         """Simple: a quick direct answer. Ask: one question. Complex: the think-act-look loop. Medium (or anything
         that can't be done this way): None, so the normal plan runs."""
         from prometheus.orchestrator.front_door import decide
 
         try:
-            d = decide(self.router, text, history)
+            with self.activity(chat_id, "thinking", "Choosing a route"):
+                d = decide(self.router, text, history)
         except Exception:
             return None
         self.store.add_agent_note(task_id, "front door", f"Route: {d.route} (decided by {d.how}"

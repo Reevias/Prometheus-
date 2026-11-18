@@ -2,6 +2,7 @@ import json
 from contextlib import contextmanager
 from types import SimpleNamespace
 
+from conftest import login
 from prometheus.models.anthropic_provider import AnthropicProvider, FALLBACK_BETA
 
 
@@ -62,3 +63,33 @@ def test_sdk_stream_exposes_only_text(monkeypatch):
         shown = []
         reply = provider.stream([{"role": "user", "content": "hi"}], "rules", shown.append)
     assert shown == ["Hi"] and reply.text == "Hi" and (reply.tokens_in, reply.tokens_out) == (5, 7)
+
+
+def test_assistant_state_uses_live_events(app_client):
+    client, services = app_client()
+    login(client)
+    def state():
+        return client.get("/api/v3/state").json()["assistant"]
+
+    chat = services.store.create_chat("Test")
+    assert state()["state"] == "idle"
+    services.running[chat] = True
+    o = services.orchestrator
+    with o.activity(chat, "thinking", "Choosing a route"):
+        assert state() == {"state": "thinking", "label": "Choosing a route"}
+        with o.activity(chat, "acting", "Round 2"):
+            assert state() == {"state": "acting", "label": "Round 2"}
+    o.live_text[chat] = "private words"
+    assert state() == {"state": "answering", "label": "Answering"}
+    o.live_text.clear()
+    services.running.clear()
+    services.voice = SimpleNamespace(loop=None, error="", state=lambda: "listening")
+    assert state()["state"] == "listening"
+    services.voice = None
+    item = services.approvals.request("test", "private summary", {})
+    assert state()["state"] == "waiting_approval" and "private" not in json.dumps(state())
+    services.killswitch.trigger("test")
+    assert state()["state"] == "stopped"
+    services.killswitch.reset()
+    services.approvals.resolve(item, False)
+    assert state()["state"] == "idle"

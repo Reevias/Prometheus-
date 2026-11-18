@@ -173,6 +173,30 @@ class UIStateService:
             return {"online": False, "status": "no_ai", "label": "No AI available"}
         return {"online": True, "status": "online", "label": "Prometheus online"}
 
+    def assistant_state(self, snapshot: dict, voice: dict) -> dict:
+        s = self.services
+        task = snapshot["current_task"]
+        agent = snapshot["active_agent"]
+        chat = task["chat_id"] if task else None
+        activity = s.orchestrator.activities.get(chat)
+        if snapshot["status"] == "paused":
+            state, label = "stopped", "Stopped"
+        elif voice.get("state") == "listening" and not voice.get("muted"):
+            state, label = "listening", "Listening"
+        elif voice.get("state") == "speaking" or chat in s.orchestrator.live_text:
+            state, label = "answering", "Answering"
+        elif activity:
+            state, label = activity
+        elif agent and agent["name"] != "Planning":
+            state, label = "acting", "Running a step"
+        elif task or voice.get("state") == "thinking":
+            state, label = "thinking", "Thinking"
+        elif s.store.has_pending_approval():
+            state, label = "waiting_approval", "Waiting for your approval"
+        else:
+            state, label = "idle", "Idle"
+        return {"state": state, "label": label}
+
     def get_full_state(self) -> Dict[str, Any]:
         online = self.get_online()
         return {"online": online["online"], "status": online["status"], "status_label": online["label"],

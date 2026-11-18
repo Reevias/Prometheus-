@@ -280,12 +280,13 @@ def register_routes(app: FastAPI, services: Services) -> None:
 
     @app.get("/api/v3/state")
     def api_v3_state():
-        from prometheus.services.ui_state import ui_state_service
-        ui_state_service.services = services
-        state = ui_state_service.get_full_state()
+        from prometheus.services.ui_state import UIStateService
+        ui = UIStateService(services)
+        state = ui.get_full_state()
         kept = store.kv_get("notifications", [])
         state["unread"] = sum(1 for n in kept if isinstance(n, dict) and not n.get("read"))
         state["voice"] = voice_now()
+        state["assistant"] = ui.assistant_state(state, state["voice"])
         return state
 
     def voice_now() -> dict:

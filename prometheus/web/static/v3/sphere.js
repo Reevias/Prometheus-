@@ -82,6 +82,8 @@
     var breathe = 1 + Math.sin(t * 1.4) * 0.035 + levelSmooth * 0.12;
     var hot = state === "thinking" ? 1.25 : state === "tool" ? 1.12 : 1;
     var base = state === "tool" ? mix(ORANGE, AMBER, 0.55) : ORANGE;
+    if (state === "waiting_approval") base = AMBER;
+    if (state === "stopped") { base = WHITE; hot = 0.45; t = 0; breathe = 1; }
     var ang = t * (SPEED[state] || 0.16), tilt = 0.42, ca = Math.cos(ang), sa = Math.sin(ang), ct = Math.cos(tilt), st = Math.sin(tilt);
     function proj(v) {
       var x = v[0] * ca - v[2] * sa, z = v[0] * sa + v[2] * ca, y = v[1] * ct - z * st, z2 = v[1] * st + z * ct;

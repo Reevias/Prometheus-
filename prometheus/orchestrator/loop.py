@@ -149,7 +149,8 @@ class ThinkActLoop:
                     return o._finish(chat_id, task_id, "failed", self._so_far(
                         seen, f"Stopped: this task reached its ${o.task_budget:.2f} spending limit."))
                 try:
-                    step = self._think(messages, system, bool(private))
+                    with o.activity(chat_id, "thinking", f"Planning round {n}"):
+                        step = self._think(messages, system, bool(private))
                 except ProviderUnavailable:
                     if private:                  # never send what was read from your files to an online AI
                         return o._finish(chat_id, task_id, "done", self._so_far(
@@ -181,7 +182,8 @@ class ThinkActLoop:
                 st = {"id": n, "agent": agent, "goal": str(step.get("goal") or "")[:300], "skill": "",
                       "inputs": inputs, "depends_on": [], "kind": kind if kind in JOB_KINDS else ""}
                 last_approval = self._last_approval()
-                res, _cls = o._run_step(task_id, st, results, private, label=f"Round {n}: ")
+                with o.activity(chat_id, "acting", f"Running round {n}"):
+                    res, _cls = o._run_step(task_id, st, results, private, label=f"Round {n}: ")
                 results[n] = res
                 seen.append(f"Round {n} ({agent}): {res.summary[:300]}")
                 if res.status == "waiting_approval":
