@@ -31,14 +31,24 @@
 
   // Search = the Ctrl+K palette
   var search = $("#side-search");
-  if (search) search.addEventListener("click", function () { if (window.promOpenPalette) window.promOpenPalette(); });
+  if (search) search.addEventListener("click", function () {
+    if (window.promDrawer) window.promDrawer(false);           // on a phone the palette would open under the drawer
+    if (window.promOpenPalette) window.promOpenPalette();
+  });
 
   // More pages
   var moreBtn = $("#nav-more-btn"), more = $("#nav-more");
   if (moreBtn && more) moreBtn.addEventListener("click", function (e) {
     e.stopPropagation();
     var open = more.hidden; hideMenus(); more.hidden = !open; moreBtn.setAttribute("aria-expanded", open ? "true" : "false");
-    if (open) { var first = $("a", more); if (first) first.focus(); }
+    if (!open) return;
+    var narrow = $("#sidebar").getBoundingClientRect().width < 120;   // the icon sidebar: open beside it
+    if (narrow) {
+      var r = moreBtn.getBoundingClientRect(), side = $("#sidebar").getBoundingClientRect();
+      more.style.position = "fixed"; more.style.left = (side.right + 6) + "px";
+      more.style.top = Math.min(r.top, window.innerHeight - more.offsetHeight - 8) + "px"; more.style.right = "auto";
+    } else { more.style.position = more.style.left = more.style.top = more.style.right = ""; }
+    var first = $("a", more); if (first) first.focus({ preventScroll: true });
   });
 
   // projects fold; which ones are open is remembered on this device

@@ -89,7 +89,7 @@ def register_routes(app: FastAPI, services: Services) -> None:
                               "density": s.ui_density})
         base = {"owner": services.settings.owner_name, "commands": ui_state_service.get_slash_commands(),
                 "chats": visible_chats()[:8], "heads": head_choices(services.router), "head": services.settings.head_model,
-                "has_voice": services.voice is not None, "voice_on": bool(s.voice_enabled), "app_version": app_version(),
+                "has_voice": services.voice is not None, "voice_ready": services.voice is not None and services.voice.ready(), "voice_on": bool(s.voice_enabled), "app_version": app_version(),
                 "mentions": [{"command": "@" + n, "label": n.replace("_", " ").title(), "group": "Agents", "kind": "mention",
                               "value": "@" + n + " ", "description": short_about(c.description)}
                              for n, c in services.orchestrator._usable_agents()]}
@@ -353,8 +353,8 @@ def register_routes(app: FastAPI, services: Services) -> None:
     @app.post("/api/v3/voice/toggle")
     def api_v3_voice_toggle():
         """The microphone button next to Stop all: voice on or off, saved like Settings → Voice (laptop check)."""
-        if services.voice is None:
-            return JSONResponse({"error": "Voice isn't set up on this computer (Settings → Voice)."}, status_code=409)
+        if services.voice is None or not services.voice.ready():     # never starts a download by itself
+            return JSONResponse({"error": "Voice isn't set up yet: set it up in Settings → Voice."}, status_code=409)
         if services.killswitch.is_set:
             return JSONResponse({"error": "Everything is stopped. Press Resume to use voice."}, status_code=409)
         s = services.settings

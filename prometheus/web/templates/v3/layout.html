@@ -30,7 +30,7 @@
     <button type="button" class="icon-btn menu-btn" id="menu-btn" aria-label="Open the menu" aria-controls="sidebar" aria-expanded="false">{{ icon("list") }}</button>
     <div class="topbar-title" style="position: relative">{% block topbar %}{% endblock %}</div>
     <div class="topbar-tools">
-      {% if has_voice %}<button type="button" class="icon-btn mic-toggle{{ ' off' if not voice_on }}" id="mic-toggle"
+      {% if voice_ready %}<button type="button" class="icon-btn mic-toggle{{ ' off' if not voice_on }}" id="mic-toggle"
               aria-pressed="{{ 'true' if voice_on else 'false' }}"{% if stopped %} disabled title="Everything is stopped. Press Resume to use voice."{% else %}
               title="{{ 'Voice is on: click to turn it off' if voice_on else 'Voice is off: click to turn it on' }}"{% endif %}
               aria-label="Voice on or off">{{ icon("mic") }}</button>{% endif %}

@@ -118,6 +118,7 @@ def test_mic_button_toggles_voice_and_saves_it(app_client, monkeypatch):
     client, services = app_client()
     h = {"X-CSRF-Token": login(client)}
     calls = []
+    monkeypatch.setattr(services.voice, "ready", lambda: True)
     monkeypatch.setattr(services.voice, "start_if_enabled", lambda: calls.append("start"))
     monkeypatch.setattr(services.voice, "stop", lambda: calls.append("stop"))
     services.settings.voice_enabled = False
@@ -128,9 +129,10 @@ def test_mic_button_toggles_voice_and_saves_it(app_client, monkeypatch):
     assert load_settings().voice_enabled is False and calls == ["start", "stop"]
 
 
-def test_mic_button_refuses_while_stopped(app_client):
+def test_mic_button_refuses_while_stopped(app_client, monkeypatch):
     client, services = app_client()
     h = {"X-CSRF-Token": login(client)}
+    monkeypatch.setattr(services.voice, "ready", lambda: True)
     services.settings.voice_enabled = False
     client.post("/kill", headers=h)
     r = client.post("/api/v3/voice/toggle", headers=h)
@@ -143,3 +145,30 @@ def test_no_mic_button_without_voice(app_client):
     login(client)
     services.voice = None
     assert 'id="mic-toggle"' not in client.get("/").text
+
+
+
+def test_no_mic_button_and_no_download_when_voice_isnt_set_up(app_client, monkeypatch):
+    """Review: the button showed on every install, and a click started the voice download with a false "Voice is on"."""
+    client, services = app_client()
+    h = {"X-CSRF-Token": login(client)}
+    started = []
+    monkeypatch.setattr(services.voice, "ready", lambda: False)
+    monkeypatch.setattr(services.voice, "start_if_enabled", lambda: started.append(1))
+    services.settings.voice_enabled = False
+    assert 'id="mic-toggle"' not in client.get("/").text
+    r = client.post("/api/v3/voice/toggle", headers=h)
+    assert r.status_code == 409 and "Settings" in r.json()["error"]
+    assert started == [] and services.settings.voice_enabled is False
+
+
+def test_voice_ready_means_models_and_packages_are_there(app_client, monkeypatch):
+    _, services = app_client()
+    v = services.voice
+    monkeypatch.setattr(v.models, "missing", lambda: [])
+    monkeypatch.setattr(v.models, "packages_missing", lambda: [])
+    v._ready_at = 0
+    assert v.ready() is True
+    monkeypatch.setattr(v.models, "missing", lambda: ["voice (Kokoro, 120 MB)"])
+    v._ready_at = 0
+    assert v.ready() is False

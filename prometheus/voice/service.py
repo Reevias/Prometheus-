@@ -62,6 +62,20 @@ class VoiceService:
                 "heard_by": getattr(getattr(self.loop, "transcriber", None), "last_engine", "") if self.loop else ""}
 
     # -- starting and stopping ------------------------------------------------------------
+    def ready(self) -> bool:
+        """Models downloaded and packages installed: voice can start without a download (checked at most once a
+        minute, as page loads ask for it)."""
+        import time as _time
+
+        now = _time.monotonic()
+        if now - getattr(self, "_ready_at", 0.0) > 60:
+            try:
+                self._ready = not self.models.missing() and not self.models.packages_missing()
+            except Exception:
+                self._ready = False
+            self._ready_at = now
+        return self._ready
+
     def start_if_enabled(self) -> None:
         if self.services.settings.voice_enabled:
             threading.Thread(target=self.start, kwargs={"only_if_enabled": True}, daemon=True).start()

@@ -1054,7 +1054,8 @@ html[data-motion="reduced"] *, html[data-motion="reduced"] *::before { animation
 .nav-more-btn:hover, .nav-more-btn[aria-expanded=true] { background: rgb(var(--text-rgb) / 0.04); }
 .nav-more-btn.on svg { color: var(--orange); }
 .nav-row > a.on::before { display: none; }
-.nav-more-menu { position: absolute; left: 16px; right: 16px; top: auto; margin-top: 4px; z-index: 30; }
+.nav { position: relative; }
+.nav-more-menu { position: absolute; left: 0; right: 0; top: auto; margin-top: 4px; z-index: 30; }
 .nav-more-menu a { padding: 8px 12px !important; font-size: 14px !important; gap: 12px !important; }
 .nav-more-menu a svg { width: 18px !important; height: 18px !important; }
 .side-lists { flex: 1; min-height: 0; overflow: hidden auto; margin-top: 10px; padding-right: 2px; }
@@ -1105,7 +1106,9 @@ html[data-motion="reduced"] *, html[data-motion="reduced"] *::before { animation
 .app.mini .side-lists, .app.mini .side-act span, .app.mini .side-act kbd, .app.mini .nav-more-btn span { display: none; }
 .app.mini .side-act { justify-content: center; padding: 10px 0; }
 .app.mini .nav-row { flex-direction: column; }
-.app.mini .nav-more-menu { left: calc(100% + 6px); right: auto; width: 220px; top: 0; }
+.app.mini .nav-more-menu { width: 220px; }
+.app.mini .nav-more-menu a span { display: inline; }
+.app.mini .nav-more-menu a { justify-content: flex-start; }
 
 /* the microphone next to Stop all */
 .mic-toggle { position: relative; color: var(--orange); margin-right: 4px; }
@@ -1117,3 +1120,14 @@ html[data-motion="reduced"] *, html[data-motion="reduced"] *::before { animation
 @keyframes mic-pulse { 0%, 100% { box-shadow: 0 0 0 0 rgb(var(--orange-rgb) / 0.45); }
                        50% { box-shadow: 0 0 0 6px rgb(var(--orange-rgb) / 0); } }
 @media (prefers-reduced-motion: reduce) { .mic-toggle.listening { animation: none; } }
+
+/* -- #4: windows 701-860 px wide also get the icon sidebar: the lists and labels hide as in the shrunk menu ---------- */
+@media (min-width: 701px) and (max-width: 860px) {
+  .side-lists, .side-act span, .side-act kbd, .nav-more-btn span { display: none; }
+  .side-act { justify-content: center; padding: 10px 0; }
+  .nav-row { flex-direction: column; }
+  .nav-more-menu { width: 220px; }
+  .nav-more-menu a span { display: inline !important; }
+  .nav-more-menu a { justify-content: flex-start !important; padding: 8px 12px !important; }
+}
+.mic-toggle.failed { color: var(--bad); }

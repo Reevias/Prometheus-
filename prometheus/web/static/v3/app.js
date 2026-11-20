@@ -567,7 +567,11 @@
       var mine = t && String(t.chat_id) === String(chatId);
       setBusy(!!mine);
       var mic = $("#mic-toggle");                    // the top-bar microphone follows what voice is really doing
-      if (mic && s.voice) mic.classList.toggle("listening", s.voice.state === "listening" && !s.voice.muted);
+      if (mic && s.voice) {
+        mic.classList.toggle("listening", s.voice.state === "listening" && !s.voice.muted);
+        mic.classList.toggle("failed", !!s.voice.error);          // it couldn't start: say why instead of "on"
+        if (s.voice.error) mic.title = "Voice couldn't start: " + s.voice.error;
+      }
       var activity = s.assistant;
       var label = $("#assistant-state");
       if (activity && label) {
@@ -666,6 +670,7 @@
     if (shade) shade.hidden = !open;
     if (btn) btn.setAttribute("aria-expanded", String(open));
   }
+  window.promDrawer = drawer;
   if (btn) btn.addEventListener("click", function () { drawer(!app.classList.contains("drawer-open")); });
   if (shade) shade.addEventListener("click", function () { drawer(false); });
   document.addEventListener("keydown", function (e) { if (e.key === "Escape") drawer(false); });

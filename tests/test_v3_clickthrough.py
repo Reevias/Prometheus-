@@ -426,7 +426,7 @@ def _signed_in(live, browser, width=1400, height=900):
     page.fill("input[name=password]", PASSWORD)
     page.press("input[name=password]", "Enter")
     page.wait_for_url(base + "/")
-    page.wait_for_selector("#side-lists .side-head")
+    page.wait_for_selector("#side-lists .side-head", state="attached")    # loaded (hidden in the icon sidebar)
     return page, base, chat
 
 
@@ -485,3 +485,46 @@ def test_shrunk_sidebar_shows_icons_only(live, browser):
     page.wait_for_timeout(300)
     assert not page.locator("#side-lists").is_visible()
     assert page.locator("#side-new-chat").is_visible() and page.locator("#side-search").is_visible()
+
+
+
+def test_more_menu_sits_by_the_sidebar_in_both_widths(live, browser):
+    """Review: the More menu spread over the whole window (and to the far right in the shrunk menu)."""
+    page, _, _ = _signed_in(live, browser)
+    side = page.locator("#sidebar").bounding_box()
+    page.click("#nav-more-btn")
+    box = page.locator("#nav-more").bounding_box()
+    assert box["x"] >= side["x"] and box["x"] + box["width"] <= side["x"] + side["width"] + 4, (box, side)
+    page.keyboard.press("Escape")
+    page.keyboard.press("Control+b")
+    page.wait_for_timeout(300)
+    side = page.locator("#sidebar").bounding_box()
+    page.click("#nav-more-btn")
+    box = page.locator("#nav-more").bounding_box()
+    assert side["x"] + side["width"] - 4 <= box["x"] <= side["x"] + side["width"] + 20, (box, side)
+    assert page.evaluate("window.scrollX") == 0 and page.evaluate("document.scrollingElement.scrollLeft") == 0
+    assert "Skills" in page.inner_text("#nav-more")                       # labels, not bare icons
+
+
+def test_search_works_from_the_phone_drawer(live, browser):
+    """Review: on a phone, Search opened the palette under the drawer, so nothing seemed to happen."""
+    page, _, _ = _signed_in(live, browser, width=390, height=800)
+    page.click("#menu-btn")
+    page.wait_for_timeout(300)
+    page.click("#side-search")
+    page.wait_for_timeout(300)
+    assert page.locator("#palette-input").is_visible()
+    assert "drawer-open" not in (page.get_attribute("#app", "class") or "")
+    page.keyboard.type("Example")
+    assert page.locator("#palette-list").is_visible()
+
+
+def test_a_narrow_window_shows_a_tidy_icon_sidebar(live, browser):
+    """Review: windows 701-860 px wide showed cut-off lists ("PROJ", "RECE") and a spilling Search label."""
+    page, _, _ = _signed_in(live, browser, width=800, height=800)
+    assert not page.locator("#side-lists").is_visible()
+    assert not page.locator("#side-search span").is_visible() and not page.locator("#side-search kbd").is_visible()
+    side = page.locator("#sidebar").bounding_box()
+    for sel in ("#side-new-chat", "#side-search", "#nav-more-btn"):
+        b = page.locator(sel).bounding_box()
+        assert b["x"] + b["width"] <= side["x"] + side["width"] + 1, sel
