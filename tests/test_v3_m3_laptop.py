@@ -344,3 +344,33 @@ def test_tray_quit_asks_the_server_to_quit_too():
     time.sleep(0.05)
     tray.quit()
     assert window.destroyed and any("/api/v3/quit" in js for js in ran)
+
+
+# -- two windows ---------------------------------------------------------------------------------------------------------
+
+def test_only_one_window_at_a_time(tmp_path):
+    """Two Prometheus windows were open (one with the Python icon); a second launch brings the first one forward."""
+    from prometheus.desktop import window_lock
+
+    first = window_lock(tmp_path)
+    assert first is not None
+    assert window_lock(tmp_path) is None              # a second launch sees the open window
+    first.close()                                     # the window closed (or Prometheus crashed): free again
+    again = window_lock(tmp_path)
+    assert again is not None
+    again.close()
+
+
+def test_a_second_launch_brings_the_window_forward_and_opens_nothing(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    from prometheus import desktop
+
+    held = desktop.window_lock(tmp_path)
+    shown = []
+    monkeypatch.setattr(desktop, "data_dir", lambda: tmp_path, raising=False)
+    monkeypatch.setattr(desktop, "bring_existing_forward", lambda title: shown.append(title) or True)
+    webview = SimpleNamespace(create_window=lambda *a, **k: (_ for _ in ()).throw(AssertionError("opened a window")))
+    assert desktop.run_desktop(SimpleNamespace(port=1), webview=webview, server=SimpleNamespace(start=lambda: 1)) == 0
+    assert shown and shown[0].startswith("Prometheus")
+    held.close()
