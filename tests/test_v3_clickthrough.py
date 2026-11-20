@@ -252,12 +252,14 @@ def test_phone_width_fits(live, browser):
         page.evaluate("() => { var c = document.querySelector('#model-chip'); if (!c) { document.querySelector('#send')"
                       ".insertAdjacentHTML('beforebegin', '<select class=\"model-chip\" id=\"model-chip\"></select>');"
                       " c = document.querySelector('#model-chip'); } c.add(new Option('Gemini 2.5 Flash (Google, free)')); }")
-        tops = page.evaluate("() => ['#plus', '#model-chip', '#mic', '#send'].map(s => document.querySelector(s))"
+        tops = page.evaluate("() => ['#plus', '#research-toggle', '#model-chip', '#mic', '#send'].map(s => document.querySelector(s))"
                              ".filter(Boolean).map(e => Math.round(e.getBoundingClientRect().top))")
         assert max(tops) - min(tops) < 12, (path, tops)        # one row (the chip is shorter, so it sits a little lower)
         assert page.evaluate("() => document.documentElement.scrollWidth <= innerWidth + 1"), path
         assert not page.is_visible(".rpanel")
-    for path in ("/v3/tasks", "/v3/system?tab=devices", "/v3/projects", "/v3/automations", "/v3/research"):
+    for path in ("/v3/tasks", "/v3/system?tab=devices", "/v3/projects", "/v3/automations", "/v3/research",
+                 "/v3/approvals", "/v3/agents", "/v3/skills", "/v3/research?mode=money", "/v3/memory", "/v3/system",
+                 "/settings#general", "/settings#ai", "/settings#voice", "/settings#connections", "/settings#advanced"):
         page.goto(base + path)
         assert page.evaluate("() => document.documentElement.scrollWidth <= innerWidth + 1"), path
     page.goto(base + "/")
@@ -417,3 +419,199 @@ def test_window_buttons_and_edges_talk_to_the_window_itself(live, browser):
     calls = page.evaluate("window.__calls")
     assert calls and all(c[0] == "resize" and c[3] == "e" for c in calls)
     assert calls[-1][1] < page.evaluate("window.outerWidth")             # dragged inwards: narrower
+
+
+def _signed_in(live, browser, width=1400, height=900):
+    base, chat = live
+    page = browser.new_page(viewport={"width": width, "height": height})
+    page.goto(base + "/login")
+    page.fill("input[name=password]", PASSWORD)
+    page.press("input[name=password]", "Enter")
+    page.wait_for_url(base + "/")
+    page.wait_for_selector("#side-lists .side-head", state="attached")    # loaded (hidden in the icon sidebar)
+    return page, base, chat
+
+
+def test_one_click_opens_a_recent_chat(live, browser):
+    page, base, _ = _signed_in(live, browser)
+    chat = LONG_CHAT[0]                                  # not in a project: listed under Recents
+    page.click(f'#side-lists a.side-chat[href="/c/{chat}"]')
+    page.wait_for_url(f"{base}/c/{chat}")
+    page.wait_for_selector(f'#side-lists a.side-chat.on[href="/c/{chat}"]')
+
+
+def test_a_project_chat_is_two_clicks_and_the_fold_is_remembered(live, browser):
+    page, base, chat = _signed_in(live, browser)
+    project = page.locator("#side-lists details.side-project").first
+    project.locator("summary .side-pname").click()
+    assert project.get_attribute("open") is not None
+    page.reload()
+    page.wait_for_selector("#side-lists details.side-project[open]")
+    link = page.locator("#side-lists details.side-project[open] a.side-chat").first
+    href = link.get_attribute("href")
+    link.click()
+    page.wait_for_url(base + href)
+
+
+def test_ctrl_k_still_finds_every_other_page(live, browser):
+    """Fewer pages (20 Nov): the sidebar shows four; Memory, System, Skills... are found by Search (Ctrl+K)."""
+    page, base, _ = _signed_in(live, browser)
+    page.click("#side-search")
+    page.fill("#palette-input", "Memory")
+    page.wait_for_timeout(200)
+    assert "Memory" in page.inner_text("#palette-list")
+    page.keyboard.press("Enter")
+    page.wait_for_url(base + "/v3/memory")
+
+def test_rename_and_delete_from_the_chat_menu(live, browser):
+    page, base, chat = _signed_in(live, browser)
+    page.goto(f"{base}/c/{chat}")
+    page.wait_for_selector(f'#side-lists [data-chat-menu="{chat}"]')
+    page.hover(f'#side-lists a.side-chat[href="/c/{chat}"]')
+    page.click(f'#side-lists [data-chat-menu="{chat}"]')
+    page.click("#chat-menu [data-act=rename]")
+    page.fill("#rename-dialog input", "Renamed here")
+    page.click("#rename-dialog button[type=submit]")
+    page.wait_for_selector("#side-lists a.side-chat:has-text('Renamed here')")
+    page.click(f'#side-lists [data-chat-menu="{chat}"]')
+    page.once("dialog", lambda d: d.accept())
+    page.click("#chat-menu [data-act=delete]")
+    page.wait_for_url(base + "/v3/chats")
+    page.wait_for_selector("#side-lists .side-head")
+    assert page.locator(f'#side-lists a[href="/c/{chat}"]').count() == 0
+
+
+def test_shrunk_sidebar_shows_icons_only(live, browser):
+    page, _, _ = _signed_in(live, browser)
+    page.keyboard.press("Control+b")
+    page.wait_for_timeout(300)
+    assert not page.locator("#side-lists").is_visible()
+    assert page.locator("#side-new-chat").is_visible() and page.locator("#side-search").is_visible()
+
+
+
+def test_the_four_pages_fit_in_the_sidebar_in_both_widths(live, browser):
+    """The sidebar row (Home, Tasks, Abilities, Study & Money) stays inside the sidebar, also shrunk."""
+    page, _, _ = _signed_in(live, browser)
+    for shrink in (False, True):
+        if shrink:
+            page.keyboard.press("Control+b")
+            page.wait_for_timeout(300)
+        side = page.locator("#sidebar").bounding_box()
+        for link in page.locator(".nav-row > a").all():
+            b = link.bounding_box()
+            assert b["x"] >= side["x"] and b["x"] + b["width"] <= side["x"] + side["width"] + 1
+        assert page.evaluate("document.scrollingElement.scrollLeft") == 0
+
+def test_search_works_from_the_phone_drawer(live, browser):
+    """Review: on a phone, Search opened the palette under the drawer, so nothing seemed to happen."""
+    page, _, _ = _signed_in(live, browser, width=390, height=800)
+    page.click("#menu-btn")
+    page.wait_for_timeout(300)
+    page.click("#side-search")
+    page.wait_for_timeout(300)
+    assert page.locator("#palette-input").is_visible()
+    assert "drawer-open" not in (page.get_attribute("#app", "class") or "")
+    page.keyboard.type("Example")
+    assert page.locator("#palette-list").is_visible()
+
+
+def test_a_narrow_window_shows_a_tidy_icon_sidebar(live, browser):
+    """Review: windows 701-860 px wide showed cut-off lists ("PROJ", "RECE") and a spilling Search label."""
+    page, _, _ = _signed_in(live, browser, width=800, height=800)
+    assert not page.locator("#side-lists").is_visible()
+    assert not page.locator("#side-search span").is_visible() and not page.locator("#side-search kbd").is_visible()
+    side = page.locator("#sidebar").bounding_box()
+    for sel in ("#side-new-chat", "#side-search", ".nav-row > a >> nth=3"):
+        b = page.locator(sel).bounding_box()
+        assert b["x"] + b["width"] <= side["x"] + side["width"] + 1, sel
+
+
+def _visible_sections(page):
+    return [s.get_attribute("id") for s in page.locator("section.set:visible").all()]
+
+
+def test_settings_show_one_tab_at_a_time(live, browser):
+    """Owner (20 Nov): "voice only shows everything connected to voice, not if you scroll down you can read others"."""
+    page, base, _ = _signed_in(live, browser)
+    page.goto(base + "/settings#voice")
+    page.wait_for_timeout(300)
+    assert _visible_sections(page) == ["voice"]
+    assert page.locator('.page-tabs a.on').inner_text().strip() == "Voice"
+    assert page.locator(".set-body .page-tabs").bounding_box()["y"] >= 0     # the tab bar isn't scrolled away
+    page.click('.page-tabs a[data-tab="ai"]')
+    page.wait_for_timeout(200)
+    assert set(_visible_sections(page)) == {"ai", "costs", "practice-tests"}
+    page.goto(base + "/settings#money-tracker")                 # an old link to a section opens its tab
+    page.wait_for_timeout(300)
+    assert "money-tracker" in _visible_sections(page) and page.locator('.page-tabs a.on').inner_text().strip() == "Advanced"
+    page.fill("#set-search", "wake")                            # search looks in every tab
+    page.wait_for_timeout(200)
+    assert "voice" in _visible_sections(page)
+    page.fill("#set-search", "")
+    page.goto(base + "/settings#voice")
+    page.wait_for_timeout(300)
+    page.locator('#voice form [type=submit], #voice button[hx-post]').first.click()   # a save re-renders the page
+    page.wait_for_timeout(800)
+    assert _visible_sections(page) == ["voice"]
+
+
+def test_research_button_sends_one_deep_search_then_turns_off(live, browser):
+    """Owner (20 Nov): Research merged into chat as a button in the chat box, like a mode."""
+    page, base, chat = _signed_in(live, browser)
+    page.goto(f"{base}/c/{chat}")
+    sent = []
+    page.on("request", lambda r: sent.append(r.post_data or "") if r.url.endswith("/api/v3/send") else None)
+    page.click("#research-toggle")
+    assert page.get_attribute("#research-toggle", "aria-pressed") == "true"
+    page.fill("#command-input", "solar panels in India")
+    page.press("#command-input", "Enter")
+    page.wait_for_timeout(800)
+    assert sent and "@research solar panels in India" in sent[0]
+    assert page.get_attribute("#research-toggle", "aria-pressed") == "false"
+
+
+def test_the_chat_uses_the_width_when_the_panel_is_closed(live, browser):
+    """Owner (20 Nov): with everything closed the chat stayed a narrow column."""
+    page, base, chat = _signed_in(live, browser, width=1800, height=900)
+    page.goto(f"{base}/c/{chat}")
+    page.wait_for_selector("#messages")
+    page.evaluate("document.getElementById('app').classList.add('no-panel', 'mini')")
+    page.wait_for_timeout(200)
+    assert page.locator("#messages").bounding_box()["width"] >= 1150
+    assert page.locator("#command").bounding_box()["width"] >= 1100
+
+
+ADVANCED = {"assignments", "study-coach", "clipboard-and-screenshot-memory", "money-tracker", "search-inside-files",
+            "watchers", "always-allowed", "places-prometheus-may-use"}
+
+
+def test_a_save_in_settings_keeps_its_tab(live, browser):
+    """Review: after saving a Settings form every tab's sections showed at once."""
+    page, base, _ = _signed_in(live, browser)
+    page.goto(base + "/settings#advanced")
+    page.wait_for_timeout(300)
+    page.locator("#money-tracker form button[type=submit]").first.click()
+    page.wait_for_timeout(1000)
+    assert set(_visible_sections(page)) == ADVANCED
+    assert page.locator('.set-body .page-tabs a.on').inner_text().strip() == "Advanced"
+
+
+def test_a_link_inside_a_section_opens_its_tab(live, browser):
+    """Review: /settings#google-signin (the Google card's Connect) opened General with the sign-in hidden."""
+    page, base, _ = _signed_in(live, browser)
+    page.goto(base + "/settings#google-signin")
+    page.wait_for_timeout(300)
+    assert page.locator('.set-body .page-tabs a.on').inner_text().strip() == "Connections"
+    assert page.locator("#google-signin").is_visible()
+
+
+def test_every_settings_tab_is_visible_on_a_laptop_screen(live, browser):
+    """Review: at 1366x768 Memory, System and Advanced were cut off the tab bar with no sign they were there."""
+    page, base, _ = _signed_in(live, browser, width=1366, height=768)
+    page.goto(base + "/settings#general")
+    page.wait_for_timeout(300)
+    bar = page.locator(".set-body .page-tabs").bounding_box()
+    for tab in page.locator(".set-body .page-tabs a").all():
+        b = tab.bounding_box()
+        assert b["x"] >= bar["x"] - 1 and b["x"] + b["width"] <= bar["x"] + bar["width"] + 1, tab.inner_text()

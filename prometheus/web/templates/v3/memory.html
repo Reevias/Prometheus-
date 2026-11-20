@@ -1,16 +1,19 @@
+{% from "v3/tabs.html" import page_tabs %}
 {% extends "v3/layout.html" %}
 {% from "v3/icons.html" import icon %}
 {% block title %}Memory · Prometheus{% endblock %}
-{% block topbar %}<b>Memory</b>{% endblock %}
+{% block topbar %}<b>Settings</b>{% endblock %}
 {% block content %}
 <section class="page memory-page">
-  <h1>Memory</h1>
+  {{ page_tabs("settings", "memory") }}
+  <h1 class="sr">Memory</h1>
   <p class="muted lead">What Prometheus remembers about you, the files and pages it can search, and how it learned to answer you.
     You can see, change or delete all of it.</p>
   <div class="tabs" role="tablist">
     {% for key, label in [("memories", "Memories and facts"), ("files", "Files and pages"), ("answers", "How it answers"), ("topics", "Topics"), ("privacy", "Privacy")] %}
     <a role="tab" href="/v3/memory?tab={{ key }}" class="{{ 'on' if tab == key }}">{{ label }}</a>
     {% endfor %}
+    <a role="tab" href="/v3/research?mode=research">Research sources</a>
   </div>
 
 {% if tab == "memories" %}

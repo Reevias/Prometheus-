@@ -1,10 +1,12 @@
+{% from "v3/tabs.html" import page_tabs %}
 {% extends "v3/layout.html" %}
 {% from "v3/icons.html" import icon %}
 {% block title %}Tasks · Prometheus{% endblock %}
 {% block topbar %}<b>Tasks</b>{% endblock %}
 {% block content %}
 <section class="page tasks-page" data-view="{{ view }}">
-  <h1>Tasks</h1>
+  {{ page_tabs("tasks", "tasks", waiting=pending) }}
+  <h1 class="sr">Tasks</h1>
   <p class="muted lead">Everything you asked Prometheus to do, newest first. Open one to see each step, what it used and what it made.</p>
   <form class="task-filters" id="task-filters" hx-get="/v3/tasks" hx-target="#task-list" hx-trigger="input changed delay:300ms from:input, change"
         hx-push-url="true" hx-include="this">

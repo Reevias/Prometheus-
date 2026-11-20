@@ -89,7 +89,7 @@ def register_routes(app: FastAPI, services: Services) -> None:
                               "density": s.ui_density})
         base = {"owner": services.settings.owner_name, "commands": ui_state_service.get_slash_commands(),
                 "chats": visible_chats()[:8], "heads": head_choices(services.router), "head": services.settings.head_model,
-                "has_voice": services.voice is not None, "app_version": app_version(),
+                "has_voice": services.voice is not None, "voice_ready": services.voice is not None and services.voice.ready(), "voice_on": bool(s.voice_enabled), "app_version": app_version(),
                 "mentions": [{"command": "@" + n, "label": n.replace("_", " ").title(), "group": "Agents", "kind": "mention",
                               "value": "@" + n + " ", "description": short_about(c.description)}
                              for n, c in services.orchestrator._usable_agents()]}
@@ -254,6 +254,13 @@ def register_routes(app: FastAPI, services: Services) -> None:
                      recent=[c for c in everything if c[0] not in flags["pinned"] and c[0] not in flags["archived"]],
                      archived=[c for c in everything if c[0] in flags["archived"]])
 
+    @app.get("/api/v3/sidebar", response_class=HTMLResponse)
+    def api_v3_sidebar(request: Request, chat: int = 0):
+        """The sidebar's lists: projects with their chats, and recent chats (laptop check, 20 Nov)."""
+        from prometheus.web.sidebar import sidebar_data
+
+        return page(request, "v3/sidebar_lists.html", **sidebar_data(store, chat))
+
     @app.post("/api/v3/chats/{chat_id}/pin")
     def api_v3_chat_pin(chat_id: int):
         return toggle_flag(chat_id, "pinned")
@@ -342,6 +349,23 @@ def register_routes(app: FastAPI, services: Services) -> None:
 
         threading.Thread(target=start_then_listen, name="prometheus-voice-button", daemon=True).start()
         return {"starting": True}
+
+    @app.post("/api/v3/voice/toggle")
+    def api_v3_voice_toggle():
+        """The microphone button next to Stop all: voice on or off, saved like Settings → Voice (laptop check)."""
+        if services.voice is None or not services.voice.ready():     # never starts a download by itself
+            return JSONResponse({"error": "Voice isn't set up yet: set it up in Settings → Voice."}, status_code=409)
+        if services.killswitch.is_set:
+            return JSONResponse({"error": "Everything is stopped. Press Resume to use voice."}, status_code=409)
+        s = services.settings
+        s.voice_enabled = not s.voice_enabled
+        save_settings(s)
+        if s.voice_enabled:
+            services.voice.start_if_enabled()
+        else:
+            services.voice.stop()
+        store.audit("user", "voice", {"on": s.voice_enabled, "from": "top bar"})
+        return {"on": s.voice_enabled}
 
     @app.post("/api/v3/quit")
     def api_quit():
@@ -910,6 +934,10 @@ def register_routes(app: FastAPI, services: Services) -> None:
                     model_cards=model_cards_view(), cards_note=getattr(services.router, "cards_note", ""),
                     file_index_status=(getattr(services.file_index, "status", "") or store.kv_get("file_index_status")
                                        or "Not read yet."), **extra)
+        try:                                     # the Connections tab shows what's connected (was its own page)
+            ctx.setdefault("connection_cards", request.app.state.connection_cards())
+        except Exception:
+            ctx.setdefault("connection_cards", [])
         from prometheus.config import data_dir
         return shell(request, "v3/settings.html", "settings", status_code=status_code,
                      data_folder=str(data_dir()), costs=costs_view(), **ctx)

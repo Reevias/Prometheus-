@@ -1,14 +1,13 @@
+{% from "v3/tabs.html" import page_tabs %}
 {% extends "v3/layout.html" %}
 {% from "v3/icons.html" import icon %}
 {% block title %}{{ m.label }} · Prometheus{% endblock %}
-{% block topbar %}<b>Research</b>{% endblock %}
+{% block topbar %}<b>{{ 'Settings' if mode == 'research' else 'Study & Money' }}</b>{% endblock %}
 {% block content %}
 <section class="page research-page" data-mode="{{ mode }}">
-  <div class="tabs" role="tablist">
-    {% for key, info in modes.items() %}
-    <a role="tab" href="/v3/research?mode={{ key }}" class="{{ 'on' if mode == key }}">{{ info.label }}</a>
-    {% endfor %}
-  </div>
+  {% if mode == "research" %}{{ page_tabs("settings", "memory") }}
+  <h1 class="page-sub">Research sources <a href="/v3/memory" class="muted small">← Memory</a></h1>
+  {% else %}{{ page_tabs("study", mode) }}<h1 class="sr">{{ m.label }}</h1>{% endif %}
 
   <form class="ask-box" id="ask-box" data-chat="{{ chat_id }}">
     {% if m.agent %}<span class="agent-chip" id="agent-chip" data-agent="{{ m.agent }}" title="Only this agent answers. Remove it to let Prometheus choose.">@{{ m.agent }}

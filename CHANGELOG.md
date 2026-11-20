@@ -1,6 +1,18 @@
 # Changelog
 
 ## Prometheus 3.0, M3 (on the prometheus-v3 branch, not released yet)
+- **Fewer pages:** the sidebar shows Home, Tasks, Abilities and Study & Money (Ctrl+1…4). Tasks has tabs for Waiting
+  for you (approvals) and Scheduled (automations); Abilities has Agents and Skills; Study & Money has Study and Money.
+  Memory, System and Connections are tabs in **Settings**, which now shows **one tab at a time** (General, AI,
+  Voice, Connections, Memory, System, Advanced) with each setting on its own row. Everything else is found with
+  Search (Ctrl+K), and old links still work.
+- **Research** is a button in the chat box (Ctrl+R): the next message gets a deep search with sources.
+- The mic button is **green** when voice is on and **red** when it's off; the chat uses the full width when the side
+  panel is closed.
+- **A simpler sidebar** (from your laptop check): New chat and Search on top, then Home, Tasks and More (the other
+  pages, same Ctrl+1…0 shortcuts), then your **Projects** (each folds open to its chats, remembered) and **Recents**
+  (one click to any chat; ⋯ to rename, move to a project, pin or delete). A **microphone button** next to Stop all
+  switches voice on or off.
 - **Fixes from your second laptop check (5):** the window's minimise, maximise and fullscreen buttons work (also
   when Prometheus runs in the background) and its edges resize it; your name is kept; deleted chats stay deleted on
   the laptop and the cloud copy; "Waiting for your approval" says what kind is waiting and opens it.

@@ -1,0 +1,18 @@
+{# Pages that were merged share one tab bar (owner, 20 Nov 2026: "merge whatever we can"). Each tab keeps its own
+   address, so old links still work; the sidebar lights the group's page. #}
+{% set PAGE_GROUPS = {
+  "tasks": [("tasks", "Tasks", "/v3/tasks"), ("approvals", "Waiting for you", "/v3/approvals"),
+            ("automations", "Scheduled", "/v3/automations")],
+  "abilities": [("agents", "Agents", "/v3/agents"), ("skills", "Skills", "/v3/skills")],
+  "study": [("study", "Study", "/v3/research?mode=study"), ("money", "Money", "/v3/research?mode=money")],
+  "settings": [("general", "General", "/settings#general"), ("ai", "AI", "/settings#ai"), ("voice", "Voice", "/settings#voice"),
+               ("connections", "Connections", "/settings#connections"), ("memory", "Memory", "/v3/memory"),
+               ("system", "System", "/v3/system"), ("advanced", "Advanced", "/settings#advanced")],
+} %}
+{% macro page_tabs(group, current, waiting=0) -%}
+<nav class="page-tabs" data-group="{{ group }}" aria-label="{{ group | title }}">
+  {% for key, label, href in PAGE_GROUPS[group] %}
+  <a href="{{ href }}" data-tab="{{ key }}"{% if key == current %} class="on" aria-current="page"{% endif %}>{{ label }}{% if key == "approvals" and waiting %}<span class="count">{{ waiting }}</span>{% endif %}</a>
+  {% endfor %}
+</nav>
+{%- endmacro %}

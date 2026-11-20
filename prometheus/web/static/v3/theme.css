@@ -515,9 +515,6 @@ a { color: var(--amber); }
 .v3set .set-group { font-size: 12px; color: var(--muted); letter-spacing: 0.04em; margin: 14px 10px 4px; }
 .v3set .set-nav a { color: var(--text); text-decoration: none; padding: 7px 10px; border-radius: 9px; font-size: 14px; }
 .v3set .set-nav a:hover { background: rgb(var(--orange-rgb) / 0.1); }
-.v3set .adv { display: none; }
-body.show-adv .v3set .adv { display: revert; }
-body.show-adv .v3set .set-nav a.adv { display: block; }
 .v3set .set-body { min-width: 0; max-width: 900px; padding-bottom: 60px; }
 .v3set .set-body h1 { font-weight: 400; font-size: 30px; margin: 4px 0 18px; }
 .v3set section.set { background: linear-gradient(180deg, rgb(var(--surface-rgb) / 0.85), rgb(var(--surface-rgb) / 0.6));
@@ -1034,3 +1031,161 @@ html[data-motion="reduced"] *, html[data-motion="reduced"] *::before { animation
 .grip-ne, .grip-nw, .grip-se, .grip-sw { width: 10px; height: 10px; }
 .grip-ne { top: 0; right: 0; cursor: nesw-resize; } .grip-sw { bottom: 0; left: 0; cursor: nesw-resize; }
 .grip-nw { top: 0; left: 0; cursor: nwse-resize; } .grip-se { bottom: 0; right: 0; cursor: nwse-resize; }
+
+/* ---- sidebar after the laptop check: actions, Home/Tasks/More, projects and recents ---------------------------- */
+.side-actions { display: flex; flex-direction: column; gap: 2px; margin-bottom: 8px; }
+.side-act { display: flex; align-items: center; gap: 12px; padding: 8px 12px; border-radius: var(--r-md); border: 0;
+            background: none; color: var(--text); text-decoration: none; font-size: 14px; text-align: left; }
+.side-act svg { width: 18px; height: 18px; stroke: currentColor; color: var(--muted); flex: none; }
+.side-act:hover { background: rgb(var(--text-rgb) / 0.05); }
+.side-act kbd { margin-left: auto; font: 11px var(--mono); color: var(--muted); border: 1px solid rgb(var(--text-rgb) / 0.12);
+                border-radius: 6px; padding: 1px 6px; }
+#side-new-chat { color: var(--amber); }
+#side-new-chat svg { color: var(--orange); }
+.nav-row { display: flex; gap: 4px; position: relative; }
+.nav-row > a, .nav-more-btn { flex: 1; flex-direction: column; gap: 4px !important; padding: 8px 4px !important; font-size: 12px !important;
+                              justify-content: center; text-align: center; }
+.nav-more-btn { display: flex; align-items: center; border: 1px solid transparent; background: none; color: var(--text);
+                border-radius: var(--r-md); }
+.nav-more-btn svg { width: 20px; height: 20px; stroke: currentColor; color: var(--muted); }
+.nav-more-btn:hover, .nav-more-btn[aria-expanded=true] { background: rgb(var(--text-rgb) / 0.04); }
+.nav-more-btn.on svg { color: var(--orange); }
+.nav-row > a.on::before { display: none; }
+.nav { position: relative; }
+.nav-more-menu { position: absolute; left: 0; right: 0; top: auto; margin-top: 4px; z-index: 30; }
+.nav-more-menu a { padding: 8px 12px !important; font-size: 14px !important; gap: 12px !important; }
+.nav-more-menu a svg { width: 18px !important; height: 18px !important; }
+.side-lists { flex: 1; min-height: 0; overflow: hidden auto; margin-top: 10px; padding-right: 2px; }
+.side-head { display: flex; align-items: center; justify-content: space-between; color: var(--muted); font-size: 12px;
+             letter-spacing: 0.06em; text-transform: uppercase; padding: 12px 8px 4px; }
+.side-add { color: var(--muted); display: grid; place-items: center; width: 24px; height: 24px; border-radius: 6px; }
+.side-add svg { width: 15px; height: 15px; stroke: currentColor; }
+.side-add:hover { color: var(--text); background: rgb(var(--text-rgb) / 0.06); }
+.side-project summary { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-radius: 8px; cursor: pointer;
+                        list-style: none; font-size: 14px; color: var(--text); }
+.side-project summary::-webkit-details-marker { display: none; }
+.side-project summary:hover { background: rgb(var(--text-rgb) / 0.04); }
+.side-caret { width: 0; height: 0; border-left: 5px solid var(--muted); border-top: 4px solid transparent;
+              border-bottom: 4px solid transparent; transition: transform 0.15s; flex: none; }
+.side-project[open] .side-caret { transform: rotate(90deg); }
+.side-pname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.side-open { color: var(--muted); display: grid; place-items: center; opacity: 0; }
+.side-open svg { width: 15px; height: 15px; stroke: currentColor; }
+.side-project summary:hover .side-open, .side-open:focus { opacity: 1; }
+.side-project .side-row { padding-left: 14px; }
+.side-row { display: flex; align-items: center; position: relative; }
+.side-chat { flex: 1; min-width: 0; display: block; padding: 6px 30px 6px 10px; border-radius: 8px; color: var(--text);
+             text-decoration: none; font-size: 14px; position: relative; }
+.side-chat span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.side-chat:hover { background: rgb(var(--text-rgb) / 0.05); }
+.side-chat.on { background: rgb(var(--orange-rgb) / 0.12); }
+.side-chat.on::before { content: ""; position: absolute; left: 0; top: 7px; bottom: 7px; width: 3px; border-radius: 3px;
+                        background: var(--orange); }
+.side-row[data-pinned="1"] .side-chat span::before { content: "• "; color: var(--amber); }
+.side-more { position: absolute; right: 4px; border: 0; background: none; color: var(--muted); border-radius: 6px;
+             width: 24px; height: 24px; opacity: 0; font-size: 15px; line-height: 1; }
+.side-row:hover .side-more, .side-more:focus, .side-chat.on + .side-more { opacity: 1; }
+.side-more:hover { color: var(--text); background: rgb(var(--text-rgb) / 0.08); }
+.side-new { display: flex; align-items: center; gap: 8px; margin-left: 14px; padding: 5px 10px; border: 0; background: none;
+            color: var(--muted); font-size: 13px; border-radius: 8px; }
+.side-new svg { width: 14px; height: 14px; stroke: currentColor; }
+.side-new:hover { color: var(--text); background: rgb(var(--text-rgb) / 0.05); }
+.side-all { display: block; padding: 6px 10px; color: var(--muted); font-size: 13px; text-decoration: none; border-radius: 8px; }
+.side-project .side-all { margin-left: 14px; }
+.side-all:hover { color: var(--text); background: rgb(var(--text-rgb) / 0.05); }
+.side-empty { font-size: 13px; padding: 4px 10px; margin: 0; }
+.chat-menu { position: fixed; z-index: 60; width: 200px; }
+.side-dialog { width: min(420px, 92vw); }
+.side-dialog input, .side-dialog select { width: 100%; margin-top: 12px; padding: 10px 12px; border-radius: var(--r-md);
+  color: var(--text); background: var(--base); border: 1px solid rgb(var(--text-rgb) / 0.14); }
+.side-dialog input:focus, .side-dialog select:focus { border-color: var(--orange); outline: none; }
+@media (hover: none) { .side-more, .side-open { opacity: 1; } }
+.app.mini .side-lists, .app.mini .side-act span, .app.mini .side-act kbd, .app.mini .nav-more-btn span { display: none; }
+.app.mini .side-act { justify-content: center; padding: 10px 0; }
+.app.mini .nav-row { flex-direction: column; }
+.app.mini .nav-more-menu { width: 220px; }
+.app.mini .nav-more-menu a span { display: inline; }
+.app.mini .nav-more-menu a { justify-content: flex-start; }
+
+/* the microphone next to Stop all */
+.mic-toggle { position: relative; color: var(--ok); margin-right: 4px; }
+.mic-toggle.off { color: var(--bad); }
+.mic-toggle.off::after { content: ""; position: absolute; left: 9px; right: 9px; top: 50%; height: 2px; border-radius: 2px;
+                          background: currentColor; transform: rotate(-45deg); }
+.mic-toggle.listening { color: var(--ok); animation: mic-pulse 1.2s ease-in-out infinite; }
+.mic-toggle:disabled { color: var(--bad); opacity: 0.6; cursor: not-allowed; }
+@keyframes mic-pulse { 0%, 100% { box-shadow: 0 0 0 0 rgb(var(--ok-rgb) / 0.45); }
+                       50% { box-shadow: 0 0 0 6px rgb(var(--ok-rgb) / 0); } }
+@media (prefers-reduced-motion: reduce) { .mic-toggle.listening { animation: none; } }
+
+/* -- #4: windows 701-860 px wide also get the icon sidebar: the lists and labels hide as in the shrunk menu ---------- */
+@media (min-width: 701px) and (max-width: 860px) {
+  .side-lists, .side-act span, .side-act kbd, .nav-more-btn span { display: none; }
+  .side-act { justify-content: center; padding: 10px 0; }
+  .nav-row { flex-direction: column; }
+  .nav-more-menu { width: 220px; }
+  .nav-more-menu a span { display: inline !important; }
+  .nav-more-menu a { justify-content: flex-start !important; padding: 8px 12px !important; }
+}
+.mic-toggle.failed { color: var(--bad); }
+
+/* ---- merged pages share one tab bar (20 Nov) -------------------------------------------------------------------- */
+.page-tabs { display: flex; gap: 4px; margin: 0 0 18px; border-bottom: 1px solid rgb(var(--text-rgb) / 0.08);
+             overflow-x: auto; scrollbar-width: none; }
+.page-tabs::-webkit-scrollbar { display: none; }
+.page-tabs a { padding: 10px 16px; color: var(--muted); text-decoration: none; font-size: 17px; white-space: nowrap;
+               border-bottom: 2px solid transparent; margin-bottom: -1px; display: flex; align-items: center; gap: 8px; }
+.page-tabs a:hover { color: var(--text); }
+.page-tabs a.on { color: var(--text); border-bottom-color: var(--orange); }
+.page-tabs .count { min-width: 20px; text-align: center; font-size: 12px; border-radius: 999px; padding: 1px 7px;
+                    background: var(--orange); color: var(--base); }
+.page-sub { font-size: 20px; font-weight: 500; margin: 0 0 14px; display: flex; gap: 12px; align-items: baseline; }
+.nav-hidden { display: none !important; }
+.nav-row > a { min-width: 0; }
+.nav-row > a span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+@media (max-width: 700px) { .page-tabs a { font-size: 15px; padding: 10px 12px; } }
+
+/* ---- Settings: one tab at a time; each section a card, each setting a row (owner, 20 Nov) ------------------------- */
+.v3set .set-body .page-tabs { margin-top: 2px; }
+.v3set section.set h3 { padding-bottom: 10px; border-bottom: 1px solid rgb(var(--text-rgb) / 0.08); }
+.v3set section.set > :is(label, p, form, div, details, h4) + :is(label, p, form, div, details, h4) {
+  border-top: 1px solid rgb(var(--text-rgb) / 0.06); padding-top: 12px; margin-top: 12px; }
+.v3set section.set label:has(> input:not([type=checkbox]):not([type=radio]):not([type=hidden]), > select, > textarea) {
+  display: grid; grid-template-columns: minmax(150px, 34%) minmax(0, 1fr); gap: 6px 18px; align-items: center; }
+.v3set section.set label:has(> input:not([type=checkbox]):not([type=radio]):not([type=hidden]), > select, > textarea)
+  + label { border-top: 1px solid rgb(var(--text-rgb) / 0.06); padding-top: 12px; margin-top: 12px; }
+.v3set section.set form > label + label { border-top: 1px solid rgb(var(--text-rgb) / 0.06); padding-top: 12px; margin-top: 12px; }
+@media (max-width: 700px) {
+  .v3set section.set label:has(> input:not([type=checkbox]):not([type=radio]):not([type=hidden]), > select, > textarea) {
+    grid-template-columns: 1fr; }
+}
+
+/* Settings on phones: one column; the tab bar does the navigating, the section menu hides (search stays) */
+@media (max-width: 700px) {
+  .v3set { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .v3set .set-nav { position: static; max-height: none; }
+  .v3set .set-nav a { display: none; }
+  body.searching .v3set .set-nav a:not([hidden]) { display: block; }
+}
+/* sidebar row: "Study & Money" may wrap onto two lines instead of being cut */
+.nav-row > a span { white-space: normal; line-height: 1.15; text-align: center; overflow: visible; }
+
+/* the Research button in the chat box */
+.research-toggle { display: flex; align-items: center; gap: 6px; border: 1px solid rgb(var(--text-rgb) / 0.12); background: none;
+                   color: var(--muted); border-radius: 999px; padding: 6px 12px; font-size: 13px; white-space: nowrap; }
+.research-toggle svg { width: 16px; height: 16px; stroke: currentColor; }
+.research-toggle:hover { color: var(--text); border-color: rgb(var(--orange-rgb) / 0.5); }
+.research-toggle.on { color: var(--base); background: var(--orange); border-color: var(--orange); }
+@media (max-width: 700px) { .research-toggle span { display: none; } .research-toggle { padding: 6px 8px; } }
+/* the chat uses the width when the side panel is closed (owner, 20 Nov) */
+.app.no-panel .chat .messages { width: min(1200px, 100%); }
+.app.no-panel .chat .command { width: min(1160px, 100%); }
+
+/* phones: page tabs stay on one line and scroll sideways; Stop all never breaks onto two lines */
+.tabs { overflow-x: auto; scrollbar-width: none; }
+.tabs::-webkit-scrollbar { display: none; }
+.tabs a[role=tab] { white-space: nowrap; }
+.stopall { white-space: nowrap; }
+
+/* Settings tabs: wrap onto a second line on laptops so Memory, System and Advanced are never cut off (review) */
+@media (min-width: 701px) { .v3set .page-tabs { flex-wrap: wrap; overflow: visible; row-gap: 0; } }

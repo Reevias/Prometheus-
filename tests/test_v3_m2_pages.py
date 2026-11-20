@@ -622,8 +622,9 @@ def test_research_modes_render_with_their_own_chats(app_client):
     login(client)
     st = services.store
     _research_task(st)
-    page = client.get("/v3/research").text
-    for part in ("Research", "Study", "Money", "solar panels in India", "1 source", "Word", 'href="/v3/research"'):
+    page = client.get("/v3/research?mode=research").text          # Research sources, in Settings → Memory (20 Nov)
+    for part in ("Research sources", "Study", "Money", "solar panels in India", "1 source", "Word",
+                 'href="/v3/research?mode=study"'):
         assert part in page, part
     study = client.get("/v3/research?mode=study").text
     assert "@study" in study and "Flashcards" in study and "Deadlines" in study
@@ -631,7 +632,8 @@ def test_research_modes_render_with_their_own_chats(app_client):
     assert "@money" in money
     titles = [t for _, t in st.chats()]
     assert "Research" in titles and "Money" in titles
-    assert "solar" in client.get("/v3/research?q=solar").text and "solar panels" not in client.get("/v3/research?q=zzz").text
+    assert "solar" in client.get("/v3/research?mode=research&q=solar").text
+    assert "solar panels" not in client.get("/v3/research?mode=research&q=zzz").text
 
 
 def test_research_export_formats(app_client):
@@ -654,7 +656,7 @@ def test_research_sources_pin_exclude_and_the_agent_follows(app_client):
     a = st.add_document("web:https://www.bbc.co.uk/solar", "BBC on solar", "https://www.bbc.co.uk/solar",
                         "Solar panels in India grew fast in 2025. " * 40, private=False)
     b = st.add_document("web:https://example.org/x", "Example", "https://example.org/x", "Other text. " * 60, private=False)
-    assert "BBC on solar" in client.get("/v3/research").text
+    assert "BBC on solar" in client.get("/v3/research?mode=research").text
     assert client.post(f"/api/v3/research/sources/{a}/pin", data={"on": "1"}, headers=h).json()["ok"]
     assert st.kv_get("research_pinned") == [a]
     r = client.post(f"/api/v3/research/sources/{b}/exclude", data={"on": "1"}, headers=h)

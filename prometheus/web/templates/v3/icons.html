@@ -1,5 +1,6 @@
 {# One icon set for the whole interface: 24×24 line icons drawn here (no icon font, nothing downloaded). #}
 {% macro icon(name, cls="") -%}
+{%- set name = {"abilities": "agents", "study": "research"}.get(name, name) -%}
 <svg class="{{ cls }}" viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 {%- if name == "home" %}<path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v9.5h4.5V14h4v5.5h4.5V10"/>
 {%- elif name == "agents" %}<path d="m12 3 9 4.5-9 4.5-9-4.5z"/><path d="m3 12 9 4.5 9-4.5"/><path d="m3 16.5 9 4.5 9-4.5"/>

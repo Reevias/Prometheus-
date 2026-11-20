@@ -3,34 +3,41 @@
 {% block topbar %}<b>Settings</b>{% endblock %}
 {# Categories from the owner's plan. Each lists the existing 2.x sections it holds (nothing was dropped); a
    category with nothing in it yet (Agents, Tools, Skills) isn't shown. "adv" items appear with Show advanced. #}
+{% from "v3/tabs.html" import page_tabs %}
+{# Settings in tabs (owner, 20 Nov 2026): each tab shows only its own settings. The menu on the left lists the open
+   tab's sections; search looks in every tab. Memory and System are their own pages in the same tab bar. #}
 {% set cats = [
-  ("General", [("general", "General", False), ("features", "Features on and off", False)]),
-  ("Appearance", [("appearance", "Appearance", False)]),
-  ("Notifications", [("notifications", "Notifications", True), ("daily-summary", "Daily summary", True), ("focus-mode", "Focus mode", True)]),
-  ("Audio", [("voice", "Voice", False)]),
-  ("AI models", [("ai", "AI and providers", False), ("costs", "Costs", False), ("other-keys", "Other keys", True)]),
-  ("Integrations", [("connections", "Connections", False), ("obsidian", "Obsidian", True), ("github", "GitHub", True),
-                    ("use-prometheus-from-other-ai-apps", "Other AI apps", True)]),
-  ("Study", [("assignments", "Assignments", True), ("study-coach", "Study coach", True), ("practice-tests", "Practice tests", True)]),
-  ("Daily life", [("clipboard-and-screenshot-memory", "Clipboard memory", True), ("money-tracker", "Money tracker", True),
-                  ("search-inside-files", "Search inside files", True), ("watchers", "Watchers", True)]),
-  ("Privacy", [("places-prometheus-may-use", "Places Prometheus may use", True)]),
-  ("Security", [("safety-check", "Phone, cloud copy, backup and safety check", False), ("always-allowed", "Always allowed", True)]),
-  ("About", [("about", "About Prometheus", False), ("log-out", "Log out", False)]),
+  ("general", [("features", "Features on and off"), ("appearance", "Appearance"), ("general", "Spending and repository"),
+               ("notifications", "Notifications"), ("focus-mode", "Focus mode"), ("daily-summary", "Daily summary"),
+               ("safety-check", "Phone, cloud copy, backup, safety check"), ("about", "About Prometheus"), ("log-out", "Log out")]),
+  ("ai", [("ai", "AI and providers"), ("costs", "Costs"), ("practice-tests", "Practice tests")]),
+  ("voice", [("voice", "Voice")]),
+  ("connections", [("connection-status", "What's connected"), ("connections", "Email and calendar"),
+                   ("use-prometheus-from-other-ai-apps", "Other AI apps"), ("obsidian", "Obsidian"), ("github", "GitHub"),
+                   ("other-keys", "Other keys")]),
+  ("advanced", [("assignments", "Assignments"), ("study-coach", "Study coach"), ("clipboard-and-screenshot-memory", "Clipboard memory"),
+                ("money-tracker", "Money tracker"), ("search-inside-files", "Search inside files"), ("watchers", "Watchers"),
+                ("always-allowed", "Always allowed"), ("places-prometheus-may-use", "Places Prometheus may use")]),
 ] %}
 {% block content %}
 <section class="page v3set" id="v3-settings">
   <nav class="set-nav" aria-label="Settings categories">
     <input type="search" id="set-search" placeholder="Search settings" autocomplete="off" oninput="promFilterSettings(this.value)" aria-label="Search settings">
-    {% for cat, items in cats %}
-    <span class="set-group{{ ' adv' if items | rejectattr(2) | list | length == 0 }}">{{ cat }}</span>
-    {% for id, label, adv in items %}<a href="#{{ id }}" class="{{ 'adv' if adv }}">{{ label }}</a>{% endfor %}
+    {% for tab, items in cats %}
+    {% for id, label in items %}<a href="#{{ id }}" data-tab="{{ tab }}">{{ label }}</a>{% endfor %}
     {% endfor %}
-    <button type="button" class="ghost" id="adv-toggle" onclick="promAdvanced()">Show advanced settings</button>
   </nav>
   <div class="set-body">
-    <h1>Settings</h1>
-    <section class="set" id="appearance" data-group="Appearance">
+    {{ page_tabs("settings", "general") }}
+    <h1 class="sr">Settings</h1>
+    <section class="set" id="connection-status" data-tab="connections" data-group="Connections">
+      <h3>What's connected</h3>
+      <p class="muted">The accounts and apps Prometheus can use. Test one to check it really works. Anything that sends or
+        changes something asks you first.</p>
+      {% if connection_cards %}{% with cards = connection_cards %}{% include "v3/connections_cards.html" %}{% endwith %}
+      {% else %}<p class="muted">Nothing is connected yet: connect email and calendar below.</p>{% endif %}
+    </section>
+    <section class="set" id="appearance" data-tab="general" data-group="Appearance">
       <h3>Appearance</h3>
       <form class="appearance" id="appearance-form">
         <label>Glow <input type="range" name="ui_glow" min="0.4" max="1.4" step="0.1" value="{{ s.ui_glow }}"> <output>{{ s.ui_glow }}</output></label>
@@ -42,7 +49,7 @@
       <p class="muted">Changes show at once and are kept for next time.</p>
     </section>
     {% include "settings_sections.html" %}
-    <section class="set" id="costs" data-group="AI models">
+    <section class="set" id="costs" data-tab="ai" data-group="AI models">
       <h3>What paid AI has cost</h3>
       {% set c = costs %}
       <p><b class="cost-figure">${{ "%.2f"|format(c.budget.spent) }}</b> <span class="muted">of your ${{ "%.2f"|format(c.budget.cap) }} limit this month ({{ c.pct }}%).
@@ -60,7 +67,7 @@
       {% else %}<dt class="muted">Nothing this month.</dt><dd></dd>{% endfor %}</dl>
       <p class="muted">Change the monthly limit in AI and providers above.</p>
     </section>
-    <section class="set" id="about" data-group="About">
+    <section class="set" id="about" data-tab="general" data-group="About">
       <h3>About Prometheus</h3>
       <dl class="facts about">
         <dt>Version</dt><dd>{{ app_version }}</dd>
@@ -86,7 +93,7 @@
         <dt>F11</dt><dd>Fullscreen on or off</dd>
       </dl>
     </section>
-    <section class="set" id="log-out" data-group="About">
+    <section class="set" id="log-out" data-tab="general" data-group="About">
       <h3>Log out</h3>
       <p class="muted">Prometheus keeps running (reminders, voice, watchers); you'll need your password to open it again.</p>
       <button type="button" class="danger" hx-post="/logout" hx-swap="none" hx-on::after-request="location.href='/login'">Log out</button>

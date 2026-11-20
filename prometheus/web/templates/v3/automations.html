@@ -1,10 +1,12 @@
+{% from "v3/tabs.html" import page_tabs %}
 {% extends "v3/layout.html" %}
 {% from "v3/icons.html" import icon %}
 {% block title %}Automations · Prometheus{% endblock %}
-{% block topbar %}<b>Automations</b>{% endblock %}
+{% block topbar %}<b>Tasks</b>{% endblock %}
 {% block content %}
 <section class="page automations-page">
-  <h1>Automations</h1>
+  {{ page_tabs("tasks", "automations", waiting=pending) }}
+  <h1 class="sr">Automations</h1>
   <p class="muted lead">Things Prometheus does by itself: reminders that ring, goals it runs on a schedule, and watchers that speak up.
     {% if not running %}<b>The reminder clock isn't running right now</b>, so nothing rings until Prometheus restarts.{% endif %}</p>
 
