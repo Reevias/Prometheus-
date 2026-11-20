@@ -41,7 +41,25 @@ Old addresses redirect: `/v3/agents` and `/v3/skills` → `/v3/abilities?tab=…
 `/v3/system`, `/v3/connections` → `/settings#memory|system|connections`.
 
 **Settings** gets a tab list on the left (a row of tabs on phones): General · AI · Voice · Memory · Connections ·
-System · Advanced. The existing sections are grouped under these tabs; nothing else in Settings changes.
+System · Advanced. **Each tab shows only its own settings** (owner, 20 Nov: "voice only shows everything connected to
+voice, not if you scroll down you can read other settings"): one tab is one view, the others are hidden, not further
+down the page. The open tab is in the address (`/settings#voice`), so links and the profile menu open the right one.
+
+Inside a tab, settings are **grouped in clear cards with a title**, and each card is laid out like a table, one row
+per setting:
+
+```
+VOICE
+┌─ Listening ───────────────────────────────────────────────────────┐
+│ Voice on              [■ on ]   Listen for "Hello Prometheus"     │
+│ Wake phrase training  [Train]   Say it 8 times (about a minute)   │
+├─ Speaking ────────────────────────────────────────────────────────┤
+│ Voice                 [Heart ▾] How Prometheus sounds              │
+│ ElevenLabs key        [••••  ]  Optional: a more natural voice     │
+└───────────────────────────────────────────────────────────────────┘
+```
+Name on the left, the control in the middle, a one-line explanation on the right (stacked under each other on
+phones). Settings that only matter to experts stay under the Advanced tab, as today. No setting is added or removed.
 
 ## The Research toggle
 A **Research** button in the chat box, left of the mic. Off by default. When on (orange), the message gets a deep
@@ -54,4 +72,5 @@ under it. It switches itself off after sending, so it never stays on by accident
 - Phones: every page above checked at 360–390 px wide (no sideways scrolling, tabs scroll, touch targets ≥ 40 px).
 
 ## Left to the builder
-- Exact tab styling (reuse the existing tab look), the Research toggle icon, how Settings tabs are remembered.
+- Exact tab styling (reuse the existing tab look), the Research toggle icon, which card each existing setting
+  belongs to (grouped by what it is about).
