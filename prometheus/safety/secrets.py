@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import re
 
-from prometheus.config import KEY_NAMES, get_secret
+from prometheus.config import KEY_NAMES, get_secret, saved_secret_values
 
 PATTERNS = {
     "Anthropic key": r"sk-ant-[A-Za-z0-9_-]{20,}",
@@ -23,11 +23,25 @@ PATTERNS = {
 _COMPILED = {label: re.compile(rx) for label, rx in PATTERNS.items()}
 
 
+def known_secret_values() -> list[str]:
+    """Everything saved that must never leave in text: all keys and tokens, and the webhook token (in settings)."""
+    values = list(saved_secret_values())
+    try:
+        from prometheus import features
+
+        token = getattr(features.CURRENT, "webhook_token", "")
+        if token:
+            values.append(token)
+    except Exception:
+        pass
+    return values
+
+
 def find_secrets(text: str, saved=None) -> list[str]:
     """Names of the kinds of secret found in the text (never the secret itself)."""
     text = text or ""
     found = [label for label, rx in _COMPILED.items() if rx.search(text)]
-    saved = saved if saved is not None else [get_secret(name) for name in KEY_NAMES]
+    saved = saved if saved is not None else known_secret_values()
     if any(value and len(value) >= 12 and value in text for value in saved):
         found.append("one of your saved keys")
     return list(dict.fromkeys(found))

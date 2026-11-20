@@ -6,15 +6,20 @@ from typing import Callable
 from prometheus.memory.store import Store
 
 
+STOPPED_MESSAGE = "Everything is stopped. Resume before deciding this request."
+
+
 class TryAgain(Exception):
     """A handler raises this when the owner's input was wrong, so the approval stays pending for another go."""
 
 
 class Approvals:
-    def __init__(self, store: Store):
+    def __init__(self, store: Store, killswitch=None):
+        self.killswitch = killswitch
         self.store = store
         self._handlers: dict[str, Callable] = {}
         self._needs_secret: set[str] = set()
+        self.on_resolved: list[Callable[[int, str, str], None]] = []    # (id, status, result), after a yes or no
 
     def register(self, kind: str, handler: Callable, needs_secret: bool = False) -> None:
         """needs_secret: the handler is called as handler(payload, secret) with what the owner typed."""
@@ -37,7 +42,7 @@ class Approvals:
         broad is its site or folder. If the owner already allowed either, in any chat, it runs straight away:
         returns ("done", result). Otherwise ("waiting", approval id)."""
         exact, broad = keys
-        if self.store.allowed(kind, [exact, broad]):
+        if not (self.killswitch and self.killswitch.is_set) and self.store.allowed(kind, [exact, broad]):
             handler = self._handlers.get(kind)
             if handler is not None:
                 result = handler(payload)
@@ -52,10 +57,15 @@ class Approvals:
         item = self.store.approval(approval_id)
         if item.status != "pending":
             return f"Already {item.status}."
+        if self.killswitch and self.killswitch.is_set:
+            return STOPPED_MESSAGE
         if approved and item.kind in self._needs_secret and not secret:
             return "Type the password first."
         if not self.store.claim_approval(approval_id):        # a second click at the same moment loses here
             return "Already being handled."
+        if self.killswitch and self.killswitch.is_set:
+            self.store.set_approval_status(approval_id, "pending")
+            return STOPPED_MESSAGE
         if not approved:
             self.store.set_approval_status(approval_id, "rejected")
             result, status = "rejected", "rejected"
@@ -82,4 +92,9 @@ class Approvals:
                 self.store.add_allow_rule(item.kind, key, label or key)
         self.store.audit("user", "approval", {"id": approval_id, "kind": item.kind, "status": status,
                                               "result": result})
+        for hook in list(self.on_resolved):
+            try:
+                hook(approval_id, status, result)
+            except Exception:       # a listener never breaks the owner's answer
+                pass
         return result

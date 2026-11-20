@@ -1,0 +1,589 @@
+{
+ "updated": "2026-11-16",
+ "note": "Model cards (M3.4). level = Prometheus's own estimate (1 light, 2 medium, 3 strong), not a benchmark. price = USD per million tokens [in, out]; none = free. Prices are a snapshot (taken 11 Nov 2026 from openrouter_models.json and Anthropic's list) and drift: Settings → AI → Advanced → Check cards compares the OpenRouter ones with OpenRouter's live list. Kinds: chat, plan, research, code, vision, images, summarise, private. To change them, copy this file into Prometheus's data folder as models.json and edit that copy.",
+ "cards": [
+  {
+   "entry": "openrouter:ricursiveai/ripple-65b-preview",
+   "name": "Ripple 65B Preview (Ricursive, OpenRouter)",
+   "kinds": [
+    "code",
+    "plan"
+   ],
+   "level": 3,
+   "price": [
+    0.2,
+    0.6
+   ],
+   "note": "built for coding agents, 1M-token reading"
+  },
+  {
+   "entry": "openrouter:qwen/qwen3.8-flash",
+   "name": "Qwen 3.8 Flash (Alibaba, OpenRouter)",
+   "kinds": [
+    "chat",
+    "summarise"
+   ],
+   "level": 1,
+   "price": [
+    0.15,
+    0.47
+   ],
+   "note": "fast and cheap"
+  },
+  {
+   "entry": "openrouter:deepseek/deepseek-v4-pro",
+   "name": "DeepSeek V4 Pro (DeepSeek, OpenRouter)",
+   "kinds": [
+    "chat",
+    "plan",
+    "research",
+    "code",
+    "summarise"
+   ],
+   "level": 3,
+   "price": [
+    0.9,
+    1.8
+   ],
+   "note": "strong reasoning, low price"
+  },
+  {
+   "entry": "openrouter:deepseek/deepseek-v4.1-flash",
+   "name": "DeepSeek V4.1 Flash (DeepSeek, OpenRouter)",
+   "kinds": [
+    "chat",
+    "summarise"
+   ],
+   "level": 1,
+   "price": [
+    0.05,
+    0.57
+   ],
+   "note": "very cheap"
+  },
+  {
+   "entry": "openrouter:z-ai/glm-5.3",
+   "name": "GLM 5.3 (Zhipu, OpenRouter)",
+   "kinds": [
+    "chat",
+    "research",
+    "code",
+    "summarise"
+   ],
+   "level": 2,
+   "price": [
+    0.07,
+    1.4
+   ],
+   "note": "cheap, long reading"
+  },
+  {
+   "entry": "openrouter:openai/gpt-6-luna",
+   "name": "GPT-6 Luna (OpenAI, OpenRouter)",
+   "kinds": [
+    "chat",
+    "summarise"
+   ],
+   "level": 1,
+   "price": [
+    0.1,
+    0.5
+   ],
+   "note": "cheap"
+  },
+  {
+   "entry": "openrouter:mistralai/mistral-large-4-0",
+   "name": "Mistral Large 4 (Mistral, OpenRouter)",
+   "kinds": [
+    "chat",
+    "plan",
+    "research",
+    "code",
+    "summarise"
+   ],
+   "level": 3,
+   "price": [
+    0.7,
+    2.1
+   ],
+   "note": "European, good value"
+  },
+  {
+   "entry": "openrouter:minimax/minimax-m3.1-flash",
+   "name": "MiniMax M3.1 Flash (MiniMax, OpenRouter)",
+   "kinds": [
+    "chat",
+    "research",
+    "code",
+    "summarise"
+   ],
+   "level": 2,
+   "price": [
+    0.15,
+    0.6
+   ],
+   "note": "cheap, 1M-token reading"
+  },
+  {
+   "entry": "openrouter:nvidia/nemotron-3-ultra-550b-a55b",
+   "name": "Nemotron 3 Ultra (550B) (NVIDIA, OpenRouter)",
+   "kinds": [
+    "chat",
+    "plan",
+    "research",
+    "code",
+    "summarise"
+   ],
+   "level": 3,
+   "price": [
+    0.6,
+    2.4
+   ],
+   "note": "550B parameters, 55B active"
+  },
+  {
+   "entry": "openrouter:nvidia/nemotron-3-ultra-550b-a55b:free",
+   "name": "Nemotron 3 Ultra (550B) (NVIDIA, OpenRouter)",
+   "kinds": [
+    "chat",
+    "plan",
+    "research",
+    "code",
+    "summarise"
+   ],
+   "level": 3,
+   "price": null,
+   "note": "may be slow or limited"
+  },
+  {
+   "entry": "openrouter:google/gemma-4-31b-it:free",
+   "name": "Gemma 4 31B (Google, OpenRouter)",
+   "kinds": [
+    "chat",
+    "research",
+    "code",
+    "summarise"
+   ],
+   "level": 2,
+   "price": null,
+   "note": "open model"
+  },
+  {
+   "entry": "openrouter:reflection/beam-1.0-501b-a23b",
+   "name": "Beam 1.0 (Reflection, OpenRouter)",
+   "kinds": [
+    "chat",
+    "plan",
+    "research",
+    "code",
+    "summarise"
+   ],
+   "level": 3,
+   "price": [
+    0.3,
+    1.0
+   ],
+   "note": "501B, strong tools and reasoning, uses few words"
+  },
+  {
+   "entry": "openrouter:xiaomi/mimo-v2.6-pro",
+   "name": "MiMo V2.6 Pro (Xiaomi, OpenRouter)",
+   "kinds": [
+    "chat",
+    "plan",
+    "research",
+    "code",
+    "summarise"
+   ],
+   "level": 3,
+   "price": [
+    0.43,
+    0.87
+   ],
+   "note": "1T model, sees images and hears audio, cheap for its size"
+  },
+  {
+   "entry": "openrouter:xiaomi/mimo-v2.6-flash",
+   "name": "MiMo V2.6 Flash (Xiaomi, OpenRouter)",
+   "kinds": [
+    "chat",
+    "summarise"
+   ],
+   "level": 1,
+   "price": [
+    0.14,
+    0.28
+   ],
+   "note": "fast and cheap, sees images"
+  },
+  {
+   "entry": "openrouter:z-ai/glm-5.3-flash",
+   "name": "GLM 5.3 Flash (Z.ai, OpenRouter)",
+   "kinds": [
+    "chat",
+    "summarise"
+   ],
+   "level": 1,
+   "price": [
+    0.04,
+    0.08
+   ],
+   "note": "very cheap, sees images, near-flagship coding"
+  },
+  {
+   "entry": "openrouter:moonshotai/kimi-k2.7-code",
+   "name": "Kimi K2.7 Code (Moonshot, OpenRouter)",
+   "kinds": [
+    "code",
+    "plan"
+   ],
+   "level": 3,
+   "price": [
+    0.6,
+    3.5
+   ],
+   "note": "coding-focused Kimi"
+  },
+  {
+   "entry": "openrouter:openai/gpt-oss-120b",
+   "name": "gpt-oss 120B (OpenAI (open model), OpenRouter)",
+   "kinds": [
+    "chat",
+    "research",
+    "code",
+    "summarise"
+   ],
+   "level": 2,
+   "price": [
+    0.15,
+    0.6
+   ],
+   "note": "OpenAI's open reasoning model"
+  },
+  {
+   "entry": "openrouter:qwen/qwen3.8-27b",
+   "name": "Qwen 3.8 27B (Alibaba, OpenRouter)",
+   "kinds": [
+    "chat",
+    "research",
+    "code",
+    "summarise"
+   ],
+   "level": 2,
+   "price": [
+    0.15,
+    1.88
+   ],
+   "note": "the Ollama qwen3.8 model, sees images"
+  },
+  {
+   "entry": "openrouter:minimax/minimax-m3",
+   "name": "MiniMax M3 (MiniMax, OpenRouter)",
+   "kinds": [
+    "chat",
+    "plan",
+    "research",
+    "code",
+    "summarise"
+   ],
+   "level": 3,
+   "price": [
+    0.3,
+    1.2
+   ],
+   "note": "coding and agents, sees images"
+  },
+  {
+   "entry": "openrouter:nvidia/nemotron-3.5-super-vl",
+   "name": "Nemotron 3.5 Super (NVIDIA, OpenRouter)",
+   "kinds": [
+    "chat",
+    "research",
+    "code",
+    "summarise"
+   ],
+   "level": 2,
+   "price": [
+    0.15,
+    0.47
+   ],
+   "note": "120B, documents and images"
+  },
+  {
+   "entry": "openrouter:nvidia/nemotron-3.5-super-vl:free",
+   "name": "Nemotron 3.5 Super (NVIDIA, OpenRouter)",
+   "kinds": [
+    "chat",
+    "research",
+    "code",
+    "summarise"
+   ],
+   "level": 2,
+   "price": null,
+   "note": "open model"
+  },
+  {
+   "entry": "openrouter:recursive/flint-v1.0:free",
+   "name": "Flint (Recursive, OpenRouter)",
+   "kinds": [
+    "code"
+   ],
+   "level": 2,
+   "price": null,
+   "note": "40B coding-agent model"
+  },
+  {
+   "entry": "openrouter:google/gemma-4-26b-a4b-it:free",
+   "name": "Gemma 4 26B (Google, OpenRouter)",
+   "kinds": [
+    "chat",
+    "research",
+    "code",
+    "summarise"
+   ],
+   "level": 2,
+   "price": null,
+   "note": "sees images"
+  },
+  {
+   "entry": "openrouter:meta/muse-glimmer-30b",
+   "name": "Muse Glimmer 30B (Meta, OpenRouter)",
+   "kinds": [
+    "chat",
+    "research",
+    "code",
+    "summarise"
+   ],
+   "level": 2,
+   "price": [
+    0.3,
+    1.2
+   ],
+   "note": "built for always-on agents, sees images"
+  },
+  {
+   "entry": "openrouter:deepseek/deepseek-v4-flash",
+   "name": "DeepSeek V4 Flash (DeepSeek, OpenRouter)",
+   "kinds": [
+    "chat",
+    "research",
+    "code",
+    "summarise"
+   ],
+   "level": 2,
+   "price": [
+    0.09,
+    0.18
+   ],
+   "note": "cheapest strong all-rounder"
+  },
+  {
+   "entry": "anthropic:claude-haiku-5-5",
+   "name": "Claude Haiku 5.5",
+   "kinds": [
+    "chat",
+    "research",
+    "summarise",
+    "vision"
+   ],
+   "level": 2,
+   "price": [
+    0.1,
+    0.5
+   ],
+   "note": "cheap, quick, sees images"
+  },
+  {
+   "entry": "anthropic:claude-sonnet-5-5",
+   "name": "Claude Sonnet 5.5",
+   "kinds": [
+    "chat",
+    "plan",
+    "research",
+    "code",
+    "vision",
+    "summarise"
+   ],
+   "level": 3,
+   "price": [
+    2.0,
+    10.0
+   ],
+   "note": "strong; above the cheap line, so it asks first"
+  },
+  {
+   "entry": "anthropic:claude-opus-5-5",
+   "name": "Claude Opus 5.5",
+   "kinds": [
+    "chat",
+    "plan",
+    "research",
+    "code",
+    "vision"
+   ],
+   "level": 3,
+   "price": [
+    4.0,
+    20.0
+   ],
+   "note": "smartest; above the cheap line, so it asks first"
+  },
+  {
+   "entry": "ollama",
+   "name": "The model on this laptop (Ollama)",
+   "kinds": [
+    "private",
+    "chat",
+    "summarise"
+   ],
+   "level": 1,
+   "local": true,
+   "note": "free and private; the only one that reads your files"
+  },
+  {
+   "entry": "aion-labs",
+   "name": "Aion Labs (free, its chosen model)",
+   "kinds": [
+    "chat",
+    "research",
+    "summarise"
+   ],
+   "level": 2,
+   "note": "free tier with daily limits"
+  },
+  {
+   "entry": "gemini",
+   "name": "Google Gemini (free, its chosen model)",
+   "kinds": [
+    "chat",
+    "research",
+    "summarise",
+    "plan"
+   ],
+   "level": 2,
+   "note": "free tier with daily limits"
+  },
+  {
+   "entry": "mistral-ai",
+   "name": "Mistral AI (free, its chosen model)",
+   "kinds": [
+    "chat",
+    "research",
+    "summarise"
+   ],
+   "level": 2,
+   "note": "free tier with daily limits"
+  },
+  {
+   "entry": "z-ai-zhipu-ai",
+   "name": "Z AI (Zhipu AI) (free, its chosen model)",
+   "kinds": [
+    "chat",
+    "research",
+    "summarise"
+   ],
+   "level": 2,
+   "note": "free tier with daily limits"
+  },
+  {
+   "entry": "gonka-broker",
+   "name": "Gonka Broker (free, its chosen model)",
+   "kinds": [
+    "chat",
+    "research",
+    "summarise"
+   ],
+   "level": 2,
+   "note": "free tier with daily limits"
+  },
+  {
+   "entry": "groq",
+   "name": "Groq (free, its chosen model)",
+   "kinds": [
+    "chat",
+    "research",
+    "summarise"
+   ],
+   "level": 2,
+   "note": "free tier with daily limits"
+  },
+  {
+   "entry": "kilo-code",
+   "name": "Kilo Code (free, its chosen model)",
+   "kinds": [
+    "chat",
+    "research",
+    "summarise"
+   ],
+   "level": 2,
+   "note": "free tier with daily limits"
+  },
+  {
+   "entry": "llm7-io",
+   "name": "LLM7.io (free, its chosen model)",
+   "kinds": [
+    "chat",
+    "research",
+    "summarise"
+   ],
+   "level": 2,
+   "note": "free tier with daily limits"
+  },
+  {
+   "entry": "modelscope",
+   "name": "ModelScope (free, its chosen model)",
+   "kinds": [
+    "chat",
+    "research",
+    "summarise"
+   ],
+   "level": 2,
+   "note": "free tier with daily limits"
+  },
+  {
+   "entry": "nvidia-nim",
+   "name": "NVIDIA NIM (free, its chosen model)",
+   "kinds": [
+    "chat",
+    "research",
+    "summarise"
+   ],
+   "level": 2,
+   "note": "free tier with daily limits"
+  },
+  {
+   "entry": "ovhcloud-ai-endpoints",
+   "name": "OVHcloud AI Endpoints (free, its chosen model)",
+   "kinds": [
+    "chat",
+    "research",
+    "summarise"
+   ],
+   "level": 2,
+   "note": "free tier with daily limits"
+  },
+  {
+   "entry": "siliconflow",
+   "name": "SiliconFlow (free, its chosen model)",
+   "kinds": [
+    "chat",
+    "research",
+    "summarise"
+   ],
+   "level": 2,
+   "note": "free tier with daily limits"
+  },
+  {
+   "entry": "ollama-cloud",
+   "name": "Ollama Cloud (free, its chosen model)",
+   "kinds": [
+    "chat",
+    "research",
+    "summarise",
+    "plan"
+   ],
+   "level": 2,
+   "note": "free tier with daily limits"
+  }
+ ]
+}

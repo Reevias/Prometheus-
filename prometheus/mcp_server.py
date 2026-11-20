@@ -119,7 +119,8 @@ class PrometheusMCP:
         return answer.text
 
     def request_action(self, task: str, why: str = "") -> str:
-        summary = f"{self.caller} asks Prometheus to: {task[:300]}" + (f" (why: {why[:200]})" if why else "")
+        # the WHOLE request is shown (it is cut at 2000 characters, and what you approve is what runs)
+        summary = f"{self.caller} asks Prometheus to: {task[:2000]}" + (f" (why: {why[:200]})" if why else "")
         self.services.approvals.request("mcp_action", summary, {"task": task[:2000], "caller": self.caller})
         self.services.notify("waiting", f"{self.caller} asks: {task[:80]}")
         return "Sent to the owner's Approvals page. It runs only after they approve it."

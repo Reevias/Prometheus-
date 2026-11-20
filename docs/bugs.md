@@ -2,7 +2,83 @@
 
 Every bug found and fixed, newest first, so the count is always exact. Add a line for each new one.
 
-**Total fixed: 80** (as of 15 November 2026)
+**Total fixed: 126** (as of 20 November 2026)
+
+## 20 November 2026, M3 exit check (D6) (4)
+
+| # | Bug | Fixed by |
+|---|---|---|
+| 126 | The login page was still the old 2.x screen (M2 said the old screens were gone) | Login in the v3 look with the orbital sphere; old `style.css` and `orb.js` deleted |
+| 125 | An older update request stayed on the Approvals page next to a newer one and could only fail | Newer commits close the older request |
+| 124 | Scripts in the Windows venv sandbox couldn't use packages that need a `.pth` file (pywin32...) | The guard reads the venv's `.pth` files after its rules are on |
+| 123 | An approved update that added a package only pulled the code, so the automatic restart could start without it | After the yes it installs the packages; if that fails the old code goes back and nothing restarts |
+
+## 18 November 2026, M3 audit fixes, Phase A (6)
+
+| # | Bug | Fixed by |
+|---|---|---|
+| 122 | An approval could run after Stop all | Hold the request until Resume |
+| 121 | Chat updated without approval and automatic updates pulled main and ran pip | Review and fast-forward the exact commit on the current branch, with approval for dependency or top-level additions |
+| 120 | Billed catalog providers were treated as free | Per-provider billing switch, approval and model-card cost accounting |
+| 119 | Mixed-case and escaped outside-text markers missed command checks | Shared marker check across routing and shortcuts |
+| 118 | Spending, study and personal totals could receive a guessed answer | Route them to the planner |
+| 117 | The Windows virtual-environment launcher exceeded the sandbox process limit | Run the base interpreter with the environment's package directories |
+
+## 17 November 2026, M3 audit fixes, Phase B (8)
+From `docs/m3/M3_AUDIT_FIX_PLAN.md`. Each fix has a test that failed before it (`tests/test_v3_m3_audit_b.py`).
+
+| # | Bug | Fixed by |
+|---|---|---|
+| 116 | A job sent from the cloud copy that could change things ran on the laptop without a yes | it waits for a one-tap approval; reading jobs run as before |
+| 115 | A long job could use up the Antigravity cap twice (cost was checked only at start) | each job holds back its worst-case cost while it runs |
+| 114 | The 10-file Recycle limit was per step, so a task could recycle files in steps of 10 | the limit counts the whole task |
+| 113 | Copying or moving a .bat/.ps1 (or other runnable file) needed no yes | it asks first |
+| 112 | Terminal output didn't hide MCP, webhook, sync or tool-server tokens | every saved secret is hidden |
+| 111 | The webhook token was in the URL and in the access log | it can ride in a header; the log shows /hooks/*** |
+| 110 | AIs that need no key were on for new installs and received memories | off by default; they never get memories or notes |
+| 109 | The step-by-step loop called a task "done" while a yes was waiting, and Pause didn't keep its place | it keeps its place and carries on after the yes or Carry on |
+
+## 16 November 2026, M3 review (13)
+An independent review of M3. Each fix has a test that failed before it (`tests/test_v3_m3_review.py`).
+
+| # | Bug | Fixed by |
+|---|---|---|
+| 108 | The front door answered questions that need a tool ("any new emails?", "who won the match?", "how much disk space?") without the tool | such questions always get the normal plan |
+| 107 | Stop during a quick answer still posted the answer | Stop is checked when it arrives |
+| 106 | A provider-wide model card could stand in for an expensive model's own card | the exact model's card wins |
+| 105 | An oddly tagged step could send a non-picture job to a picture-making AI | odd tags ignored; picture AIs filtered from every list |
+| 104 | An error inside a streamed answer was saved as if the answer were complete | it counts as a failure and the next AI answers |
+| 103 | A streamed OpenRouter call with no words wasn't counted in spending | both calls counted |
+| 102 | One big paid call could take a task past its $0.10 limit | the call's most possible cost is checked first |
+| 101 | The front door's quick check could use the hand-picked (paid) lead AI | free AI only, never the lead AI |
+| 100 | Model cards put a stronger paid AI before free ones on light jobs, and before your own Settings picks | free first for light jobs; your picks stay first |
+| 99 | On the cloud copy, a long job could run laptop tools on the server instead of waiting for the laptop | no step-by-step loop on the cloud copy |
+| 98 | Waiting for the phone was announced as "waiting for your yes" | it isn't any more |
+| 97 | A phone job that kept failing re-ran every 2 minutes for ever; a busy chat's job was dropped | at most 3 tries; busy chats keep it |
+| 96 | A crash in the step-by-step loop left the task "running" for ever | the task ends with a plain message |
+
+## 16 November 2026, security audit (15)
+Five reviewers read the whole app against the Claude-BugHunter vulnerability classes (files and paths, XSS/CSRF/login,
+commands and web requests, SQL and secrets, prompt injection and approvals). Each fix has a test that failed first.
+Report: `docs/reports/SECURITY_AUDIT_16NOV.md`.
+
+| # | Bug | Fixed by |
+|---|---|---|
+| 95 | Chat export crashed (server error) for a chat with a Hindi or other non-Latin title | one safe download-name helper for every export |
+| 94 | A page's text containing </UNTRUSTED> in capitals could close the outside-text wrapper early | the wrapper is case-blind |
+| 93 | The browser password approval didn't say which site gets the password, and didn't re-check it | it names the real page and refuses if the page changed |
+| 92 | An MCP app's request showed only the first 300 characters on Approvals, but ran up to 2000 | the whole request is shown |
+| 91 | Scripts and own tools given your files weren't treated as private, so what they printed could reach a cloud AI | private when given your files |
+| 90 | Quiz and exam answers made from private notes were stored as not private and sent to the cloud planner later | stored private |
+| 89 | Translate fell back to a cloud AI for text taken from your private files when the laptop AI was down | never for text from your files (typed words still may) |
+| 88 | An error reply naming an Obsidian note wasn't escaped | escaped, plain text |
+| 87 | Login cookies had no Secure flag on the https cloud copy | Secure when the proxy says https |
+| 86 | On the cloud copy, 5 wrong passwords from any one device locked everyone out | attempts counted per device |
+| 85 | The MCP web-address check was a prefix match (http://localhost.evil.com passed) | the host is compared exactly |
+| 84 | The script approval showed only the first 1500 characters, so a script could hide its second half | the whole script is shown |
+| 83 | A script could run any command through ctypes (libc system/popen/exec) and slip past every sandbox rule | dangerous system calls refused |
+| 82 | Renaming a file accepted names Windows reads differently (a.exe. , a.txt:stream, reserved names) and skipped the safety checks | such names refused; the new name gets the same checks |
+| 81 | Copying a folder (e.g. your home) copied protected files inside it (.ssh keys, Prometheus's own keys) out | protected places are skipped |
 
 ## 15 November 2026, M2.4 bug hunt (14)
 An independent review of M2.3 and M2.4 before the merge. Each fix has a test that failed before it.

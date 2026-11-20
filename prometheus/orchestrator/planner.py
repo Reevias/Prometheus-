@@ -1,18 +1,20 @@
 """Lead AI (HuggingGPT pattern): plan -> pick agent -> run steps -> combine one answer."""
 from __future__ import annotations
 
+import contextlib
 import json
 import re
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Callable
 
-from prometheus.agents.base import UNTRUSTED_RULE, AgentContext, StepResult, untrusted
-from prometheus.models.base import ProviderUnavailable
+from prometheus.agents.base import UNTRUSTED_RULE, AgentContext, StepResult, has_untrusted, untrusted
+from prometheus.models.base import PERSONAL_CLOSE, PERSONAL_OPEN, ProviderUnavailable
 from prometheus.safety.budget import BudgetExceeded
 from prometheus.safety.killswitch import Stopped
 
 MAX_STEPS = 8
+JOB_KINDS = ("chat", "plan", "research", "code", "vision", "summarise")   # what a step may be tagged (M3.4)
 PACKAGE_PROMPTS = Path(__file__).resolve().parent.parent / "prompts"
 REF = re.compile(r"^\$step(\d+)\.(\w+)$")
 
@@ -60,8 +62,9 @@ PLAN_SCHEMA = {
                 "additionalProperties": False,
             }},
             "depends_on": {"type": "array", "items": {"type": "integer"}},
+            "kind": {"type": "string", "enum": ["chat", "plan", "research", "code", "vision", "summarise", ""]},
         },
-        "required": ["id", "agent", "goal", "skill", "inputs", "depends_on"],
+        "required": ["id", "agent", "goal", "skill", "inputs", "depends_on", "kind"],
         "additionalProperties": False,
     }}},
     "required": ["answer", "topic", "title", "remember", "facts", "steps"],
@@ -256,11 +259,25 @@ def validate_plan(raw: str, registry: dict) -> Plan:
             if value is None or (isinstance(value, str) and not value.strip()) or value == []:
                 raise PlanError(f"Step {sid} ({s['agent']}) needs the input '{key}'. Give it a real value, "
                                 "for example a link for the opener or an app name for the system agent.")
+        kind = str(s.get("kind") or "").strip().lower()
         clean.append({"id": sid, "agent": s["agent"], "goal": str(s.get("goal", "")),
+                      "kind": kind if kind in JOB_KINDS else "",
                       "skill": str(s.get("skill") or "").strip(),
                       "inputs": inputs, "depends_on": list(deps)})
         seen.add(sid)
     return Plan(clean, answer=answer, remember=remember, topic=topic, title=title, facts=facts)
+
+
+def step_is_private(agent_cls, inputs) -> bool:
+    """Does this step's result hold personal data? Some agents always do; a script does when it is given your files."""
+    if getattr(agent_cls, "private_outputs", False):
+        return True
+    if not getattr(agent_cls, "private_with_files", False):
+        return False
+    files = inputs.get("files") if isinstance(inputs, dict) else None
+    if files is None and isinstance(inputs, list):                      # the plan's [{"key", "value"}] form
+        files = next((i.get("value") for i in inputs if isinstance(i, dict) and i.get("key") == "files"), None)
+    return bool(files)
 
 
 def resolve_inputs(inputs: dict, results: dict[int, StepResult], private_steps: frozenset[int] = frozenset(),
@@ -272,6 +289,8 @@ def resolve_inputs(inputs: dict, results: dict[int, StepResult], private_steps: 
             sid, field = int(m.group(1)), m.group(2)
             if sid in private_steps and not allow_private:
                 raise PlanError(f"Step {sid} holds private data from your files; it can't be sent to the web or cloud.")
+            if sid in private_steps:
+                out["_from_private"] = True          # an agent that could use the cloud must not, for this text
             if sid in results and field == "summary" and field not in results[sid].data:
                 out[key] = results[sid].summary          # the text a step wrote, e.g. to save it in a file
                 continue
@@ -299,6 +318,11 @@ class Orchestrator:
         self.before_steps = None           # callable (chat_id, text, plan) -> answer to stop with, or "" to go on
         self.stopping: set[int] = set()    # chats whose reply the owner stopped (Stop button): ends before the next step
         self.project_context = None        # callable (chat_id) -> text about the chat's project (M2.3), or None
+        self.front_door = False            # M3.1: rules first, a free fast AI when unsure (on in the real app)
+        self.loop = None                   # M3.3: the think-act-look loop for complex jobs
+        self.live_text: dict[int, str] = {}  # M3.5: an answer being written, per chat
+        self.activities: dict[int, tuple[str, str]] = {}
+        self.live_context = None           # M3.6: callable -> "Right now: ..." (counts only, no titles)
         self.pausing: set[int] = set()     # chats the owner paused: ends before the next step, the rest is kept
         self.skills = skills
         from prometheus.memory.facts import Facts
@@ -413,10 +437,49 @@ class Orchestrator:
         return "From earlier chats (only the matching parts):\n" + "\n".join(
             untrusted(h.context[:CHAT_PASSAGE_CHARS], h.title) for h in hits) + "\n\n"
 
+    def _context(self, text: str, chat_id: int | None) -> str:
+        """What the AI is told besides the request: now (live context), memories, facts, earlier chats, the chat's
+        project, lessons and saved passages. Shared by planning and quick answers."""
+        relevant = [h.text for h in self.store.recall(text, limit=8, kinds=("memory", "chat_note"))]
+        newest = [m.text for m in self.store.memories()[-3:]]
+        remembered = list(dict.fromkeys(relevant + newest))
+        memories = "\n".join(f"- {m[:400]}" for m in remembered) or "(none)"
+        from prometheus.quick import now_line
+
+        live = ""
+        if self.live_context is not None:            # M3.6: counts only (reminders, tasks, approvals, battery)
+            try:
+                live = self.live_context() or ""
+            except Exception:
+                live = ""
+        content = f"{now_line()}\n\n{PERSONAL_OPEN}{live + chr(10) + chr(10) if live else ''}" \
+                  f"Things to remember about the user:\n{memories}\n\n"
+        known_facts = self.facts.relevant(text)
+        if known_facts:
+            content += "Known facts (people, places and things in the owner's life):\n" + "\n".join(
+                f"- {f}" for f in known_facts) + "\n\n"
+        # Passages from web pages read before (never private files: this goes to the planning model).
+        content += self._earlier_chats(text, chat_id)
+        if self.project_context is not None and chat_id is not None:
+            try:
+                content += self.project_context(chat_id)      # the chat's project: folder, instructions, notes
+            except Exception:
+                pass
+        lessons = self.store.relevant_lessons(text)
+        if lessons:
+            content += "Lessons from earlier tasks (follow them):\n" + "\n".join(f"- {l}" for l in lessons) + "\n\n"
+        passages = self.store.search_chunks(text, limit=PASSAGES, include_private=False, chats=False)
+        if passages:
+            content += "Saved passages that may help:\n" + "\n".join(
+                untrusted(h.match[:PASSAGE_CHARS], h.source or h.title) for h in passages) + "\n\n"
+        return content + PERSONAL_CLOSE
+
     def _plan(self, text: str, history: list[dict] | None = None, chat_id: int | None = None, only: str = "") -> Plan:
         usable = [(n, c) for n, c in self._usable_agents() if not only or n == only]
         registry = dict(usable) if only else self.registry
-        agents = "\n".join(f"- {name}: {cls.description}" for name, cls in usable)
+        from prometheus.orchestrator.registry import planner_line
+
+        agents = "\n".join(planner_line(name, cls) for name, cls in usable)
         if only:
             agents += (f"\n\nThe owner chose the {only} agent for this message (they wrote @{only}). Use only that "
                        "agent, or answer directly when no step is needed.")
@@ -448,31 +511,7 @@ class Orchestrator:
                    "for example \"Delhi weather this week\" or \"Fix Python loop error\"; no quotes, no full stop). "
                    "Name what the conversation is about, not the greeting.")
         system += f"\n\n{UNTRUSTED_RULE}"
-        relevant = [h.text for h in self.store.recall(text, limit=8, kinds=("memory", "chat_note"))]
-        newest = [m.text for m in self.store.memories()[-3:]]
-        remembered = list(dict.fromkeys(relevant + newest))
-        memories = "\n".join(f"- {m[:400]}" for m in remembered) or "(none)"
-        from prometheus.quick import now_line
-
-        content = f"{now_line()}\n\nThings to remember about the user:\n{memories}\n\n"
-        known_facts = self.facts.relevant(text)
-        if known_facts:
-            content += "Known facts (people, places and things in the owner's life):\n" + "\n".join(
-                f"- {f}" for f in known_facts) + "\n\n"
-        # Passages from web pages read before (never private files: this goes to the planning model).
-        content += self._earlier_chats(text, chat_id)
-        if self.project_context is not None and chat_id is not None:
-            try:
-                content += self.project_context(chat_id)      # the chat's project: folder, instructions, notes
-            except Exception:
-                pass
-        lessons = self.store.relevant_lessons(text)
-        if lessons:
-            content += "Lessons from earlier tasks (follow them):\n" + "\n".join(f"- {l}" for l in lessons) + "\n\n"
-        passages = self.store.search_chunks(text, limit=PASSAGES, include_private=False, chats=False)
-        if passages:
-            content += "Saved passages that may help:\n" + "\n".join(
-                untrusted(h.match[:PASSAGE_CHARS], h.source or h.title) for h in passages) + "\n\n"
+        content = self._context(text, chat_id)
         messages = list(history or []) + [{"role": "user", "content": content + f"Request: {text}"}]
         # coding requests go to the coding brain (Ripple) when one is set up; everything else to the normal one
         purpose = "code" if CODE_REQUEST.search(text or "") and self.router.routes.get("code") else "plan"
@@ -516,6 +555,79 @@ class Orchestrator:
                             "couldn't use. Try again, or pick another Brain in Settings → AI.")
         plan.model = label
         return plan
+
+    # -- the front door (M3.1) ------------------------------------------------------------------------------------
+    @contextlib.contextmanager
+    def activity(self, chat_id: int, state: str, label: str):
+        previous = self.activities.get(chat_id)
+        self.activities[chat_id] = (state, label)
+        try:
+            yield
+        finally:
+            if previous is None:
+                self.activities.pop(chat_id, None)
+            else:
+                self.activities[chat_id] = previous
+
+    def _front_door(self, chat_id: int, task_id: int, text: str, history: list[dict]) -> TaskOutcome | None:
+        """Simple: a quick direct answer. Ask: one question. Complex: the think-act-look loop. Medium (or anything
+        that can't be done this way): None, so the normal plan runs."""
+        from prometheus.orchestrator.front_door import decide
+
+        try:
+            with self.activity(chat_id, "thinking", "Choosing a route"):
+                d = decide(self.router, text, history)
+        except Exception:
+            return None
+        self.store.add_agent_note(task_id, "front door", f"Route: {d.route} (decided by {d.how}"
+                                                         + (f": {d.why}" if d.why else "") + ")")
+        if d.route == "ask":
+            return self._finish(chat_id, task_id, "done", d.question, "front door")
+        if d.route == "simple":
+            try:
+                return self._answer_directly(chat_id, task_id, text, history)
+            except (ProviderUnavailable, BudgetExceeded) as e:
+                return self._finish(chat_id, task_id, "paused", self._paused_text(chat_id, text, e, False))
+            except Stopped as e:
+                return self._finish(chat_id, task_id, "stopped", str(e))
+            except Exception:
+                return None                       # fall back to the normal plan
+        if d.route == "complex" and self.loop is not None:
+            try:
+                return self.loop.run(chat_id, task_id, text, history)
+            except NotImplementedError:
+                return None
+            except Exception as e:            # never leave a task "running" (M3 review)
+                return self._finish(chat_id, task_id, "failed", f"Something went wrong part way through ({type(e).__name__})."
+                                                                " Try again, or ask in smaller steps.")
+        return None
+
+    def _answer_directly(self, chat_id: int, task_id: int, text: str, history: list[dict]) -> TaskOutcome:
+        """Talk and general knowledge: a quick AI answers straight away (streamed when it can), no plan."""
+        system = ("You are Prometheus, a personal AI assistant on its owner's laptop. Answer the owner's message "
+                  f"directly and helpfully.\n\nWriting rules:\n{self._style()}\n\n{UNTRUSTED_RULE}")
+        content = self._context(text, chat_id)
+        messages = list(history or []) + [{"role": "user", "content": content + f"Message: {text}"}]
+        with self.router.step_kind("chat"):
+            reply = self._complete_streamed(chat_id, "combine", messages, system)
+        if chat_id in self.stopping:                 # Stop pressed while it was answering
+            return self._finish(chat_id, task_id, "stopped", "Stopped. Ask again whenever you like.")
+        self._name_chat(chat_id, text[:60])
+        return self._finish(chat_id, task_id, "done", reply.text, f"{reply.provider} · {reply.model}")
+
+    def _complete_streamed(self, chat_id: int, purpose: str, messages: list[dict], system: str, max_tokens: int = 4000):
+        """The final answer, shown word by word while it is written when the AI can stream (M3.5)."""
+        stream = getattr(self.router, "stream", None)
+        if stream is None:
+            return self.router.complete(purpose, messages, system, max_tokens=max_tokens)
+        self.live_text[chat_id] = ""
+
+        def piece(text: str | None) -> None:
+            self.live_text[chat_id] = "" if text is None else self.live_text.get(chat_id, "") + text
+        try:
+            return stream(purpose, messages, system, on_text=piece, max_tokens=max_tokens)
+        finally:
+            self.live_text.pop(chat_id, None)
 
     def _name_chat(self, chat_id: int, proposed: str) -> None:
         """Give the chat the planner's name during its first two requests, unless the owner named it."""
@@ -586,7 +698,7 @@ class Orchestrator:
             if blocked:
                 self.store.finish_step(sid, "failed", blocked)
                 return StepResult("failed", blocked), agent_cls
-            if agent_cls.private_outputs:
+            if step_is_private(agent_cls, st["inputs"]):
                 private.add(st["id"])
             inputs = resolve_inputs(st["inputs"], results, frozenset(private),
                                     getattr(agent_cls, "accepts_private", True))
@@ -596,7 +708,8 @@ class Orchestrator:
             ctx.skill = skill.body if skill else ""
             if ctx.skills is None:
                 ctx.skills = self.skills
-            res = agent.run(st["goal"], inputs, ctx)
+            with self.router.step_kind(st.get("kind", "")):        # the job kind picks the model (M3.4)
+                res = agent.run(st["goal"], inputs, ctx)
             if skill is not None:                  # the Skills page shows when each guide was used
                 res.data = {**(res.data or {}), "skill": skill.name}
         except (ProviderUnavailable, BudgetExceeded) as e:
@@ -643,7 +756,9 @@ class Orchestrator:
     def _repair(self, text: str, st: dict, tries: list, agent_cls, only: str = "") -> dict | None:
         """Ask the lead AI for ONE different way to reach the same goal, or None to stop."""
         usable = [(n, c) for n, c in self._usable_agents() if not only or n == only]
-        agents = "\n".join(f"- {name}: {cls.description}" for name, cls in usable)
+        from prometheus.orchestrator.registry import planner_line
+
+        agents = "\n".join(planner_line(name, cls) for name, cls in usable)
         lines = []
         for a, r in tries:
             hidden = getattr(self.registry.get(a["agent"]), "private_outputs", False)
@@ -685,6 +800,11 @@ class Orchestrator:
         self.pausing.add(chat_id)
 
     def run(self, chat_id: int, text: str, read_only: bool = False) -> TaskOutcome:
+        """One request. Paid AI used without asking (cheap models, heavy jobs) is counted for this task only."""
+        with self.router.task_spending() if hasattr(self.router, "task_spending") else contextlib.nullcontext():
+            return self._run(chat_id, text, read_only)
+
+    def _run(self, chat_id: int, text: str, read_only: bool = False) -> TaskOutcome:
         """read_only: another app asked; only reading steps run, nothing is remembered or changed."""
         from prometheus.safety.budget import for_chat
 
@@ -696,14 +816,16 @@ class Orchestrator:
         user_msg = self.store.add_message(chat_id, "user", text)
         task_id = self.store.create_task(chat_id, text)
         self.store.set_task_status(task_id, "running")
-        for intercept in ([] if read_only else self.interceptors):     # a quiz waiting for an answer, for example
+        outside = has_untrusted(text)
+        for intercept in ([] if read_only or outside else self.interceptors):
             try:
                 said = intercept(chat_id, text)
             except Exception:
                 said = None
             if said:
-                return self._finish(chat_id, task_id, "done", said, "instant")
-        if not read_only and "<untrusted" not in text:
+                # a quiz or exam check-in repeats a card's question and answer, which come from your notes
+                return self._finish(chat_id, task_id, "done", said, "instant", private=True)
+        if not read_only and not has_untrusted(text):
             # "remember…", "update memory…", "forget…": always done, at once, without any AI
             from prometheus.remember import handle as memory_command
 
@@ -717,7 +839,7 @@ class Orchestrator:
                     return self._finish(chat_id, task_id, "done", said, "instant")
                 self.store.add_message(chat_id, "assistant", said, "instant")
                 text = rest                       # "…and can you also …?": carry on with the rest
-        if PAID_YES.match(text or "") and not read_only and "<untrusted" not in text:
+        if PAID_YES.match(text or "") and not read_only and not has_untrusted(text):
             # "yes, use paid": the last request that was waiting for it runs again, with paid AI allowed this once
             rows = self.store._rows("SELECT id, text FROM tasks WHERE chat_id = ? AND id < ? AND status = 'paused' "
                                     "AND answer LIKE '%use paid%' ORDER BY id DESC LIMIT 1", (chat_id, task_id))
@@ -728,14 +850,14 @@ class Orchestrator:
             self.store.set_task_status(rows[0]["id"], "done", "Answered again with a paid AI (see below).")
             with self.router.paid_allowed():
                 return self.run(chat_id, rows[0]["text"], read_only=read_only)
-        if re.search(r"\bsave (?:this|that|it) as a (?:practice )?test\b", text or "", re.I) and "<untrusted" not in text:
+        if re.search(r"\bsave (?:this|that|it) as a (?:practice )?test\b", text or "", re.I) and not has_untrusted(text):
             from prometheus.practice import from_last_task
 
             return self._finish(chat_id, task_id, "done", from_last_task(self.store, chat_id), "instant")
         from prometheus.quick import understand
 
         only = ""
-        mention = MENTION.match(text or "") if not read_only and "<untrusted" not in text else None
+        mention = MENTION.match(text or "") if not read_only and not has_untrusted(text) else None
         if mention and mention.group(1).lower() in self.registry:
             from prometheus.features import agent_blocked
 
@@ -749,7 +871,7 @@ class Orchestrator:
             # instant phrases are for the owner's own words only, never for text that carries outside content
             from prometheus.features import on as _feature_on
 
-            fast = (None if only or "<untrusted" in text or not _feature_on(getattr(self, "settings", None), "instant")
+            fast = (None if only or has_untrusted(text) or not _feature_on(getattr(self, "settings", None), "instant")
                     else understand(text, self.store))
         except Exception:
             fast = None
@@ -757,6 +879,10 @@ class Orchestrator:
             return self._finish(chat_id, task_id, "failed", "That would change something, so the owner has to ask.")
         if fast is not None and fast.answer:                  # time, date, weather: no AI needed
             return self._finish(chat_id, task_id, "done", fast.answer, "instant")
+        if fast is None and not only and not read_only and self.front_door:
+            door = self._front_door(chat_id, task_id, text, history)
+            if door is not None:
+                return door
         try:
             plan = Plan(fast.steps, answer="") if fast is not None else self._plan(text, history, chat_id, only=only)
         except PlanError as e:
@@ -873,9 +999,10 @@ class Orchestrator:
         # If any step read personal files, the answer is written by a local model only (or not by a model at all).
         purpose = "private" if private else "combine"
         try:
-            reply = self.router.complete(purpose, [{"role": "user", "content": f"Request: {text}\n\n{report}"}],
-                                         f"{self._prompt('combine')}\n\nWriting rules:\n{self._style()}\n\n{UNTRUSTED_RULE}",
-                                         max_tokens=3000)
+            reply = self._complete_streamed(chat_id, purpose,
+                                            [{"role": "user", "content": f"Request: {text}\n\n{report}"}],
+                                            f"{self._prompt('combine')}\n\nWriting rules:\n{self._style()}\n\n"
+                                            f"{UNTRUSTED_RULE}", max_tokens=3000)
             answer = reply.text.strip()
             written_by = f"{reply.provider} · {reply.model}"
         except (ProviderUnavailable, BudgetExceeded):
@@ -906,6 +1033,8 @@ class Orchestrator:
             drop_paused_run(self.store, task_id)
             return None
         drop_paused_run(self.store, task_id)          # taken now: a double click can't run it twice
+        if saved.get("loop") and self.loop is not None:     # a think-act-look loop carries on from its round (M3 B1)
+            return self.loop.resume(task_id, saved)
         chat_id = int(t["chat_id"])
         self.stopping.discard(chat_id)
         self.pausing.discard(chat_id)

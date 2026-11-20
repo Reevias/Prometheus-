@@ -746,6 +746,9 @@ class Store:
     def _approval(self, r: sqlite3.Row) -> Approval:
         return Approval(r["id"], r["kind"], r["summary"], json.loads(r["payload"]), r["status"])
 
+    def has_pending_approval(self) -> bool:
+        return bool(self._rows("SELECT 1 FROM approvals WHERE status = 'pending' LIMIT 1"))
+
     def approvals(self, status: str = "pending") -> list[Approval]:
         return [self._approval(r) for r in self._rows("SELECT * FROM approvals WHERE status = ? ORDER BY id", (status,))]
 

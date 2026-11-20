@@ -145,7 +145,8 @@ class Settings:
     openrouter_fast_model: str = ""             # cheaper model for research summaries ("" = same as above)
     enabled_providers: list[str] = field(default_factory=list)       # free providers the user switched on (older versions)
     disabled_providers: list[str] = field(default_factory=list)      # providers the user switched off
-    free_no_key: bool = True                    # use free providers that need no key (never for personal files)
+    free_no_key: bool = False                   # use free providers that need no key (off for new installs; they never get memories)
+    billed_providers: list[str] = field(default_factory=list)
     provider_models: dict[str, str] = field(default_factory=dict)    # chosen model per free provider
     password_hash: str = ""
     task_folders_note: str = ""
@@ -283,6 +284,14 @@ def delete_secret(name: str) -> None:
                 winreg.DeleteValue(key, name)
         except OSError:
             pass                                  # it wasn't there
+
+
+def saved_secret_values() -> list[str]:
+    """Every secret value Prometheus holds: all of <data>/.env (AI keys, MCP_* app tokens, the sync and tool-server
+    tokens, the phone key) and any known key set in the environment. For finding and hiding them in text."""
+    values = list(_read_env_file().values())
+    values += [os.environ.get(name) or "" for name in KEY_NAMES]
+    return [v for v in dict.fromkeys(values) if v]
 
 
 def secrets_set() -> dict[str, bool]:

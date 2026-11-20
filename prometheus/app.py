@@ -67,6 +67,7 @@ class Services:
     clips: object = None
     sync: object = None
     laptop_jobs: object = None
+    phone_waiter: object = None
     resumer: object = None
     focus: object = None
     photos: object = None
@@ -163,7 +164,11 @@ LONG_TASK = 30          # seconds: a task that took longer gets a "done" notific
 def _after_task(self, outcome, text: str, took: float) -> None:
     short = " ".join(text.split())[:70]
     try:
-        waiting = any(s.status == "waiting_approval" for s in self.store.steps(outcome.task_id))
+        from prometheus.phone_wait import WAIT_TEXT
+
+        # waiting for the phone is not waiting for a yes (M3 review)
+        waiting = any(s.status == "waiting_approval" and not (s.result or "").startswith(WAIT_TEXT)
+                      for s in self.store.steps(outcome.task_id))
     except Exception:
         waiting = False
     if waiting:
@@ -173,6 +178,40 @@ def _after_task(self, outcome, text: str, took: float) -> None:
 
 
 Services.after_task = _after_task
+
+
+def make_loop(orchestrator, settings):
+    """The step-by-step loop, except on the cloud copy: there a long job that needs the laptop must wait for the
+    laptop (the plan's hand-off), never run its laptop tools on the server (M3 review)."""
+    if getattr(settings, "role", "laptop") == "cloud":
+        return None
+    from prometheus.orchestrator.loop import ThinkActLoop
+
+    return ThinkActLoop(orchestrator)
+
+
+def _apply_cards(router, settings) -> None:
+    """Model cards (M3.4) and the "cheap paid AI for heavy jobs" switch."""
+    from prometheus.config import data_dir
+    from prometheus.features import on
+    from prometheus.models.cards import load_cards
+
+    router.cards, router.cards_note = load_cards(data_dir())
+    router.paid_heavy = on(settings, "paid_heavy")
+    # the owner's own picks in Settings stay first; cards only fill in after them (M3 review)
+    from prometheus.models.router import CODE_BRAINS, RESEARCH_BRAINS
+
+    pinned = {}
+    brain = getattr(settings, "research_brain", "auto")
+    if RESEARCH_BRAINS.get(brain):
+        pinned["research"] = RESEARCH_BRAINS[brain]
+    elif getattr(settings, "openrouter_fast_model", ""):
+        pinned["research"] = f"openrouter:{settings.openrouter_fast_model}"
+    code = getattr(settings, "code_brain", "auto")
+    router.cards_off = {"code"} if code == "off" else set()
+    if code not in ("auto", "off") and code:
+        pinned["code"] = CODE_BRAINS.get(code, code)
+    router.pinned = pinned
 
 
 def apply_settings(services: "Services") -> None:
@@ -188,6 +227,7 @@ def apply_settings(services: "Services") -> None:
     services.orchestrator.task_budget = max(0.01, min(float(s.task_budget_usd), 10.0))
     router.head = s.head_model
     router.paid_needs_yes = bool(getattr(s, "paid_needs_yes", True))
+    _apply_cards(router, s)
     services.policy.extra_roots = usable_extra_folders(s, services.home)
     for name, model in (("openrouter", s.openrouter_model), ("anthropic", s.anthropic_model),
                         ("ollama", s.ollama_model)):
@@ -199,6 +239,7 @@ def apply_settings(services: "Services") -> None:
     for name, provider in router.providers.items():
         if hasattr(provider, "enabled") and hasattr(provider, "info"):
             provider.enabled = provider_on(provider.info, s)
+            provider.billing_enabled = not provider.info.keyless and name in s.billed_providers
             if s.provider_models.get(name):
                 provider.model = s.provider_models[name]
     for purpose, entries in build_routes(s).items():
@@ -242,21 +283,25 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
     journal = Journal(data / "journals")
     files = FileActions(policy, journal)
     permissions = Permissions({name: cls.tools for name, cls in REGISTRY.items()})
-    approvals = Approvals(store)
-    budget = Budget(store, settings.budget_usd)
     killswitch = KillSwitch()
+    approvals = Approvals(store, killswitch)
+    budget = Budget(store, settings.budget_usd)
     if providers is None:
         router = build_router(settings, budget, killswitch)
     else:
         router = ModelRouter(providers, settings.routes, budget, killswitch)
     router.head = settings.head_model
     router.paid_needs_yes = bool(getattr(settings, "paid_needs_yes", True))
+    _apply_cards(router, settings)
     prompts = PromptStore(data / "prompts")
     patcher = Patcher(PACKAGE_DIR, approvals, data / "backups")
     approvals.register("apply_patch", patcher.apply)
     from prometheus.agents.files import recycle_handler
 
     approvals.register("recycle_files", lambda payload: recycle_handler(payload, policy, files))
+    from prometheus.agents.files import copy_move_handler
+
+    approvals.register("copy_move_runnable", lambda payload: copy_move_handler(payload, policy, files))
     approvals.register("clone_repo", lambda payload: clone_handler(payload, data / "quarantine"))
     approvals.register("open_link", open_link_handler)
     approvals.register("open_local", lambda payload: open_local_handler(payload, policy))
@@ -316,6 +361,12 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
                             skills=skills)
 
     orchestrator = Orchestrator(store, router, REGISTRY, make_context, killswitch, prompts.folder, skills=skills)
+    orchestrator.front_door = providers is None        # M3.1 (tests with stand-in AIs switch it on themselves)
+
+    orchestrator.loop = make_loop(orchestrator, settings)    # M3.3: complex jobs, up to 12 rounds
+    from prometheus.orchestrator.live_context import line as _live_line
+
+    orchestrator.live_context = lambda: _live_line(services)   # M3.6 (services is filled in below)
     orchestrator.extra_catalog = apps_agent.MANAGER.catalog_text
     orchestrator.settings = settings          # Features switches and Stop everything
     from prometheus import features as _features
@@ -335,6 +386,16 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
     services.atomic_files = AtomicFiles(policy=policy, backup_dir=data / "backups")
     services.terminal = AsyncTerminal(policy=policy)
     services.archive = archive
+
+    def _carry_on_after_answer(approval_id: int, status: str, result: str) -> None:
+        """A loop task that waited for this yes carries on by itself once everything it waited for is answered."""
+        from prometheus.orchestrator.loop import approval_resolved
+
+        for task_id in approval_resolved(store, approval_id, status, result):
+            t = store.task(task_id) or {}
+            if t.get("status") == "paused" and t.get("chat_id") not in services.running:
+                services.resume_task(task_id)
+    approvals.on_resolved.append(_carry_on_after_answer)
     from prometheus.voice.service import VoiceService
 
     services.voice = VoiceService(services, data / "voice")
@@ -524,6 +585,10 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
     from prometheus import phone as _phone
 
     services.laptop_jobs = _phone.LaptopJobs(services)
+    approvals.register("laptop_job", lambda payload: services.laptop_jobs.run_approved(payload))
+    from prometheus.phone_wait import PhoneWaiter
+
+    services.phone_waiter = PhoneWaiter(services)          # phone jobs asked while the phone was away (M3.2)
     from prometheus.agents import phone_agent as _pa
 
     _pa.SERVICES = services
@@ -533,7 +598,9 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
         """On the cloud copy: a request that needs the laptop (its screen, files or apps) waits for the laptop."""
         if getattr(settings, "role", "laptop") != "cloud":
             return ""
-        if not any(st["agent"] in _phone.LAPTOP_AGENTS for st in plan.steps):
+        from prometheus.orchestrator.registry import needs_laptop
+
+        if not needs_laptop(plan.steps):              # every tool says where it runs (M3.2)
             return ""
         _phone.queue_for_laptop(store, dict(store.chats()).get(chat_id, _phone.PHONE_CHAT), text, read_only=read_only)
         from prometheus.sync import laptop_away

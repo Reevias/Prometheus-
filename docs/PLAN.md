@@ -4,8 +4,8 @@ The one plan for Prometheus 3.0, approved by the owner (13 Nov 2026), status upd
 M2's detailed steps: [`docs/m2/M2_PLAN.md`](m2/M2_PLAN.md). Friday Mark 2 comparison:
 [`docs/reports/FRIDAY_MARK2_RESEARCH.md`](reports/FRIDAY_MARK2_RESEARCH.md).
 
-**11 milestones, 60 steps.** Done: M0, M1, M2 (15 steps; M2 merged into main 15 Nov, waiting for the owner's laptop check). Next: M3.
-Not started: M3 to M10.
+**11 milestones, 60 steps.** Done: M0, M1, M2 (15 steps; M2 merged into main 15 Nov, waiting for the owner's laptop check).
+Done: M3 (6 steps, 16 Nov; audit fixes A-D and exit check 20 Nov; merged into main 20 Nov; laptop check to come; report `docs/reports/M3_REPORT.md`). Not started: M4 to M10.
 
 Status words: **Done** = built, tested, audited and accepted · **Built** = code and tests are in, waiting for the
 owner's laptop check and the audit · **In progress** · **Not started**.
@@ -18,7 +18,7 @@ already written down elsewhere in the repo, missing from the old roadmap.
 | M0 Baseline | 5 | Done (on main) |
 | M1 Tool primitives | 5 | Done (on main) |
 | M2 Desktop interface | 5 | Done, merged into main (laptop check to come) |
-| M3 Orchestration and model routing | 6 | Not started |
+| M3 Orchestration and model routing | 6 | Done, merged into main 20 Nov (laptop check to come) |
 | M4 Repository-to-skill | 7 | Not started |
 | M5 Many agents | 6 | Not started |
 | M6 Runtime / Cloudroom | 5 | Not started |
@@ -96,17 +96,22 @@ Windows and Linux. Met.
 
 Exit gate: click-through test passes on Windows; every 2.x feature reachable; M2 audit; the owner's sign-off.
 
-## M3 Orchestration and model routing — Not started · 6 steps
+## M3 Orchestration and model routing — Done, merged into main 20 Nov · 6 steps (report `docs/reports/M3_REPORT.md`)
+- Phase C adds Claude text streaming and live assistant activity on desktop and phone. The front door identifies route selection and the loop identifies its round. Permission-based security checks belong in M7, full-duplex voice in M8 and proactive watching in M10.
 - **M3.1 Router [F1].** Four routes: *simple* (fast path, plain rules), *medium* (one agent), *complex* (full ReAct
   loop), *ask-first* (asks a question when the request is unclear). A cheap, time-limited classifier picks the route;
   plain rules decide if it is slow or fails, but rules alone never judge nuanced requests.
 - **M3.2 Tool and agent registry [F2].** Every tool has typed inputs, outputs and errors plus a permission scope.
   Keywords only make a shortlist; the choice is checked against capabilities and permissions. Registers
-  `browser_action` (Playwright browser control, accessibility tree, snapshots) **[found]**.
+  the existing browser agent (Playwright; it reads the page's buttons, fields, labels and aria text, and checks the real element before a click). It has **no accessibility-tree or snapshot tool yet**; that moved to M5 (audit, 17 Nov) **[found]**. Every tool also says where it
+  runs: laptop, phone or both (owner, 16 Nov), so laptop and phone jobs aren't mixed up.
 - **M3.3 ReAct loop.** Think → act → observe, with step limits, cancel at any step and visible steps (plans, tool
   calls, status, short explanations; never hidden reasoning).
 - **M3.4 Model routing.** Default model per agent and task type; fallback when a model is down or out of quota (free
-  first); smarter agent choice; `@` mention still overrides.
+  first); smarter agent choice; `@` mention still overrides. **Model capability table** (owner, 16 Nov): every model has
+  a card with its exact name and what it is good at (research, code, planning, vision, images, speed, cost, limits);
+  the main brain matches each task to a card, so strong models don't get weak tasks, weak models don't get strong
+  tasks, and an image model never gets research.
 - **M3.5 Streaming answers.** Words appear as they come (moved from M2.1).
 - **M3.6 Live context [F3].** A small line for the model: time, due reminders, conflicts, running tasks.
 
@@ -137,6 +142,7 @@ Exit gate: skills made from repos validate and run in the sandbox; repo-map test
 - **M5.4** Create, edit and remove your own agents.
 - **M5.5** Full multi-agent view (replaces M2's simple "running now" list).
 - **M5.6** Conversation branching.
+- *Moved here from M3 (audit, 17 Nov 2026): an accessibility-tree browser tool with snapshots. M3 claimed it; it was never built.*
 
 Study: `execution/engine.py`, `parallel_executor.py`, `series_executor.py`, `state_manager.py`,
 `subagent_registry.py`, `memory_aware_executor.py`.
@@ -223,3 +229,5 @@ better than ours; M10 stays as planned.
 - 13 Nov 2026: this file replaced `docs/implementation/ROADMAP.md`, `docs/architecture/PROMETHEUS_3_MASTER_PLAN.md`
   and the M2 "later milestones" table, after every item was checked to be here.
 - 14 Nov 2026: status marked per step; M0–M2 split into steps.
+- 16 Nov 2026: owner's exception to the freeze: Coarena added as an AI you can link with a free key (one
+  provider-list entry; used only when picked in the ask box; free use only, never credits).

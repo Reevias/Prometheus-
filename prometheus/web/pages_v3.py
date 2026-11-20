@@ -5,6 +5,8 @@ import json
 import time
 
 from fastapi import FastAPI, Request, UploadFile
+
+from prometheus.web.download import attachment
 from fastapi.responses import JSONResponse
 
 # What the owner sees for each stored task status. "new" is a request that hasn't started its first step yet.
@@ -939,6 +941,9 @@ def register_approval_pages(app: FastAPI, services, shell) -> None:
         if item.status != "pending":
             return JSONResponse({"error": f"Already {item.status}."}, status_code=409)
         said = services.approvals.resolve(approval_id, approved=decision == "approve", secret=secret[:200])
+        from prometheus.safety.approvals import STOPPED_MESSAGE
+        if said == STOPPED_MESSAGE:
+            return JSONResponse({"error": said}, status_code=409)
         if said == "Type the password first.":
             return JSONResponse({"error": said}, status_code=400)
         return {"ok": True, "message": said}
@@ -1319,14 +1324,12 @@ def register_research_pages(app: FastAPI, services, shell) -> None:
     @app.get("/api/v3/research/{task_id}/export")
     def api_research_export(task_id: int, fmt: str = "md"):
         """A research answer as Markdown, PDF, Word or HTML."""
-        import re as _re
 
         t = store.task(task_id)
         if not t or not t.get("answer"):
             return bad("No answer to save yet.", 404)
         title = t["text"][:80]
         body = f"# {title}\n\n{t['answer']}\n"
-        safe = _re.sub(r"[^\w .-]", "_", title)[:60].strip() or "research"
         if fmt == "pdf":
             from prometheus.actions.pdf import markdown_pdf
             data, media, ext = markdown_pdf(body, title), "application/pdf", "pdf"
@@ -1344,7 +1347,7 @@ def register_research_pages(app: FastAPI, services, shell) -> None:
             media, ext = "text/html", "html"
         else:
             data, media, ext = body.encode(), "text/markdown", "md"
-        return Response(data, media_type=media, headers={"Content-Disposition": f'attachment; filename="{safe}.{ext}"'})
+        return Response(data, media_type=media, headers={"Content-Disposition": attachment(title, ext)})
 
     # -- study ---------------------------------------------------------------------------------------------------------
     @app.post("/api/v3/study/quiz")
@@ -1907,16 +1910,11 @@ def register_project_pages(app: FastAPI, services, shell) -> None:
 
     @app.get("/api/v3/projects/{project_id}/export")
     def api_project_export(project_id: int):
-        import re as _re
         p = pj.get(store, project_id)
         if p is None:
             return bad("No such project.", 404)
-        from urllib.parse import quote
-
-        full = f"{p['name'][:60]} (Prometheus project).zip"
-        plain = _re.sub(r"[^A-Za-z0-9 ._()-]", "_", full)     # for old browsers; the real (e.g. Hindi) name below
         return Response(pj.export_zip(store, project_id, services.policy), media_type="application/zip",
-                        headers={"Content-Disposition": f"attachment; filename=\"{plain}\"; filename*=UTF-8''{quote(full)}"})
+                        headers={"Content-Disposition": attachment(f"{p['name'][:60]} (Prometheus project)", "zip")})
 
     @app.post("/api/v3/projects/import")
     async def api_project_import(file: UploadFile = File(...)):
@@ -1933,7 +1931,6 @@ def register_project_pages(app: FastAPI, services, shell) -> None:
     @app.post("/api/v3/research/{task_id}/to-project")
     def api_research_to_project(task_id: int, project_id: int = Form(0)):
         """Save a research answer into a project's folder as Markdown (undo in System → Activity)."""
-        import re as _re
 
         t, p = store.task(task_id), live(project_id)
         if not t or not t.get("answer"):

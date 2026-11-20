@@ -22,7 +22,7 @@ PKG = ROOT / "prometheus"
 IMPORT_TO_DIST = {
     "PIL": "pillow", "docx": "python-docx", "pptx": "python-pptx", "multipart": "python-multipart",
     "yaml": "pyyaml", "webview": "pywebview", "faster_whisper": "faster-whisper", "kokoro_onnx": "kokoro-onnx",
-    "google": "google-genai", "youtube_transcript_api": "youtube-transcript-api", "fpdf": "fpdf2",
+    "google": "google-genai", "youtube_transcript_api": "youtube-transcript-api", "reportlab": "reportlab",
     "send2trash": "send2trash", "espeakng_loader": "espeakng-loader", "phonemizer": "phonemizer-fork",
     "pywebpush": "pywebpush", "rapidocr": "rapidocr", "soundfile": "soundfile",
 }

@@ -12,6 +12,7 @@ PACKAGE_PROMPTS = Path(__file__).resolve().parent.parent / "prompts"
 # the owner or by self-editing, so it is replaced when a better version ships.
 KNOWN_OLD: dict[str, set[str]] = {
     "planner": {"0c1af9132202917489d1136e99c9fd7e383961b835324aa1dac5f3af4a10f211",
+                "501b5c5955f149b744081a59548050b468dacdf0ccbdaf8c584ec80860bca42d",
                 "139ffcfc2f2e4ee0702e1930b9406bd7e36106abad08bff9653d8f9708a5e449",
                 "30d718d09ad22bd4132fece5371a35593a5c4751be8318d7cafd10a86c33c2b5",
                 "4bb8dacc80b55e2590cc594289d306f0d7b797a836540a2f65add3e564c1e9b2",

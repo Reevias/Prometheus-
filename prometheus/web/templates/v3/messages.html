@@ -52,6 +52,7 @@
 {% if busy %}
 <div class="working" data-chat="{{ chat_id }}">
   <div class="working-line"><span class="dots"><i></i><i></i><i></i></span><span class="steps-now">{{ doing or "Thinking" }}</span><span class="elapsed" data-elapsed></span></div>
+  <div class="live-answer" data-live hidden></div>
   {% if live_steps %}<details class="steps" open><summary>Steps so far</summary>{{ step_cards(live_steps, live=True) }}</details>{% endif %}
 </div>
 {% endif %}

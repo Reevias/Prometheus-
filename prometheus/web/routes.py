@@ -17,6 +17,7 @@ from markupsafe import Markup, escape
 from prometheus.app import Services, apply_settings
 from prometheus.auth import verify_password
 from prometheus.catalog import catalog_updated, load_catalog
+from prometheus.web.download import attachment
 from prometheus.memory.store import MARK_END, MARK_START
 from prometheus.models.router import head_choices
 from prometheus.memory.titles import PLACEHOLDERS, clean_title, quick_title
@@ -279,12 +280,13 @@ def register_routes(app: FastAPI, services: Services) -> None:
 
     @app.get("/api/v3/state")
     def api_v3_state():
-        from prometheus.services.ui_state import ui_state_service
-        ui_state_service.services = services
-        state = ui_state_service.get_full_state()
+        from prometheus.services.ui_state import UIStateService
+        ui = UIStateService(services)
+        state = ui.get_full_state()
         kept = store.kv_get("notifications", [])
         state["unread"] = sum(1 for n in kept if isinstance(n, dict) and not n.get("read"))
         state["voice"] = voice_now()
+        state["assistant"] = ui.assistant_state(state, state["voice"])
         return state
 
     def voice_now() -> dict:
@@ -387,24 +389,32 @@ def register_routes(app: FastAPI, services: Services) -> None:
             return JSONResponse({"error": "No such chat."}, status_code=404)
         title = store.chat_title(chat_id) or "Chat"
         msgs = store.messages(chat_id)
-        safe = re.sub(r"[^\w .-]", "_", title)[:60].strip() or "chat"
         if fmt == "json":
             body = _json.dumps({"title": title, "messages": [
                 {"role": m.role, "text": m.text, "time": m.created, "model": m.model} for m in msgs]},
                 ensure_ascii=False, indent=2)
             return Response(body, media_type="application/json",
-                            headers={"Content-Disposition": f'attachment; filename="{safe}.json"'})
+                            headers={"Content-Disposition": attachment(title, "json")})
         md = f"# {title}\n\n" + "\n\n".join(
             f"**{'You' if m.role == 'user' else 'Prometheus'}** ({time.strftime('%Y-%m-%d %H:%M', time.localtime(m.created))})\n\n{m.text}"
             for m in msgs)
         if fmt == "pdf":
             from prometheus.actions.pdf import markdown_pdf
             return Response(markdown_pdf(md, title), media_type="application/pdf",
-                            headers={"Content-Disposition": f'attachment; filename="{safe}.pdf"'})
+                            headers={"Content-Disposition": attachment(title, "pdf")})
         if fmt != "md":
             return JSONResponse({"error": "Use md, json or pdf."}, status_code=400)
         return Response(md, media_type="text/markdown; charset=utf-8",
-                        headers={"Content-Disposition": f'attachment; filename="{safe}.md"'})
+                        headers={"Content-Disposition": attachment(title, "md")})
+
+    @app.get("/api/v3/chats/{chat_id}/live-text")
+    def api_v3_live_text(chat_id: int):
+        """The answer being written right now, so the chat can show it word by word (M3.5)."""
+        import re as _re
+
+        text = getattr(services.orchestrator, "live_text", {}).get(chat_id, "")
+        text = _re.sub(r"</?untrusted(?: source=\"[^\"\n]*\")?>\n?", "", text)
+        return {"text": text[-20000:], "busy": chat_id in services.running}
 
     @app.post("/api/v3/chats/{chat_id}/stop")
     def api_v3_stop(chat_id: int):
@@ -586,7 +596,7 @@ def register_routes(app: FastAPI, services: Services) -> None:
                 note.resolve().relative_to(folder.resolve())
                 services.policy.check_read(note)
                 obsidian.open_uri(obsidian.Vault(folder.resolve()).uri(note.resolve()))
-                return Response(f"Opened {note.stem} in Obsidian.", status_code=200)
+                return Response("Opened " + __import__("html").escape(note.stem) + " in Obsidian.", status_code=200, media_type="text/plain")
             except (ValueError, PathBlocked):
                 pass
         try:
@@ -612,6 +622,10 @@ def register_routes(app: FastAPI, services: Services) -> None:
         approved = decision in ("allow", "always")
         result = services.approvals.resolve(approval_id, approved=approved,
                                             remember={"allow": "exact", "always": "broad"}.get(decision, ""))
+        from prometheus.safety.approvals import STOPPED_MESSAGE
+        if result == STOPPED_MESSAGE:
+            store.add_message(chat_id, "assistant", result, "approval")
+            return Response(status_code=204)
         text = ("Not done: you said no." if not approved else
                 (result if not str(result).startswith("Failed") else f"That didn't work: {result}"))
         store.add_message(chat_id, "assistant", str(text), "approval")
@@ -712,6 +726,82 @@ def register_routes(app: FastAPI, services: Services) -> None:
     def history():
         return RedirectResponse("/v3/system?tab=activity", status_code=303)      # the old screen's new home (M2.4)
 
+    def model_cards_view() -> list[dict]:
+        """Settings → AI → Advanced: each model card, and whether it can be used right now (M3.4)."""
+        from prometheus.models.cards import KIND_LABELS
+
+        r = services.router
+        out = []
+        for c in getattr(r, "cards", []):
+            p = r.providers.get(c.provider)
+            if p is None:
+                state = "not in Prometheus"
+            elif getattr(getattr(p, "info", None), "pick_only", False):
+                state = "only when you pick it"
+            else:
+                try:
+                    state = "ready" if p.available() else "not set up"
+                except Exception:
+                    state = "not set up"
+            price = "free" if c.free else f"${c.price_in:g} / ${c.price_out:g}" + (" (cheap)" if c.cheap else " (asks first)")
+            out.append({"name": c.name, "entry": c.entry, "level": c.level, "price": price, "state": state,
+                        "kinds": ", ".join(KIND_LABELS.get(k, k) for k in c.kinds), "note": c.note})
+        out.sort(key=lambda x: (x["state"] != "ready", -x["level"], x["name"].lower()))
+        return out
+
+    @app.get("/settings/model-cards/check", response_class=HTMLResponse)
+    def check_model_cards():
+        """Checks every card against what its provider really offers now (asks the provider when it can)."""
+        from html import escape
+
+        import httpx
+
+        from prometheus.config import get_secret
+        from prometheus.models.router import CLAUDE_CHOICES, openrouter_models
+
+        r = services.router
+        offered: dict[str, set | None] = {"anthropic": {m for m, _ in CLAUDE_CHOICES},
+                                          "openrouter": {m["id"] for m in openrouter_models()}}
+        rows = []
+        for c in getattr(r, "cards", []):
+            p = r.providers.get(c.provider)
+            info = getattr(p, "info", None)
+            if p is None:
+                rows.append((c, "not in Prometheus"))
+                continue
+            if info is not None and c.provider not in offered:
+                listed = None
+                key = get_secret(info.key_name) if not info.keyless else ""
+                if key or info.keyless:
+                    try:      # the provider's own list of models (OpenAI-style /models)
+                        resp = httpx.get(f"{info.base_url}/models", timeout=6,
+                                         headers={"Authorization": f"Bearer {key}"} if key else {})
+                        if resp.status_code == 200:
+                            listed = {m.get("id") for m in resp.json().get("data", []) if isinstance(m, dict)}
+                    except (httpx.HTTPError, ValueError):
+                        listed = None
+                offered[c.provider] = listed if listed else set(info.models)
+            model = c.model or getattr(p, "model", "")
+            known = offered.get(c.provider)
+            if c.local or not model or known is None:
+                rows.append((c, "ok"))
+            elif model in known:
+                rows.append((c, "ok: offered"))
+            else:
+                rows.append((c, "not offered any more? edit your models.json"))
+        from prometheus.models import router as _router_mod
+        from prometheus.models.cards import price_drift
+
+        live = _router_mod.live_openrouter_prices()
+        drift = price_drift(getattr(r, "cards", []), live) if live else {}
+        body = "".join(f"<li><b>{escape(c.name)}</b> <small class='muted'>{escape(c.entry)}</small>: {escape(why)}"
+                       + (f"; <b>{escape(drift[c.name])}</b>" if c.name in drift else "") + "</li>" for c, why in rows)
+        price_note = ("Prices on the cards are a snapshot. Compared with OpenRouter's live list just now: "
+                      + ("nothing has changed." if live and not drift else "differences are in bold above.")
+                      if live else "Prices on the cards are a snapshot, and I couldn't reach OpenRouter's live "
+                                   "list to compare them.")
+        return HTMLResponse(f"<ul class='card-check'>{body}</ul><p class='muted small'>{escape(price_note)}</p>")
+
     def settings_page(request: Request, status_code: int = 200, **extra):
         have = secrets_set()
         state = {m["name"]: m for m in services.router.status_detail()}
@@ -792,6 +882,7 @@ def register_routes(app: FastAPI, services: Services) -> None:
                     safety=_safety_results(), mcp_config=_mcp_config(), money_categories=_money_categories(),
                     **_backup_view(),
                     research_brains=list(__import__("prometheus.models.router", fromlist=["x"]).RESEARCH_LABELS.items()),
+                    model_cards=model_cards_view(), cards_note=getattr(services.router, "cards_note", ""),
                     file_index_status=(getattr(services.file_index, "status", "") or store.kv_get("file_index_status")
                                        or "Not read yet."), **extra)
         from prometheus.config import data_dir
@@ -919,6 +1010,16 @@ def register_routes(app: FastAPI, services: Services) -> None:
             services.voice.restart()               # listening again, now with the ElevenLabs voice
         store.audit("user", "key_saved", {"name": name})
         return settings_page(request, key_saved=KEY_NAMES[name])
+
+    @app.post("/settings/providers/billing", response_class=HTMLResponse)
+    def provider_billing(request: Request, id: str = Form(...), billed: bool = Form(False)):
+        if not any(p.id == id and p.supported and not p.keyless for p in load_catalog()):
+            return settings_page(request, 400, key_error="Unknown keyed provider.")
+        s = services.settings
+        s.billed_providers = [name for name in s.billed_providers if name != id] + ([id] if billed else [])
+        save_settings(s)
+        apply_settings(services)
+        return settings_page(request, saved=True)
 
     @app.post("/settings/providers", response_class=HTMLResponse)
     def set_provider(request: Request, id: str = Form(...), enabled: str = Form("")):

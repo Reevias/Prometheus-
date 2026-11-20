@@ -150,6 +150,17 @@ class PhoneAgent(Agent):
                                {"action": "call", "to": number}, exact=f"phone:call:{number}:{ctx.task_id}",
                                waiting=f"Call {who}? Answer below.")
         except PhoneError as e:
+            from prometheus import phone_wait
+
+            if phone_wait.is_offline(e):          # the phone is away: the request waits for it (M3.2, owner)
+                text = (ctx.store.task(ctx.task_id) or {}).get("text") or goal
+                if phone_wait.queue(ctx.store, ctx.chat_id(), str(text)):
+                    try:
+                        SERVICES.notify("phone", "Your phone isn't reachable; that request waits for it.")
+                    except Exception:
+                        pass
+                return StepResult("waiting_approval", f"{phone_wait.WAIT_TEXT}: I'll do it as soon as the phone is "
+                                                      "back (within a day) and tell you.")
             return StepResult("failed", str(e))
         return StepResult("failed", "I can: open_app, open_url, look, tap, type, swipe, key, setting, alarm, timer, "
                                     "message, call, notifications, battery.")

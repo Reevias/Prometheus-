@@ -17,6 +17,8 @@ from pathlib import Path
 
 import httpx
 
+from prometheus.agents.base import has_untrusted
+
 TRENDING = "https://github.com/trending?since=daily"
 API = "https://api.github.com"
 USER_AGENT = "Prometheus/1.4 (personal assistant)"
@@ -219,7 +221,7 @@ class RepoOfTheDay:
     def answer(self, chat_id: int, text: str) -> str | None:
         """Chat phrases: "add repo 3", "add repos 2, 5 and 7", "show today's repos"."""
         t = (text or "").strip()
-        if len(t) > 80 or "<untrusted" in t:
+        if len(t) > 80 or has_untrusted(t):
             return None
         m = ADD.match(t)
         if m:

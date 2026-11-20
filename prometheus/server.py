@@ -17,7 +17,7 @@ SESSION_COOKIE = "prom_session"
 CSRF_COOKIE = "csrf_token"
 OPEN_PATHS = ("/login", "/healthz", "/google/callback", "/manifest.webmanifest", "/sw.js")
 MANIFEST = {"name": "Prometheus", "short_name": "Prometheus", "start_url": "/", "scope": "/", "display": "standalone",
-            "background_color": "#0e0f11", "theme_color": "#0e0f11", "description": "Your own AI assistant",
+            "background_color": "#0B0B10", "theme_color": "#0B0B10", "description": "Your own AI assistant",
             "icons": [{"src": "/static/icon-192.png", "sizes": "192x192", "type": "image/png"},
                       {"src": "/static/icon-512.png", "sizes": "512x512", "type": "image/png"},
                       {"src": "/static/icon-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}]}
@@ -25,16 +25,21 @@ APP_ID = "prometheus"
 
 
 def _login_page(message: str = "") -> str:
-    note = f'<p class="error">{html.escape(message)}</p>' if message else ""
+    """The login screen in the v3 look: the orbital sphere above a small card (colours from tokens.css)."""
+    note = f'<p class="login-error" role="alert">{html.escape(message)}</p>' if message else ""
     return ("<!doctype html><html lang='en'><head><meta charset='utf-8'>"
-            "<meta name='viewport' content='width=device-width, initial-scale=1'><title>Prometheus</title><link rel='icon' type='image/png' href='/static/favicon.png'><link rel='manifest' href='/manifest.webmanifest'><meta name='theme-color' content='#0e0f11'><link rel='apple-touch-icon' href='/static/icon-192.png'>"
-            "<script>try{var t=localStorage.getItem('prom-theme');if(t)document.documentElement.dataset.theme=t}catch(e){}</script>"
-            "<link rel='stylesheet' href='/static/style.css'></head><body class='login'>"
-            "<canvas class='orb orb-login' data-orb data-state='idle' aria-hidden='true'></canvas>"
-            "<form method='post' action='/login'><h1>Prometheus</h1>" + note +
-            "<label>Password <input type='password' name='password' autofocus required></label>"
-            "<button type='submit'>Log in</button></form>"
-            "<script src='/static/orb.js'></script></body></html>")
+            "<meta name='viewport' content='width=device-width, initial-scale=1'><title>Prometheus</title>"
+            "<link rel='icon' type='image/png' href='/static/favicon.png'><link rel='manifest' href='/manifest.webmanifest'>"
+            "<meta name='theme-color' content='#0B0B10'><link rel='apple-touch-icon' href='/static/icon-192.png'>"
+            "<link rel='stylesheet' href='/static/v3/tokens.css'><link rel='stylesheet' href='/static/v3/theme.css'>"
+            "<script src='/static/v3/sphere.js' defer></script></head>"
+            "<body class='login-page'><main class='login'>"
+            "<canvas class='login-sphere' data-sphere='hero' aria-hidden='true'></canvas>"
+            "<form class='login-card' method='post' action='/login'>"
+            "<h1>Prometheus</h1><p class='muted'>Your own AI assistant</p>" + note +
+            "<label for='password'>Password</label>"
+            "<input id='password' type='password' name='password' autocomplete='current-password' autofocus required>"
+            "<button type='submit'>Log in</button></form></main></body></html>")
 
 
 def describe_hook(github_event: str, data: dict) -> tuple[str, str]:
@@ -88,6 +93,10 @@ def _say_whats_new(services) -> None:
 
 
 def create_app(services: Services, background: bool = False) -> FastAPI:
+    from prometheus.logfilter import install_log_redaction
+
+    install_log_redaction()                  # the webhook token never shows in the access log (M3 B3)
+
     @asynccontextmanager
     async def lifespan(_app):
         if services.voice is not None:          # listening for "Prometheus" lives as long as the app
@@ -112,6 +121,8 @@ def create_app(services: Services, background: bool = False) -> FastAPI:
             services.sync.start()
         if getattr(services, "laptop_jobs", None) is not None and not cloud:
             services.laptop_jobs.start()
+        if getattr(services, "phone_waiter", None) is not None:
+            services.phone_waiter.start()
         if services.photos is not None and cloud:
             services.photos.start()            # on the cloud copy: only photos sent from the phone
         if services.focus is not None:
@@ -121,6 +132,8 @@ def create_app(services: Services, background: bool = False) -> FastAPI:
         yield
         if getattr(services, "resumer", None) is not None:
             services.resumer.stop()
+        if getattr(services, "phone_waiter", None) is not None:
+            services.phone_waiter.stop()
         if services.focus is not None:
             services.focus.stop_clock()
         if services.clips is not None:
@@ -150,7 +163,7 @@ def create_app(services: Services, background: bool = False) -> FastAPI:
     async def guard(request: Request, call_next):
         path = request.url.path
         if path in OPEN_PATHS or path.startswith(("/static/", "/hooks/")) or path in (
-                "/api/mcp", "/api/sync", "/api/notify", "/api/laptop-jobs"):
+                "/hooks", "/api/mcp", "/api/sync", "/api/notify", "/api/laptop-jobs"):
             # hooks and the tool server check their own secret
             return await call_next(request)
         csrf = sessions.get(request.cookies.get(SESSION_COOKIE))
@@ -172,6 +185,12 @@ def create_app(services: Services, background: bool = False) -> FastAPI:
     @app.post("/login")
     def login(request: Request, password: str = Form("")):
         client = request.client.host if request.client else "unknown"
+        if client in ("127.0.0.1", "::1"):
+            # behind the cloud copy's proxy every device arrives from 127.0.0.1: count each device on its own, so
+            # one device guessing can't lock the owner out (the proxy sets this header; a local process could fake
+            # it, but a local process can already do more than guess)
+            fwd = request.headers.get("x-forwarded-for", "").split(",")[0].strip()[:64]
+            client = fwd or client
         if not limiter.attempt(client):
             return HTMLResponse(_login_page("Too many tries. Wait 5 minutes."), status_code=429)
         if not services.settings.password_hash or not verify_password(password, services.settings.password_hash):
@@ -179,8 +198,9 @@ def create_app(services: Services, background: bool = False) -> FastAPI:
         limiter.reset(client)
         sid, csrf = sessions.create()
         resp = RedirectResponse("/", status_code=303)
-        resp.set_cookie(SESSION_COOKIE, sid, httponly=True, samesite="strict", max_age=12 * 3600)
-        resp.set_cookie(CSRF_COOKIE, csrf, httponly=False, samesite="strict", max_age=12 * 3600)
+        secure = request.url.scheme == "https" or request.headers.get("x-forwarded-proto", "").lower() == "https"
+        resp.set_cookie(SESSION_COOKIE, sid, httponly=True, samesite="strict", max_age=12 * 3600, secure=secure)
+        resp.set_cookie(CSRF_COOKIE, csrf, httponly=False, samesite="strict", max_age=12 * 3600, secure=secure)
         services.store.audit("user", "login", {"client": client})
         return resp
 
@@ -240,14 +260,25 @@ def create_app(services: Services, background: bool = False) -> FastAPI:
         services.store.kv_set("laptop_seen", _t.time())
         return Response(json.dumps({"jobs": take_jobs(services.store)}), media_type="application/json")
 
+    def hook_token_ok(request: Request, token: str = "") -> bool:
+        """The webhook token, from the address (old way) or from a header (X-Webhook-Token or Bearer), so it
+        needn't sit in a URL that gets logged."""
+        expected = services.settings.webhook_token
+        sent = (token or request.headers.get("X-Webhook-Token")
+                or request.headers.get("Authorization", "").removeprefix("Bearer ").strip())
+        return bool(expected) and bool(sent) and hmac.compare_digest(sent.encode(), expected.encode())
+
+    @app.post("/hooks/sms")
+    async def sms_hook_header(request: Request):
+        return await sms_hook(request, "")
+
     @app.post("/hooks/{token}/sms")
     async def sms_hook(request: Request, token: str):
         """Bank SMS forwarded from the phone (MacroDroid or another SMS forwarder) into the money tracker."""
         from prometheus.agents import money_agent
         from prometheus.phone import sms_to_money
 
-        expected = services.settings.webhook_token
-        if not expected or not hmac.compare_digest(token.encode(), expected.encode()):
+        if not hook_token_ok(request, token):
             return Response(status_code=404)
         raw = (await request.body())[:20000]
         try:
@@ -308,11 +339,14 @@ def create_app(services: Services, background: bool = False) -> FastAPI:
             return Response(status_code=202)
         return Response(json.dumps(reply), media_type="application/json")
 
+    @app.post("/hooks")
+    async def webhook_header(request: Request):
+        return await webhook(request, "")
+
     @app.post("/hooks/{token}")
     async def webhook(request: Request, token: str):
-        """Other apps call this to make Prometheus speak up. The token in the address is the password."""
-        expected = services.settings.webhook_token
-        if not expected or not hmac.compare_digest(token.encode(), expected.encode()):
+        """Other apps call this to make Prometheus speak up. The token (in a header, or in the address) is the password."""
+        if not hook_token_ok(request, token):
             return Response(status_code=404)
         body = (await request.body())[:65536]
         try:

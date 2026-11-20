@@ -4,6 +4,7 @@ Every job waits for the owner's approval because it costs money, and it never re
 """
 from __future__ import annotations
 
+import threading
 import time
 from typing import Callable
 
@@ -105,6 +106,14 @@ class AntigravityRunner:
         self.store, self.budget, self.killswitch = store, budget, killswitch
         self.client_factory, self.sleep = client_factory, sleep
         self.run_in_thread = run_in_thread or self._thread
+        self._reserved: dict[int, float] = {}         # worst-case cost of each running job (M3 B7)
+        self._lock = threading.Lock()
+        self._next = 0
+
+    @property
+    def reserved_usd(self) -> float:
+        with self._lock:
+            return round(sum(self._reserved.values()), 6)
 
     @staticmethod
     def _thread(fn) -> None:
@@ -115,6 +124,17 @@ class AntigravityRunner:
         self.budget.ensure_can_spend()
         self.killswitch.check()
         client = self.client_factory()            # fails fast (no key / package missing) before anything starts
+        worst = int(payload.get("max_tokens") or DEFAULT_MAX_TOKENS) / 1_000_000 * USD_PER_MILLION_TOKENS
+        with self._lock:                          # hold this job's worst case back, so two can't pass a cap for one
+            state = self.budget.state()
+            if state.spent + sum(self._reserved.values()) + worst > state.cap:
+                from prometheus.safety.budget import BudgetExceeded
+
+                raise BudgetExceeded(f"Another Antigravity job is still running and could use up this month's limit "
+                                     f"(${state.spent:.2f} of ${state.cap:.2f} spent). Wait for it, or raise the limit.")
+            self._next += 1
+            job_id = self._next
+            self._reserved[job_id] = worst
         chat_id = payload.get("chat_id")
         model = str(payload.get("model", ""))
 
@@ -127,6 +147,9 @@ class AntigravityRunner:
                 self.store.audit("antigravity", "job_finished", {"status": out["status"], "tokens": out["tokens"]})
             except Exception as e:
                 text = f"The Antigravity job failed: {type(e).__name__}."
+            finally:
+                with self._lock:
+                    self._reserved.pop(job_id, None)      # the real cost is counted now; the hold is let go
             if chat_id:
                 self.store.add_message(chat_id, "assistant", text, "antigravity · " + model)
 

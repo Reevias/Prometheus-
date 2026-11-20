@@ -23,6 +23,9 @@ def test_every_route_requires_login(app_client):
         if path == "/google/callback":  # Google sends the owner back here; without the one-time state it refuses
             assert client.get("/google/callback?code=x&state=y").status_code == 400
             continue
+        if path in ("/hooks", "/hooks/sms"):            # the same, with the secret in a header
+            assert client.post(path, json={}).status_code == 404
+            continue
         if path == "/hooks/{token}":    # open on purpose for other apps; a wrong secret gets "not found"
             assert client.post("/hooks/wrong", json={}).status_code == 404
             continue

@@ -178,9 +178,20 @@ class BrowserSession:
             return f"Clicked '{label}'. Now on: {page.title()}"
         return self.run(press)
 
-    def fill_password(self, secret: str) -> str:
-        """Called only from the Approvals page, with what the owner typed. The password is never stored or shown."""
+    def current_host(self) -> str:
+        """The site of the page that is open now (the password would go there)."""
+        from urllib.parse import urlsplit
+
+        return self.run(lambda page: urlsplit(page.url).hostname or "")
+
+    def fill_password(self, secret: str, expect_host: str | None = None) -> str:
+        """Called only from the Approvals page, with what the owner typed. The password is never stored or shown.
+        expect_host: the site the owner was shown; if the page has moved to another one, nothing is typed."""
+        from urllib.parse import urlsplit
+
         def fill(page):
+            if expect_host is not None and (urlsplit(page.url).hostname or "") != expect_host:
+                raise BrowserError("The page changed since you were asked, so I typed nothing. Ask me to sign in again.")
             field = page.locator("input[type=password]")
             if not field.count():
                 raise BrowserError("This page has no password field.")

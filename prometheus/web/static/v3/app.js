@@ -454,7 +454,7 @@
     if (live && !voiceFast) voiceFast = setInterval(function () {
       fetch("/api/v3/voice", { credentials: "same-origin" }).then(function (r) { return r.json(); }).then(function (v) {
         voice = v; voiceLevels(v.level || 0);
-        if (window.PromSphere && (v.state === "listening" || v.state === "speaking")) PromSphere.setState(v.state);
+        // Activity comes from the shared state endpoint. Voice polling only updates the level.
         if (v.state !== "listening" && v.state !== "speaking") { clearInterval(voiceFast); voiceFast = null; voiceLevels(0); showVoice(v); }
       }).catch(function () {});
     }, 150);
@@ -524,14 +524,20 @@
         '<div class="what muted">' + esc(t.detail) + '</div>') : '<span class="idle">No task running</span>';
       var mine = t && String(t.chat_id) === String(chatId);
       setBusy(!!mine);
-      if (window.PromSphere && s.voice && (s.voice.state === "listening" || s.voice.state === "speaking")) PromSphere.setState(s.voice.state);
-      else if (window.PromSphere) {
-        if (t) PromSphere.setState(a && a.name !== "Planning" ? "tool" : "thinking");
-        else if (lastTask) PromSphere.setState("done");
-        else PromSphere.setState("idle");
+      var activity = s.assistant;
+      var label = $("#assistant-state");
+      if (activity && label) {
+        if (label.textContent !== activity.label) label.textContent = activity.label;
+        label.hidden = activity.state === "idle";
+      }
+      if (activity && window.PromSphere) {
+        var orb = { acting: "tool", answering: "speaking" }[activity.state] || activity.state;
+        PromSphere.setState(orb === "idle" && lastTask && !t ? "done" : orb);
       }
       lastTask = t;
     }).catch(function () {
+      var label = $("#assistant-state"); if (label) label.hidden = true;
+      if (window.PromSphere) PromSphere.setState("idle");
       var dot = $("#online-dot"); if (dot) { dot.className = "dot bad"; $("#online-label").textContent = "Can't reach Prometheus"; }
     });
   }
@@ -550,6 +556,21 @@
       copyText(body.innerText, "Copied.");
     });
     setBusy(!!$(".working", msgs));
+    // the answer as it is being written (M3.5): shown in the "working" bubble, word by word
+    var liveText = "";
+    function showLive() {
+      var box = $("[data-live]", msgs); if (!box) return;
+      box.textContent = liveText; box.hidden = !liveText;
+      if (liveText) msgs.scrollTop = msgs.scrollHeight;
+    }
+    setInterval(function () {
+      if (!busy || !chatId || !visible()) { liveText = ""; return; }
+      fetch("/api/v3/chats/" + chatId + "/live-text", { credentials: "same-origin" })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (j) { if (j && j.text !== liveText) { liveText = j.text; showLive(); } })
+        .catch(function () {});
+    }, 450);
+    document.body.addEventListener("htmx:afterSwap", function (e) { if (e.target === msgs) showLive(); });
   }
   // Errors from the server: a short message, never a broken page. Plain-text errors become a toast instead of
   // replacing part of the page; a lost connection says so.

@@ -69,7 +69,7 @@ minimal; LocalRuntime default, Cloudroom optional).
 | M0 | Baseline, test isolation | Done, merged into main |
 | M1 | Tool primitives: path hardening, atomic FS, bounded reader/diff, async terminal, services integration | Done, merged into main: 5 findings + 16 from a second independent audit fixed; tests pass on Windows and Linux (docs/reports/PROMETHEUS_M1_FINDINGS_FIX_REPORT.md) |
 | M2 | Desktop UI from the owner's orange-orbital screenshot (sidebar: Home, Agents, Skills, Tasks, Projects, Memory, Automations, Research, Integrations, System; orbital core; command bar; slash palette; right panel with real health/CPU/RAM/GPU; bottom wave; native window controls) | Done, merged into main 15 Nov (bug review: 14 fixes; laptop check to come) |
-| M3 | ReAct orchestrator and model routing | Planned |
+| M3 | ReAct orchestrator and model routing | Done, merged into main 20 Nov (audit fixes A-D, exit check: 3 more fixes); report docs/reports/M3_REPORT.md; laptop check to come |
 | M4 | Repository-to-skill intelligence (separate repo hub for candidates) | Planned |
 | M5 | DAG orchestration, concurrent child agents | Planned |
 | M6 | ExecutionRuntime / Cloudroom | Planned |
@@ -80,7 +80,7 @@ minimal; LocalRuntime default, Cloudroom optional).
 
 Merge plan (agreed approach): merge into main one milestone at a time, after that milestone passes its tests, a real
 Windows run and an audit. Don't wait for M0–M10. M1 and M2 share the branch, so M1 is merged first on its own.
-Next: audit M2 (on the branch). M1's original findings, all fixed:
+Next: M4 (after the owner's laptop check of M2 and M3). M1's original findings, all fixed:
 1. Caller environment overrides can bypass secret filtering (terminal).
 2. Thread-resumption failures need fail-safe handling (suspended process + Job Object).
 3. `read_window` still loads the whole file into memory.

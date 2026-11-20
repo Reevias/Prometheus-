@@ -42,6 +42,13 @@ class AnthropicProvider:
 
     def complete(self, messages: list[dict], system: str, json_schema: dict | None = None,
                  max_tokens: int = 4096, model: str | None = None) -> Reply:
+        return self._request(messages, system, json_schema, max_tokens, model, on_text=None)
+
+    def stream(self, messages: list[dict], system: str, on_text, max_tokens: int = 4096,
+               model: str | None = None) -> Reply:
+        return self._request(messages, system, None, max_tokens, model, on_text)
+
+    def _request(self, messages, system, json_schema, max_tokens, model, on_text) -> Reply:
         model = model or self.model
         if not self.available():
             raise ProviderUnavailable("No Claude API key set.")
@@ -49,22 +56,25 @@ class AnthropicProvider:
         if json_schema is not None:
             output_config["format"] = {"type": "json_schema", "schema": json_schema}
         extra = {"betas": [FALLBACK_BETA], "fallbacks": "default"} if model.startswith(FALLBACK_MODELS) else {}
-        resp = None
+        tin = tout = 0
         for room in (max_tokens, min(max(max_tokens * 4, 16000), 32000)):
             try:
-                resp = self._get_client().beta.messages.create(
-                    model=model,
-                    max_tokens=room,
-                    system=system,
-                    messages=messages,
-                    thinking={"type": "adaptive"},
-                    output_config=output_config,
-                    **extra,
-                )
+                api = self._get_client().beta.messages
+                args = dict(model=model, max_tokens=room, system=system, messages=messages,
+                            thinking={"type": "adaptive"}, output_config=output_config, **extra)
+                if on_text is None:
+                    resp = api.create(**args)
+                else:
+                    with api.stream(**args) as stream:
+                        for piece in stream.text_stream:
+                            on_text(piece)
+                        resp = stream.get_final_message()
             except Exception as e:  # network, auth, rate limit: the router tries the next provider
                 if isinstance(e, ProviderUnavailable):
                     raise
                 raise ProviderUnavailable(f"Claude error: {type(e).__name__}") from e
+            tin += resp.usage.input_tokens
+            tout += resp.usage.output_tokens
             has_text = any(getattr(b, "type", "") == "text" and getattr(b, "text", "").strip() for b in resp.content)
             if has_text or resp.stop_reason != "max_tokens":
                 break
@@ -72,7 +82,6 @@ class AnthropicProvider:
         if resp.stop_reason == "refusal":
             raise ProviderUnavailable("Claude refused this request.")
         text = "".join(b.text for b in resp.content if getattr(b, "type", "") == "text")
-        tin, tout = resp.usage.input_tokens, resp.usage.output_tokens
         price_in, price_out = PRICES.get(model, PRICES["claude-opus-5-5"])
         return Reply(text=text, provider=self.name, model=model, tokens_in=tin, tokens_out=tout,
                      usd=(tin * price_in + tout * price_out) / 1_000_000)

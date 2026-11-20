@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Callable
 
 from prometheus.safety.paths import PathBlocked, PathPolicy
-from prometheus.safety.secrets import PATTERNS, KEY_NAMES, get_secret
+from prometheus.safety.secrets import PATTERNS, KEY_NAMES, get_secret, known_secret_values
 
 MAX_TERMINAL_OUTPUT_CHARS = 50_000
 DEFAULT_TIMEOUT = 30.0
@@ -41,8 +41,7 @@ def scrub_secrets(text: str) -> str:
         rx = re.compile(rx_pattern)
         result = rx.sub(f"[REDACTED_{label.upper().replace(' ', '_')}]", result)
     try:
-        saved = [get_secret(name) for name in KEY_NAMES]
-        for val in saved:
+        for val in known_secret_values():
             if val and len(val) >= 12:
                 result = result.replace(val, "[REDACTED_SAVED_SECRET]")
     except Exception:
@@ -126,8 +125,8 @@ def overrides_allowed(name: object, value: object) -> bool:
         if re.search(rx_pattern, v):
             return False
     try:
-        for secret_name in KEY_NAMES:
-            saved = get_secret(secret_name)
+        saved_all = [get_secret(secret_name) for secret_name in KEY_NAMES] + known_secret_values()
+        for saved in saved_all:
             if saved and len(saved) >= 12 and saved in v:
                 return False
     except Exception:

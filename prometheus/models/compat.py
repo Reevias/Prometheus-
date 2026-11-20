@@ -17,7 +17,11 @@ class _ModelRefused(ProviderUnavailable):
 
 class OpenAICompatProvider:
     is_local = False
-    is_free = True   # free tiers; if billing is switched on at the provider, that spend is not tracked here
+    billing_enabled = False
+
+    @property
+    def is_free(self) -> bool:
+        return not self.billing_enabled
 
     MODEL_TRIES = 3          # a retired or refused model makes it try the next one by itself
 
@@ -41,8 +45,8 @@ class OpenAICompatProvider:
                  max_tokens: int = 4096, model: str | None = None) -> Reply:
         if not self.available():
             raise ProviderUnavailable(f"{self.info.name} is not set up.")
-        if model:
-            return self._call(messages, system, json_schema, max_tokens, model)
+        if model or self.billing_enabled:
+            return self._call(messages, system, json_schema, max_tokens, model or self.model)
         tried = [self.model] + [m for m in self.choices if m != self.model]
         last: ProviderUnavailable | None = None
         for candidate in tried[: self.MODEL_TRIES]:
@@ -54,6 +58,31 @@ class OpenAICompatProvider:
             self.model = candidate          # remember the one that works
             return reply
         raise last or ProviderUnavailable(f"{self.info.name} has no working model.")
+
+    def stream(self, messages: list[dict], system: str, on_text, max_tokens: int = 4096,
+               model: str | None = None) -> Reply:
+        """The answer word by word (M3.5). Falls back to the whole answer if streaming doesn't work out."""
+        if not self.available():
+            raise ProviderUnavailable(f"{self.info.name} is not set up.")
+        from prometheus.models.streaming import openai_sse
+
+        use = model or self.model
+        key = self._key()
+        try:
+            text, usage, _ = openai_sse(self.http, f"{self.info.base_url}/chat/completions",
+                                        {"model": use, "messages": [{"role": "system", "content": system}, *messages],
+                                         "max_tokens": max_tokens, "stream_options": {"include_usage": True}},
+                                        {"Authorization": f"Bearer {key}"} if key else {}, on_text, self.info.name)
+        except ProviderUnavailable:
+            on_text(None)                      # start the shown text again
+            if self.billing_enabled:
+                raise
+            return self.complete(messages, system, max_tokens=max_tokens, model=model)
+        if not text.strip() and not self.billing_enabled:
+            on_text(None)
+            return self.complete(messages, system, max_tokens=max_tokens, model=model)
+        return Reply(text=text, provider=self.name, model=use, tokens_in=int(usage.get("prompt_tokens") or 0),
+                     tokens_out=int(usage.get("completion_tokens") or 0), usd=0.0)
 
     def _call(self, messages: list[dict], system: str, json_schema: dict | None, max_tokens: int,
               model: str) -> Reply:

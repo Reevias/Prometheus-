@@ -76,6 +76,6 @@ def test_pages_only_refresh_while_visible(app_client):
 
 def test_theme_has_no_downloads(app_client):
     client, _ = app_client()
-    css = client.get("/static/style.css").text
+    css = client.get("/static/v3/tokens.css").text + client.get("/static/v3/theme.css").text
     assert "@import" not in css and "http://" not in css and "https://" not in css
-    assert "--signal" in css and "prefers-reduced-motion" in css
+    assert "--orange" in css and ".login-card" in css

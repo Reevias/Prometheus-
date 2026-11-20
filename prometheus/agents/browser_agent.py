@@ -59,8 +59,10 @@ class BrowserAgent(Agent):
                                    exact=f"click:{label.lower()}", waiting=f"Press '{label}'? Answer below in the chat.")
                 return StepResult("done", SESSION.click(label, exact=True))
             if action == "login":
-                ctx.approvals.request("browser_password", "The browser page needs your password",
-                                      {"site": str(inputs.get("site") or "")}, secret_label="Password for this site")
+                host = SESSION.current_host()                 # the page it would really go to, not what the plan says
+                ctx.approvals.request("browser_password", f"The browser page at {host or 'this page'} needs your password",
+                                      {"site": str(inputs.get("site") or ""), "host": host},
+                                      secret_label=f"Password for {host or 'this site'}")
                 return StepResult("waiting_approval", "Type the password on the Approvals page; it goes straight into "
                                                       "the page and is never saved or shown to an AI.")
         except BrowserError as e:
@@ -77,6 +79,6 @@ def click_handler(payload: dict) -> str:
 
 def password_handler(payload: dict, secret: str) -> str:
     try:
-        return SESSION.fill_password(secret)
+        return SESSION.fill_password(secret, expect_host=payload.get("host"))
     except BrowserError as e:
         raise RuntimeError(str(e)) from e

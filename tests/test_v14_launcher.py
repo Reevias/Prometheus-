@@ -15,19 +15,13 @@ def test_old_copy_detected_by_remote_or_folder(tmp_path):
     assert launcher.old_copy_warning(tmp_path, "https://github.com/Reevias/Prometheus-.git") == ""
 
 
-def test_update_pulls_then_installs(tmp_path):
+def test_explicit_update_reviews_then_applies_that_revision(tmp_path, monkeypatch):
+    review = {"branch": "v3", "base": "a" * 40, "target": "b" * 40}
     calls = []
+    monkeypatch.setattr(launcher, "review_update", lambda path, run: review)
+    monkeypatch.setattr(launcher, "apply_update", lambda path, item, run: calls.append((path, item)) or "Updated")
+    assert launcher.update(tmp_path) == "Updated" and calls == [(tmp_path, review)]
 
-    def run(argv, **kw):
-        calls.append(argv)
-        return subprocess.CompletedProcess(argv, 0, "Fast-forward", "")
-
-    with pytest.raises(RuntimeError, match="not a Git"):
-        launcher.update(tmp_path, run)
-    (tmp_path / ".git").mkdir()
-    assert "Restart" in launcher.update(tmp_path, run)
-    assert calls[0][:4] == ["git", "-C", str(tmp_path), "pull"] and "--ff-only" in calls[0]
-    assert calls[1][1:4] == ["-m", "pip", "install"] and calls[1][-1].startswith(str(tmp_path))
 
 
 def test_failed_pull_stops_before_install(tmp_path):

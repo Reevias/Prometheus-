@@ -40,6 +40,18 @@ class OllamaProvider:
         self._checked = (now, ok)
         return ok
 
+    def stream(self, messages: list[dict], system: str, on_text, max_tokens: int = 4096,
+               model: str | None = None) -> Reply:
+        """The answer word by word (M3.5)."""
+        from prometheus.models.streaming import ollama_lines
+
+        model = model or self.model
+        text, last = ollama_lines(self.http, f"{self.url}/api/chat",
+                                  {"model": model, "messages": [{"role": "system", "content": system}, *messages],
+                                   "options": {"num_predict": max_tokens}}, on_text)
+        return Reply(text=text, provider=self.name, model=model, tokens_in=int(last.get("prompt_eval_count", 0)),
+                     tokens_out=int(last.get("eval_count", 0)))
+
     def complete(self, messages: list[dict], system: str, json_schema: dict | None = None,
                  max_tokens: int = 4096, model: str | None = None) -> Reply:
         model = model or self.model

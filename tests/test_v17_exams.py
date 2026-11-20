@@ -56,10 +56,11 @@ def test_agent_and_evening_post(app_client, monkeypatch):
     assert res.status == "done" and "Algebra" in res.summary and "each day" in res.summary.lower()
     clock = services.briefing
     clock.notify = None
-    at = time.strftime("%H:%M", time.localtime(max(time.time() - 60, noon - 12 * 3600)))
+    # Use the same simulated time for posting and answering so the six-hour reply window is consistent.
+    at = time.strftime("%H:%M", time.localtime(noon - 60))
     services.settings.exam_study_time = at
     services.settings.exam_checkin_time = at
-    assert clock.exam_posts(time.time(), date.today().isoformat()) == ["exam_post", "exam_ask"]
+    assert clock.exam_posts(noon, date.fromtimestamp(noon).isoformat()) == ["exam_post", "exam_ask"]
     chat = clock.study_chat()
     assert "Did you finish" in services.store.messages(chat)[-1].text
     out = services.orchestrator.run(chat, "yes all done")

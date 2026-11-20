@@ -1,7 +1,6 @@
 import json
 
 import pytest
-from fpdf import FPDF
 
 from prometheus.agents.documents import Documents
 from prometheus.agents.textutil import extract_text
@@ -10,11 +9,12 @@ from prometheus.models.fake import FakeProvider
 
 
 def make_pdf(path, text):
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_font("Helvetica", size=12)
-    pdf.cell(0, 10, text)
-    pdf.output(str(path))
+    from reportlab.pdfgen import canvas
+
+    c = canvas.Canvas(str(path))
+    c.setFont("Helvetica", 12)
+    c.drawString(72, 750, text)
+    c.save()
 
 
 def judge(messages, system):

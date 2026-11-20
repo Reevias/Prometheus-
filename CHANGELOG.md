@@ -1,5 +1,52 @@
 # Changelog
 
+## Prometheus 3.0, M3 (on the prometheus-v3 branch, not released yet)
+- **M3 exit check (D3, D6):** an approved update that changes packages now installs them too (if that fails, the old
+  version is kept and Prometheus doesn't restart); a newer update request replaces an older one; scripts in a Windows
+  venv can use packages that need a `.pth` file. Updates in chat, and package changes in automatic updates, wait for
+  your yes (the GitHub agent's description and Settings say so).
+- **The login page has the new look** (the orbital sphere above a small card, the v3 colours, fits phones). It was
+  the last screen left from 2.x; its old files (`style.css`, `orb.js`) are gone.
+- Claude streams answer text while using the existing thinking and fallback settings. The desktop and phone interface shows when the assistant is listening, choosing a route, planning a round, using a tool, answering, waiting for approval or stopped.
+- Phase A fixes the Windows virtual-environment script runner, personal-data routing, outside-text checks, billing for keyed providers, update approval and Stop all for pending approvals. Chat updates show incoming commits. Automatic updates stay on the current branch and ask about dependency changes and new top-level paths.
+- **M3 audit fixes, truth in the documents (D1, D2, D4, D5 part):** the M3 report now lists only test numbers a run
+  produced and where; the plan no longer claims an accessibility-tree browser tool (moved to M5); "Check cards" now
+  compares OpenRouter prices with OpenRouter's live list and says prices are a snapshot; `THIRD_PARTY_LICENSES.md`
+  lists the copyleft libraries with a blank sign-off line for you. **PDFs are now made with ReportLab (BSD licence)
+  instead of fpdf2 (LGPL)**; same look, same clickable links, new tests for it.
+- **M3 audit fixes, Phase B** (8 fixes): the step-by-step loop now waits for your yes (or Pause) and carries on from
+  the same round instead of saying "done"; AIs that need no key are off for new installs and never get your memories
+  or notes; the webhook token can go in a header and is hidden in the access log; every saved token is hidden in
+  terminal output; copying or moving a .bat/.ps1 asks first; the Recycle Bin limit counts the whole task; Antigravity
+  jobs hold back their worst-case cost while they run; jobs sent from the cloud copy that could change things wait for
+  your yes on the laptop.
+- **The right AI for each job** (model cards): every AI has a card with its exact name, what it's good at (quick
+  talk, planning, research, code, pictures, summaries, your files) and its price. Each job goes to the strongest one
+  that fits and is set up; free first when equal. Your files only ever go to the laptop's AI; a picture-making AI
+  never gets research. Cheap paid AIs (at most $1/$4 per million tokens) may take heavy jobs without asking, up to
+  $0.10 a task, inside your monthly cap (switch: Features → "Cheap paid AI for heavy jobs"). Cards: Settings → AI →
+  Advanced, with "Check cards".
+- **The front door**: chat and general questions get a quick direct answer; one or two actions get the normal plan;
+  long jobs get a step-by-step loop; if something needed is missing and guessing would change what happens, it asks
+  one question first.
+- **Step by step for long jobs**: think, act, look, up to 12 rounds, each one visible on the task; approvals, Stop,
+  Pause and your privacy rules apply to every round.
+- **Answers appear word by word** while they're written (most AIs; Claude gives the whole answer at the end).
+- **Laptop and phone**: every tool knows where it runs. A phone job asked while the phone is away waits for it (up
+  to a day) and runs when it's back; you're told both times. Laptop jobs from the phone already worked this way.
+- **Live context**: the AI is told the time and counts (reminders due today, tasks running, approvals waiting,
+  battery), never titles.
+
+## After M2 (16 November 2026)
+- **Security audit** (five independent reviewers, the Claude-BugHunter checklists on Prometheus's own code): 15 bugs
+  fixed, each with a test that failed first (bug log 81-95). The main ones: private text from your files can no
+  longer reach a cloud AI through translate, quizzes or scripts; the code runner can't be escaped through `ctypes`
+  and its approval shows the whole script; copying a folder skips protected files; the browser-password approval
+  names the real site. The rest of the findings are listed in `docs/reports/SECURITY_AUDIT_16NOV.md`.
+- **Coarena** can be linked with a free key (Settings → AI models and keys; get the key at coarena.ai/account/api).
+  Its models (Gemini, GPT, Claude, DeepSeek, Kimi and more) appear in the ask box's AI picker and are used only when
+  you pick one. Free daily use only: when it's used up, Prometheus moves on to your other AIs; it never buys credits.
+
 ## Prometheus 3.0, M2.4 (on the prometheus-v3 branch, not released yet)
 - Phones get the new look: the menu opens from a button at the top left as a drawer, the right panel is gone, the ask
   box puts its buttons under the text, and pages stack into one column. Hold-to-talk and spoken answers where the
@@ -247,7 +294,7 @@
 - PDF output: the files agent writes PDFs from Markdown with headings, lists and clickable links (Word too). Roadmaps and long answers can be saved straight away, with research first if needed.
 - Learns how you like answers: 👍 / 👎 on every answer (👎 asks what should be better and rewrites it at once). Each night Prometheus turns the ratings into a short list of rules that every answer follows; the Memory page shows them, with Learn now, Reset and earlier versions to restore.
 - Repo of the day: every evening at 23:30 Prometheus reads github.com/trending, picks the new repository gaining the most stars, and puts it on the Approvals page with an Open link button. Approving adds it to the skill library at once (a guide plus its README kept as data); nothing is cloned or run. Nothing is hidden (the owner decides); repositories about tracking people, accounts or security are labelled "sensitive" on the card.
-- Updates run every evening after the repo of the day (or soon after start if the laptop was off), with no approval; "update yourself" in chat also runs straight away.
+- Evening update checks were introduced after the repo of the day. See the M3 entry for the current approval rules.
 - Outputs: under Notes, every file and folder a chat created, found, moved or renamed, with Open and Show in folder. Documents and media open in their app (notes from the vault open in Obsidian); code and other types are only shown in their folder, so nothing is run by accident.
 - Obsidian: connect your vault in Settings (vaults Obsidian knows are found by themselves; needs your password). Search, read and create notes, list recent ones, open a note in Obsidian. New notes never overwrite and can be undone; answers from notes stay on the laptop.
 - Dark and light mode toggle in the top bar (remembered on this laptop).

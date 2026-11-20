@@ -16,6 +16,7 @@ import os
 import shutil
 import subprocess
 import sys
+import sysconfig
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -28,10 +29,12 @@ GUARD_NAME = "_prometheus_guard.py"
 SCRIPT_NAME = "script.py"
 
 GUARD = r'''
-import os, sys
+import os, re, sys
 SCRATCH = os.path.realpath(sys.argv[1])
 NET = sys.argv[2] == "1"
 SCRIPT = os.path.join(SCRATCH, "script.py")
+PACKAGES = sys.argv[4:]          # a venv's package folders (Windows); their .pth files are read below
+sys.path.extend(PACKAGES)
 READ_ROOTS = tuple({os.path.realpath(p) for p in (sys.prefix, sys.base_prefix, sys.exec_prefix, *sys.path) if p}
                    | {SCRATCH})
 # private places: the owner's user folder (and other users'), and Prometheus's own data (keys, memory)
@@ -42,6 +45,11 @@ NET_EVENTS = {"socket.connect", "socket.bind", "socket.getaddrinfo", "socket.get
               "smtplib.connect", "imaplib.open", "poplib.connect", "telnetlib.Telnet.open", "webbrowser.open"}
 PROC_PREFIXES = ("subprocess.", "os.system", "os.exec", "os.spawn", "os.posix_spawn", "os.fork", "os.forkpty",
                  "os.startfile", "os.kill", "os.killpg", "_winapi.", "pty.spawn")
+# looking up a function that starts programs or loads code (ctypes.pythonapi.system, getattr(libc, "popen")...) is
+# refused: it would run a command with no subprocess or os.system event for the other rules to see
+DANGEROUS_SYMBOLS = re.compile(r"^_?(system|popen|exec\w*|fexecve|fork|vfork|clone\w*|posix_spawn\w*|spawn\w*|dlopen|dlmopen|"
+                               r"syscall|ptrace|kill|killpg|WinExec|CreateProcess\w*|ShellExecute\w*|LoadLibrary\w*|"
+                               r"NtCreate\w*|NtOpen\w*|WriteProcessMemory|VirtualAlloc\w*|CreateRemoteThread)$", re.I)
 CTYPES_OK = [False]           # one dlopen(None) is allowed: the one `import ctypes` itself makes
 CHANGE_EVENTS = {"os.remove", "os.rename", "os.rmdir", "os.mkdir", "os.chmod", "os.chown", "os.link", "os.symlink",
                  "os.truncate", "os.utime", "shutil.rmtree", "shutil.copyfile", "shutil.copymode", "shutil.copystat",
@@ -80,6 +88,12 @@ def hook(event, args):
         if not os.path.isabs(os.fsdecode(name)) or not _inside(name, READ_ROOTS):
             _no("loading DLLs isn't allowed.")   # "kernel32" or "libc.so.6" would bypass every other rule
         return
+    if event in ("ctypes.dlsym", "ctypes.dlsym/handle"):
+        name = args[1] if len(args) > 1 else ""
+        name = name.decode("latin-1") if isinstance(name, bytes) else str(name)
+        if DANGEROUS_SYMBOLS.match(name):
+            _no("starting other programs isn't allowed.")
+        return
     if event == "os.add_dll_directory":
         if not args or not _inside(args[0], READ_ROOTS):
             _no("loading DLLs isn't allowed.")
@@ -110,6 +124,10 @@ sys.argv = [SCRIPT]
 sys.path.insert(0, SCRATCH)
 os.chdir(SCRATCH)
 sys.addaudithook(hook)
+if PACKAGES:
+    import site                  # after the hook: a .pth line runs under the same rules as the script
+    for _p in PACKAGES:
+        site.addsitedir(_p)
 import runpy
 runpy.run_path(SCRIPT, run_name="__main__")
 '''
@@ -233,8 +251,15 @@ def run_locked(code: str, folder: Path, network: bool = False, timeout: int = TI
     folder = Path(folder).resolve()
     (folder / SCRIPT_NAME).write_text(code, encoding="utf-8")
     (folder / GUARD_NAME).write_text(GUARD, encoding="utf-8")
-    cmd = [python or sys.executable, "-I", str(folder / GUARD_NAME), str(folder), "1" if network else "0",
-           os.pathsep.join(_private_places(folder))]
+    executable = python or sys.executable
+    packages = []
+    if not python and os.name == "nt" and sys.prefix != sys.base_prefix:
+        executable = sys._base_executable
+        packages = list(dict.fromkeys(sysconfig.get_path(k) for k in ("purelib", "platlib")))
+    # A base installation may also contain packages. Load only the venv packages after the standard library.
+    flags = ["-I", "-S"] if packages else ["-I"]
+    cmd = [executable, *flags, str(folder / GUARD_NAME), str(folder), "1" if network else "0",
+           os.pathsep.join(_private_places(folder)), *packages]
     kw = {"cwd": str(folder), "env": _env(folder), "stdin": subprocess.DEVNULL, "stdout": subprocess.PIPE,
           "stderr": subprocess.STDOUT}
     if os.name == "nt":

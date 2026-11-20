@@ -24,6 +24,7 @@ class ToolsAgent(Agent):
                    "back (converting, cleaning, calculating); for a one-off use the code agent.")
     tools = {"run_code"}
     accepts_private = True
+    private_with_files = True
     required_inputs = ("action",)
 
     def run(self, goal: str, inputs: dict, ctx: AgentContext) -> StepResult:

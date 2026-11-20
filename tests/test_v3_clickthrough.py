@@ -8,6 +8,7 @@ never clicked.
 """
 from __future__ import annotations
 
+import re
 import socket
 from pathlib import Path
 import threading
@@ -19,7 +20,7 @@ sync_api = pytest.importorskip("playwright.sync_api")
 
 PASSWORD = "correct horse battery"
 SKIP = ('[data-win]', '.stopall', '[data-act="delete"]', '[hx-post="/logout"]', '[hx-post*="/delete"]',
-        '#lightbox-close', '.danger')
+        '[data-api$="/delete"]', '#lightbox-close', '.danger')
 PROBE = """
 () => {
   window.__events = 0;
@@ -96,46 +97,79 @@ def browser():
 
 def visible_controls(page):
     sel = "button:visible, [role=menuitem]:visible, summary:visible, a.chip:visible"
-    out = []
-    for i, el in enumerate(page.query_selector_all(sel)):
-        if el.is_disabled():
-            continue
-        if any(el.evaluate(f"e => e.matches({s!r}) || !!e.closest({s!r})") for s in SKIP):
-            continue
-        label = (el.get_attribute("aria-label") or el.get_attribute("title") or el.inner_text() or "").strip()[:40]
-        out.append((i, label))
-    return sel, out
+    # Resolve the same control after each reload. Menus, chat messages and task rows can change order.
+    return page.locator(sel).evaluate_all("""(elements, skip) => {
+        const counts = new Map(), controls = [];
+        for (const el of elements) {
+            if (el.disabled || el.closest(skip)) continue;
+            const label = (el.getAttribute('aria-label') || el.title || el.innerText || '').trim();
+            let selector = el.localName;
+            for (const key of ['id', 'aria-label', 'title', 'data-act', 'data-api', 'data-task', 'href', 'hx-post']) {
+                const value = el.getAttribute(key);
+                if (value) selector += '[' + key + '=' + CSS.escape(value) + ']';
+            }
+            const text = selector === el.localName ? el.textContent.trim() : null;
+            const key = JSON.stringify([selector, text]);
+            const occurrence = counts.get(key) || 0;
+            counts.set(key, occurrence + 1);
+            controls.push([selector, text, occurrence, label]);
+        }
+        return controls;
+    }""", ','.join(SKIP))
+
+
+def open_control_page(page, url):
+    # The previous click may finish a delayed redirect as the next probe starts.
+    try:
+        page.goto(url)
+    except sync_api.Error as exc:
+        if "net::ERR_ABORTED" not in str(exc) and "interrupted by another navigation" not in str(exc):
+            raise
+        page.wait_for_load_state("domcontentloaded")
+        page.goto(url)
+    page.wait_for_load_state("networkidle")
 
 
 def click_all(page, url, problems, seen):
-    page.goto(url)
-    page.wait_for_load_state("networkidle")
-    sel, controls = visible_controls(page)
+    open_control_page(page, url)
+    controls = visible_controls(page)
     last = None
-    for index, label in controls:
-        page.goto(url)
-        page.wait_for_load_state("networkidle")
+    for selector, text, occurrence, label in controls:
+        open_control_page(page, url)
         if "/login" in page.url:
             problems.append(f"{url}: signed out after clicking '{last}'")
             return
         last = label
         page.evaluate(PROBE)
-        els = page.query_selector_all(sel)
-        if index >= len(els) or not els[index].is_visible():
-            continue
+        matches = page.locator(selector + ":visible")
+        if text is not None:
+            matches = matches.filter(has_text=re.compile("^" + re.escape(text) + "$"))
+        control = matches.nth(occurrence)
+        if not control.count():
+            continue  # an earlier action may have removed the row
+
         seen["requests"] = seen["asked"] = 0
         before = page.url
         try:
-            els[index].click(timeout=3000)
+            control.click(timeout=10000)
         except Exception as e:
-            problems.append(f"{url}: couldn't click '{label}': {str(e)[:80]}")
+            problems.append(f"{url}: couldn't click '{label}': {e}")
             continue
         page.wait_for_timeout(350)
         if "/login" in page.url:
             problems.append(f"{url}: '{label}' signed the owner out")
             return
-        changed = page.evaluate("window.__events || 0") if page.url == before else 1
-        if not (changed or seen["requests"] or seen["asked"] or page.url != before):
+        changed = seen["requests"] or seen["asked"] or page.url != before
+        if not changed:
+            # A click can navigate between reading the URL and inspecting the old document.
+            try:
+                changed = page.evaluate("window.__events !== 0")
+            except sync_api.Error as exc:
+                if "Execution context was destroyed" not in str(exc):
+                    raise
+                page.wait_for_load_state("domcontentloaded")
+                changed = page.evaluate("window.__events !== 0")
+        if not changed:
             problems.append(f"{url}: '{label}' did nothing")
         page.keyboard.press("Escape")
 
@@ -186,7 +220,9 @@ def test_every_control_does_something_and_nothing_breaks(live, browser):
     page.goto(base + "/settings")
     for section in sections:
         assert page.query_selector("#" + section), section
-    # the dangerous buttons are wired up (not clicked)
+    # The dangerous buttons are wired up without deleting the test task.
+    page.goto(base + "/v3/tasks?view=table")
+    assert page.locator('[aria-label="Delete task"][data-api$="/delete"][data-confirm]').count() > 0
     page.goto(base + "/")
     assert page.query_selector('.stopall[hx-post="/kill"]') and page.query_selector('[hx-post="/logout"]')
     assert not errors, errors
@@ -224,6 +260,35 @@ def test_phone_width_fits(live, browser):
     page.click("#menu-btn")
     page.wait_for_timeout(300)
     assert page.evaluate("() => document.querySelector('.sidebar').getBoundingClientRect().left >= 0")
+
+
+def test_assistant_activity_on_phone_and_desktop(live, browser):
+    from playwright.sync_api import expect
+
+    base, _ = live
+    page = browser.new_page(viewport={"width": 390, "height": 844})
+    page.goto(base + "/login")
+    page.fill("input[name=password]", PASSWORD)
+    page.press("input[name=password]", "Enter")
+    page.wait_for_url(base + "/")
+    label = page.locator("#assistant-state")
+    expect(label).to_be_hidden()
+    activity = {"state": "waiting_approval", "label": "Waiting for your approval"}
+
+    def sample(route):
+        response = route.fetch()
+        state = response.json()
+        state["assistant"] = activity
+        route.fulfill(response=response, json=state)
+
+    page.route("**/api/v3/state", sample)
+    expect(label).to_have_text("Waiting for your approval")
+    expect(label).to_be_visible()
+    page.set_viewport_size({"width": 1400, "height": 900})
+    activity.update(state="acting", label="Running round 2")
+    expect(label).to_have_text("Running round 2")
+    activity.update(state="idle", label="Idle")
+    expect(label).to_be_hidden()
 
 
 def test_chat_notes_add_and_delete(live, browser):

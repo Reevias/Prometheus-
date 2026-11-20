@@ -121,14 +121,18 @@ def test_writes_wait_for_approval_and_post_nothing(make_ctx):
                      ("github_action", "propose_change")]
 
 
-def test_update_self_runs_without_approval(make_ctx, monkeypatch):
+def test_update_self_waits_for_reviewed_commit(make_ctx, monkeypatch):
     import prometheus.agents.github as gh
 
     ag, _ = agent()
     ctx = make_ctx()
-    monkeypatch.setattr(gh, "update_self", lambda code_dir: "Updated to the newest version.")
+    preview = {"branch": "prometheus-v3", "base": "a" * 40, "target": "b" * 40, "summary": "Fix PDF export"}
+    monkeypatch.setattr(gh, "review_update", lambda code_dir: preview, raising=False)
+    monkeypatch.setattr(gh, "update_self", lambda *args: "unexpected update")
     res = ag.run("update yourself", {"action": "update_self"}, ctx)
-    assert res.status == "done" and "Updated" in res.summary and ctx.store.approvals() == []
+    assert res.status == "waiting_approval"
+    queued, = ctx.store.approvals()
+    assert queued.payload["target"] == preview["target"] and "Fix PDF export" in queued.summary
 
 
 def test_approved_issue_and_comment_are_posted():
@@ -163,21 +167,10 @@ def test_propose_change_makes_a_branch_commit_and_pr_never_touching_main():
                                "title": "t", "body": ""}, ag)
 
 
-def test_update_self_only_fast_forwards_in_a_git_checkout(tmp_path, monkeypatch):
-    calls = []
-
-    def fake_run(argv, **kw):
-        calls.append(argv)
-        return subprocess.CompletedProcess(argv, 0, "Updating abc..def\nFast-forward\n 3 files changed", "")
-
-    monkeypatch.setattr(subprocess, "run", fake_run)
+def test_old_update_approval_needs_a_fresh_review(tmp_path):
     with pytest.raises(GitHubError, match="not a Git"):
-        update_self(tmp_path)
-    (tmp_path / ".git").mkdir()
-    msg = update_self(tmp_path)
-    assert ["git", "-C", str(tmp_path), "pull", "--ff-only", "origin", "main"] in calls
-    assert calls[-1][1:5] == ["-m", "pip", "install", "--quiet"]      # new packages get installed too
-    assert "restart" in msg.lower()
+        update_self(tmp_path, {})
+
 
 
 def test_settings_page_has_github_connection(app_client):

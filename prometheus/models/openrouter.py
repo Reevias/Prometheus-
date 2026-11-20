@@ -29,6 +29,28 @@ class OpenRouterProvider:
         except httpx.HTTPError as e:
             raise ProviderUnavailable(f"OpenRouter can't be reached ({type(e).__name__}).") from e
 
+    def stream(self, messages: list[dict], system: str, on_text, max_tokens: int = 4096,
+               model: str | None = None) -> Reply:
+        """The answer word by word (M3.5). A thinking model that sends no words falls back to the normal call."""
+        if not self.available():
+            raise ProviderUnavailable("No OpenRouter key set.")
+        from prometheus.models.streaming import openai_sse
+
+        use = model or self.model
+        text, usage, got = openai_sse(
+            self.http, URL, {"model": use, "messages": [{"role": "system", "content": system}, *messages],
+                             "max_tokens": max_tokens, "usage": {"include": True}},
+            {"Authorization": f"Bearer {get_secret('OPENROUTER_API_KEY')}", "X-Title": "Prometheus"}, on_text,
+            "OpenRouter")
+        if not text.strip():
+            on_text(None)                      # start the shown text again
+            whole = self.complete(messages, system, max_tokens=max_tokens, model=model)
+            # the streamed call was billed too, even with no words: count both (M3 review)
+            from dataclasses import replace
+            return replace(whole, usd=whole.usd + float(usage.get("cost") or 0.0))
+        return Reply(text=text, provider=self.name, model=got or use, tokens_in=int(usage.get("prompt_tokens") or 0),
+                     tokens_out=int(usage.get("completion_tokens") or 0), usd=float(usage.get("cost") or 0.0))
+
     def complete(self, messages: list[dict], system: str, json_schema: dict | None = None,
                  max_tokens: int = 4096, model: str | None = None) -> Reply:
         if not self.available():
