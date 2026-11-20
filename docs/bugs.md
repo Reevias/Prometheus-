@@ -2,7 +2,23 @@
 
 Every bug found and fixed, newest first, so the count is always exact. Add a line for each new one.
 
-**Total fixed: 126** (as of 20 November 2026)
+**Total fixed: 137** (as of 20 November 2026)
+
+## 20 November 2026, the owner's first laptop test of M3 (11)
+
+| # | Bug | Fixed by |
+|---|---|---|
+| 137 | Answers sounded stiff and robotic | Writing rules ask for a friendly, human voice (old rules updated on laptops) |
+| 136 | A plain "hey" took 7 seconds (sent to an AI) | Greetings get an instant friendly reply, no AI |
+| 135 | Two Prometheus windows (one with the Python icon) | One window at a time; a second launch brings it forward |
+| 134 | Stop all, voice off and Quit didn't stop the microphone | Stop all and Quit switch it off; voice can't start while stopped |
+| 133 | Every step's whole output pasted in when no AI could write the answer; long answers couldn't be shrunk; the browser bar never went away; "Already approved." on a double click | Short fallback, Show more / less, bar only while in use with Close, no extra message |
+| 132 | "How much did I spend on food last month" gave this month's total | Spending by period and category |
+| 131 | A chart a script made didn't show in the chat | Pictures a task saved show under its answer |
+| 130 | "Run python to make a bar chart" gave the code as text | One job with several action words runs a plan; the quick AI can't skip tools |
+| 129 | Video summaries opened browser tabs, used random videos or found none | YouTube's own search as fallback, links in a list used, no tabs unless asked, failed summary said |
+| 128 | A script failed on `$step3.summary` pasted into its code | Results reach scripts as inputs.json, never as code |
+| 127 | A note was saved with "$step6.best_summary" in it | Step results inside a text are filled in; a missing one stops the step |
 
 ## 20 November 2026, M3 exit check (D6) (4)
 

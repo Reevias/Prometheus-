@@ -1014,6 +1014,6 @@ html[data-motion="reduced"] *, html[data-motion="reduced"] *::before { animation
 
 /* long answers fold to a few lines */
 .msg > .body.folded { max-height: 320px; overflow: hidden;
-  -webkit-mask-image: linear-gradient(to bottom, #000 70%, transparent); mask-image: linear-gradient(to bottom, #000 70%, transparent); }
+  -webkit-mask-image: linear-gradient(to bottom, var(--base) 70%, transparent); mask-image: linear-gradient(to bottom, var(--base) 70%, transparent); }
 .fold-btn { background: none; border: 0; padding: 4px 0; color: var(--amber); font-size: 13px; }
 .fold-btn:hover { text-decoration: underline; }

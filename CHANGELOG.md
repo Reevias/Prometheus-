@@ -1,6 +1,11 @@
 # Changelog
 
 ## Prometheus 3.0, M3 (on the prometheus-v3 branch, not released yet)
+- **Fixes from your first laptop test (11):** notes and scripts get the real results of earlier steps; video
+  summaries find the right video and don't open tabs; "run python to make a bar chart" runs it and shows the chart
+  under the answer; spending questions understand "last month" and "on food"; long answers fold (Show more), the
+  browser bar goes away when it isn't in use and can be closed; Stop all and Quit really switch the microphone off;
+  only one window; greetings answer instantly; answers sound friendlier.
 - **M3 exit check (D3, D6):** an approved update that changes packages now installs them too (if that fails, the old
   version is kept and Prometheus doesn't restart); a newer update request replaces an older one; scripts in a Windows
   venv can use packages that need a `.pth` file. Updates in chat, and package changes in automatic updates, wait for
