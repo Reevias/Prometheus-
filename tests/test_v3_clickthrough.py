@@ -380,3 +380,40 @@ def test_the_name_box_saves_your_name(live, browser):
     assert "Saiveer" in page.inner_text(".profile-name")
     page.goto(base + "/v3/chats")
     assert "Saiveer" in page.inner_text(".profile-name")
+
+
+FAKE_WINDOW = """
+window.__calls = [];
+window.pywebview = {api: {
+  window_action: function (a) { window.__calls.push(["action", a]); return Promise.resolve(true); },
+  resize_to: function (w, h, e) { window.__calls.push(["resize", w, h, e]); return Promise.resolve(true); }
+}};
+"""
+
+
+def test_window_buttons_and_edges_talk_to_the_window_itself(live, browser):
+    """Laptop check (20 Nov): minimise, maximise and fullscreen did nothing when the server was the background copy.
+    The page now calls the window directly (pywebview js_api); its edges resize it."""
+    base, _ = live
+    page = browser.new_page(viewport={"width": 1400, "height": 900})
+    page.add_init_script(FAKE_WINDOW)
+    page.goto(base + "/login")
+    page.fill("input[name=password]", PASSWORD)
+    page.press("input[name=password]", "Enter")
+    page.wait_for_url(base + "/")
+    page.click("[data-win=minimize]")
+    page.click("[data-win=maximize]")
+    page.keyboard.press("F11")
+    assert page.evaluate("window.__calls") == [["action", "minimize"], ["action", "maximize"], ["action", "fullscreen"]]
+    page.keyboard.press("F11")                                         # back out of fullscreen
+    page.evaluate("window.__calls = []")
+    box = page.locator(".grip-e").bounding_box()
+    x, y = box["x"] + box["width"] / 2, box["y"] + box["height"] / 2
+    page.mouse.move(x, y)
+    page.mouse.down()
+    page.mouse.move(x - 200, y, steps=4)
+    page.mouse.up()
+    page.wait_for_timeout(300)
+    calls = page.evaluate("window.__calls")
+    assert calls and all(c[0] == "resize" and c[3] == "e" for c in calls)
+    assert calls[-1][1] < page.evaluate("window.outerWidth")             # dragged inwards: narrower

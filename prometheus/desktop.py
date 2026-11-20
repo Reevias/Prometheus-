@@ -289,6 +289,64 @@ def is_maximised(window) -> bool:
         return False
 
 
+MIN_SIZE = (860, 560)
+WINDOW_ACTIONS = ("minimize", "maximize", "restore", "fullscreen", "close")
+
+
+def window_action(win, action: str) -> None:
+    """The title-bar buttons. Done in the window's own process (WindowApi), so they also work when the server is the
+    background copy started with Windows, which has no window of its own (laptop check, 20 Nov)."""
+    if action == "minimize":
+        win.minimize()
+    elif action == "maximize":
+        if getattr(win, "fullscreen", False):
+            win.toggle_fullscreen()
+        elif is_maximised(win):
+            win.restore()
+        else:
+            win.maximize()                      # stops at the taskbar (maximise_above_taskbar)
+    elif action == "restore":
+        win.restore()
+    elif action == "fullscreen":
+        win.toggle_fullscreen()
+    elif action == "close":
+        if ACTIVE_TRAY is not None:
+            win.hide()                          # the tray keeps Prometheus running; Quit is in its menu
+        else:
+            win.destroy()
+    else:
+        raise ValueError("Unknown window action.")
+
+
+class WindowApi:
+    """What the page may ask the window for directly (pywebview js_api: window.pywebview.api.*). Names starting with
+    _ are never offered to the page."""
+
+    def __init__(self):
+        self._window = None
+
+    def window_action(self, action: str) -> bool:
+        if action not in WINDOW_ACTIONS:
+            raise ValueError("Unknown window action.")
+        window_action(self._window, action)
+        return True
+
+    def resize_to(self, width: int, height: int, edge: str) -> bool:
+        """Dragging an edge of the frameless window (it has no border of its own): the opposite side stays put."""
+        try:
+            from webview.window import FixPoint
+        except ImportError:                    # tests without the desktop add-on: the same values as plain numbers
+            from enum import IntFlag
+
+            FixPoint = IntFlag("FixPoint", {"NORTH": 1, "WEST": 2, "EAST": 4, "SOUTH": 8})
+        edge = str(edge)
+        if edge not in ("n", "s", "e", "w", "ne", "nw", "se", "sw"):
+            raise ValueError("Unknown edge.")
+        fix = (FixPoint.SOUTH if "n" in edge else FixPoint.NORTH) | (FixPoint.EAST if "w" in edge else FixPoint.WEST)
+        self._window.resize(max(MIN_SIZE[0], int(width)), max(MIN_SIZE[1], int(height)), fix)
+        return True
+
+
 def window_lock(folder=None):
     """Held while a Prometheus window is open; None when another window already holds it. The operating system
     frees it when the window's process ends, even after a crash."""
@@ -348,12 +406,14 @@ def run_desktop(settings: Settings, webview=None, server=None) -> int:
     try:
         port = server.start()
         windows_identity()                       # before the window exists, so the taskbar groups it as Prometheus
-        window = webview.create_window(title, f"http://127.0.0.1:{port}/", width=1220,
-                                       height=780, min_size=(860, 560), background_color=BACKGROUND,
+        api = WindowApi()
+        window = webview.create_window(title, f"http://127.0.0.1:{port}/", width=1220, js_api=api,
+                                       height=780, min_size=MIN_SIZE, background_color=BACKGROUND,
                                        text_select=True,  # pywebview blocks selecting and copying text unless asked
                                        frameless=True,    # the app draws its own themed title bar (M2)
                                        easy_drag=False,   # dragging only from the title bar, not from everywhere
                                        **start_position(settings, webview))   # on the monitor it was last on
+        api._window = window
         maximise_above_taskbar(window)           # opens maximised, the taskbar stays visible; F11 for fullscreen
         windows_identity(window, title)
         remember_position(window, settings)

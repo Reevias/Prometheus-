@@ -66,6 +66,7 @@
       </svg>
     </div>
   </main>
+  <div id="grips" hidden aria-hidden="true">{% for e in ["n", "s", "e", "w", "ne", "nw", "se", "sw"] %}<div class="grip grip-{{ e }}" data-edge="{{ e }}"></div>{% endfor %}</div>
   <dialog class="dialog name-dialog" id="name-dialog" aria-labelledby="name-title">
     <form method="dialog" id="name-form">
       <h2 id="name-title">What should Prometheus call you?</h2>

@@ -417,8 +417,40 @@
 
   // ---- desktop window buttons (only inside the Prometheus window, never in a browser) ------------------------
   var desktop = false, fullscreen = false;   // opens maximised, above the taskbar
-  function win(action) { if (!desktop) return; post("/api/v3/window/" + action).then(function (r) { if (!r.ok) toast("The window didn't respond.", true); }); }
-  function desktopReady() { desktop = true; var w = $("#win-controls"); if (w) w.hidden = false; }
+  // straight to the window (its own process): the server may be the background copy, which has no window
+  function api() { return window.pywebview && window.pywebview.api; }
+  function win(action) {
+    if (!desktop) return;
+    var a = api();
+    if (a && a.window_action) { a.window_action(action).catch(function () { toast("The window didn't respond.", true); }); return; }
+    post("/api/v3/window/" + action).then(function (r) { if (!r.ok) toast("The window didn't respond.", true); });
+  }
+  function desktopReady() {
+    desktop = true; var w = $("#win-controls"); if (w) w.hidden = false;
+    var g = $("#grips"), a = api(); if (g && a && a.resize_to) g.hidden = false;
+  }
+  // the frameless window has no border to drag: thin edges and corners resize it
+  $$(".grip").forEach(function (g) {
+    g.addEventListener("pointerdown", function (e) {
+      var a = api(); if (!a || !a.resize_to || fullscreen) return;
+      e.preventDefault(); g.setPointerCapture(e.pointerId);
+      var edge = g.dataset.edge, sx = e.screenX, sy = e.screenY, w0 = window.outerWidth, h0 = window.outerHeight;
+      var busyResize = false, next = null;
+      function send() {
+        if (!next) { busyResize = false; return; }
+        var n = next; next = null; busyResize = true;
+        a.resize_to(n[0], n[1], edge).then(send, send);
+      }
+      function move(ev) {
+        var dx = ev.screenX - sx, dy = ev.screenY - sy, w = w0, h = h0;
+        if (edge.indexOf("e") >= 0) w = w0 + dx; if (edge.indexOf("w") >= 0) w = w0 - dx;
+        if (edge.indexOf("s") >= 0) h = h0 + dy; if (edge.indexOf("n") >= 0) h = h0 - dy;
+        next = [Math.round(w), Math.round(h)]; if (!busyResize) send();
+      }
+      function up() { g.removeEventListener("pointermove", move); g.removeEventListener("pointerup", up); }
+      g.addEventListener("pointermove", move); g.addEventListener("pointerup", up);
+    });
+  });
   if (window.pywebview) desktopReady(); else window.addEventListener("pywebviewready", desktopReady);
   $$("[data-win]").forEach(function (b) { b.addEventListener("click", function () { win(b.dataset.win); if (b.dataset.win === "maximize") fullscreen = false; }); });
 

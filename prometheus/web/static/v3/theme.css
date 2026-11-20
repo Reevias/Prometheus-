@@ -1024,3 +1024,13 @@ html[data-motion="reduced"] *, html[data-motion="reduced"] *::before { animation
 .name-dialog input { width: 100%; margin-top: 12px; padding: 10px 12px; border-radius: var(--r-md); color: var(--text);
                      background: var(--base); border: 1px solid rgb(var(--text-rgb) / 0.14); }
 .name-dialog input:focus { border-color: var(--orange); outline: none; }
+
+/* edges of the frameless desktop window: drag to resize */
+.grip { position: fixed; z-index: 9999; }
+.grip-n, .grip-s { left: 8px; right: 8px; height: 5px; cursor: ns-resize; }
+.grip-n { top: 0; } .grip-s { bottom: 0; }
+.grip-e, .grip-w { top: 8px; bottom: 8px; width: 5px; cursor: ew-resize; }
+.grip-e { right: 0; } .grip-w { left: 0; }
+.grip-ne, .grip-nw, .grip-se, .grip-sw { width: 10px; height: 10px; }
+.grip-ne { top: 0; right: 0; cursor: nesw-resize; } .grip-sw { bottom: 0; left: 0; cursor: nesw-resize; }
+.grip-nw { top: 0; left: 0; cursor: nwse-resize; } .grip-se { bottom: 0; right: 0; cursor: nwse-resize; }

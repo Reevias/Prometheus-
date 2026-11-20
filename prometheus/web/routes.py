@@ -520,27 +520,10 @@ def register_routes(app: FastAPI, services: Services) -> None:
         win = getattr(desktop, "ACTIVE_WINDOW", None)
         if win is None:
             return JSONResponse({"error": "Not running in the desktop window."}, status_code=409)
+        if action not in desktop.WINDOW_ACTIONS:
+            return JSONResponse({"error": "Unknown window action."}, status_code=400)
         try:
-            if action == "minimize":
-                win.minimize()
-            elif action == "maximize":
-                if getattr(win, "fullscreen", False):
-                    win.toggle_fullscreen()
-                elif desktop.is_maximised(win):
-                    win.restore()
-                else:
-                    win.maximize()                  # stops at the taskbar (maximise_above_taskbar)
-            elif action == "restore":
-                win.restore()
-            elif action == "fullscreen":
-                win.toggle_fullscreen()
-            elif action == "close":
-                if getattr(desktop, "ACTIVE_TRAY", None) is not None:
-                    win.hide()                  # the tray keeps Prometheus running; Quit is in its menu
-                else:
-                    win.destroy()
-            else:
-                return JSONResponse({"error": "Unknown window action."}, status_code=400)
+            desktop.window_action(win, action)
         except Exception as e:
             return JSONResponse({"error": str(e)[:200]}, status_code=500)
         return {"ok": True}

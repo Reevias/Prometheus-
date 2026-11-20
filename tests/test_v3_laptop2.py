@@ -127,3 +127,42 @@ def test_the_waiting_label_says_what_is_waiting_and_where(app_client):
     assert "print(1)" not in str(state)                     # the kind only, never the request's own text
     page = client.get("/").text
     assert '<a id="assistant-state"' in page
+
+
+# -- "still can't minimize", "can't full screen it or increase screen length" -------------------------------------------
+
+class FakeWindow:
+    def __init__(self):
+        self.calls, self.fullscreen = [], False
+
+    def __getattr__(self, name):
+        return lambda *a, **k: self.calls.append((name, a, k))
+
+
+def test_the_window_buttons_work_in_the_window_itself():
+    """Bug: the buttons asked the server to move ITS window. Started with Windows, the server is the background copy,
+    which has no window, so nothing happened. The buttons now go straight to the window (pywebview's js_api)."""
+    from prometheus.desktop import WindowApi
+
+    api = WindowApi()
+    api._window = FakeWindow()
+    for action in ("minimize", "fullscreen", "maximize"):
+        assert api.window_action(action) is True
+    names = [c[0] for c in api._window.calls]
+    assert names[:2] == ["minimize", "toggle_fullscreen"] and names[2] in ("maximize", "restore")
+    with pytest.raises(ValueError):
+        api.window_action("format_disk")
+
+
+@pytest.mark.parametrize("edge, fix", [("e", 3), ("s", 3), ("se", 3), ("w", 5), ("n", 10), ("nw", 12),
+                                       ("ne", 10), ("sw", 5)])
+def test_dragging_an_edge_resizes_from_that_edge(edge, fix):
+    from prometheus.desktop import WindowApi
+
+    api = WindowApi()
+    api._window = FakeWindow()
+    api.resize_to(1500, 900, edge)
+    name, args, _ = api._window.calls[0]
+    assert name == "resize" and args[:2] == (1500, 900) and getattr(args[2], "value", args[2]) == fix
+    api.resize_to(100, 100, "se")                          # never smaller than the window's minimum
+    assert api._window.calls[1][1][:2] == (860, 560)
