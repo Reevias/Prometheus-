@@ -1,6 +1,10 @@
 # Changelog
 
 ## Prometheus 3.0, M3 (on the prometheus-v3 branch, not released yet)
+- **A simpler sidebar** (from your laptop check): New chat and Search on top, then Home, Tasks and More (the other
+  pages, same Ctrl+1…0 shortcuts), then your **Projects** (each folds open to its chats, remembered) and **Recents**
+  (one click to any chat; ⋯ to rename, move to a project, pin or delete). A **microphone button** next to Stop all
+  switches voice on or off.
 - **Fixes from your second laptop check (5):** the window's minimise, maximise and fullscreen buttons work (also
   when Prometheus runs in the background) and its edges resize it; your name is kept; deleted chats stay deleted on
   the laptop and the cloud copy; "Waiting for your approval" says what kind is waiting and opens it.

@@ -2,7 +2,14 @@
 
 Every bug found and fixed, newest first, so the count is always exact. Add a line for each new one.
 
-**Total fixed: 142** (as of 20 November 2026)
+**Total fixed: 144** (as of 20 November 2026)
+
+## 20 November 2026, navigation (2)
+
+| # | Bug | Fixed by |
+|---|---|---|
+| 144 | No quick way to switch the microphone off | A mic on/off button next to Stop all |
+| 143 | Opening a chat in a project took 4 clicks; the sidebar showed only page links | Sidebar with Projects and Recents (1-2 clicks); pages under More |
 
 ## 20 November 2026, the owner's second laptop check (5)
 
