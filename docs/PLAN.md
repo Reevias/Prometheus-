@@ -119,7 +119,9 @@ Study (Friday, ideas only): `router/smart_router.py`, `router/llm_router.py`, `t
 `agents/registry.py`, `awareness/live_context.py`.
 Exit gate: routing (each route, classifier timeout → rules), cancel, streaming and registry tests; Windows CI; audit.
 
-## M4 Repository-to-skill — Not started · 7 steps
+## M4 Repository-to-skill — Planned · 8 steps (detailed plan with who builds what: `docs/m4/M4_PLAN.md`)
+Owner, 20 Nov: skills are a guide plus sandboxed scripts kept in a **GitHub skills library and loaded only when
+needed**; public and own repos equally; candidates wait in Abilities → Candidates. Running whole repos is M6.
 - **M4.1** Read repos safely without running them; map files, stack and dependencies (builds on M1's file tools).
 - **M4.2** Tree-Sitter code maps (functions, classes, imports) and symbol search in `read_file_window`; map how the
   owner's large, linked repos connect.
