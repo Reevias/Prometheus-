@@ -1131,3 +1131,19 @@ html[data-motion="reduced"] *, html[data-motion="reduced"] *::before { animation
   .nav-more-menu a { justify-content: flex-start !important; padding: 8px 12px !important; }
 }
 .mic-toggle.failed { color: var(--bad); }
+
+/* ---- merged pages share one tab bar (20 Nov) -------------------------------------------------------------------- */
+.page-tabs { display: flex; gap: 4px; margin: 0 0 18px; border-bottom: 1px solid rgb(var(--text-rgb) / 0.08);
+             overflow-x: auto; scrollbar-width: none; }
+.page-tabs::-webkit-scrollbar { display: none; }
+.page-tabs a { padding: 10px 16px; color: var(--muted); text-decoration: none; font-size: 17px; white-space: nowrap;
+               border-bottom: 2px solid transparent; margin-bottom: -1px; display: flex; align-items: center; gap: 8px; }
+.page-tabs a:hover { color: var(--text); }
+.page-tabs a.on { color: var(--text); border-bottom-color: var(--orange); }
+.page-tabs .count { min-width: 20px; text-align: center; font-size: 12px; border-radius: 999px; padding: 1px 7px;
+                    background: var(--orange); color: var(--base); }
+.page-sub { font-size: 20px; font-weight: 500; margin: 0 0 14px; display: flex; gap: 12px; align-items: baseline; }
+.nav-hidden { display: none !important; }
+.nav-row > a { min-width: 0; }
+.nav-row > a span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+@media (max-width: 700px) { .page-tabs a { font-size: 15px; padding: 10px 12px; } }

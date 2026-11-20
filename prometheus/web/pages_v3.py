@@ -7,7 +7,7 @@ import time
 from fastapi import FastAPI, Request, UploadFile
 
 from prometheus.web.download import attachment
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 
 # What the owner sees for each stored task status. "new" is a request that hasn't started its first step yet.
 STATUS_GROUPS = {
@@ -1179,9 +1179,18 @@ def register_research_pages(app: FastAPI, services, shell) -> None:
             out.append({**dict(r), "sources": n})
         return out
 
+    @app.get("/v3/abilities")
+    def abilities_page():
+        return RedirectResponse("/v3/agents", status_code=303)      # Agents + Skills share a tab bar (20 Nov)
+
+    @app.get("/v3/study")
+    def study_page():
+        return RedirectResponse("/v3/research?mode=study", status_code=303)
+
     @app.get("/v3/research")
-    def research_page(request: Request, mode: str = "research", q: str = ""):
-        mode = mode if mode in RESEARCH_MODES else "research"
+    def research_page(request: Request, mode: str = "study", q: str = ""):
+        # Study & Money (20 Nov): Study by default; mode=research is "Research sources" in Settings → Memory
+        mode = mode if mode in RESEARCH_MODES else "study"
         cid = chat_for(mode)
         recent = [m for m in store.messages(cid) if m.role in ("user", "assistant")][-4:]
         ctx: dict = {"mode": mode, "modes": RESEARCH_MODES, "m": RESEARCH_MODES[mode], "chat_id": cid,
@@ -1194,7 +1203,7 @@ def register_research_pages(app: FastAPI, services, shell) -> None:
             ctx.update(study_view())
         else:
             ctx.update(money_view())
-        return shell(request, "v3/research.html", "research", **ctx)
+        return shell(request, "v3/research.html", "memory" if mode == "research" else "research", **ctx)
 
     def study_view() -> dict:
         import time as _t

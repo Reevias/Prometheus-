@@ -1,3 +1,4 @@
+{% from "v3/tabs.html" import page_tabs %}
 {% extends "v3/layout.html" %}
 {% from "v3/icons.html" import icon %}
 {% block title %}Agents · Prometheus{% endblock %}
@@ -8,7 +9,8 @@
 {% block content %}
 <section class="page agents-page{{ ' with-detail' if chosen }}">
   <div class="agents-main">
-    <h1>Agents</h1>
+    {{ page_tabs("abilities", "agents") }}
+  <h1 class="sr">Agents</h1>
     <p class="muted lead">Prometheus picks the right agent for each request by itself. To choose one yourself, start a
       message with <code>@</code> and its name, for example <code>@research solar panels</code>.</p>
     {% if running %}

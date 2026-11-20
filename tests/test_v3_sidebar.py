@@ -102,10 +102,8 @@ def test_the_sidebar_keeps_every_page_and_shortcut_and_loads_the_lists(app_clien
     page = client.get("/").text
     side = page.split('id="sidebar"', 1)[1].split("</aside>", 1)[0]
     keys = {int(k): h for h, k in re.findall(r'href="([^"]+)"[^>]*data-key="(\d+)"', side)}
-    assert [keys[i] for i in range(1, 11)] == ["/", "/v3/agents", "/v3/chats", "/v3/projects", "/v3/skills",
-                                               "/v3/tasks", "/v3/memory", "/v3/automations", "/v3/system",
-                                               "/v3/research"]          # Ctrl+1…Ctrl+0 open the same pages
-    for control in ('id="side-new-chat"', 'id="side-search"', 'id="nav-more-btn"'):
+    assert keys == {1: "/", 2: "/v3/tasks", 3: "/v3/agents", 4: "/v3/research?mode=study"}   # four pages (20 Nov)
+    for control in ('id="side-new-chat"', 'id="side-search"'):
         assert control in side
     assert 'hx-get="/api/v3/sidebar' in side and "visibilityState" in side
 
@@ -167,8 +165,21 @@ def test_voice_ready_means_models_and_packages_are_there(app_client, monkeypatch
     v = services.voice
     monkeypatch.setattr(v.models, "missing", lambda: [])
     monkeypatch.setattr(v.models, "packages_missing", lambda: [])
-    v._ready_at = 0
+    v._ready_at = None
     assert v.ready() is True
     monkeypatch.setattr(v.models, "missing", lambda: ["voice (Kokoro, 120 MB)"])
-    v._ready_at = 0
+    v._ready_at = None
     assert v.ready() is False
+
+
+def test_voice_ready_works_right_after_the_computer_starts(app_client, monkeypatch):
+    """GitHub run: in the first minute after boot (the monotonic clock is small), ready() crashed every page."""
+    import time as _time
+
+    from prometheus.voice.service import VoiceService
+
+    _, services = app_client()
+    fresh = VoiceService(services, services.voice.models.root if hasattr(services.voice.models, "root") else
+                         services.home / "voice")
+    monkeypatch.setattr(_time, "monotonic", lambda: 5.0)
+    assert fresh.ready() in (True, False)

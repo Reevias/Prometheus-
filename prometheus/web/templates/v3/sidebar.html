@@ -4,19 +4,23 @@
    your name and in your menu. #}
 {% set items = [
   ("home", "Home", "/"),
-  ("agents", "Agents", "/v3/agents"),
-  ("chats", "Chats", "/v3/chats"),
-  ("projects", "Projects", "/v3/projects"),
-  ("skills", "Skills", "/v3/skills"),
   ("tasks", "Tasks", "/v3/tasks"),
-  ("memory", "Memory", "/v3/memory"),
-  ("automations", "Automations", "/v3/automations"),
-  ("system", "System", "/v3/system"),
-  ("research", "Research", "/v3/research"),
+  ("abilities", "Abilities", "/v3/agents"),
+  ("study", "Study & Money", "/v3/research?mode=study"),
 ] %}
-{% set shown = ("home", "tasks") %}
+{# every other page: not shown, but found by Ctrl+K (the palette reads #nav) #}
+{% set also = [
+  ("chats", "All chats", "/v3/chats"), ("projects", "Projects", "/v3/projects"),
+  ("skills", "Skills", "/v3/skills"), ("tasks", "Waiting for you (approvals)", "/v3/approvals"),
+  ("automations", "Scheduled (automations)", "/v3/automations"), ("memory", "Memory", "/v3/memory"),
+  ("system", "System", "/v3/system"), ("research", "Research sources", "/v3/research?mode=research"),
+  ("integrations", "Connections", "/settings#connections"),
+] %}
+{% set group_of = {"agents": "abilities", "skills": "abilities", "approvals": "tasks", "automations": "tasks",
+                    "research": "study", "memory": "settings", "system": "settings", "connections": "settings"} %}
+{% set lit = group_of.get(active, active) %}
 {% macro nav_link(key, label, href, n) -%}
-<a href="{{ href }}" class="{{ 'on' if active == key }}" data-key="{{ n }}" {% if active == key %}aria-current="page"{% endif %}
+<a href="{{ href }}" class="{{ 'on' if lit == key }}" data-key="{{ n }}" {% if lit == key %}aria-current="page"{% endif %}
    title="{{ label }}{% if n <= 10 %} (Ctrl+{{ n % 10 }}){% endif %}">{{ icon(key) }}<span>{{ label }}</span></a>
 {%- endmacro %}
 <aside class="sidebar" id="sidebar" aria-label="Main menu">
@@ -31,13 +35,9 @@
   </div>
   <nav class="nav" id="nav">
     <div class="nav-row">
-      {% for key, label, href in items %}{% if key in shown %}{{ nav_link(key, label, href, loop.index) }}{% endif %}{% endfor %}
-      <button type="button" class="nav-more-btn{{ ' on' if active not in shown and active in items|map(attribute=0)|list }}" id="nav-more-btn"
-              aria-haspopup="menu" aria-expanded="false" aria-controls="nav-more" title="More pages">{{ icon("grid") }}<span>More</span></button>
+      {% for key, label, href in items %}{{ nav_link(key, label, href, loop.index) }}{% endfor %}
     </div>
-    <div class="menu nav-more-menu" id="nav-more" role="menu" hidden>
-      {% for key, label, href in items %}{% if key not in shown %}{{ nav_link(key, label, href, loop.index) }}{% endif %}{% endfor %}
-    </div>
+    {% for key, label, href in also %}<a href="{{ href }}" class="nav-hidden" hidden tabindex="-1">{{ icon(key) }}<span>{{ label }}</span></a>{% endfor %}
   </nav>
   <div class="side-lists" id="side-lists" hx-get="/api/v3/sidebar?chat={{ chat_id if chat_id is defined and chat_id else 0 }}"
        hx-trigger="load, sidebar-refresh from:body, every 30s [document.visibilityState === 'visible']" hx-swap="innerHTML"></div>
@@ -67,7 +67,7 @@
         <span class="avatar" aria-hidden="true">{{ (owner[:1] or "P") | upper }}{% if pending %}<i class="avatar-badge" title="{{ pending }} approval{{ 's' if pending != 1 }} waiting"></i>{% endif %}</span>
         <span class="profile-name{{ ' unnamed' if not owner }}">{{ owner or "Add your name" }}</span>
       </button>
-      <a class="icon-btn {{ 'on' if active == 'settings' }}" href="/settings" title="Settings (Ctrl+,)" aria-label="Settings">{{ icon("settings") }}</a>
+      <a class="icon-btn {{ 'on' if lit == 'settings' }}" href="/settings" title="Settings (Ctrl+,)" aria-label="Settings">{{ icon("settings") }}</a>
     </div>
   </div>
 </aside>

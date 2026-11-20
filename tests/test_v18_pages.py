@@ -37,7 +37,7 @@ def test_menu_lists_every_page(app_client):
     client, services = app_client()
     login(client)
     html = client.get("/settings").text                       # the new screen: 9 sidebar links + your menu
-    for href in ("/v3/research", "/v3/automations", "/v3/approvals", "/v3/memory", "/settings#ai", "/phone", "/v3/system",
+    for href in ("/v3/research?mode=study", "/v3/automations", "/v3/approvals", "/v3/memory", "/settings#ai", "/phone", "/v3/system",
                  "/v3/skills", "/v3/tasks", "/v3/agents"):
         assert f'href="{href}"' in html, href
     old = client.get("/settings?view=classic", follow_redirects=False)   # the classic drawer is gone: v3 only

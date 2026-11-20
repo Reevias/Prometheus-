@@ -1,10 +1,12 @@
+{% from "v3/tabs.html" import page_tabs %}
 {% extends "v3/layout.html" %}
 {% from "v3/icons.html" import icon %}
 {% block title %}System · Prometheus{% endblock %}
 {% block topbar %}<b>System</b>{% endblock %}
 {% block content %}
 <section class="page system-page">
-  <h1>System</h1>
+  {{ page_tabs("settings", "system") }}
+  <h1 class="sr">System</h1>
   <p class="muted lead">How this laptop and Prometheus are doing, right now, and everything Prometheus did (with undo).</p>
   <div class="tabs" role="tablist">
     <a role="tab" href="/v3/system" class="{{ 'on' if tab == 'overview' }}">Overview</a>
