@@ -17,7 +17,7 @@ SESSION_COOKIE = "prom_session"
 CSRF_COOKIE = "csrf_token"
 OPEN_PATHS = ("/login", "/healthz", "/google/callback", "/manifest.webmanifest", "/sw.js")
 MANIFEST = {"name": "Prometheus", "short_name": "Prometheus", "start_url": "/", "scope": "/", "display": "standalone",
-            "background_color": "#0e0f11", "theme_color": "#0e0f11", "description": "Your own AI assistant",
+            "background_color": "#0B0B10", "theme_color": "#0B0B10", "description": "Your own AI assistant",
             "icons": [{"src": "/static/icon-192.png", "sizes": "192x192", "type": "image/png"},
                       {"src": "/static/icon-512.png", "sizes": "512x512", "type": "image/png"},
                       {"src": "/static/icon-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}]}
@@ -25,16 +25,21 @@ APP_ID = "prometheus"
 
 
 def _login_page(message: str = "") -> str:
-    note = f'<p class="error">{html.escape(message)}</p>' if message else ""
+    """The login screen in the v3 look: the orbital sphere above a small card (colours from tokens.css)."""
+    note = f'<p class="login-error" role="alert">{html.escape(message)}</p>' if message else ""
     return ("<!doctype html><html lang='en'><head><meta charset='utf-8'>"
-            "<meta name='viewport' content='width=device-width, initial-scale=1'><title>Prometheus</title><link rel='icon' type='image/png' href='/static/favicon.png'><link rel='manifest' href='/manifest.webmanifest'><meta name='theme-color' content='#0e0f11'><link rel='apple-touch-icon' href='/static/icon-192.png'>"
-            "<script>try{var t=localStorage.getItem('prom-theme');if(t)document.documentElement.dataset.theme=t}catch(e){}</script>"
-            "<link rel='stylesheet' href='/static/style.css'></head><body class='login'>"
-            "<canvas class='orb orb-login' data-orb data-state='idle' aria-hidden='true'></canvas>"
-            "<form method='post' action='/login'><h1>Prometheus</h1>" + note +
-            "<label>Password <input type='password' name='password' autofocus required></label>"
-            "<button type='submit'>Log in</button></form>"
-            "<script src='/static/orb.js'></script></body></html>")
+            "<meta name='viewport' content='width=device-width, initial-scale=1'><title>Prometheus</title>"
+            "<link rel='icon' type='image/png' href='/static/favicon.png'><link rel='manifest' href='/manifest.webmanifest'>"
+            "<meta name='theme-color' content='#0B0B10'><link rel='apple-touch-icon' href='/static/icon-192.png'>"
+            "<link rel='stylesheet' href='/static/v3/tokens.css'><link rel='stylesheet' href='/static/v3/theme.css'>"
+            "<script src='/static/v3/sphere.js' defer></script></head>"
+            "<body class='login-page'><main class='login'>"
+            "<canvas class='login-sphere' data-sphere='hero' aria-hidden='true'></canvas>"
+            "<form class='login-card' method='post' action='/login'>"
+            "<h1>Prometheus</h1><p class='muted'>Your own AI assistant</p>" + note +
+            "<label for='password'>Password</label>"
+            "<input id='password' type='password' name='password' autocomplete='current-password' autofocus required>"
+            "<button type='submit'>Log in</button></form></main></body></html>")
 
 
 def describe_hook(github_event: str, data: dict) -> tuple[str, str]:

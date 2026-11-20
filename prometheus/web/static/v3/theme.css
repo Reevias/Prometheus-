@@ -976,3 +976,32 @@ html[data-motion="reduced"] *, html[data-motion="reduced"] *::before { animation
 
 /* the answer as it is being written (M3.5) */
 .live-answer { white-space: pre-wrap; margin: 8px 0 4px; line-height: 1.55; color: var(--text); }
+
+/* ---- login (no sidebar: the sphere above a small card) ----------------------------------------------------- */
+.login-page { overflow: auto; }
+.login {
+  min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  padding: 24px 16px;
+  background: radial-gradient(ellipse 70% 55% at 50% 38%, rgb(var(--orange-rgb) / calc(0.07 * var(--glow))), transparent 70%), var(--base);
+}
+.login-sphere { width: min(46vh, 380px, 80vw); height: min(38vh, 320px, 66vw); flex: none; }
+.login-card {
+  width: min(360px, 100%); display: flex; flex-direction: column; gap: 10px; padding: 24px;
+  background: rgb(var(--surface-rgb) / 0.85); border: 1px solid rgb(var(--orange-rgb) / 0.22); border-radius: var(--r-lg);
+  box-shadow: 0 18px 50px rgb(var(--shadow-rgb) / 0.45);
+}
+.login-card h1 { margin: 0; font-family: var(--font-display); font-weight: 400; font-size: 30px; text-align: center; }
+.login-card > .muted { margin: 0 0 8px; text-align: center; }
+.login-card label { color: var(--muted); font-size: 13px; }
+.login-card input {
+  padding: 10px 12px; border-radius: var(--r-md); border: 1px solid rgb(var(--text-rgb) / 0.14);
+  background: var(--raised); color: var(--text);
+}
+.login-card input:focus { border-color: var(--orange); outline: none; }
+.login-card button {
+  margin-top: 6px; padding: 10px 14px; border: 0; border-radius: var(--r-md);
+  background: var(--orange); color: var(--base); font-weight: 600;
+}
+.login-card button:hover { background: var(--amber); }
+.login-error { margin: 0; padding: 8px 10px; border-radius: var(--r-md); color: var(--bad);
+               background: rgb(var(--bad-rgb) / 0.1); border: 1px solid rgb(var(--bad-rgb) / 0.4); }

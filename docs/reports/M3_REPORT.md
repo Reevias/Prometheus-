@@ -82,6 +82,8 @@ agree with ours, but these points in it are wrong, so don't quote them:
 - "Milestone approval: cleared" is the owner's decision, not an auditor's.
 Whether its Windows 11 run was on the owner's own laptop isn't recorded, so the laptop check stays "not yet".
 
+Also found in the check of `main`: the login page was still the old 2.x screen. It now has the v3 look (bug log 126).
+
 **Known risk kept:** free providers are now asked for token counts (`stream_options`); one that refuses it falls back to
 a normal answer, or, with billing switched on, fails over to the next AI.
 

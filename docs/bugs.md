@@ -2,12 +2,13 @@
 
 Every bug found and fixed, newest first, so the count is always exact. Add a line for each new one.
 
-**Total fixed: 125** (as of 20 November 2026)
+**Total fixed: 126** (as of 20 November 2026)
 
-## 20 November 2026, M3 exit check (D6) (3)
+## 20 November 2026, M3 exit check (D6) (4)
 
 | # | Bug | Fixed by |
 |---|---|---|
+| 126 | The login page was still the old 2.x screen (M2 said the old screens were gone) | Login in the v3 look with the orbital sphere; old `style.css` and `orb.js` deleted |
 | 125 | An older update request stayed on the Approvals page next to a newer one and could only fail | Newer commits close the older request |
 | 124 | Scripts in the Windows venv sandbox couldn't use packages that need a `.pth` file (pywin32...) | The guard reads the venv's `.pth` files after its rules are on |
 | 123 | An approved update that added a package only pulled the code, so the automatic restart could start without it | After the yes it installs the packages; if that fails the old code goes back and nothing restarts |
