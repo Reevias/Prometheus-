@@ -252,12 +252,14 @@ def test_phone_width_fits(live, browser):
         page.evaluate("() => { var c = document.querySelector('#model-chip'); if (!c) { document.querySelector('#send')"
                       ".insertAdjacentHTML('beforebegin', '<select class=\"model-chip\" id=\"model-chip\"></select>');"
                       " c = document.querySelector('#model-chip'); } c.add(new Option('Gemini 2.5 Flash (Google, free)')); }")
-        tops = page.evaluate("() => ['#plus', '#model-chip', '#mic', '#send'].map(s => document.querySelector(s))"
+        tops = page.evaluate("() => ['#plus', '#research-toggle', '#model-chip', '#mic', '#send'].map(s => document.querySelector(s))"
                              ".filter(Boolean).map(e => Math.round(e.getBoundingClientRect().top))")
         assert max(tops) - min(tops) < 12, (path, tops)        # one row (the chip is shorter, so it sits a little lower)
         assert page.evaluate("() => document.documentElement.scrollWidth <= innerWidth + 1"), path
         assert not page.is_visible(".rpanel")
-    for path in ("/v3/tasks", "/v3/system?tab=devices", "/v3/projects", "/v3/automations", "/v3/research"):
+    for path in ("/v3/tasks", "/v3/system?tab=devices", "/v3/projects", "/v3/automations", "/v3/research",
+                 "/v3/approvals", "/v3/agents", "/v3/skills", "/v3/research?mode=money", "/v3/memory", "/v3/system",
+                 "/settings#general", "/settings#ai", "/settings#voice", "/settings#connections", "/settings#advanced"):
         page.goto(base + path)
         assert page.evaluate("() => document.documentElement.scrollWidth <= innerWidth + 1"), path
     page.goto(base + "/")
@@ -451,15 +453,15 @@ def test_a_project_chat_is_two_clicks_and_the_fold_is_remembered(live, browser):
     page.wait_for_url(base + href)
 
 
-def test_more_lists_every_other_page(live, browser):
+def test_ctrl_k_still_finds_every_other_page(live, browser):
+    """Fewer pages (20 Nov): the sidebar shows four; Memory, System, Skills... are found by Search (Ctrl+K)."""
     page, base, _ = _signed_in(live, browser)
-    page.click("#nav-more-btn")
-    labels = [t.strip() for t in page.locator("#nav-more a:visible").all_inner_texts()]
-    for name in ("Agents", "Chats", "Projects", "Skills", "Memory", "Automations", "System", "Research"):
-        assert any(name in l for l in labels), (name, labels)
-    page.click("#nav-more a[href='/v3/skills']")
-    page.wait_for_url(base + "/v3/skills")
-
+    page.click("#side-search")
+    page.fill("#palette-input", "Memory")
+    page.wait_for_timeout(200)
+    assert "Memory" in page.inner_text("#palette-list")
+    page.keyboard.press("Enter")
+    page.wait_for_url(base + "/v3/memory")
 
 def test_rename_and_delete_from_the_chat_menu(live, browser):
     page, base, chat = _signed_in(live, browser)
@@ -488,23 +490,18 @@ def test_shrunk_sidebar_shows_icons_only(live, browser):
 
 
 
-def test_more_menu_sits_by_the_sidebar_in_both_widths(live, browser):
-    """Review: the More menu spread over the whole window (and to the far right in the shrunk menu)."""
+def test_the_four_pages_fit_in_the_sidebar_in_both_widths(live, browser):
+    """The sidebar row (Home, Tasks, Abilities, Study & Money) stays inside the sidebar, also shrunk."""
     page, _, _ = _signed_in(live, browser)
-    side = page.locator("#sidebar").bounding_box()
-    page.click("#nav-more-btn")
-    box = page.locator("#nav-more").bounding_box()
-    assert box["x"] >= side["x"] and box["x"] + box["width"] <= side["x"] + side["width"] + 4, (box, side)
-    page.keyboard.press("Escape")
-    page.keyboard.press("Control+b")
-    page.wait_for_timeout(300)
-    side = page.locator("#sidebar").bounding_box()
-    page.click("#nav-more-btn")
-    box = page.locator("#nav-more").bounding_box()
-    assert side["x"] + side["width"] - 4 <= box["x"] <= side["x"] + side["width"] + 20, (box, side)
-    assert page.evaluate("window.scrollX") == 0 and page.evaluate("document.scrollingElement.scrollLeft") == 0
-    assert "Skills" in page.inner_text("#nav-more")                       # labels, not bare icons
-
+    for shrink in (False, True):
+        if shrink:
+            page.keyboard.press("Control+b")
+            page.wait_for_timeout(300)
+        side = page.locator("#sidebar").bounding_box()
+        for link in page.locator(".nav-row > a").all():
+            b = link.bounding_box()
+            assert b["x"] >= side["x"] and b["x"] + b["width"] <= side["x"] + side["width"] + 1
+        assert page.evaluate("document.scrollingElement.scrollLeft") == 0
 
 def test_search_works_from_the_phone_drawer(live, browser):
     """Review: on a phone, Search opened the palette under the drawer, so nothing seemed to happen."""
@@ -525,7 +522,7 @@ def test_a_narrow_window_shows_a_tidy_icon_sidebar(live, browser):
     assert not page.locator("#side-lists").is_visible()
     assert not page.locator("#side-search span").is_visible() and not page.locator("#side-search kbd").is_visible()
     side = page.locator("#sidebar").bounding_box()
-    for sel in ("#side-new-chat", "#side-search", "#nav-more-btn"):
+    for sel in ("#side-new-chat", "#side-search", ".nav-row > a >> nth=3"):
         b = page.locator(sel).bounding_box()
         assert b["x"] + b["width"] <= side["x"] + side["width"] + 1, sel
 

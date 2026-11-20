@@ -2,7 +2,7 @@
 {% extends "v3/layout.html" %}
 {% from "v3/icons.html" import icon %}
 {% block title %}{{ m.label }} · Prometheus{% endblock %}
-{% block topbar %}<b>Research</b>{% endblock %}
+{% block topbar %}<b>{{ 'Settings' if mode == 'research' else 'Study & Money' }}</b>{% endblock %}
 {% block content %}
 <section class="page research-page" data-mode="{{ mode }}">
   {% if mode == "research" %}{{ page_tabs("settings", "memory") }}

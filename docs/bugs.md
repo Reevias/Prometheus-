@@ -2,7 +2,17 @@
 
 Every bug found and fixed, newest first, so the count is always exact. Add a line for each new one.
 
-**Total fixed: 144** (as of 20 November 2026)
+**Total fixed: 149** (as of 20 November 2026)
+
+## 20 November 2026, fewer pages (5)
+
+| # | Bug | Fixed by |
+|---|---|---|
+| 149 | The voice check crashed every page in the first minute after the computer started | Always checks the first time |
+| 148 | With the side panel closed the chat stayed a narrow column | It grows to about 1200 px |
+| 147 | Settings was one long page: scrolling the Voice settings ran into every other setting | Tabs that show only their own settings; cards laid out as rows |
+| 146 | Ten pages plus Approvals and Connections: too many places to look | Four pages (Home, Tasks, Abilities, Study & Money); the rest share tab bars or live in Settings |
+| 145 | The mic button's colours didn't say whether it was listening | Green when on, red when off or stopped |
 
 ## 20 November 2026, navigation (2)
 

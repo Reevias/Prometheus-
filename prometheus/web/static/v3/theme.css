@@ -1180,3 +1180,9 @@ html[data-motion="reduced"] *, html[data-motion="reduced"] *::before { animation
 /* the chat uses the width when the side panel is closed (owner, 20 Nov) */
 .app.no-panel .chat .messages { width: min(1200px, 100%); }
 .app.no-panel .chat .command { width: min(1160px, 100%); }
+
+/* phones: page tabs stay on one line and scroll sideways; Stop all never breaks onto two lines */
+.tabs { overflow-x: auto; scrollbar-width: none; }
+.tabs::-webkit-scrollbar { display: none; }
+.tabs a[role=tab] { white-space: nowrap; }
+.stopall { white-space: nowrap; }

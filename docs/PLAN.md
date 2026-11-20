@@ -17,7 +17,7 @@ already written down elsewhere in the repo, missing from the old roadmap.
 |---|---|---|
 | M0 Baseline | 5 | Done (on main) |
 | M1 Tool primitives | 5 | Done (on main) |
-| M2 Desktop interface | 5 | Done, merged into main; sidebar reworked after the laptop check (20 Nov: projects and recents first, pages under More) |
+| M2 Desktop interface | 5 | Done, merged into main; sidebar reworked after the laptop check (20 Nov: projects and recents first; four pages, the rest in tab bars and Settings tabs) |
 | M3 Orchestration and model routing | 6 | Done, merged into main 20 Nov (laptop check to come) |
 | M4 Repository-to-skill | 7 | Not started |
 | M5 Many agents | 6 | Not started |
