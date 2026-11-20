@@ -151,6 +151,13 @@ class SearchHit:
     snippet: str
 
 
+
+def chat_uid_for(title: str, created: float) -> str:
+    """The id an older chat (from before ids existed) gets: the same on the laptop and the cloud copy."""
+    import hashlib
+
+    return "k" + hashlib.sha256(f"{title}|{round(float(created or 0), 3)}".encode()).hexdigest()[:24]
+
 class Store:
     def __init__(self, path: Path):
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -177,6 +184,12 @@ class Store:
                 self._db.execute("ALTER TABLE approvals ADD COLUMN inline INTEGER NOT NULL DEFAULT 0")
             if "named_by" not in {r["name"] for r in self._db.execute("PRAGMA table_info(chats)")}:
                 self._db.execute("ALTER TABLE chats ADD COLUMN named_by TEXT NOT NULL DEFAULT 'auto'")
+            if "uid" not in {r["name"] for r in self._db.execute("PRAGMA table_info(chats)")}:
+                # a permanent id for syncing (a rename keeps it). Older chats get one made from their first name and
+                # start time, so the laptop and the cloud copy give an already-synced chat the same id.
+                self._db.execute("ALTER TABLE chats ADD COLUMN uid TEXT NOT NULL DEFAULT ''")
+                for r in self._db.execute("SELECT id, title, created FROM chats").fetchall():
+                    self._db.execute("UPDATE chats SET uid = ? WHERE id = ?", (chat_uid_for(r[1], r[2]), r[0]))
             if "private" not in {r["name"] for r in self._db.execute("PRAGMA table_info(messages)")}:
                 self._db.execute("ALTER TABLE messages ADD COLUMN private INTEGER NOT NULL DEFAULT 0")
                 # Answers saved before this existed may hold details from personal files: treat them all as private.
@@ -230,7 +243,10 @@ class Store:
 
     # -- chats -----------------------------------------------------------
     def create_chat(self, title: str) -> int:
-        return self._write("INSERT INTO chats (title, created) VALUES (?, ?)", (title, time.time()))
+        import uuid
+
+        return self._write("INSERT INTO chats (title, created, uid) VALUES (?, ?, ?)",
+                           (title, time.time(), uuid.uuid4().hex))
 
     def get_summary(self, chat_id: int) -> tuple[str, int]:
         rows = self._rows("SELECT summary, summary_upto FROM chats WHERE id = ?", (chat_id,))
@@ -405,7 +421,14 @@ class Store:
         return dict(rows[0]) if rows else None
 
     def delete_chat(self, chat_id: int) -> list[str]:
-        """Remove a chat with everything that came from it. Returns the topics it touched."""
+        """Remove a chat with everything that came from it. Returns the topics it touched. Its start time is kept in
+        "deleted_chats", so syncing with the cloud copy deletes it there too instead of bringing it back."""
+        row = self._rows("SELECT uid FROM chats WHERE id = ?", (chat_id,))
+        if row and row[0]["uid"]:
+            gone = [g for g in self.kv_get("deleted_chats", []) or [] if isinstance(g, str)]
+            if row[0]["uid"] not in gone:
+                gone.append(row[0]["uid"])
+            self.kv_set("deleted_chats", gone[-5000:])
         topics = sorted({s["topic"] for s in self.segments(chat_id=chat_id)})
         for doc_id in self.document_keys(f"chat:{chat_id}:").values():
             self.delete_document(doc_id)

@@ -35,3 +35,77 @@ def test_the_name_box_is_part_of_the_page_not_a_browser_popup(app_client):
     assert 'id="name-dialog"' in page and 'name="name"' in page
     js = client.get("/static/v3/app.js").text
     assert 'prompt("What should Prometheus call you?")' not in js
+
+
+# -- "deleted chats still show" ------------------------------------------------------------------------------------------
+
+def _two(tmp_path):
+    from prometheus.memory.store import Store
+
+    return Store(tmp_path / "laptop.db"), Store(tmp_path / "cloud.db")
+
+
+def test_a_chat_deleted_on_one_side_is_deleted_on_the_other_and_never_comes_back(tmp_path):
+    """Bug: the laptop deleted a chat, the next sync with the cloud copy put it back."""
+    from prometheus import sync
+
+    laptop, cloud = _two(tmp_path)
+    keep = laptop.create_chat("Keep me")
+    gone = laptop.create_chat("Delete me")
+    laptop.add_message(gone, "user", "old words")
+    sync.merge(cloud, sync.export(laptop, 0))
+    assert {t for _, t in cloud.chats()} == {"Keep me", "Delete me"}
+    laptop.delete_chat(gone)
+    sync.merge(laptop, sync.export(cloud, 0))                   # the cloud still had it: it must not come back
+    assert {t for _, t in laptop.chats()} == {"Keep me"}
+    sync.merge(cloud, sync.export(laptop, 0))                   # and the cloud learns it was deleted
+    assert {t for _, t in cloud.chats()} == {"Keep me"}
+    assert not cloud._rows("SELECT 1 FROM messages WHERE text = 'old words'")
+    assert keep in dict(laptop.chats())
+
+
+def test_renaming_a_chat_does_not_bring_back_a_copy_under_the_old_name(tmp_path):
+    from prometheus import sync
+
+    laptop, cloud = _two(tmp_path)
+    chat = laptop.create_chat("New chat")
+    sync.merge(cloud, sync.export(laptop, 0))
+    laptop.rename_chat(chat, "Physics homework")
+    sync.merge(laptop, sync.export(cloud, 0))
+    assert [t for _, t in laptop.chats()] == ["Physics homework"]
+
+
+def test_two_chats_started_at_the_same_moment_stay_two(tmp_path):
+    """Windows clocks are coarse: two chats can start in the same millisecond. They are told apart by their id."""
+    from prometheus import sync
+
+    laptop, cloud = _two(tmp_path)
+    a, b = laptop.create_chat("One"), laptop.create_chat("Two")
+    laptop._write("UPDATE chats SET created = 1000.0")
+    laptop.delete_chat(b)
+    sync.merge(cloud, sync.export(laptop, 0))
+    assert [t for _, t in cloud.chats()] == ["One"]
+
+
+def test_chats_from_before_ids_match_on_both_sides(tmp_path):
+    """Older databases get an id made from name and start time, so already-synced chats aren't doubled."""
+    from prometheus.memory.store import chat_uid_for
+
+    assert chat_uid_for("Physics", 1000.0001) == chat_uid_for("Physics", 1000.0)
+    assert chat_uid_for("Physics", 1000.0) != chat_uid_for("Maths", 1000.0)
+
+
+def test_an_existing_database_gets_ids_for_its_old_chats(tmp_path):
+    import sqlite3
+
+    from prometheus.memory.store import Store, chat_uid_for
+
+    db = tmp_path / "old.db"
+    Store(db)                                              # make the tables, then pretend uid never existed
+    con = sqlite3.connect(db)
+    con.execute("ALTER TABLE chats DROP COLUMN uid")
+    con.execute("INSERT INTO chats (title, created) VALUES ('Old chat', 1234.5)")
+    con.commit()
+    con.close()
+    rows = Store(db)._rows("SELECT uid FROM chats")
+    assert [r["uid"] for r in rows] == [chat_uid_for("Old chat", 1234.5)]
