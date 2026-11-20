@@ -614,6 +614,10 @@ class Orchestrator:
                                                          + (f": {d.why}" if d.why else "") + ")")
         if d.route == "ask":
             return self._finish(chat_id, task_id, "done", d.question, "front door")
+        if d.why == "a greeting":                 # instant and friendly: no AI for "hey" or "thanks"
+            from prometheus.orchestrator.front_door import greeting_reply
+
+            return self._finish(chat_id, task_id, "done", greeting_reply(text), "instant")
         if d.route == "simple":
             try:
                 return self._answer_directly(chat_id, task_id, text, history)

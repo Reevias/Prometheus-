@@ -374,3 +374,31 @@ def test_a_second_launch_brings_the_window_forward_and_opens_nothing(tmp_path, m
     assert desktop.run_desktop(SimpleNamespace(port=1), webview=webview, server=SimpleNamespace(start=lambda: 1)) == 0
     assert shown and shown[0].startswith("Prometheus")
     held.close()
+
+
+# -- "hey" took 7 seconds; answers should sound like a person ---------------------------------------------------------
+
+@pytest.mark.parametrize("text, words", [("hey", ("good",)), ("thanks!", ("welcome", "anytime", "happy")),
+                                         ("good night", ("good night",)), ("bye", ("bye", "see you"))])
+def test_greetings_get_an_instant_friendly_reply_without_any_ai(app_client, text, words):
+    _, services = app_client()
+    calls = []
+    services.router.complete = lambda *a, **k: calls.append(a) or (_ for _ in ()).throw(AssertionError("AI called"))
+    services.router.stream = services.router.complete
+    services.orchestrator.front_door = True
+    chat = services.store.create_chat("hi")
+    out = services.orchestrator.run(chat, text)
+    assert calls == [] and out.answer and any(w in out.answer.lower() for w in words), out.answer
+    assert len(out.answer) < 200
+
+
+def test_the_writing_rules_ask_for_a_friendly_human_voice_and_ship_to_old_copies():
+    import hashlib
+    import subprocess
+
+    from prometheus.selfedit.prompts import KNOWN_OLD, PACKAGE_PROMPTS
+
+    style = (PACKAGE_PROMPTS / "style.md").read_text(encoding="utf-8")
+    assert "friendly" in style.lower() and "Never open with praise" not in style
+    old = subprocess.run(["git", "show", "c80dae0:prometheus/prompts/style.md"], capture_output=True).stdout
+    assert hashlib.sha256(old).hexdigest() in KNOWN_OLD["style"]       # laptops with the old rules get the new ones

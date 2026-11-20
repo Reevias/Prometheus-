@@ -52,6 +52,31 @@ CHAIN = re.compile(r"\b(and then|then|after that|afterwards|step by step|first\b
                    r"research .* and|plan (my|a|the)|for each|every one of)\b", re.I)
 
 
+def greeting_reply(text: str, hour: int | None = None) -> str:
+    """A friendly reply to a greeting, at once and without any AI (a plain "hey" used to take 7 seconds)."""
+    import random
+    import time as _time
+
+    t = " ".join((text or "").lower().split()).strip(" !.?")
+    hour = _time.localtime().tm_hour if hour is None else hour
+    if t.startswith(("thank", "thx")):
+        return random.choice(["You're welcome!", "Anytime!", "Happy to help!"])
+    if t in ("bye", "byee", "goodbye"):
+        return random.choice(["Bye! I'm here whenever you need me.", "See you later!"])
+    if t == "good night":
+        return "Good night! Sleep well."
+    if t in ("good job", "well done", "nice", "great", "cool"):
+        return random.choice(["Thanks! Glad that helped.", "Glad it worked! Anything else?"])
+    if t in ("ok", "okay"):
+        return "Okay! Just tell me if you need anything else."
+    part = "morning" if 5 <= hour < 12 else "afternoon" if 12 <= hour < 17 else "evening"
+    if t.startswith("good "):
+        return f"Good {part}! What can I help you with?"
+    return random.choice([f"Hey! Good {part}. What can I help you with?",
+                          f"Hi there! Good {part}. What's on your mind?",
+                          f"Hello! Good {part}. How can I help today?"])
+
+
 @dataclass(frozen=True)
 class Decision:
     route: str
