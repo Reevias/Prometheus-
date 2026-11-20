@@ -106,3 +106,19 @@ def test_connections_page_is_now_a_settings_tab(app_client):
     page = client.get("/settings").text
     status = page.split('id="connection-status"', 1)[1].split("</section>", 1)[0]
     assert "conn-card" in status or "Nothing is connected" in status
+
+
+def test_research_sources_are_linked_from_memory(app_client):
+    """Review: Research sources could only be found with Ctrl+K."""
+    client, _ = app_client()
+    login(client)
+    tabs = client.get("/v3/memory").text.split('<div class="tabs" role="tablist">', 1)[1].split("</div>", 1)[0]
+    assert 'href="/v3/research?mode=research"' in tabs and "Research sources" in tabs
+
+
+def test_a_message_queued_while_busy_also_gets_research():
+    """Review: the queue (Enter while a reply runs) stored the raw text, so the Research button skipped it."""
+    from pathlib import Path
+
+    js = (Path(__file__).resolve().parent.parent / "prometheus/web/static/v3/app.js").read_text()
+    assert "queued = { text: withResearch(input.value)" in js

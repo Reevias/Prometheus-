@@ -17,10 +17,11 @@
   }
   // one tab at a time (20 Nov): the address picks the tab, either by name (#voice) or by a section in it
   var PROM_TABS = ["general", "ai", "voice", "connections", "advanced"];   // var: the script can run twice
-  function promTab() {
+  function promTab(keepPlace) {
     const want = decodeURIComponent((location.hash || "").slice(1));
     const sec = want && document.getElementById(want);
-    const tab = PROM_TABS.includes(want) ? want : (sec && sec.dataset.tab) || "general";
+    const box = sec && sec.closest("section.set");
+    const tab = PROM_TABS.includes(want) ? want : (box && box.dataset.tab) || "general";
     document.querySelectorAll("section.set").forEach((s) => { s.hidden = s.dataset.tab !== tab; });
     document.querySelectorAll(".set-nav a[data-tab]").forEach((a) => { a.hidden = a.dataset.tab !== tab; });
     document.querySelectorAll('.page-tabs[data-group="settings"] a').forEach((a) => {
@@ -36,6 +37,7 @@
       var main = document.getElementById("main"); if (main) main.scrollTop = 0; window.scrollTo(0, 0);
       document.querySelectorAll(".set-body, .v3set").forEach(function (el) { el.scrollTop = 0; });
     }
+    if (keepPlace === true) return;               // after a save: stay where the owner was
     setTimeout(place, 0);
     if (document.readyState !== "complete") window.addEventListener("load", function () { setTimeout(place, 0); }, { once: true });
   }

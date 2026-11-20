@@ -1186,3 +1186,6 @@ html[data-motion="reduced"] *, html[data-motion="reduced"] *::before { animation
 .tabs::-webkit-scrollbar { display: none; }
 .tabs a[role=tab] { white-space: nowrap; }
 .stopall { white-space: nowrap; }
+
+/* Settings tabs: wrap onto a second line on laptops so Memory, System and Advanced are never cut off (review) */
+@media (min-width: 701px) { .v3set .page-tabs { flex-wrap: wrap; overflow: visible; row-gap: 0; } }

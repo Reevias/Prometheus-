@@ -206,7 +206,7 @@
       if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
         e.preventDefault();
         if (busy && (input.value.trim() || files.length)) {         // queue it: sent when the reply finishes
-          queued = { text: input.value, files: files.slice() };
+          queued = { text: withResearch(input.value), files: files.slice() };
           $("#queued").textContent = "Queued: sends when this reply finishes"; $("#queued").hidden = false;
           input.value = ""; files = []; renderFiles(); grow(); sendState(); return;
         }
@@ -659,7 +659,7 @@
     e.detail.shouldSwap = false;
     area.replaceWith(fresh);
     if (window.htmx) htmx.process(fresh);
-    if (document.body.classList.contains("show-adv") && window.promAdvanced) promAdvanced(true);
+    if (window.promTab) promTab(true);             // the same tab stays open after a save (review, 20 Nov)
     var msg = fresh.querySelector(".set-msg"); if (msg) toast(msg.textContent, msg.classList.contains("error"));
   });
   var look = $("#appearance-form");

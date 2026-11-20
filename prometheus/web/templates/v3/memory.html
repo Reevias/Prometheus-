@@ -13,6 +13,7 @@
     {% for key, label in [("memories", "Memories and facts"), ("files", "Files and pages"), ("answers", "How it answers"), ("topics", "Topics"), ("privacy", "Privacy")] %}
     <a role="tab" href="/v3/memory?tab={{ key }}" class="{{ 'on' if tab == key }}">{{ label }}</a>
     {% endfor %}
+    <a role="tab" href="/v3/research?mode=research">Research sources</a>
   </div>
 
 {% if tab == "memories" %}

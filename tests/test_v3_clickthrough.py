@@ -580,3 +580,38 @@ def test_the_chat_uses_the_width_when_the_panel_is_closed(live, browser):
     page.wait_for_timeout(200)
     assert page.locator("#messages").bounding_box()["width"] >= 1150
     assert page.locator("#command").bounding_box()["width"] >= 1100
+
+
+ADVANCED = {"assignments", "study-coach", "clipboard-and-screenshot-memory", "money-tracker", "search-inside-files",
+            "watchers", "always-allowed", "places-prometheus-may-use"}
+
+
+def test_a_save_in_settings_keeps_its_tab(live, browser):
+    """Review: after saving a Settings form every tab's sections showed at once."""
+    page, base, _ = _signed_in(live, browser)
+    page.goto(base + "/settings#advanced")
+    page.wait_for_timeout(300)
+    page.locator("#money-tracker form button[type=submit]").first.click()
+    page.wait_for_timeout(1000)
+    assert set(_visible_sections(page)) == ADVANCED
+    assert page.locator('.set-body .page-tabs a.on').inner_text().strip() == "Advanced"
+
+
+def test_a_link_inside_a_section_opens_its_tab(live, browser):
+    """Review: /settings#google-signin (the Google card's Connect) opened General with the sign-in hidden."""
+    page, base, _ = _signed_in(live, browser)
+    page.goto(base + "/settings#google-signin")
+    page.wait_for_timeout(300)
+    assert page.locator('.set-body .page-tabs a.on').inner_text().strip() == "Connections"
+    assert page.locator("#google-signin").is_visible()
+
+
+def test_every_settings_tab_is_visible_on_a_laptop_screen(live, browser):
+    """Review: at 1366x768 Memory, System and Advanced were cut off the tab bar with no sign they were there."""
+    page, base, _ = _signed_in(live, browser, width=1366, height=768)
+    page.goto(base + "/settings#general")
+    page.wait_for_timeout(300)
+    bar = page.locator(".set-body .page-tabs").bounding_box()
+    for tab in page.locator(".set-body .page-tabs a").all():
+        b = tab.bounding_box()
+        assert b["x"] >= bar["x"] - 1 and b["x"] + b["width"] <= bar["x"] + bar["width"] + 1, tab.inner_text()
