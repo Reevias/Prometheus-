@@ -30,7 +30,7 @@
   </div>
   {% endif %}
 
-  <h2 class="section">Memories <span class="muted">{{ memories|length }}</span></h2>
+  <h2 class="section">Memories{% if memories %} <span class="muted">{{ memories|length }}</span>{% endif %}</h2>
   <div class="mem-list">
     {% for m in memories %}
     <div class="mem-row">
