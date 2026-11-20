@@ -528,3 +528,32 @@ def test_a_narrow_window_shows_a_tidy_icon_sidebar(live, browser):
     for sel in ("#side-new-chat", "#side-search", "#nav-more-btn"):
         b = page.locator(sel).bounding_box()
         assert b["x"] + b["width"] <= side["x"] + side["width"] + 1, sel
+
+
+def _visible_sections(page):
+    return [s.get_attribute("id") for s in page.locator("section.set:visible").all()]
+
+
+def test_settings_show_one_tab_at_a_time(live, browser):
+    """Owner (20 Nov): "voice only shows everything connected to voice, not if you scroll down you can read others"."""
+    page, base, _ = _signed_in(live, browser)
+    page.goto(base + "/settings#voice")
+    page.wait_for_timeout(300)
+    assert _visible_sections(page) == ["voice"]
+    assert page.locator('.page-tabs a.on').inner_text().strip() == "Voice"
+    assert page.locator(".set-body .page-tabs").bounding_box()["y"] >= 0     # the tab bar isn't scrolled away
+    page.click('.page-tabs a[data-tab="ai"]')
+    page.wait_for_timeout(200)
+    assert set(_visible_sections(page)) == {"ai", "costs", "practice-tests"}
+    page.goto(base + "/settings#money-tracker")                 # an old link to a section opens its tab
+    page.wait_for_timeout(300)
+    assert "money-tracker" in _visible_sections(page) and page.locator('.page-tabs a.on').inner_text().strip() == "Advanced"
+    page.fill("#set-search", "wake")                            # search looks in every tab
+    page.wait_for_timeout(200)
+    assert "voice" in _visible_sections(page)
+    page.fill("#set-search", "")
+    page.goto(base + "/settings#voice")
+    page.wait_for_timeout(300)
+    page.locator('#voice form [type=submit], #voice button[hx-post]').first.click()   # a save re-renders the page
+    page.wait_for_timeout(800)
+    assert _visible_sections(page) == ["voice"]

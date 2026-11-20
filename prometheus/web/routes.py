@@ -934,6 +934,10 @@ def register_routes(app: FastAPI, services: Services) -> None:
                     model_cards=model_cards_view(), cards_note=getattr(services.router, "cards_note", ""),
                     file_index_status=(getattr(services.file_index, "status", "") or store.kv_get("file_index_status")
                                        or "Not read yet."), **extra)
+        try:                                     # the Connections tab shows what's connected (was its own page)
+            ctx.setdefault("connection_cards", request.app.state.connection_cards())
+        except Exception:
+            ctx.setdefault("connection_cards", [])
         from prometheus.config import data_dir
         return shell(request, "v3/settings.html", "settings", status_code=status_code,
                      data_folder=str(data_dir()), costs=costs_view(), **ctx)

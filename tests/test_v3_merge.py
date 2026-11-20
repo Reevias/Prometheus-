@@ -74,3 +74,35 @@ def test_study_and_money_have_no_research_tab(app_client):
     login(client)
     page = client.get("/v3/research?mode=study").text
     assert "mode=research" not in page.split('class="page-tabs"', 1)[1].split("</nav>", 1)[0]
+
+
+# -- Task 2: Settings in tabs ------------------------------------------------------------------------------------------------
+
+TABS = {"general": ["features", "appearance", "general", "notifications", "focus-mode", "daily-summary", "safety-check",
+                    "about", "log-out"],
+        "ai": ["ai", "costs", "practice-tests"],
+        "voice": ["voice"],
+        "connections": ["connection-status", "connections", "use-prometheus-from-other-ai-apps", "obsidian", "github",
+                        "other-keys"],
+        "advanced": ["assignments", "study-coach", "clipboard-and-screenshot-memory", "money-tracker",
+                     "search-inside-files", "watchers", "always-allowed", "places-prometheus-may-use"]}
+
+
+def test_every_settings_section_belongs_to_exactly_one_tab(app_client):
+    client, _ = app_client()
+    login(client)
+    page = client.get("/settings").text
+    found = dict(re.findall(r'<section class="set[^"]*" id="([^"]+)"[^>]*data-tab="([^"]+)"', page))
+    want = {sid: tab for tab, ids in TABS.items() for sid in ids}
+    assert found == want
+    assert 'class="page-tabs" data-group="settings"' in page
+
+
+def test_connections_page_is_now_a_settings_tab(app_client):
+    client, _ = app_client()
+    login(client)
+    r = client.get("/v3/connections", follow_redirects=False)
+    assert r.headers["location"] == "/settings#connections"
+    page = client.get("/settings").text
+    status = page.split('id="connection-status"', 1)[1].split("</section>", 1)[0]
+    assert "conn-card" in status or "Nothing is connected" in status

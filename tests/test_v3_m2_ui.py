@@ -406,9 +406,9 @@ def test_settings_in_the_new_look_keep_every_section(app_client):
     nav = new.split('class="set-nav"', 1)[1].split("</nav>", 1)[0]
     for sid in new_ids:
         assert f'href="#{sid}"' in nav, sid                          # every section is in the categories menu
-    for cat in ("General", "Appearance", "Notifications", "Audio", "AI models", "Integrations", "Privacy", "Security", "About"):
-        assert f">{cat}<" in nav
-    assert ">Agents<" not in nav and ">Tools<" not in nav            # empty categories aren't shown
+    tabs = new.split('class="page-tabs" data-group="settings"', 1)[1].split("</nav>", 1)[0]   # tabs since 20 Nov
+    for tab in ("General", "AI", "Voice", "Connections", "Memory", "System", "Advanced"):
+        assert f">{tab}<" in tabs
     phone = {"user-agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0) Mobile"}
     assert 'id="v3-settings"' in client.get("/settings", headers=phone).text   # phones get the v3 Settings too
 

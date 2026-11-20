@@ -515,9 +515,6 @@ a { color: var(--amber); }
 .v3set .set-group { font-size: 12px; color: var(--muted); letter-spacing: 0.04em; margin: 14px 10px 4px; }
 .v3set .set-nav a { color: var(--text); text-decoration: none; padding: 7px 10px; border-radius: 9px; font-size: 14px; }
 .v3set .set-nav a:hover { background: rgb(var(--orange-rgb) / 0.1); }
-.v3set .adv { display: none; }
-body.show-adv .v3set .adv { display: revert; }
-body.show-adv .v3set .set-nav a.adv { display: block; }
 .v3set .set-body { min-width: 0; max-width: 900px; padding-bottom: 60px; }
 .v3set .set-body h1 { font-weight: 400; font-size: 30px; margin: 4px 0 18px; }
 .v3set section.set { background: linear-gradient(180deg, rgb(var(--surface-rgb) / 0.85), rgb(var(--surface-rgb) / 0.6));
@@ -1147,3 +1144,28 @@ html[data-motion="reduced"] *, html[data-motion="reduced"] *::before { animation
 .nav-row > a { min-width: 0; }
 .nav-row > a span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
 @media (max-width: 700px) { .page-tabs a { font-size: 15px; padding: 10px 12px; } }
+
+/* ---- Settings: one tab at a time; each section a card, each setting a row (owner, 20 Nov) ------------------------- */
+.v3set .set-body .page-tabs { margin-top: 2px; }
+.v3set section.set h3 { padding-bottom: 10px; border-bottom: 1px solid rgb(var(--text-rgb) / 0.08); }
+.v3set section.set > :is(label, p, form, div, details, h4) + :is(label, p, form, div, details, h4) {
+  border-top: 1px solid rgb(var(--text-rgb) / 0.06); padding-top: 12px; margin-top: 12px; }
+.v3set section.set label:has(> input:not([type=checkbox]):not([type=radio]):not([type=hidden]), > select, > textarea) {
+  display: grid; grid-template-columns: minmax(150px, 34%) minmax(0, 1fr); gap: 6px 18px; align-items: center; }
+.v3set section.set label:has(> input:not([type=checkbox]):not([type=radio]):not([type=hidden]), > select, > textarea)
+  + label { border-top: 1px solid rgb(var(--text-rgb) / 0.06); padding-top: 12px; margin-top: 12px; }
+.v3set section.set form > label + label { border-top: 1px solid rgb(var(--text-rgb) / 0.06); padding-top: 12px; margin-top: 12px; }
+@media (max-width: 700px) {
+  .v3set section.set label:has(> input:not([type=checkbox]):not([type=radio]):not([type=hidden]), > select, > textarea) {
+    grid-template-columns: 1fr; }
+}
+
+/* Settings on phones: one column; the tab bar does the navigating, the section menu hides (search stays) */
+@media (max-width: 700px) {
+  .v3set { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .v3set .set-nav { position: static; max-height: none; }
+  .v3set .set-nav a { display: none; }
+  body.searching .v3set .set-nav a:not([hidden]) { display: block; }
+}
+/* sidebar row: "Study & Money" may wrap onto two lines instead of being cut */
+.nav-row > a span { white-space: normal; line-height: 1.15; text-align: center; overflow: visible; }

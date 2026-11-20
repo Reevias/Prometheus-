@@ -1504,7 +1504,9 @@ def register_connection_pages(app: FastAPI, services, shell) -> None:
 
     @app.get("/v3/connections")
     def connections_page(request: Request):
-        return shell(request, "v3/connections.html", "connections", cards=cards())
+        return RedirectResponse("/settings#connections", status_code=303)   # a tab in Settings now (20 Nov)
+
+    app.state.connection_cards = cards           # Settings → Connections shows them
 
     def bad(text: str, code: int = 400):
         return JSONResponse({"error": text}, status_code=code)

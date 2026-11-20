@@ -15,19 +15,39 @@
     } catch (e) { (window.promToast || alert)("Couldn't play the sample: " + e.message); }
     finally { if (btn.textContent !== "Playing…") { btn.textContent = was; btn.disabled = false; } }
   }
-  function promAdvanced(force) {
-    const on = force !== undefined ? force : !document.body.classList.contains("show-adv");
-    document.body.classList.toggle("show-adv", on);
-    document.getElementById("adv-toggle").textContent = on ? "Hide advanced settings" : "Show advanced settings";
-    try { localStorage.setItem("prom-adv", on ? "1" : ""); } catch (e) {}
+  // one tab at a time (20 Nov): the address picks the tab, either by name (#voice) or by a section in it
+  var PROM_TABS = ["general", "ai", "voice", "connections", "advanced"];   // var: the script can run twice
+  function promTab() {
+    const want = decodeURIComponent((location.hash || "").slice(1));
+    const sec = want && document.getElementById(want);
+    const tab = PROM_TABS.includes(want) ? want : (sec && sec.dataset.tab) || "general";
+    document.querySelectorAll("section.set").forEach((s) => { s.hidden = s.dataset.tab !== tab; });
+    document.querySelectorAll(".set-nav a[data-tab]").forEach((a) => { a.hidden = a.dataset.tab !== tab; });
+    document.querySelectorAll('.page-tabs[data-group="settings"] a').forEach((a) => {
+      const on = a.dataset.tab === tab; a.classList.toggle("on", on);
+      if (on) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
+    });
+    const search = document.getElementById("set-search"); if (search) search.value = "";
+    document.body.classList.remove("searching");
+    const none = document.getElementById("set-none"); if (none) none.hidden = true;
+    // a tab by name opens at the top (the browser's own jump to #voice would hide the tab bar); a section is shown
+    function place() {
+      if (sec && !PROM_TABS.includes(want)) { sec.scrollIntoView({ block: "start" }); return; }
+      var main = document.getElementById("main"); if (main) main.scrollTop = 0; window.scrollTo(0, 0);
+      document.querySelectorAll(".set-body, .v3set").forEach(function (el) { el.scrollTop = 0; });
+    }
+    setTimeout(place, 0);
+    if (document.readyState !== "complete") window.addEventListener("load", function () { setTimeout(place, 0); }, { once: true });
   }
-  try { if (localStorage.getItem("prom-adv") || (location.hash && document.querySelector(location.hash + ".adv"))) promAdvanced(true); } catch (e) {}
+  window.addEventListener("hashchange", promTab);
+  promTab();
   function promFilterSettings(q) {
     q = (q || "").toLowerCase().trim();
-    document.body.classList.toggle("searching", !!q);
+    if (!q) { promTab(); return; }                     // back to the open tab
+    document.body.classList.add("searching");          // searching looks in every tab
     let shown = 0;
     document.querySelectorAll("section.set").forEach((s) => {
-      const hit = !q || s.textContent.toLowerCase().includes(q);
+      const hit = s.textContent.toLowerCase().includes(q);
       s.hidden = !hit; if (hit) shown++;
       const link = document.querySelector(`.set-nav a[href="#${s.id}"]`);
       if (link) link.hidden = !hit;
