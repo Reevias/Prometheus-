@@ -3,6 +3,7 @@ chat and run only after a yes; the internet is off unless the owner allows it fo
 from __future__ import annotations
 
 import hashlib
+import json
 import time
 from pathlib import Path
 
@@ -12,6 +13,16 @@ from prometheus.safety.paths import PathBlocked
 
 SERVICES = None        # the app's services (store, approvals, settings)
 MAX_CODE = 20_000
+
+
+INPUTS_LINE = 'import json as _json; INPUTS = _json.load(open("inputs.json", encoding="utf-8"))  # results of earlier steps'
+
+
+def with_inputs(code: str, data: dict | None) -> tuple[str, dict[str, str]]:
+    """Results of earlier steps reach a script as data in inputs.json, never pasted into its code."""
+    if not data:
+        return code, {}
+    return INPUTS_LINE + "\n" + code, {"inputs.json": json.dumps(data, ensure_ascii=False)}
 
 
 @register
@@ -45,9 +56,12 @@ class CodeAgent(Agent):
             if not p.is_file():
                 return StepResult("failed", f"There's no file at {f}.")
             files.append(str(p))
+        data = inputs.get("_code_inputs") or {}
+        code, _ = with_inputs(code, data)
         digest = hashlib.sha256(code.encode()).hexdigest()[:16]
         shown = code          # the WHOLE script, never a cut-down one: what you approve is exactly what runs
-        payload = {"code": code, "files": files, "task_id": ctx.task_id, "chat_id": ctx.chat_id(), "network": False}
+        payload = {"code": code, "files": files, "task_id": ctx.task_id, "chat_id": ctx.chat_id(), "network": False,
+                   "inputs": data}
         return ctx.ask("code_run", f"Run this Python script (no internet, only its own folder):\n```python\n{shown}\n```",
                        payload, exact=f"code:{digest}", broad="code:any",
                        broad_label="Always run scripts without asking",
@@ -61,7 +75,9 @@ def run_handler(payload: dict) -> str:
     from prometheus.config import data_dir
 
     result, folder = sandbox.run(payload["code"], data_dir() / "scripts", network=bool(payload.get("network")),
-                                 use_windows_sandbox=use_ws, files=[Path(f) for f in payload.get("files", [])])
+                                 use_windows_sandbox=use_ws, files=[Path(f) for f in payload.get("files", [])],
+                                 extra={"inputs.json": json.dumps(payload["inputs"], ensure_ascii=False)}
+                                 if payload.get("inputs") else None)
     for f in result.files:
         try:
             s.store.add_output(int(payload.get("task_id") or 0), str(f), "created")

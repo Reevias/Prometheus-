@@ -231,7 +231,7 @@ def _round_refs(inputs: dict) -> dict:
     """$roundN.key (what the loop is told to write) is the same as $stepN.key for the step runner."""
     import re
 
-    return {k: (re.sub(r"^\$round(\d+)\.", r"$step\1.", v) if isinstance(v, str) else v) for k, v in inputs.items()}
+    return {k: (re.sub(r"\$round(\d+)\.", r"$step\1.", v) if isinstance(v, str) else v) for k, v in inputs.items()}
 
 
 def approval_resolved(store, approval_id: int, status: str, result: str) -> list[int]:
