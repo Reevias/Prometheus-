@@ -59,3 +59,70 @@ def test_loop_round_references_inside_text_become_step_references():
 
     assert _round_refs({"content": "see $round2.summary and $round3.url"}) == \
         {"content": "see $step2.summary and $step3.url"}
+
+
+# -- videos: "find 3 YouTube videos on photosynthesis, summarise the best one" summarised nothing ---------------------
+
+def _opener(opened, **kw):
+    from prometheus.agents.opener import Opener
+
+    return Opener(launcher=opened.append, **kw)
+
+
+def _model_ctx(make_ctx):
+    from prometheus.models.fake import FakeProvider
+
+    model = FakeProvider(["Plants use light to make sugar."], name="m")
+    return make_ctx(providers=[model], routes={"research": ["m"], "private": ["m"]}), model
+
+
+def test_summarising_a_video_does_not_open_browser_tabs(make_ctx):
+    """Bug: each summary opened the video in the browser too (three tabs for one request)."""
+    ctx, _ = _model_ctx(make_ctx)
+    opened = []
+    res = _opener(opened, transcript=lambda vid: "light energy sugar").run(
+        "summarise", {"kind": "youtube", "target": "https://youtu.be/dQw4w9WgXcQ", "summarise": "true"}, ctx)
+    assert opened == [] and "sugar" in res.summary
+    _opener(opened).run("play", {"kind": "youtube", "target": "https://youtu.be/dQw4w9WgXcQ"}, make_ctx())
+    assert opened == ["https://youtu.be/dQw4w9WgXcQ"]           # playing still opens it
+
+
+def test_a_link_inside_a_list_or_text_is_used(make_ctx):
+    """Bug: a plan handed over a list of found videos; the text of the list was searched for, so a random video came
+    back. The first YouTube link in the text is used instead."""
+    ctx, _ = _model_ctx(make_ctx)
+    seen = []
+    target = '["https://www.youtube.com/watch?v=abcdefghijk", "https://www.youtube.com/watch?v=zzzzzzzzzzz"]'
+    res = _opener([], find_video=lambda q: seen.append(q), transcript=lambda vid: seen.append(vid) or "words").run(
+        "summarise", {"kind": "youtube", "target": target, "summarise": "true"}, ctx)
+    assert seen == ["abcdefghijk"] and res.data["url"] == "https://www.youtube.com/watch?v=abcdefghijk"
+
+
+def test_video_search_falls_back_to_youtube_itself(monkeypatch):
+    """Bug: when the web search found nothing (or failed), there was no video to summarise."""
+    from prometheus.agents import opener
+
+    monkeypatch.setattr(opener, "_search_web", lambda q: [])
+    page = '..."videoId":"Ph0t0synth1"...,"videoId":"other000001"'
+    monkeypatch.setattr(opener, "_youtube_results_page", lambda q: page)
+    assert opener.find_video("photosynthesis") == "https://www.youtube.com/watch?v=Ph0t0synth1"
+
+
+def test_find_videos_gives_several_for_find_3(monkeypatch):
+    from prometheus.agents import opener
+
+    monkeypatch.setattr(opener, "_search_web", lambda q: ["https://www.youtube.com/watch?v=aaaaaaaaaaa"])
+    monkeypatch.setattr(opener, "_youtube_results_page",
+                        lambda q: '"videoId":"aaaaaaaaaaa" "videoId":"bbbbbbbbbbb" "videoId":"ccccccccccc"')
+    assert opener.find_videos("photosynthesis", 3) == [
+        "https://www.youtube.com/watch?v=aaaaaaaaaaa", "https://www.youtube.com/watch?v=bbbbbbbbbbb",
+        "https://www.youtube.com/watch?v=ccccccccccc"]
+
+
+def test_a_summary_that_could_not_be_made_is_not_done(make_ctx):
+    def no_captions(vid):
+        raise RuntimeError("no captions")
+
+    res = _opener([], transcript=no_captions).run(
+        "summarise", {"kind": "youtube", "target": "https://youtu.be/dQw4w9WgXcQ", "summarise": "true"}, make_ctx())
+    assert res.status == "failed" and "no captions" in res.summary
