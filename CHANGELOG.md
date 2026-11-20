@@ -1,6 +1,9 @@
 # Changelog
 
 ## Prometheus 3.0, M3 (on the prometheus-v3 branch, not released yet)
+- **Fixes from your second laptop check (5):** the window's minimise, maximise and fullscreen buttons work (also
+  when Prometheus runs in the background) and its edges resize it; your name is kept; deleted chats stay deleted on
+  the laptop and the cloud copy; "Waiting for your approval" says what kind is waiting and opens it.
 - **Fixes from your first laptop test (11):** notes and scripts get the real results of earlier steps; video
   summaries find the right video and don't open tabs; "run python to make a bar chart" runs it and shows the chart
   under the answer; spending questions understand "last month" and "on food"; long answers fold (Show more), the
