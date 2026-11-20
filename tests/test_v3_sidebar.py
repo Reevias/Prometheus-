@@ -190,6 +190,6 @@ def test_mic_colours_green_on_red_off():
     """Owner (20 Nov): green when it's working, red when it's paused or off."""
     from pathlib import Path
 
-    css = (Path(__file__).resolve().parent.parent / "prometheus/web/static/v3/theme.css").read_text()
+    css = (Path(__file__).resolve().parent.parent / "prometheus/web/static/v3/theme.css").read_text(encoding="utf-8")
     rules = dict(re.findall(r"(\.mic-toggle(?:\.[a-z]+)?) \{[^}]*?color: var\(--(\w+)\)", css))
     assert rules[".mic-toggle"] == "ok" and rules[".mic-toggle.off"] == "bad" and rules[".mic-toggle.failed"] == "bad"

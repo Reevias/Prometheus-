@@ -120,5 +120,5 @@ def test_a_message_queued_while_busy_also_gets_research():
     """Review: the queue (Enter while a reply runs) stored the raw text, so the Research button skipped it."""
     from pathlib import Path
 
-    js = (Path(__file__).resolve().parent.parent / "prometheus/web/static/v3/app.js").read_text()
+    js = (Path(__file__).resolve().parent.parent / "prometheus/web/static/v3/app.js").read_text(encoding="utf-8")
     assert "queued = { text: withResearch(input.value)" in js
