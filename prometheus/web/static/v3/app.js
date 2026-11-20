@@ -175,11 +175,26 @@
     if (!chatId) return;
     post("/api/v3/chats/" + chatId + "/stop").then(function () { toast("Stopping after the current step…"); });
   }
+  // Research (20 Nov): the next message gets a deep search with sources (the research agent), then it switches off
+  var research = $("#research-toggle");
+  function researchOn(on) {
+    if (!research) return;
+    research.setAttribute("aria-pressed", on ? "true" : "false"); research.classList.toggle("on", on);
+  }
+  if (research) research.addEventListener("click", function () {
+    researchOn(research.getAttribute("aria-pressed") !== "true"); if (input) input.focus();
+  });
+  function withResearch(text) {
+    if (!research || research.getAttribute("aria-pressed") !== "true" || !text.trim()) return text;
+    researchOn(false);
+    return /^@research\b/i.test(text.trim()) ? text : "@research " + text.trim();
+  }
+  window.promResearchToggle = function () { if (research) research.click(); };
   if (form) {
     form.addEventListener("submit", function (e) {
       e.preventDefault();
       if (busy) { stopReply(); return; }
-      var text = input.value, extra = files.slice();
+      var text = withResearch(input.value), extra = files.slice();
       if (!text.trim() && !extra.length) return;
       store("prom-last", text);
       input.value = ""; files = []; renderFiles(); grow(); sendState();
@@ -397,6 +412,7 @@
     if (mod && e.key.toLowerCase() === "k") { e.preventDefault(); openPalette(); return; }
     if (mod && e.key === "/") { e.preventDefault(); if (input) { input.focus(); if (!input.value) input.value = "/"; slashUpdate(true); } return; }
     if (mod && e.key.toLowerCase() === "l") { e.preventDefault(); if (input) input.focus(); return; }
+    if (mod && !e.shiftKey && e.key.toLowerCase() === "r" && research) { e.preventDefault(); research.click(); return; }
     if (mod && e.key.toLowerCase() === "n") { e.preventDefault(); location.href = "/"; return; }
     if (mod && !e.shiftKey && e.key.toLowerCase() === "b" && collapse) { e.preventDefault(); collapse.click(); return; }
     if (mod && e.key === ",") { e.preventDefault(); location.href = "/settings"; return; }

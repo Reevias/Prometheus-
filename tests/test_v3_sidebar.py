@@ -1,6 +1,7 @@
 """The sidebar after the laptop check (20 Nov 2026): chats and projects first, pages under More; the mic button."""
 from __future__ import annotations
 
+import re
 import time
 
 from conftest import login
@@ -183,3 +184,12 @@ def test_voice_ready_works_right_after_the_computer_starts(app_client, monkeypat
                          services.home / "voice")
     monkeypatch.setattr(_time, "monotonic", lambda: 5.0)
     assert fresh.ready() in (True, False)
+
+
+def test_mic_colours_green_on_red_off():
+    """Owner (20 Nov): green when it's working, red when it's paused or off."""
+    from pathlib import Path
+
+    css = (Path(__file__).resolve().parent.parent / "prometheus/web/static/v3/theme.css").read_text()
+    rules = dict(re.findall(r"(\.mic-toggle(?:\.[a-z]+)?) \{[^}]*?color: var\(--(\w+)\)", css))
+    assert rules[".mic-toggle"] == "ok" and rules[".mic-toggle.off"] == "bad" and rules[".mic-toggle.failed"] == "bad"

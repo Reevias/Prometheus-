@@ -557,3 +557,29 @@ def test_settings_show_one_tab_at_a_time(live, browser):
     page.locator('#voice form [type=submit], #voice button[hx-post]').first.click()   # a save re-renders the page
     page.wait_for_timeout(800)
     assert _visible_sections(page) == ["voice"]
+
+
+def test_research_button_sends_one_deep_search_then_turns_off(live, browser):
+    """Owner (20 Nov): Research merged into chat as a button in the chat box, like a mode."""
+    page, base, chat = _signed_in(live, browser)
+    page.goto(f"{base}/c/{chat}")
+    sent = []
+    page.on("request", lambda r: sent.append(r.post_data or "") if r.url.endswith("/api/v3/send") else None)
+    page.click("#research-toggle")
+    assert page.get_attribute("#research-toggle", "aria-pressed") == "true"
+    page.fill("#command-input", "solar panels in India")
+    page.press("#command-input", "Enter")
+    page.wait_for_timeout(800)
+    assert sent and "@research solar panels in India" in sent[0]
+    assert page.get_attribute("#research-toggle", "aria-pressed") == "false"
+
+
+def test_the_chat_uses_the_width_when_the_panel_is_closed(live, browser):
+    """Owner (20 Nov): with everything closed the chat stayed a narrow column."""
+    page, base, chat = _signed_in(live, browser, width=1800, height=900)
+    page.goto(f"{base}/c/{chat}")
+    page.wait_for_selector("#messages")
+    page.evaluate("document.getElementById('app').classList.add('no-panel', 'mini')")
+    page.wait_for_timeout(200)
+    assert page.locator("#messages").bounding_box()["width"] >= 1150
+    assert page.locator("#command").bounding_box()["width"] >= 1100

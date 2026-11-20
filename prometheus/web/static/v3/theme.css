@@ -1108,14 +1108,14 @@ html[data-motion="reduced"] *, html[data-motion="reduced"] *::before { animation
 .app.mini .nav-more-menu a { justify-content: flex-start; }
 
 /* the microphone next to Stop all */
-.mic-toggle { position: relative; color: var(--orange); margin-right: 4px; }
-.mic-toggle.off { color: var(--muted); }
+.mic-toggle { position: relative; color: var(--ok); margin-right: 4px; }
+.mic-toggle.off { color: var(--bad); }
 .mic-toggle.off::after { content: ""; position: absolute; left: 9px; right: 9px; top: 50%; height: 2px; border-radius: 2px;
                           background: currentColor; transform: rotate(-45deg); }
-.mic-toggle.listening { color: var(--orange); animation: mic-pulse 1.2s ease-in-out infinite; }
-.mic-toggle:disabled { opacity: 0.45; cursor: not-allowed; }
-@keyframes mic-pulse { 0%, 100% { box-shadow: 0 0 0 0 rgb(var(--orange-rgb) / 0.45); }
-                       50% { box-shadow: 0 0 0 6px rgb(var(--orange-rgb) / 0); } }
+.mic-toggle.listening { color: var(--ok); animation: mic-pulse 1.2s ease-in-out infinite; }
+.mic-toggle:disabled { color: var(--bad); opacity: 0.6; cursor: not-allowed; }
+@keyframes mic-pulse { 0%, 100% { box-shadow: 0 0 0 0 rgb(var(--ok-rgb) / 0.45); }
+                       50% { box-shadow: 0 0 0 6px rgb(var(--ok-rgb) / 0); } }
 @media (prefers-reduced-motion: reduce) { .mic-toggle.listening { animation: none; } }
 
 /* -- #4: windows 701-860 px wide also get the icon sidebar: the lists and labels hide as in the shrunk menu ---------- */
@@ -1169,3 +1169,14 @@ html[data-motion="reduced"] *, html[data-motion="reduced"] *::before { animation
 }
 /* sidebar row: "Study & Money" may wrap onto two lines instead of being cut */
 .nav-row > a span { white-space: normal; line-height: 1.15; text-align: center; overflow: visible; }
+
+/* the Research button in the chat box */
+.research-toggle { display: flex; align-items: center; gap: 6px; border: 1px solid rgb(var(--text-rgb) / 0.12); background: none;
+                   color: var(--muted); border-radius: 999px; padding: 6px 12px; font-size: 13px; white-space: nowrap; }
+.research-toggle svg { width: 16px; height: 16px; stroke: currentColor; }
+.research-toggle:hover { color: var(--text); border-color: rgb(var(--orange-rgb) / 0.5); }
+.research-toggle.on { color: var(--base); background: var(--orange); border-color: var(--orange); }
+@media (max-width: 700px) { .research-toggle span { display: none; } .research-toggle { padding: 6px 8px; } }
+/* the chat uses the width when the side panel is closed (owner, 20 Nov) */
+.app.no-panel .chat .messages { width: min(1200px, 100%); }
+.app.no-panel .chat .command { width: min(1160px, 100%); }

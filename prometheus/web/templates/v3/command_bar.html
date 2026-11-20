@@ -22,6 +22,8 @@
       {% for entry, label in heads %}<option value="{{ entry }}" {{ 'selected' if entry == head }}>{{ label }}</option>{% endfor %}
     </select>
     {% endif %}
+    <button type="button" class="research-toggle" id="research-toggle" aria-pressed="false"
+            title="Research: a deep search with sources, for the next message (Ctrl+R)">{{ icon("research") }}<span>Research</span></button>
     {% if has_voice %}<button type="button" class="mic" id="mic" title="Speak a command (Ctrl+M)" aria-label="Speak a command">{{ icon("mic") }}</button>{% endif %}
     <button type="button" class="mic talk" id="talk" hidden title="Hold to talk" aria-label="Hold to talk">{{ icon("mic") }}</button>
     <button type="submit" class="send" id="send" title="Send (Enter)" aria-label="Send">{{ icon("send") }}</button>
