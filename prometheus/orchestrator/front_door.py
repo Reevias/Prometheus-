@@ -39,7 +39,7 @@ ACTION = re.compile(
     r"set|change|update|sort|organi[sz]e|tidy|clean|scan|translate|summari[sz]e (this|my|the file)|read (my|this|"
     r"the) |screenshot|screen|phone|laptop|wifi|bluetooth|volume|brightness|battery|calendar|meeting|weather|news|"
     r"price|stock|today|tomorrow|yesterday|latest|current|right now|this week|repo|github|run|code|script|"
-    r"chart|spreadsheet|excel|slides|pptx|docx|pdf|folder|file|files|download)s?\b", re.I)
+    r"chart|graph|plot|python|spreadsheet|excel|slides|pptx|docx|pdf|folder|file|files|download)s?\b", re.I)
 # fresh facts or the owner's own machine and accounts: these need a tool, so never a direct answer (M3 review)
 FRESH = re.compile(
     r"\b(any|new|inbox|unread|downloads|desktop|documents|disk|storage|space left|ram|memory|cpu|apps?|"
@@ -77,8 +77,9 @@ def by_rules(text: str) -> Decision | None:
     if actions == 0 and not FRESH.search(t) and not LINK.search(t) and not PERSONAL.search(t) and len(t) <= 300 \
             and QUESTION.match(t):
         return Decision("simple", "rules", why="a general question")
-    if 1 <= actions <= 2 and not CHAIN.search(t) and len(t) <= 300:
-        return Decision("medium", "rules", why="one or two actions")
+    if actions >= 1 and not CHAIN.search(t) and len(t) <= 300:
+        # one job, even when it uses several action words ("run python to make a bar chart")
+        return Decision("medium", "rules", why="one job with actions")
     return None
 
 
@@ -137,7 +138,11 @@ def by_ai(router, text: str, history: list[dict] | None = None, seconds: float =
 
 
 def decide(router, text: str, history: list[dict] | None = None) -> Decision:
-    return by_rules(text) or by_ai(router, text, history) or Decision("medium", "default", why="unsure: normal plan")
+    d = by_rules(text) or by_ai(router, text, history) or Decision("medium", "default", why="unsure: normal plan")
+    if d.route == "simple" and d.how == "ai" and (ACTION.search(text) or FRESH.search(text) or LINK.search(text)):
+        # a quick AI's "just answer" never skips the tools a message asks for (it wrote code instead of running it)
+        return Decision("medium", "rules", why="needs a tool")
+    return d
 
 
 class _null:

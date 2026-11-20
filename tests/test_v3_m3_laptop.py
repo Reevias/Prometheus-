@@ -126,3 +126,50 @@ def test_a_summary_that_could_not_be_made_is_not_done(make_ctx):
     res = _opener([], transcript=no_captions).run(
         "summarise", {"kind": "youtube", "target": "https://youtu.be/dQw4w9WgXcQ", "summarise": "true"}, make_ctx())
     assert res.status == "failed" and "no captions" in res.summary
+
+
+# -- "run python to make a bar chart of 5 random numbers" gave the code as text --------------------------------------
+
+@pytest.mark.parametrize("text", ["run python to make a bar chart of 5 random numbers",
+                                  "write and run a script that makes a pie chart of my spending",
+                                  "open youtube and play lofi music"])
+def test_one_job_with_several_action_words_runs_a_plan(text):
+    from prometheus.orchestrator.front_door import by_rules
+
+    d = by_rules(text)
+    assert d is not None and d.route in ("medium", "complex"), d
+
+
+def test_the_quick_ai_cannot_turn_a_tool_job_into_a_plain_answer(monkeypatch):
+    from prometheus.orchestrator import front_door
+
+    monkeypatch.setattr(front_door, "by_rules", lambda text: None)
+    monkeypatch.setattr(front_door, "by_ai", lambda router, text, history=None: front_door.Decision("simple", "ai"))
+    assert front_door.decide(None, "plot a graph of y = x squared").route == "medium"
+    assert front_door.decide(None, "why is the sky blue").route == "simple"
+
+
+def test_a_chart_the_script_made_shows_under_its_answer(app_client, tmp_path):
+    """Bug: the chart only appeared as a small file in the side panel; the answer looked like it gave nothing."""
+    import time
+
+    from conftest import login
+
+    client, services = app_client()
+    login(client)
+    store = services.store
+    chat = store.create_chat("chart")
+    store.add_message(chat, "user", "run python to make a bar chart")
+    task = store.create_task(chat, "run python to make a bar chart")
+    first = store.add_message(chat, "assistant", "I'd like to run a short Python script.")
+    time.sleep(0.01)
+    png = tmp_path / "chart.png"
+    png.write_bytes(b"\x89PNG\r\n\x1a\n" + b"0" * 64)
+    store.add_output(task, str(png), "created")
+    out_id = store.outputs(chat)[0]["id"]
+    second = store.add_message(chat, "assistant", "It worked.\nFiles made: chart.png", "approval")
+    page = client.get(f"/c/{chat}/messages").text
+    block = page.split(f'id="m{second}"', 1)[1].split('class="msg ', 1)[0]
+    assert f"/api/v3/outputs/{out_id}/file" in block and 'class="msg-images"' in block
+    earlier = page.split(f'id="m{first}"', 1)[1].split(f'id="m{second}"', 1)[0]
+    assert f"/api/v3/outputs/{out_id}/file" not in earlier
