@@ -19,6 +19,7 @@ import pytest
 sync_api = pytest.importorskip("playwright.sync_api")
 
 PASSWORD = "correct horse battery"
+LONG_CHAT = [0]
 SKIP = ('[data-win]', '.stopall', '[data-act="delete"]', '[hx-post="/logout"]', '[hx-post*="/delete"]',
         '[data-api$="/delete"]', '#lightbox-close', '.danger')
 PROBE = """
@@ -60,6 +61,10 @@ def live(tmp_home):
     st.finish_step(sid, "done", "Wrote it")
     st.set_task_status(tid, "done")
     st.add_message(chat, "assistant", "Here:\n\n```python\nprint(1)\n```\n\n| a | b |\n|---|---|\n| 1 | 2 |", "fake")
+    long_chat = st.create_chat("Long answer")                      # laptop test: long answers fold
+    st.add_message(long_chat, "user", "explain everything")
+    st.add_message(long_chat, "assistant", "\n\n".join(f"Point {i}: " + "words " * 30 for i in range(40)), "fake")
+    LONG_CHAT[0] = long_chat
     from prometheus import projects as pj                         # a project to click through (M2.3)
     pid = pj.create(st, services.policy, tmp_home.home, "Demo project", about="short answers")
     pj.add_note(st, pid, "a note")
@@ -338,3 +343,22 @@ def test_hold_to_talk_from_home_reads_the_answer_out(live, browser):
     spoken = page.evaluate("() => JSON.parse(sessionStorage.getItem('spoken'))")
     assert len(spoken) == 1 and "answer" in spoken[0]
     ctx.close()
+
+
+def test_long_answers_fold_and_open(live, browser):
+    """Laptop test (20 Nov): long outputs couldn't be shrunk. They fold with Show more / Show less."""
+    base, _ = live
+    page = browser.new_page(viewport={"width": 1400, "height": 900})
+    page.goto(base + "/login")
+    page.fill("input[name=password]", PASSWORD)
+    page.press("input[name=password]", "Enter")
+    page.wait_for_url(base + "/")
+    page.goto(f"{base}/c/{LONG_CHAT[0]}")
+    body = page.locator(".msg.assistant > .body").last
+    page.wait_for_selector(".fold-btn")
+    folded = body.bounding_box()["height"]
+    assert folded <= 330 and page.inner_text(".fold-btn") == "Show more"
+    page.click(".fold-btn")
+    assert body.bounding_box()["height"] > 1000 and page.inner_text(".fold-btn") == "Show less"
+    page.wait_for_timeout(5500)                      # the chat refreshes itself: it stays open
+    assert page.locator(".msg.assistant > .body").last.bounding_box()["height"] > 1000

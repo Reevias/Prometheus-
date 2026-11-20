@@ -17,6 +17,8 @@ MAX_STEPS = 8
 JOB_KINDS = ("chat", "plan", "research", "code", "vision", "summarise")   # what a step may be tagged (M3.4)
 PACKAGE_PROMPTS = Path(__file__).resolve().parent.parent / "prompts"
 REF = re.compile(r"^\$step(\d+)\.(\w+)$")
+REF_IN_TEXT = re.compile(r"\$step(\d+)\.(\w+)")
+REF_IN_CODE = re.compile(r"(['\"]?)\$step(\d+)\.(\w+)\1")
 
 HISTORY_TURNS = 12
 PASSAGES = 3
@@ -282,24 +284,53 @@ def step_is_private(agent_cls, inputs) -> bool:
 
 def resolve_inputs(inputs: dict, results: dict[int, StepResult], private_steps: frozenset[int] = frozenset(),
                    allow_private: bool = True) -> dict:
+    """Fill in $stepN.key: a whole value gets the result itself, a reference inside a longer text gets its text, and a
+    reference inside code becomes INPUTS["stepN.key"] with the value in inputs.json (outside text never becomes code)."""
     out = {}
+
+    def value_of(sid: int, field: str, ref: str):
+        if sid in private_steps and not allow_private:
+            raise PlanError(f"Step {sid} holds private data from your files; it can't be sent to the web or cloud.")
+        if sid in private_steps:
+            out["_from_private"] = True          # an agent that could use the cloud must not, for this text
+        if sid in results and field == "summary" and field not in results[sid].data:
+            return results[sid].summary          # the text a step wrote, e.g. to save it in a file
+        if sid not in results or field not in results[sid].data:
+            raise PlanError(f"Step result {ref} does not exist.")
+        return results[sid].data[field]
+
+    def as_text(v) -> str:
+        return v if isinstance(v, str) else json.dumps(v, ensure_ascii=False)
+
     for key, value in inputs.items():
         m = REF.match(value) if isinstance(value, str) else None
         if m:
-            sid, field = int(m.group(1)), m.group(2)
-            if sid in private_steps and not allow_private:
-                raise PlanError(f"Step {sid} holds private data from your files; it can't be sent to the web or cloud.")
-            if sid in private_steps:
-                out["_from_private"] = True          # an agent that could use the cloud must not, for this text
-            if sid in results and field == "summary" and field not in results[sid].data:
-                out[key] = results[sid].summary          # the text a step wrote, e.g. to save it in a file
-                continue
-            if sid not in results or field not in results[sid].data:
-                raise PlanError(f"Step result {value} does not exist.")
-            out[key] = results[sid].data[field]
+            out[key] = value_of(int(m.group(1)), m.group(2), value)
+        elif isinstance(value, str) and key == "code" and REF_IN_TEXT.search(value):
+            data = out.setdefault("_code_inputs", {})
+
+            def to_input(c):
+                name = f"step{c.group(2)}.{c.group(3)}"
+                data[name] = as_text(value_of(int(c.group(2)), c.group(3), f"$step{c.group(2)}.{c.group(3)}"))
+                return f'INPUTS["{name}"]'
+            out[key] = REF_IN_CODE.sub(to_input, value)
+        elif isinstance(value, str) and REF_IN_TEXT.search(value):
+            out[key] = REF_IN_TEXT.sub(lambda c: as_text(value_of(int(c.group(1)), c.group(2), c.group(0))), value)
         else:
             out[key] = value
     return out
+
+
+def short_report(steps) -> str:
+    """The answer when no AI can write one: a line per step, not every step's whole output (laptop test)."""
+    lines = ["I couldn't write a proper answer just now (the AIs are busy), so here's what each step did. "
+             "Open the steps below for the details."]
+    for s in list(steps)[:8]:
+        said = " ".join(str(s.result or "").split())
+        said = said[:150] + ("…" if len(said) > 150 else "")
+        how = {"done": "done", "failed": "didn't work"}.get(s.status, s.status)
+        lines.append(f"- {str(s.agent).replace('_', ' ').capitalize()}: {how}. {said}".rstrip())
+    return "\n".join(lines[:9])
 
 
 class Orchestrator:
@@ -583,6 +614,10 @@ class Orchestrator:
                                                          + (f": {d.why}" if d.why else "") + ")")
         if d.route == "ask":
             return self._finish(chat_id, task_id, "done", d.question, "front door")
+        if d.why == "a greeting":                 # instant and friendly: no AI for "hey" or "thanks"
+            from prometheus.orchestrator.front_door import greeting_reply
+
+            return self._finish(chat_id, task_id, "done", greeting_reply(text), "instant")
         if d.route == "simple":
             try:
                 return self._answer_directly(chat_id, task_id, text, history)
@@ -1006,7 +1041,7 @@ class Orchestrator:
             answer = reply.text.strip()
             written_by = f"{reply.provider} · {reply.model}"
         except (ProviderUnavailable, BudgetExceeded):
-            answer = "\n".join(f"- {s.agent}: {s.status}. {s.result}" for s in self.store.steps(task_id))
+            answer = short_report(self.store.steps(task_id))
         except Stopped as e:
             return self._finish(chat_id, task_id, "stopped", str(e))
         status = "failed" if bad and len(bad) == len(plan.steps) else "done"

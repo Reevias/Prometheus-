@@ -1,6 +1,7 @@
 """Page and htmx routes."""
 from __future__ import annotations
 
+import os
 import re
 import threading
 import time
@@ -31,6 +32,10 @@ REPO_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,38}/[A-Za-z0-9._-]{1,100}$
 
 def clean_note(text: str) -> str:
     return " ".join((text or "").split())[:500]
+
+
+def _leave() -> None:
+    os._exit(0)
 
 
 def register_routes(app: FastAPI, services: Services) -> None:
@@ -110,7 +115,7 @@ def register_routes(app: FastAPI, services: Services) -> None:
 
         return shell(request, "v3/chat.html", "chats", chat_id=chat_id, chat_title=store.chat_title(chat_id),
                      project=chat_project(store, chat_id), notes=store.chat_notes(chat_id), messages=msgs, ratings=store.ratings_for(chat_id), asks=store.asks_for_chat(chat_id),
-                     busy=busy, doing=current_step(chat_id) if busy else "", steps_by=steps_for(chat_id, msgs),
+                     busy=busy, doing=current_step(chat_id) if busy else "", steps_by=steps_for(chat_id, msgs), images_by=images_for(chat_id, msgs),
                      live_steps=running_steps(chat_id) if busy else [])
 
     def steps_for(chat_id: int, messages) -> dict:
@@ -127,6 +132,23 @@ def register_routes(app: FastAPI, services: Services) -> None:
             if steps:
                 out[m.id] = [{"agent": s.agent.replace("_", " "), "goal": s.goal, "status": s.status,
                               "inputs": s.inputs, "result": s.result[:1200]} for s in steps]
+        return out
+
+    def images_for(chat_id: int, messages) -> dict[int, list[dict]]:
+        """Pictures a task saved (a chart from a script) show under the answer that follows them."""
+        pics = [o for o in store.outputs(chat_id) if Path(o["path"]).suffix.lower() in IMAGE_TYPES
+                and o.get("kind") == "created" and Path(o["path"]).is_file()]
+        out: dict[int, list[dict]] = {}
+        if not pics:
+            return out
+        after = 0.0
+        for m in messages:
+            if m.role != "assistant":
+                continue
+            mine = [o for o in pics if after < o["created"] <= m.created]
+            if mine:
+                out[m.id] = [{"id": o["id"], "name": Path(o["path"]).name} for o in sorted(mine, key=lambda o: o["id"])]
+            after = m.created
         return out
 
     def running_steps(chat_id: int) -> list[dict]:
@@ -147,7 +169,7 @@ def register_routes(app: FastAPI, services: Services) -> None:
         msgs = store.messages(chat_id)
         return page(request, "v3/messages.html", chat_id=chat_id, messages=msgs,
                     busy=bool(running), asks=store.asks_for_chat(chat_id), ratings=store.ratings_for(chat_id),
-                    doing=current_step(chat_id) if running else "", steps_by=steps_for(chat_id, msgs),
+                    doing=current_step(chat_id) if running else "", steps_by=steps_for(chat_id, msgs), images_by=images_for(chat_id, msgs),
                     live_steps=running_steps(chat_id) if running else [])
 
     IMAGE_TYPES = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp",
@@ -307,6 +329,8 @@ def register_routes(app: FastAPI, services: Services) -> None:
         v = services.voice
         if v is None:
             return JSONResponse({"error": "Voice isn't set up on this computer (Settings → Voice)."}, status_code=409)
+        if services.killswitch.is_set:
+            return JSONResponse({"error": "Everything is stopped. Press Resume to use voice."}, status_code=409)
         if v.loop is not None:
             if not v.loop.listen_now():
                 return JSONResponse({"error": "The microphone is muted. Unmute it first."}, status_code=409)
@@ -318,6 +342,21 @@ def register_routes(app: FastAPI, services: Services) -> None:
 
         threading.Thread(target=start_then_listen, name="prometheus-voice-button", daemon=True).start()
         return {"starting": True}
+
+    @app.post("/api/v3/quit")
+    def api_quit():
+        """Quit in the tray: this copy ends, microphone first. A window attached to the background copy (started with
+        Windows) sends this, so the copy that was listening ends too (laptop test)."""
+        if services.voice is not None:
+            services.voice.stop()
+        store.audit("user", "quit", {})
+
+        def leave_soon():
+            time.sleep(0.5)                      # let this answer reach the window first
+            _leave()
+
+        threading.Thread(target=leave_soon, name="prometheus-quit", daemon=True).start()
+        return {"ok": True}
 
     @app.post("/api/v3/voice/mute")
     def api_v3_voice_mute():
@@ -625,6 +664,8 @@ def register_routes(app: FastAPI, services: Services) -> None:
         from prometheus.safety.approvals import STOPPED_MESSAGE
         if result == STOPPED_MESSAGE:
             store.add_message(chat_id, "assistant", result, "approval")
+            return Response(status_code=204)
+        if str(result).startswith("Already "):          # a second click: the first one already said what happened
             return Response(status_code=204)
         text = ("Not done: you said no." if not approved else
                 (result if not str(result).startswith("Failed") else f"That didn't work: {result}"))
@@ -1770,6 +1811,8 @@ def register_routes(app: FastAPI, services: Services) -> None:
         services.killswitch.trigger("Stopped by the user")
         services.settings.paused = True
         save_settings(services.settings)
+        if services.voice is not None:          # Stop all switches the microphone off too (laptop test)
+            services.voice.stop()
         store.audit("user", "kill", {})
         return HTMLResponse("")
 
@@ -1778,6 +1821,8 @@ def register_routes(app: FastAPI, services: Services) -> None:
         services.killswitch.reset()
         services.settings.paused = False
         save_settings(services.settings)
+        if services.voice is not None:
+            services.voice.start_if_enabled()
         store.audit("user", "kill_reset", {})
         return HTMLResponse("")
 

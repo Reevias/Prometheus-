@@ -64,10 +64,16 @@ class VoiceService:
     # -- starting and stopping ------------------------------------------------------------
     def start_if_enabled(self) -> None:
         if self.services.settings.voice_enabled:
-            threading.Thread(target=self.start, daemon=True).start()
+            threading.Thread(target=self.start, kwargs={"only_if_enabled": True}, daemon=True).start()
 
-    def start(self) -> bool:
+    def start(self, only_if_enabled: bool = False) -> bool:
         with self._lock:
+            ks = getattr(self.services, "killswitch", None)
+            if ks is not None and ks.is_set:          # Stop all: the microphone stays off until Resume
+                self.error = "Everything is stopped. Press Resume to use voice again."
+                return False
+            if only_if_enabled and not self.services.settings.voice_enabled:
+                return False                          # switched off while it was starting
             if self.loop is not None:
                 return True
             self.models.speech = getattr(self.services.settings, "voice_speech", self.models.speech)

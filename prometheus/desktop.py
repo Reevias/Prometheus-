@@ -6,7 +6,7 @@ import sys
 import threading
 import time
 
-from prometheus.config import Settings
+from prometheus.config import Settings, data_dir
 from prometheus.launcher import version
 
 BACKGROUND = "#0B0B10"                   # the palette base, so there is no flash on opening
@@ -179,6 +179,11 @@ def attach_tray(window, settings, pystray=None):
 
     def quit_app():
         state["quitting"] = True
+        try:            # the server this window shows ends too, microphone first (it may be the background copy)
+            window.evaluate_js("fetch('/api/v3/quit', {method: 'POST', credentials: 'same-origin', headers: "
+                               "{'X-CSRF-Token': document.body.dataset.csrf || ''}})")
+        except Exception:
+            pass
         window.destroy()
 
     tray = Tray(show=window.show, hide=window.hide, quit_app=quit_app, pystray=pystray)
@@ -284,14 +289,64 @@ def is_maximised(window) -> bool:
         return False
 
 
+def window_lock(folder=None):
+    """Held while a Prometheus window is open; None when another window already holds it. The operating system
+    frees it when the window's process ends, even after a crash."""
+    from pathlib import Path
+
+    path = Path(folder or data_dir()) / "window.lock"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    f = open(path, "a+b")
+    try:
+        if sys.platform == "win32":
+            import msvcrt
+
+            f.seek(0)
+            msvcrt.locking(f.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+
+            fcntl.flock(f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        f.close()
+        return None
+    return f
+
+
+def bring_existing_forward(title: str) -> bool:
+    """Show the window that is already open (restored and in front). Windows only; elsewhere nothing to do."""
+    if sys.platform != "win32":
+        return False
+    try:
+        import ctypes
+
+        user32 = ctypes.windll.user32
+        hwnd = user32.FindWindowW(None, title)
+        if not hwnd:
+            return False
+        user32.ShowWindow(hwnd, 9)               # SW_RESTORE: also un-hides a window hidden to the tray
+        user32.SetForegroundWindow(hwnd)
+        return True
+    except Exception:
+        return False
+
+
+_WINDOW_LOCK = None
+
+
 def run_desktop(settings: Settings, webview=None, server=None) -> int:
+    global _WINDOW_LOCK
+    title = f"Prometheus {version()}"
+    _WINDOW_LOCK = window_lock(data_dir())
+    if _WINDOW_LOCK is None:                     # one window only: show the open one instead of a second (laptop test)
+        bring_existing_forward(title)
+        return 0
     if webview is None:
         import webview  # pywebview
     if server is None:
         server = AttachedServer(settings.port) if running_copy(settings.port) else LocalServer(settings)
     try:
         port = server.start()
-        title = f"Prometheus {version()}"
         windows_identity()                       # before the window exists, so the taskbar groups it as Prometheus
         window = webview.create_window(title, f"http://127.0.0.1:{port}/", width=1220,
                                        height=780, min_size=(860, 560), background_color=BACKGROUND,
@@ -332,3 +387,6 @@ def run_desktop(settings: Settings, webview=None, server=None) -> int:
         return 2
     finally:
         server.stop()
+        if _WINDOW_LOCK is not None:             # the window is gone: the next launch may open one
+            _WINDOW_LOCK.close()
+            _WINDOW_LOCK = None

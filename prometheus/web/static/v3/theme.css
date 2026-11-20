@@ -1005,3 +1005,15 @@ html[data-motion="reduced"] *, html[data-motion="reduced"] *::before { animation
 .login-card button:hover { background: var(--amber); }
 .login-error { margin: 0; padding: 8px 10px; border-radius: var(--r-md); color: var(--bad);
                background: rgb(var(--bad-rgb) / 0.1); border: 1px solid rgb(var(--bad-rgb) / 0.4); }
+
+/* pictures a task made (a script's chart) under its answer */
+.msg-images { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0 2px; }
+.msg-images .out-img { padding: 0; border: 1px solid rgb(var(--text-rgb) / 0.12); border-radius: var(--r-md);
+                       background: var(--raised); overflow: hidden; }
+.msg-images img { display: block; max-width: min(520px, 100%); max-height: 360px; }
+
+/* long answers fold to a few lines */
+.msg > .body.folded { max-height: 320px; overflow: hidden;
+  -webkit-mask-image: linear-gradient(to bottom, var(--base) 70%, transparent); mask-image: linear-gradient(to bottom, var(--base) 70%, transparent); }
+.fold-btn { background: none; border: 0; padding: 4px 0; color: var(--amber); font-size: 13px; }
+.fold-btn:hover { text-decoration: underline; }

@@ -309,9 +309,10 @@ def understand(text: str, store=None, now: float | None = None) -> Quick | None:
         what = (m.group(2) or "").strip() or "something"
         return Quick(steps=[_step("money", f"Spent {m.group(1)} on {what}", action="add", amount=m.group(1),
                                   what=what)], action=True)
-    if re.search(r"\bhow much (?:did i|have i) (?:spend|spent)\b|\bmy spending\b|\bkitna kharch", low):
-        today = bool(re.search(r"\btoday\b|\baaj\b", low))
-        return Quick(steps=[_step("money", "Spending", action="today" if today else "report")])
+    if re.search(r"\bhow much (?:did i|have i|i) (?:spend|spent)\b|\bmy spending\b|\bkitna kharch", low):
+        period, cat = money.question_parts(low)      # "on food last month": not this month's total (laptop test)
+        return Quick(steps=[_step("money", "Spending", action="spent", period=period,
+                                  **({"category": cat} if cat else {}))])
     m = re.fullmatch(r"(?:quiz|test) me(?: on| about)?\s*(.*?)(?: please)?|(?:start|begin) (?:a |the )?quiz(?: on)?\s*"
                      r"(.*)|revise(?: my)? flashcards(?: on)?\s*(.*)", low)
     if m:

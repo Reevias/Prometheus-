@@ -35,6 +35,7 @@ YOUTUBE_PATHS = re.compile(r"^/$|^/(watch|results|playlist)$|^/shorts/[\w-]{11}$
 YOUTU_BE_PATH = re.compile(r"^/[\w-]{11}$")
 GITHUB_REPO_PATH = re.compile(r"^/$|^/[A-Za-z0-9][A-Za-z0-9_.-]{0,99}/[A-Za-z0-9][A-Za-z0-9_.-]{0,99}/?$")
 TRANSCRIPT_CHARS = 12000
+NO_SUMMARY = ("I couldn't", "This video has no captions")
 KNOWN_SITES = SITES
 SPOTIFY_ITEM = re.compile(r"^/(track|album|playlist|artist|episode|show)/[A-Za-z0-9]{10,40}$|^/search/[^/]{1,200}$")
 WIKI_ARTICLE = re.compile(r"^/wiki/[^/:]{1,200}$")
@@ -132,17 +133,48 @@ def open_output(path: str, how: str, policy, opener=None, revealer=None) -> str:
     return f"{p.name} isn't a document or media file, so it is shown in its folder instead of opened."
 
 
-def find_video(query: str) -> str | None:
+def _search_web(query: str) -> list[str]:
     try:
         from ddgs import DDGS
 
-        for r in DDGS().text(f"site:youtube.com {query}", max_results=8):
-            url = r.get("href", "")
-            if _auto_open(url) and video_id(url):
-                return url
+        return [r.get("href", "") for r in DDGS().text(f"site:youtube.com {query}", max_results=8)]
     except Exception:
-        return None
-    return None
+        return []
+
+
+def _youtube_results_page(query: str) -> str:
+    """YouTube's own search page: used when the web search finds nothing (or isn't reachable)."""
+    import httpx
+
+    try:
+        return httpx.get("https://www.youtube.com/results", params={"search_query": query}, timeout=10,
+                         headers={"User-Agent": "Mozilla/5.0", "Accept-Language": "en"}).text
+    except Exception:
+        return ""
+
+
+def find_videos(query: str, n: int = 3) -> list[str]:
+    """Up to n YouTube videos for some search words: the web search first, then YouTube's own search page."""
+    ids: list[str] = []
+    for url in _search_web(query):
+        vid = video_id(url) if _auto_open(url) else None
+        if vid and vid not in ids:
+            ids.append(vid)
+    if len(ids) < n:
+        for vid in re.findall(r'"videoId":"([\w-]{11})"', _youtube_results_page(query)):
+            if vid not in ids:
+                ids.append(vid)
+            if len(ids) >= n:
+                break
+    return [f"https://www.youtube.com/watch?v={v}" for v in ids[:n]]
+
+
+def find_video(query: str) -> str | None:
+    found = find_videos(query, 1)
+    return found[0] if found else None
+
+
+YOUTUBE_LINK = re.compile(r"https?://(?:www\.|m\.)?(?:youtube\.com|youtu\.be)/[^\s\"'<>\],]+")
 
 
 def fetch_transcript(vid: str) -> str:
@@ -194,8 +226,9 @@ class Opener(Agent):
     description = ("Opens things on this laptop: plays a YouTube video (and can summarise it from its captions), "
                    "opens a GitHub repository page, a web link, or a file/folder in its normal app. It never runs "
                    "programs. Inputs: kind ('youtube', 'github', 'web' or 'file'), target (a link, 'owner/repo', "
-                   "search words, or a path like Documents/notes.pdf), summarise ('true' to summarise a video), "
-                   "open ('false' to summarise without opening).")
+                   "search words, or a path like Documents/notes.pdf), summarise ('true' to summarise a video; it is "
+                   "not opened unless open is 'true'), open. For search words its result has url (the video used) and "
+                   "videos (up to 3 found links).")
     tools = {"open_link", "open_other", "open_local", "web_search", "web_fetch", "call_model"}
     accepts_private = False
     required_inputs = ("target",)
@@ -204,7 +237,7 @@ class Opener(Agent):
                  find_video: Callable[[str], str | None] | None = None,
                  transcript: Callable[[str], str] | None = None):
         self.launcher = launcher or webbrowser.open
-        self.find_video = find_video or globals()["find_video"]
+        self.find_videos = (lambda q, n: [u for u in [find_video(q)] if u]) if find_video else globals()["find_videos"]
         self.transcript = transcript or fetch_transcript
 
     def _summarise(self, ctx: AgentContext, url: str, question: str) -> str:
@@ -213,7 +246,9 @@ class Opener(Agent):
             return "I couldn't work out which video that is, so there's no summary."
         try:
             text = self.transcript(vid)
-        except Exception:
+        except Exception as e:
+            if "block" in type(e).__name__.lower() or "too many" in str(e).lower():
+                return "I couldn't get this video's captions: YouTube is refusing for now. Try again in a while."
             return "This video has no captions I can read, so I can't summarise it."
         if not text.strip():
             return "This video has no captions I can read, so I can't summarise it."
@@ -228,22 +263,33 @@ class Opener(Agent):
 
     def _youtube(self, ctx: AgentContext, target: str, inputs: dict) -> StepResult:
         ctx.use(self.name, "open_link")
+        found: list[str] = []
+        link = None if target.startswith(("http://", "https://")) else YOUTUBE_LINK.search(target)
+        if link:                      # a list or text that holds links (an earlier step's results): use the first one
+            target = link.group(0)
         if target.startswith(("http://", "https://")):
             if not _auto_open(target):
                 return self._web(ctx, target)
             url = target
         else:
-            url = self.find_video(target) or f"https://www.youtube.com/results?search_query={quote_plus(target)}"
+            found = self.find_videos(target, 3)
+            url = found[0] if found else f"https://www.youtube.com/results?search_query={quote_plus(target)}"
         parts = []
-        if not _truthy(inputs.get("open", "true")) and _truthy(inputs.get("summarise", "")):
-            pass
+        summarise = _truthy(inputs.get("summarise", ""))
+        if summarise and not _truthy(inputs.get("open", "false")):
+            pass                      # summarising doesn't open browser tabs unless asked
         else:
             self.launcher(url)
             ctx.store.audit(self.name, "open_link", {"url": url})
             parts.append(f"Opened {url}")
-        if _truthy(inputs.get("summarise", "")):
-            parts.append(self._summarise(ctx, url, str(inputs.get("question", ""))))
-        return StepResult("done", "\n".join(parts), {"url": url})
+        status = "done"
+        if summarise:
+            text = self._summarise(ctx, url, str(inputs.get("question", "")))
+            parts.append(text)
+            if text.startswith(NO_SUMMARY):
+                status = "failed"         # the answer must not say a summary was made
+        data = {"url": url, **({"videos": found} if found else {})}
+        return StepResult(status, "\n".join(parts) or f"Found {url}", data)
 
     def _web(self, ctx: AgentContext, url: str) -> StepResult:
         if not SAFE_URL.match(url):

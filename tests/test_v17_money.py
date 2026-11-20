@@ -63,7 +63,8 @@ def test_scan_budgets_excel_and_wrapup(make_ctx, tmp_path):
 def test_quick_phrases():
     step = understand("I spent 200 on food").steps[0]
     assert step["agent"] == "money" and step["inputs"]["amount"] == "200" and step["inputs"]["what"] == "food"
-    assert understand("how much did I spend today").steps[0]["inputs"]["action"] == "today"
+    today = understand("how much did I spend today").steps[0]["inputs"]      # since the laptop test: any period
+    assert today["action"] == "spent" and today["period"] == "today"
 
 
 def test_settings_budgets(app_client):

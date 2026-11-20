@@ -1995,9 +1995,14 @@ def register_switchover_pages(app: FastAPI, services, shell) -> None:
 
         r = _reader.CURRENT
         reading = r.status() if r is not None else None
+        import time as _time
+
         b = services.browser
-        browser = {"started": bool(b is not None and b._thread is not None and b._thread.is_alive()),
-                   "paused": bool(b and b.paused)}
+        alive = bool(b is not None and b._thread is not None and b._thread.is_alive())
+        # only while it is really in use: a task running here, the owner driving, or used in the last 2 minutes
+        in_use = alive and (bool(b.paused) or chat_id in services.running
+                            or _time.monotonic() - getattr(b, "last_used", 0.0) < 120)
+        browser = {"started": in_use, "paused": bool(b and b.paused)}
         return shell(request, "v3/chat_live.html", "chats", r=reading if reading and reading.get("state") != "off" else None,
                      browser=browser, chat_id=chat_id)
 
@@ -2016,6 +2021,16 @@ def register_switchover_pages(app: FastAPI, services, shell) -> None:
             return bad("Unknown control.", 404)
         act()
         return {"ok": True}
+
+    @app.post("/api/v3/browser/close")
+    def api_browser_close():
+        b = services.browser
+        if b is None:
+            return bad("The browser isn't running.", 409)
+        b.paused = False
+        b.close()
+        store.audit("user", "browser_closed", {})
+        return {"ok": True, "message": "Closed the browser."}
 
     @app.post("/api/v3/browser/toggle")
     def api_browser_toggle():

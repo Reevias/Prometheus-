@@ -16,6 +16,12 @@
   <div class="meta"><span class="who">{{ "You" if m.role == "user" else "Prometheus" }}</span><span class="when">{{ m.created|clock }}</span></div>
   <div class="body">{% if m.role == "user" %}{{ m.text }}{% else %}{{ m.text|md }}{% endif %}</div>
   <template class="raw">{{ m.text }}</template>
+  {% if m.role == "assistant" and images_by and images_by.get(m.id) %}
+  <div class="msg-images">{% for f in images_by[m.id] %}
+    <button type="button" class="out-img" data-src="/api/v3/outputs/{{ f.id }}/file" data-name="{{ f.name }}" aria-label="Enlarge {{ f.name }}">
+      <img src="/api/v3/outputs/{{ f.id }}/file" alt="{{ f.name }}" loading="lazy"></button>{% endfor %}
+  </div>
+  {% endif %}
   {% if m.role == "assistant" and steps_by and steps_by.get(m.id) %}
   <details class="steps"><summary>{{ steps_by[m.id] | length }} step{{ "s" if steps_by[m.id] | length != 1 }}</summary>{{ step_cards(steps_by[m.id]) }}</details>
   {% endif %}
