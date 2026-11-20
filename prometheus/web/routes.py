@@ -89,7 +89,7 @@ def register_routes(app: FastAPI, services: Services) -> None:
                               "density": s.ui_density})
         base = {"owner": services.settings.owner_name, "commands": ui_state_service.get_slash_commands(),
                 "chats": visible_chats()[:8], "heads": head_choices(services.router), "head": services.settings.head_model,
-                "has_voice": services.voice is not None, "app_version": app_version(),
+                "has_voice": services.voice is not None, "voice_on": bool(s.voice_enabled), "app_version": app_version(),
                 "mentions": [{"command": "@" + n, "label": n.replace("_", " ").title(), "group": "Agents", "kind": "mention",
                               "value": "@" + n + " ", "description": short_about(c.description)}
                              for n, c in services.orchestrator._usable_agents()]}
@@ -349,6 +349,23 @@ def register_routes(app: FastAPI, services: Services) -> None:
 
         threading.Thread(target=start_then_listen, name="prometheus-voice-button", daemon=True).start()
         return {"starting": True}
+
+    @app.post("/api/v3/voice/toggle")
+    def api_v3_voice_toggle():
+        """The microphone button next to Stop all: voice on or off, saved like Settings → Voice (laptop check)."""
+        if services.voice is None:
+            return JSONResponse({"error": "Voice isn't set up on this computer (Settings → Voice)."}, status_code=409)
+        if services.killswitch.is_set:
+            return JSONResponse({"error": "Everything is stopped. Press Resume to use voice."}, status_code=409)
+        s = services.settings
+        s.voice_enabled = not s.voice_enabled
+        save_settings(s)
+        if s.voice_enabled:
+            services.voice.start_if_enabled()
+        else:
+            services.voice.stop()
+        store.audit("user", "voice", {"on": s.voice_enabled, "from": "top bar"})
+        return {"on": s.voice_enabled}
 
     @app.post("/api/v3/quit")
     def api_quit():

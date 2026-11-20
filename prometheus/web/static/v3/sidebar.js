@@ -18,6 +18,17 @@
   function refresh() { document.body.dispatchEvent(new Event("sidebar-refresh")); }
   function openChat() { var m = location.pathname.match(/^\/c\/(\d+)/); return m ? m[1] : ""; }
 
+  // the microphone next to Stop all: voice on or off
+  var mic = $("#mic-toggle");
+  if (mic) mic.addEventListener("click", function () {
+    post("/api/v3/voice/toggle").then(function (r) { return r.json(); }).then(function (j) {
+      if (j.error) { toast(j.error, true); return; }
+      mic.classList.toggle("off", !j.on); mic.setAttribute("aria-pressed", j.on ? "true" : "false");
+      mic.title = j.on ? "Voice is on: click to turn it off" : "Voice is off: click to turn it on";
+      toast(j.on ? "Voice is on." : "Voice is off: the microphone isn't listening.");
+    }).catch(function () { toast("Couldn't switch voice.", true); });
+  });
+
   // Search = the Ctrl+K palette
   var search = $("#side-search");
   if (search) search.addEventListener("click", function () { if (window.promOpenPalette) window.promOpenPalette(); });

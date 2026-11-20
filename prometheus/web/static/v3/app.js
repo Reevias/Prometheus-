@@ -566,6 +566,8 @@
         '<div class="what muted">' + esc(t.detail) + '</div>') : '<span class="idle">No task running</span>';
       var mine = t && String(t.chat_id) === String(chatId);
       setBusy(!!mine);
+      var mic = $("#mic-toggle");                    // the top-bar microphone follows what voice is really doing
+      if (mic && s.voice) mic.classList.toggle("listening", s.voice.state === "listening" && !s.voice.muted);
       var activity = s.assistant;
       var label = $("#assistant-state");
       if (activity && label) {

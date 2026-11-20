@@ -1106,3 +1106,14 @@ html[data-motion="reduced"] *, html[data-motion="reduced"] *::before { animation
 .app.mini .side-act { justify-content: center; padding: 10px 0; }
 .app.mini .nav-row { flex-direction: column; }
 .app.mini .nav-more-menu { left: calc(100% + 6px); right: auto; width: 220px; top: 0; }
+
+/* the microphone next to Stop all */
+.mic-toggle { position: relative; color: var(--orange); margin-right: 4px; }
+.mic-toggle.off { color: var(--muted); }
+.mic-toggle.off::after { content: ""; position: absolute; left: 9px; right: 9px; top: 50%; height: 2px; border-radius: 2px;
+                          background: currentColor; transform: rotate(-45deg); }
+.mic-toggle.listening { color: var(--orange); animation: mic-pulse 1.2s ease-in-out infinite; }
+.mic-toggle:disabled { opacity: 0.45; cursor: not-allowed; }
+@keyframes mic-pulse { 0%, 100% { box-shadow: 0 0 0 0 rgb(var(--orange-rgb) / 0.45); }
+                       50% { box-shadow: 0 0 0 6px rgb(var(--orange-rgb) / 0); } }
+@media (prefers-reduced-motion: reduce) { .mic-toggle.listening { animation: none; } }

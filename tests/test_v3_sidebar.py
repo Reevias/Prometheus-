@@ -108,3 +108,38 @@ def test_the_sidebar_keeps_every_page_and_shortcut_and_loads_the_lists(app_clien
     for control in ('id="side-new-chat"', 'id="side-search"', 'id="nav-more-btn"'):
         assert control in side
     assert 'hx-get="/api/v3/sidebar' in side and "visibilityState" in side
+
+
+# -- Task 3: the microphone button next to Stop all ------------------------------------------------------------------------
+
+def test_mic_button_toggles_voice_and_saves_it(app_client, monkeypatch):
+    from prometheus.config import load_settings
+
+    client, services = app_client()
+    h = {"X-CSRF-Token": login(client)}
+    calls = []
+    monkeypatch.setattr(services.voice, "start_if_enabled", lambda: calls.append("start"))
+    monkeypatch.setattr(services.voice, "stop", lambda: calls.append("stop"))
+    services.settings.voice_enabled = False
+    assert 'id="mic-toggle"' in client.get("/").text
+    assert client.post("/api/v3/voice/toggle", headers=h).json() == {"on": True}
+    assert load_settings().voice_enabled is True and calls == ["start"]
+    assert client.post("/api/v3/voice/toggle", headers=h).json() == {"on": False}
+    assert load_settings().voice_enabled is False and calls == ["start", "stop"]
+
+
+def test_mic_button_refuses_while_stopped(app_client):
+    client, services = app_client()
+    h = {"X-CSRF-Token": login(client)}
+    services.settings.voice_enabled = False
+    client.post("/kill", headers=h)
+    r = client.post("/api/v3/voice/toggle", headers=h)
+    assert r.status_code == 409 and r.json()["error"] == "Everything is stopped. Press Resume to use voice."
+    assert services.settings.voice_enabled is False
+
+
+def test_no_mic_button_without_voice(app_client):
+    client, services = app_client()
+    login(client)
+    services.voice = None
+    assert 'id="mic-toggle"' not in client.get("/").text
