@@ -96,6 +96,19 @@ def quick_actions(settings) -> List[Dict[str, str]]:
     return clean_quick(getattr(settings, "quick_actions", None)) or [dict(q) for q in DEFAULT_QUICK]
 
 
+APPROVAL_KINDS = {"code_run": "run a Python script", "code_network": "let a script use the internet",
+                  "open_link": "open a link", "open_local": "open a file", "github_action": "a GitHub action",
+                  "clone_repo": "download a repository", "set_model": "switch the AI model",
+                  "write_file": "change a file", "delete_files": "delete files", "send_email": "send an email",
+                  "recycle_files": "move files to the Recycle Bin", "browser_click": "a click in the browser",
+                  "screen_click": "a click on your screen", "phone_action": "something on your phone",
+                  "laptop_action": "something on your laptop", "mcp_action": "an action in a connected app",
+                  "install_app_chat": "install an app", "wifi_password": "share a Wi-Fi password",
+                  "browser_password": "fill in a password", "synced_goal": "a goal from the cloud copy",
+                  "copy_move_runnable": "copy or move a program file", "assignment_calendar": "add to your calendar",
+                  "approve_tool": "a new tool", "clone_and_check": "download a repository"}
+
+
 class UIStateService:
     def __init__(self, services: Optional[Any] = None) -> None:
         self.services = services
@@ -192,10 +205,19 @@ class UIStateService:
         elif task or voice.get("state") == "thinking":
             state, label = "thinking", "Thinking"
         elif s.store.has_pending_approval():
-            state, label = "waiting_approval", "Waiting for your approval"
+            # say what kind of thing waits and where (laptop check: the label gave no way to find it). Only the
+            # kind, in fixed words: never the request's own text (the field stays free of content, M3 C2)
+            pending = s.store.approvals()
+            first = pending[0]
+            chat_id, inline = s.store.approval_chat(first.id)
+            what = APPROVAL_KINDS.get(first.kind, "a request")
+            more = len(pending) - 1
+            label = f"Waiting for your approval: {what}" + (f" (+{more} more)" if more > 0 else "")
+            href = f"/c/{chat_id}#ask-{first.id}" if inline and chat_id else "/v3/approvals"
+            return {"state": "waiting_approval", "label": label, "href": href}
         else:
             state, label = "idle", "Idle"
-        return {"state": state, "label": label}
+        return {"state": state, "label": label, "href": ""}
 
     def get_full_state(self) -> Dict[str, Any]:
         online = self.get_online()

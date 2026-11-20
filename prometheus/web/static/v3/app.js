@@ -538,6 +538,7 @@
       if (activity && label) {
         if (label.textContent !== activity.label) label.textContent = activity.label;
         label.hidden = activity.state === "idle";
+        if (activity.href) label.setAttribute("href", activity.href); else label.removeAttribute("href");
       }
       if (activity && window.PromSphere) {
         var orb = { acting: "tool", answering: "speaking" }[activity.state] || activity.state;

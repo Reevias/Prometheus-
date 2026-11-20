@@ -109,3 +109,21 @@ def test_an_existing_database_gets_ids_for_its_old_chats(tmp_path):
     con.close()
     rows = Store(db)._rows("SELECT uid FROM chats")
     assert [r["uid"] for r in rows] == [chat_uid_for("Old chat", 1234.5)]
+
+
+# -- "what approval?" ----------------------------------------------------------------------------------------------------
+
+def test_the_waiting_label_says_what_is_waiting_and_where(app_client):
+    """Bug: 'Waiting for your approval' showed with no way to find which approval."""
+    client, services = app_client()
+    login(client)
+    chat = services.store.create_chat("Charts")
+    services.approvals.register("code_run", lambda p: "ran")
+    _, aid = services.approvals.ask("code_run", "Run this Python script", {"code": "print(1)"},
+                                    ("code:abc", "code:any"), chat_id=chat)
+    state = client.get("/api/v3/state").json()["assistant"]
+    assert state["state"] == "waiting_approval"
+    assert state["href"] == f"/c/{chat}#ask-{aid}" and "run a Python script" in state["label"]
+    assert "print(1)" not in str(state)                     # the kind only, never the request's own text
+    page = client.get("/").text
+    assert '<a id="assistant-state"' in page
