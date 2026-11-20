@@ -68,7 +68,8 @@ class VoiceService:
         import time as _time
 
         now = _time.monotonic()
-        if now - getattr(self, "_ready_at", 0.0) > 60:
+        last = getattr(self, "_ready_at", None)
+        if last is None or now - last > 60:          # always the first time (the clock can be small after boot)
             try:
                 self._ready = not self.models.missing() and not self.models.packages_missing()
             except Exception:
