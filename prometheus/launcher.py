@@ -234,7 +234,28 @@ def review_update(code_dir: Path, run=None) -> dict:
             "summary": f"{branch} at {target[:12]}\n{subjects[:1600]}"}
 
 
-def apply_update(code_dir: Path, review: dict, run=None) -> str:
+def install_packages(code_dir: Path, run=None) -> None:
+    """Install the packages a reviewed update needs, keeping the add-ons this laptop already uses."""
+    run = run or subprocess.run
+    extras = []
+    for module, extra in (("webview", "desktop"), ("vosk", "voice"), ("playwright", "browser"),
+                          ("fastembed", "photos")):
+        try:
+            __import__(module)
+            extras.append(extra)
+        except Exception:
+            pass
+    target = str(code_dir) + (f"[{','.join(extras)}]" if extras else "")
+    pip = run([sys.executable, "-m", "pip", "install", "--quiet", "-e", target], capture_output=True, text=True,
+              encoding="utf-8", errors="replace", timeout=900)
+    if pip.returncode != 0:
+        raise RuntimeError("installing its packages failed: " + (pip.stderr or "")[-300:])
+    if "voice" in extras:          # the laptop voice (its label says <3.14; it works on 3.14)
+        run([sys.executable, "-m", "pip", "install", "--quiet", "--no-deps", "--ignore-requires-python",
+             "kokoro-onnx>=0.4"], capture_output=True, text=True, timeout=600)
+
+
+def apply_update(code_dir: Path, review: dict, run=None, install=None) -> str:
     def git(*args):
         return _update_git(code_dir, *args, run=run)
 
@@ -248,7 +269,14 @@ def apply_update(code_dir: Path, review: dict, run=None) -> str:
         raise RuntimeError("Save or commit local changes before updating.")
     git("merge", "--ff-only", "--no-overwrite-ignore", target)
     if review.get("sensitive"):
-        return "Updated the code. Check the installation instructions for dependency changes before restarting."
+        # the packages are installed only after the owner's yes; if that fails the old code goes back, so the
+        # automatic restart never starts code whose packages are missing
+        try:
+            (install or (lambda path: install_packages(path, run)))(code_dir)
+        except Exception as exc:
+            git("reset", "--keep", review["base"])
+            raise RuntimeError("Kept the old version: the update's " + str(exc)[:300]) from exc
+        return "Updated the code and its packages. Restart Prometheus to use it."
     return "Updated the code. Restart Prometheus to use it."
 
 

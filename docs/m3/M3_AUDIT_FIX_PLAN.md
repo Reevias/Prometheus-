@@ -51,16 +51,16 @@ Implemented 19 November. The phone uses the same responsive interface as the lap
 | C1 | **Claude streaming** (named weakness). | `AnthropicProvider.stream` using the SDK's streaming with the same adaptive thinking and fallback; text deltas only. |
 | C2 | **Ambient Intelligence, the M3 part** ("intelligence foundation": understand what is going on and pick the right response; make the assistant's state legible). | An **assistant state** the interface can show: listening, thinking, waiting for your yes, acting, answering, stopped. Exposed in `/api/v3/state` and on the orb/phone, from real events only. The front door and loop report which step they're on. *(decided)* The rest of the proposal stays in its milestones: voice engine and full-duplex talk (M8), security checks like "my password may be exposed" (M7, only with explicit permission and an authorised service), proactive watching (M10). Written into docs/ideas-after-m10.md and PLAN.md's mapping, not built now. |
 
-## Phase D: truth in the documents, licences, and the gate (D1–D5 implemented; D6 requires an independent review and verified test runs)
+## Phase D: truth in the documents, licences, and the gate (all DONE 20 Nov; see the M3 report's "Exit check")
 
 | # | Item | Fix |
 |---|---|---|
 | D1 | M3 report says "1353 tests pass" (claim list). | Report only numbers produced by a run, with where it ran (here / GitHub Windows / laptop not yet). |
 | D2 | PLAN.md claims `browser_action` with an accessibility tree (B10). | Correct it: the browser agent reads labels and aria; an accessibility-tree tool moves to M5. |
-| D3 | github.py:67 tells the planner updates wait for approval; CHANGELOG says updates need no approval. | Make both true after A5 and reword them. |
+| D3 | github.py:67 tells the planner updates wait for approval; CHANGELOG says updates need no approval. | Make both true after A5 and reword them. **Done:** both now say updates wait for a yes (chat always; automatic only for package or top-level changes). |
 | D4 | models.json "prices checked 11 Nov" (prices drift). | Say prices are a snapshot; "Check cards" compares them with the live OpenRouter list and shows the difference. |
 | D5 | Copyleft dependencies with no sign-off (B8): fpdf2 (LGPL-3.0), pywebpush (MPL-2.0), pystray (LGPLv3). | *(decided)* Replace **fpdf2** with a permissive PDF writer (ReportLab, BSD) if the PDF tests pass with it; keep pywebpush and pystray (used unmodified as separate libraries) and list them in `THIRD_PARTY_LICENSES.md` with their obligations and a sign-off line for the owner. |
-| D6 | Exit gate. | Full suite green here **and** in a Windows venv job; browser tests; an independent review of the fixes; report with honest numbers; CHANGELOG, bug log, PLAN updated. |
+| D6 | Exit gate. | Full suite green here **and** in a Windows venv job; browser tests; an independent review of the fixes; report with honest numbers; CHANGELOG, bug log, PLAN updated. **Done 20 Nov** (3 bugs found and fixed, bug log 123-125). |
 
 ## Order
 A1 → A6 (blockers), then B1 → B8, then C1 → C2, then D1 → D6. A commit per item; push after each phase; check GitHub's

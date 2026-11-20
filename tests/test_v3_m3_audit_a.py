@@ -135,8 +135,8 @@ def test_sensitive_update_waits_and_applies_only_reviewed_commit(tmp_path, app_c
     assert updater.check_once() == updater.check_once() == ""
     item, = services.store.approvals()
     assert "review me" in item.summary and (mine / "pyproject.toml").read_text() == "# version one"
-    assert "Updated" in apply_update(mine, item.payload)
+    assert "Updated" in apply_update(mine, item.payload, install=lambda path: None)   # no real pip here
     assert (mine / filename).read_text() == "# changed"
     assert review_update(mine) == {}
     with pytest.raises(RuntimeError, match="changed"):
-        apply_update(mine, item.payload)
+        apply_update(mine, item.payload, install=lambda path: None)

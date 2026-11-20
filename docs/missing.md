@@ -5,7 +5,7 @@ Not yet run end to end on the owner's real laptop.
 
 ## M3 audit, 19 November 2026
 
-Phases A and C are implemented. The independent milestone review is pending. Billed catalog models need rates on their model cards. Local cost estimates can differ from the provider's invoice.
+Phases A to D are done (D6 exit check 20 Nov: 3 more bugs fixed, bug log 123-125). Still to do: run it on the owner's laptop and the owner's licence sign-off in `THIRD_PARTY_LICENSES.md`. Billed catalog models need rates on their model cards. Local cost estimates can differ from the provider's invoice.
 
 ## Just finished
 - **One-line install, Prometheus-Setup.exe and Prometheus.apk** (built by GitHub on each release), own icon in Windows search, **simpler Settings with Features on and off**, **Stop all that stays stopped**, **weekly report card**, **practice tests** and **ready-made jobs** (everything from the "Build your first AI agent" guide).

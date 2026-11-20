@@ -5,7 +5,7 @@ M2's detailed steps: [`docs/m2/M2_PLAN.md`](m2/M2_PLAN.md). Friday Mark 2 compar
 [`docs/reports/FRIDAY_MARK2_RESEARCH.md`](reports/FRIDAY_MARK2_RESEARCH.md).
 
 **11 milestones, 60 steps.** Done: M0, M1, M2 (15 steps; M2 merged into main 15 Nov, waiting for the owner's laptop check).
-Built: M3 (6 steps, 16 Nov, on `prometheus-v3`; report `docs/reports/M3_REPORT.md`). Not started: M4 to M10.
+Done: M3 (6 steps, 16 Nov; audit fixes A-D and exit check 20 Nov; merged into main 20 Nov; laptop check to come; report `docs/reports/M3_REPORT.md`). Not started: M4 to M10.
 
 Status words: **Done** = built, tested, audited and accepted · **Built** = code and tests are in, waiting for the
 owner's laptop check and the audit · **In progress** · **Not started**.
@@ -18,7 +18,7 @@ already written down elsewhere in the repo, missing from the old roadmap.
 | M0 Baseline | 5 | Done (on main) |
 | M1 Tool primitives | 5 | Done (on main) |
 | M2 Desktop interface | 5 | Done, merged into main (laptop check to come) |
-| M3 Orchestration and model routing | 6 | Built 16 Nov (on the branch; laptop check to come) |
+| M3 Orchestration and model routing | 6 | Done, merged into main 20 Nov (laptop check to come) |
 | M4 Repository-to-skill | 7 | Not started |
 | M5 Many agents | 6 | Not started |
 | M6 Runtime / Cloudroom | 5 | Not started |
@@ -96,7 +96,7 @@ Windows and Linux. Met.
 
 Exit gate: click-through test passes on Windows; every 2.x feature reachable; M2 audit; the owner's sign-off.
 
-## M3 Orchestration and model routing — Built 16 Nov · 6 steps (report `docs/reports/M3_REPORT.md`)
+## M3 Orchestration and model routing — Done, merged into main 20 Nov · 6 steps (report `docs/reports/M3_REPORT.md`)
 - Phase C adds Claude text streaming and live assistant activity on desktop and phone. The front door identifies route selection and the loop identifies its round. Permission-based security checks belong in M7, full-duplex voice in M8 and proactive watching in M10.
 - **M3.1 Router [F1].** Four routes: *simple* (fast path, plain rules), *medium* (one agent), *complex* (full ReAct
   loop), *ask-first* (asks a question when the request is unclear). A cheap, time-limited classifier picks the route;

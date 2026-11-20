@@ -66,8 +66,12 @@ class AutoUpdater:
             if not review:
                 return ""
             if review["sensitive"]:
-                pending = self.services.store.approvals()
-                if not any(a.kind == "github_action" and a.payload.get("target") == review["target"] for a in pending):
+                pending = [a for a in self.services.store.approvals()
+                           if a.kind == "github_action" and a.payload.get("action") == "update_self"]
+                for old in pending:            # newer commits replace an older request, which could only fail
+                    if old.payload.get("target") != review["target"]:
+                        self.services.store.set_approval_status(old.id, "rejected")
+                if not any(a.payload.get("target") == review["target"] for a in pending):
                     self.services.approvals.request("github_action", "Review dependency or top-level changes: " +
                                                     review["summary"], {"action": "update_self", **review})
                 return ""

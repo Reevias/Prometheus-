@@ -1,6 +1,10 @@
 # Changelog
 
 ## Prometheus 3.0, M3 (on the prometheus-v3 branch, not released yet)
+- **M3 exit check (D3, D6):** an approved update that changes packages now installs them too (if that fails, the old
+  version is kept and Prometheus doesn't restart); a newer update request replaces an older one; scripts in a Windows
+  venv can use packages that need a `.pth` file. Updates in chat, and package changes in automatic updates, wait for
+  your yes (the GitHub agent's description and Settings say so).
 - Claude streams answer text while using the existing thinking and fallback settings. The desktop and phone interface shows when the assistant is listening, choosing a route, planning a round, using a tool, answering, waiting for approval or stopped.
 - Phase A fixes the Windows virtual-environment script runner, personal-data routing, outside-text checks, billing for keyed providers, update approval and Stop all for pending approvals. Chat updates show incoming commits. Automatic updates stay on the current branch and ask about dependency changes and new top-level paths.
 - **M3 audit fixes, truth in the documents (D1, D2, D4, D5 part):** the M3 report now lists only test numbers a run

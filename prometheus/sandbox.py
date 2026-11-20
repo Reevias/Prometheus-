@@ -33,7 +33,8 @@ import os, re, sys
 SCRATCH = os.path.realpath(sys.argv[1])
 NET = sys.argv[2] == "1"
 SCRIPT = os.path.join(SCRATCH, "script.py")
-sys.path.extend(sys.argv[4:])
+PACKAGES = sys.argv[4:]          # a venv's package folders (Windows); their .pth files are read below
+sys.path.extend(PACKAGES)
 READ_ROOTS = tuple({os.path.realpath(p) for p in (sys.prefix, sys.base_prefix, sys.exec_prefix, *sys.path) if p}
                    | {SCRATCH})
 # private places: the owner's user folder (and other users'), and Prometheus's own data (keys, memory)
@@ -123,6 +124,10 @@ sys.argv = [SCRIPT]
 sys.path.insert(0, SCRATCH)
 os.chdir(SCRATCH)
 sys.addaudithook(hook)
+if PACKAGES:
+    import site                  # after the hook: a .pth line runs under the same rules as the script
+    for _p in PACKAGES:
+        site.addsitedir(_p)
 import runpy
 runpy.run_path(SCRIPT, run_name="__main__")
 '''

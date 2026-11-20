@@ -1,6 +1,6 @@
 # M3 report: orchestration and model routing (16 November 2026)
 
-M3 is on the `prometheus-v3` branch. The original six steps were reviewed on 16 November. The Phase A and C changes were tested in a local Windows virtual environment. The owner's independent review of those changes is pending.
+M3 is on the `prometheus-v3` branch. The original six steps were reviewed on 16 November. The Phase A and C changes were tested in a local Windows virtual environment. The exit check (D6) was done on 20 November: see "Exit check" below.
 
 ## What it does now
 | Step | What you get |
@@ -47,6 +47,43 @@ The combined Windows run of `python -m pytest -q --tb=short` passed 1,426 tests,
 After correcting timing and control identification in the browser test, `python -m pytest -q tests/test_v3_clickthrough.py --tb=short` passed all five checks independently, with one dependency warning.
 
 The activity field at `/api/v3/state` describes the connected instance. The desktop and mobile web layouts read the same field. Stop all takes priority. When idle, the interface hides the activity label. The field contains fixed labels and round numbers without the contents of requests, answers or approvals.
+
+## Exit check (D6), 20 November 2026
+
+A review of every Phase A and C change found 3 bugs, now fixed, each with a test that failed first
+(`tests/test_v3_m3_audit_d.py`, bug log 123-125):
+1. An approved update that changed packages only pulled the code, so the automatic restart could start without a new
+   package. Now it installs the packages after the yes; if that fails, the old code goes back and nothing restarts.
+2. Scripts in the Windows venv sandbox couldn't use packages that need a `.pth` file (pywin32...). The guard now reads
+   the venv's `.pth` files after its rules are on (checked here against a real venv with an editable install: the
+   packages load and the private folders stay blocked).
+3. A newer update request left the older one waiting on the Approvals page, where it could only fail. Now it closes it.
+
+| Where | Result |
+|---|---|
+| This cloud session (Linux, Python 3.14.6), full suite after the fixes | **1421 passed, 42 skipped, 0 failed** |
+| This cloud session, browser click-through (Chromium) | **5 passed** |
+| GitHub `windows-latest` on `043784a` (before these 3 fixes; with the new venv sandbox job) | passed |
+| GitHub `windows-latest` after these fixes | see the Actions tab for this push |
+| The owner's laptop | **not yet** |
+
+The 42 skips: Windows-only tests (26), the real voice models (9), NTFS junctions (3), the Windows-venv test, the
+Windows rename test, and two browser tests (the full run had no browser add-on; the click-through ran on its own, above).
+
+**The Antigravity audit (19 Nov)** is kept as `docs/reports/M3_ANTIGRAVITY_AUDIT_19NOV.pdf`. Its pass/fail results
+agree with ours, but these points in it are wrong, so don't quote them:
+- its numbers don't add up (1,447 passed + 16 skipped is 1,463, not 1,467; the run recorded above for the same commit
+  was 1,426 passed and 41 skipped);
+- "zero LGPL, 100% permissive": pystray (LGPL-3.0) and pywebpush (MPL-2.0) are still used, on purpose, and the
+  owner's sign-off in `THIRD_PARTY_LICENSES.md` is still blank;
+- the sandbox cause was the one-process limit, not a memory limit;
+- the update check looks at `pyproject.toml` and new top-level paths only, not "entry points or security policies";
+- it checks about 7 of the 16 fixes and missed bug 1 above;
+- "Milestone approval: cleared" is the owner's decision, not an auditor's.
+Whether its Windows 11 run was on the owner's own laptop isn't recorded, so the laptop check stays "not yet".
+
+**Known risk kept:** free providers are now asked for token counts (`stream_options`); one that refuses it falls back to
+a normal answer, or, with billing switched on, fails over to the next AI.
 
 ## Not done / known limits
 - Claude streaming was verified with test responses. A live paid call and a physical Android phone remain unverified.
