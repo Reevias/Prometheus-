@@ -48,7 +48,7 @@
     return closed;
   }
   document.addEventListener("click", function (e) {
-    if (!e.target.closest(".menu, .dropdown, #plus, #more, #bell, #slash, #palette, #command-input, #profile-btn")) closeMenus();
+    if (!e.target.closest(".menu, .dropdown, #plus, #more, #bell, #slash, #palette, #command-input, #profile-btn, #nav-more-btn, #side-search, [data-chat-menu]")) closeMenus();
   });
 
   // ---- sidebar and right panel: shrink / hide (remembered on this computer) ----------------------------------
@@ -353,6 +353,7 @@
     drawList(palList, palItems, palSel, function (c) { pal.hidden = true; if (c.kind === "fill" && !input) location.href = "/"; else runCommand(c); });
   }
   function openPalette() { closeMenus(); pal.hidden = false; palInput.value = ""; palSel = 0; palDraw(); palInput.focus(); }
+  window.promOpenPalette = openPalette;
   if (pal) {
     palInput.addEventListener("input", function () { palSel = 0; palDraw(); });
     palInput.addEventListener("keydown", function (e) {
@@ -410,7 +411,7 @@
       if (desktop && fullscreen) { win("fullscreen"); fullscreen = false; }
     }
     if ((e.key === "ArrowDown" || e.key === "ArrowUp") && document.activeElement && document.activeElement.closest("#nav")) {
-      e.preventDefault(); var links = $$("#nav a"), i = links.indexOf(document.activeElement);
+      e.preventDefault(); var links = $$("#nav a").filter(function (a) { return a.offsetParent; }), i = links.indexOf(document.activeElement);
       links[(i + (e.key === "ArrowDown" ? 1 : -1) + links.length) % links.length].focus();
     }
   });

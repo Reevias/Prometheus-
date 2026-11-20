@@ -36,5 +36,5 @@ def sidebar_data(store, open_chat: int = 0) -> dict:
         chats = by_project[pid]
         projects.append({"id": pid, "name": live[pid]["name"], "chats": chats[:PER_PROJECT],
                          "more": len(chats) > PER_PROJECT})
-    return {"projects": projects, "recents": loose[:RECENTS], "more_recents": len(loose) > RECENTS,
-            "open_chat": int(open_chat or 0)}
+    return {"projects": projects, "project_options": [[p["id"], p["name"]] for p in projects],
+            "recents": loose[:RECENTS], "more_recents": len(loose) > RECENTS, "open_chat": int(open_chat or 0)}

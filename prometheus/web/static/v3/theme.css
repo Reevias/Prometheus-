@@ -1034,3 +1034,75 @@ html[data-motion="reduced"] *, html[data-motion="reduced"] *::before { animation
 .grip-ne, .grip-nw, .grip-se, .grip-sw { width: 10px; height: 10px; }
 .grip-ne { top: 0; right: 0; cursor: nesw-resize; } .grip-sw { bottom: 0; left: 0; cursor: nesw-resize; }
 .grip-nw { top: 0; left: 0; cursor: nwse-resize; } .grip-se { bottom: 0; right: 0; cursor: nwse-resize; }
+
+/* ---- sidebar after the laptop check: actions, Home/Tasks/More, projects and recents ---------------------------- */
+.side-actions { display: flex; flex-direction: column; gap: 2px; margin-bottom: 8px; }
+.side-act { display: flex; align-items: center; gap: 12px; padding: 8px 12px; border-radius: var(--r-md); border: 0;
+            background: none; color: var(--text); text-decoration: none; font-size: 14px; text-align: left; }
+.side-act svg { width: 18px; height: 18px; stroke: currentColor; color: var(--muted); flex: none; }
+.side-act:hover { background: rgb(var(--text-rgb) / 0.05); }
+.side-act kbd { margin-left: auto; font: 11px var(--mono); color: var(--muted); border: 1px solid rgb(var(--text-rgb) / 0.12);
+                border-radius: 6px; padding: 1px 6px; }
+#side-new-chat { color: var(--amber); }
+#side-new-chat svg { color: var(--orange); }
+.nav-row { display: flex; gap: 4px; position: relative; }
+.nav-row > a, .nav-more-btn { flex: 1; flex-direction: column; gap: 4px !important; padding: 8px 4px !important; font-size: 12px !important;
+                              justify-content: center; text-align: center; }
+.nav-more-btn { display: flex; align-items: center; border: 1px solid transparent; background: none; color: var(--text);
+                border-radius: var(--r-md); }
+.nav-more-btn svg { width: 20px; height: 20px; stroke: currentColor; color: var(--muted); }
+.nav-more-btn:hover, .nav-more-btn[aria-expanded=true] { background: rgb(var(--text-rgb) / 0.04); }
+.nav-more-btn.on svg { color: var(--orange); }
+.nav-row > a.on::before { display: none; }
+.nav-more-menu { position: absolute; left: 16px; right: 16px; top: auto; margin-top: 4px; z-index: 30; }
+.nav-more-menu a { padding: 8px 12px !important; font-size: 14px !important; gap: 12px !important; }
+.nav-more-menu a svg { width: 18px !important; height: 18px !important; }
+.side-lists { flex: 1; min-height: 0; overflow: hidden auto; margin-top: 10px; padding-right: 2px; }
+.side-head { display: flex; align-items: center; justify-content: space-between; color: var(--muted); font-size: 12px;
+             letter-spacing: 0.06em; text-transform: uppercase; padding: 12px 8px 4px; }
+.side-add { color: var(--muted); display: grid; place-items: center; width: 24px; height: 24px; border-radius: 6px; }
+.side-add svg { width: 15px; height: 15px; stroke: currentColor; }
+.side-add:hover { color: var(--text); background: rgb(var(--text-rgb) / 0.06); }
+.side-project summary { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-radius: 8px; cursor: pointer;
+                        list-style: none; font-size: 14px; color: var(--text); }
+.side-project summary::-webkit-details-marker { display: none; }
+.side-project summary:hover { background: rgb(var(--text-rgb) / 0.04); }
+.side-caret { width: 0; height: 0; border-left: 5px solid var(--muted); border-top: 4px solid transparent;
+              border-bottom: 4px solid transparent; transition: transform 0.15s; flex: none; }
+.side-project[open] .side-caret { transform: rotate(90deg); }
+.side-pname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.side-open { color: var(--muted); display: grid; place-items: center; opacity: 0; }
+.side-open svg { width: 15px; height: 15px; stroke: currentColor; }
+.side-project summary:hover .side-open, .side-open:focus { opacity: 1; }
+.side-project .side-row { padding-left: 14px; }
+.side-row { display: flex; align-items: center; position: relative; }
+.side-chat { flex: 1; min-width: 0; display: block; padding: 6px 30px 6px 10px; border-radius: 8px; color: var(--text);
+             text-decoration: none; font-size: 14px; position: relative; }
+.side-chat span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.side-chat:hover { background: rgb(var(--text-rgb) / 0.05); }
+.side-chat.on { background: rgb(var(--orange-rgb) / 0.12); }
+.side-chat.on::before { content: ""; position: absolute; left: 0; top: 7px; bottom: 7px; width: 3px; border-radius: 3px;
+                        background: var(--orange); }
+.side-row[data-pinned="1"] .side-chat span::before { content: "• "; color: var(--amber); }
+.side-more { position: absolute; right: 4px; border: 0; background: none; color: var(--muted); border-radius: 6px;
+             width: 24px; height: 24px; opacity: 0; font-size: 15px; line-height: 1; }
+.side-row:hover .side-more, .side-more:focus, .side-chat.on + .side-more { opacity: 1; }
+.side-more:hover { color: var(--text); background: rgb(var(--text-rgb) / 0.08); }
+.side-new { display: flex; align-items: center; gap: 8px; margin-left: 14px; padding: 5px 10px; border: 0; background: none;
+            color: var(--muted); font-size: 13px; border-radius: 8px; }
+.side-new svg { width: 14px; height: 14px; stroke: currentColor; }
+.side-new:hover { color: var(--text); background: rgb(var(--text-rgb) / 0.05); }
+.side-all { display: block; padding: 6px 10px; color: var(--muted); font-size: 13px; text-decoration: none; border-radius: 8px; }
+.side-project .side-all { margin-left: 14px; }
+.side-all:hover { color: var(--text); background: rgb(var(--text-rgb) / 0.05); }
+.side-empty { font-size: 13px; padding: 4px 10px; margin: 0; }
+.chat-menu { position: fixed; z-index: 60; width: 200px; }
+.side-dialog { width: min(420px, 92vw); }
+.side-dialog input, .side-dialog select { width: 100%; margin-top: 12px; padding: 10px 12px; border-radius: var(--r-md);
+  color: var(--text); background: var(--base); border: 1px solid rgb(var(--text-rgb) / 0.14); }
+.side-dialog input:focus, .side-dialog select:focus { border-color: var(--orange); outline: none; }
+@media (hover: none) { .side-more, .side-open { opacity: 1; } }
+.app.mini .side-lists, .app.mini .side-act span, .app.mini .side-act kbd, .app.mini .nav-more-btn span { display: none; }
+.app.mini .side-act { justify-content: center; padding: 10px 0; }
+.app.mini .nav-row { flex-direction: column; }
+.app.mini .nav-more-menu { left: calc(100% + 6px); right: auto; width: 220px; top: 0; }

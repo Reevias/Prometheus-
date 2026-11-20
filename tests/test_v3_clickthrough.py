@@ -417,3 +417,71 @@ def test_window_buttons_and_edges_talk_to_the_window_itself(live, browser):
     calls = page.evaluate("window.__calls")
     assert calls and all(c[0] == "resize" and c[3] == "e" for c in calls)
     assert calls[-1][1] < page.evaluate("window.outerWidth")             # dragged inwards: narrower
+
+
+def _signed_in(live, browser, width=1400, height=900):
+    base, chat = live
+    page = browser.new_page(viewport={"width": width, "height": height})
+    page.goto(base + "/login")
+    page.fill("input[name=password]", PASSWORD)
+    page.press("input[name=password]", "Enter")
+    page.wait_for_url(base + "/")
+    page.wait_for_selector("#side-lists .side-head")
+    return page, base, chat
+
+
+def test_one_click_opens_a_recent_chat(live, browser):
+    page, base, _ = _signed_in(live, browser)
+    chat = LONG_CHAT[0]                                  # not in a project: listed under Recents
+    page.click(f'#side-lists a.side-chat[href="/c/{chat}"]')
+    page.wait_for_url(f"{base}/c/{chat}")
+    page.wait_for_selector(f'#side-lists a.side-chat.on[href="/c/{chat}"]')
+
+
+def test_a_project_chat_is_two_clicks_and_the_fold_is_remembered(live, browser):
+    page, base, chat = _signed_in(live, browser)
+    project = page.locator("#side-lists details.side-project").first
+    project.locator("summary .side-pname").click()
+    assert project.get_attribute("open") is not None
+    page.reload()
+    page.wait_for_selector("#side-lists details.side-project[open]")
+    link = page.locator("#side-lists details.side-project[open] a.side-chat").first
+    href = link.get_attribute("href")
+    link.click()
+    page.wait_for_url(base + href)
+
+
+def test_more_lists_every_other_page(live, browser):
+    page, base, _ = _signed_in(live, browser)
+    page.click("#nav-more-btn")
+    labels = [t.strip() for t in page.locator("#nav-more a:visible").all_inner_texts()]
+    for name in ("Agents", "Chats", "Projects", "Skills", "Memory", "Automations", "System", "Research"):
+        assert any(name in l for l in labels), (name, labels)
+    page.click("#nav-more a[href='/v3/skills']")
+    page.wait_for_url(base + "/v3/skills")
+
+
+def test_rename_and_delete_from_the_chat_menu(live, browser):
+    page, base, chat = _signed_in(live, browser)
+    page.goto(f"{base}/c/{chat}")
+    page.wait_for_selector(f'#side-lists [data-chat-menu="{chat}"]')
+    page.hover(f'#side-lists a.side-chat[href="/c/{chat}"]')
+    page.click(f'#side-lists [data-chat-menu="{chat}"]')
+    page.click("#chat-menu [data-act=rename]")
+    page.fill("#rename-dialog input", "Renamed here")
+    page.click("#rename-dialog button[type=submit]")
+    page.wait_for_selector("#side-lists a.side-chat:has-text('Renamed here')")
+    page.click(f'#side-lists [data-chat-menu="{chat}"]')
+    page.once("dialog", lambda d: d.accept())
+    page.click("#chat-menu [data-act=delete]")
+    page.wait_for_url(base + "/v3/chats")
+    page.wait_for_selector("#side-lists .side-head")
+    assert page.locator(f'#side-lists a[href="/c/{chat}"]').count() == 0
+
+
+def test_shrunk_sidebar_shows_icons_only(live, browser):
+    page, _, _ = _signed_in(live, browser)
+    page.keyboard.press("Control+b")
+    page.wait_for_timeout(300)
+    assert not page.locator("#side-lists").is_visible()
+    assert page.locator("#side-new-chat").is_visible() and page.locator("#side-search").is_visible()

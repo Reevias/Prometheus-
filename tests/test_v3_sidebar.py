@@ -90,3 +90,21 @@ def test_the_open_chat_is_marked(app_client):
     cid = _chat(services.store, "Open me")
     html = client.get(f"/api/v3/sidebar?chat={cid}").text
     assert f'href="/c/{cid}" class="side-chat on"' in html
+
+
+# -- Task 2: the sidebar itself -------------------------------------------------------------------------------------------
+
+def test_the_sidebar_keeps_every_page_and_shortcut_and_loads_the_lists(app_client):
+    import re
+
+    client, _ = app_client()
+    login(client)
+    page = client.get("/").text
+    side = page.split('id="sidebar"', 1)[1].split("</aside>", 1)[0]
+    keys = {int(k): h for h, k in re.findall(r'href="([^"]+)"[^>]*data-key="(\d+)"', side)}
+    assert [keys[i] for i in range(1, 11)] == ["/", "/v3/agents", "/v3/chats", "/v3/projects", "/v3/skills",
+                                               "/v3/tasks", "/v3/memory", "/v3/automations", "/v3/system",
+                                               "/v3/research"]          # Ctrl+1…Ctrl+0 open the same pages
+    for control in ('id="side-new-chat"', 'id="side-search"', 'id="nav-more-btn"'):
+        assert control in side
+    assert 'hx-get="/api/v3/sidebar' in side and "visibilityState" in side
