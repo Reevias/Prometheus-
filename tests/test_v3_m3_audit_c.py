@@ -76,11 +76,11 @@ def test_assistant_state_uses_live_events(app_client):
     services.running[chat] = True
     o = services.orchestrator
     with o.activity(chat, "thinking", "Choosing a route"):
-        assert state() == {"state": "thinking", "label": "Choosing a route"}
+        assert {k: state()[k] for k in ("state", "label")} == {"state": "thinking", "label": "Choosing a route"}  # + "href" since laptop check 2
         with o.activity(chat, "acting", "Round 2"):
-            assert state() == {"state": "acting", "label": "Round 2"}
+            assert {k: state()[k] for k in ("state", "label")} == {"state": "acting", "label": "Round 2"}  # + "href" since laptop check 2
     o.live_text[chat] = "private words"
-    assert state() == {"state": "answering", "label": "Answering"}
+    assert {k: state()[k] for k in ("state", "label")} == {"state": "answering", "label": "Answering"}  # + "href" since laptop check 2
     o.live_text.clear()
     services.running.clear()
     services.voice = SimpleNamespace(loop=None, error="", state=lambda: "listening")

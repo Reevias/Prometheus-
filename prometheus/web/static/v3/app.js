@@ -76,14 +76,23 @@
   });
   var menuShrink = $("#menu-shrink");
   if (menuShrink) menuShrink.addEventListener("click", function () { closeMenus(); if (collapse) collapse.click(); });
-  var setName = $("#set-name");
-  if (setName) setName.addEventListener("click", function () {
-    closeMenus();
-    var name = (prompt("What should Prometheus call you?") || "").trim();
-    if (!name) return;
-    var f = new FormData(); f.append("name", name);
-    post("/api/v3/profile", f).then(function (r) { if (r.ok) location.reload(); else toast("Couldn't save your name.", true); });
-  });
+  // the name box is the page's own dialog: a browser prompt() may not show inside the desktop window
+  var setName = $("#set-name"), nameBox = $("#name-dialog");
+  function askName() {
+    closeMenus(); if (!nameBox) return;
+    nameBox.showModal(); var i = nameBox.querySelector("input"); i.focus(); i.select();
+  }
+  if (setName) setName.addEventListener("click", askName);
+  $$(".profile-name.unnamed").forEach(function (n) { n.style.cursor = "pointer"; n.addEventListener("click", askName); });
+  if (nameBox) {
+    $("#name-cancel").addEventListener("click", function () { nameBox.close(); });
+    $("#name-form").addEventListener("submit", function (e) {
+      e.preventDefault();
+      var name = nameBox.querySelector("input").value.trim(); if (!name) return;
+      var f = new FormData(); f.append("name", name);
+      post("/api/v3/profile", f).then(function (r) { if (r.ok) location.reload(); else toast("Couldn't save your name.", true); });
+    });
+  }
 
   // ---- command bar ------------------------------------------------------------------------------------------
   var form = $("#command"), input = $("#command-input"), send = $("#send"), fileInput = $("#file-input");
@@ -408,8 +417,40 @@
 
   // ---- desktop window buttons (only inside the Prometheus window, never in a browser) ------------------------
   var desktop = false, fullscreen = false;   // opens maximised, above the taskbar
-  function win(action) { if (!desktop) return; post("/api/v3/window/" + action).then(function (r) { if (!r.ok) toast("The window didn't respond.", true); }); }
-  function desktopReady() { desktop = true; var w = $("#win-controls"); if (w) w.hidden = false; }
+  // straight to the window (its own process): the server may be the background copy, which has no window
+  function api() { return window.pywebview && window.pywebview.api; }
+  function win(action) {
+    if (!desktop) return;
+    var a = api();
+    if (a && a.window_action) { a.window_action(action).catch(function () { toast("The window didn't respond.", true); }); return; }
+    post("/api/v3/window/" + action).then(function (r) { if (!r.ok) toast("The window didn't respond.", true); });
+  }
+  function desktopReady() {
+    desktop = true; var w = $("#win-controls"); if (w) w.hidden = false;
+    var g = $("#grips"), a = api(); if (g && a && a.resize_to) g.hidden = false;
+  }
+  // the frameless window has no border to drag: thin edges and corners resize it
+  $$(".grip").forEach(function (g) {
+    g.addEventListener("pointerdown", function (e) {
+      var a = api(); if (!a || !a.resize_to || fullscreen) return;
+      e.preventDefault(); g.setPointerCapture(e.pointerId);
+      var edge = g.dataset.edge, sx = e.screenX, sy = e.screenY, w0 = window.outerWidth, h0 = window.outerHeight;
+      var busyResize = false, next = null;
+      function send() {
+        if (!next) { busyResize = false; return; }
+        var n = next; next = null; busyResize = true;
+        a.resize_to(n[0], n[1], edge).then(send, send);
+      }
+      function move(ev) {
+        var dx = ev.screenX - sx, dy = ev.screenY - sy, w = w0, h = h0;
+        if (edge.indexOf("e") >= 0) w = w0 + dx; if (edge.indexOf("w") >= 0) w = w0 - dx;
+        if (edge.indexOf("s") >= 0) h = h0 + dy; if (edge.indexOf("n") >= 0) h = h0 - dy;
+        next = [Math.round(w), Math.round(h)]; if (!busyResize) send();
+      }
+      function up() { g.removeEventListener("pointermove", move); g.removeEventListener("pointerup", up); }
+      g.addEventListener("pointermove", move); g.addEventListener("pointerup", up);
+    });
+  });
   if (window.pywebview) desktopReady(); else window.addEventListener("pywebviewready", desktopReady);
   $$("[data-win]").forEach(function (b) { b.addEventListener("click", function () { win(b.dataset.win); if (b.dataset.win === "maximize") fullscreen = false; }); });
 
@@ -529,6 +570,7 @@
       if (activity && label) {
         if (label.textContent !== activity.label) label.textContent = activity.label;
         label.hidden = activity.state === "idle";
+        if (activity.href) label.setAttribute("href", activity.href); else label.removeAttribute("href");
       }
       if (activity && window.PromSphere) {
         var orb = { acting: "tool", answering: "speaking" }[activity.state] || activity.state;

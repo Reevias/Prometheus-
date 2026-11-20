@@ -47,7 +47,7 @@
     <div class="dropdown" id="notes" hidden role="dialog" aria-label="Notifications"><h3>Notifications</h3><div id="notes-list"></div></div>
   </header>
   <main class="main" id="main">
-    <span id="assistant-state" role="status" hidden></span>
+    <a id="assistant-state" role="status" hidden title="Open it"></a>
     {% block content %}{% endblock %}
     <div class="wave" aria-hidden="true">
       <svg viewBox="0 0 1440 260" preserveAspectRatio="none">
@@ -66,6 +66,17 @@
       </svg>
     </div>
   </main>
+  <div id="grips" hidden aria-hidden="true">{% for e in ["n", "s", "e", "w", "ne", "nw", "se", "sw"] %}<div class="grip grip-{{ e }}" data-edge="{{ e }}"></div>{% endfor %}</div>
+  <dialog class="dialog name-dialog" id="name-dialog" aria-labelledby="name-title">
+    <form method="dialog" id="name-form">
+      <h2 id="name-title">What should Prometheus call you?</h2>
+      <input type="text" name="name" maxlength="40" autocomplete="given-name" value="{{ owner or '' }}" required>
+      <div class="dialog-bar"><span class="grow"></span>
+        <button type="button" id="name-cancel">Cancel</button>
+        <button type="submit" class="primary">Save</button>
+      </div>
+    </form>
+  </dialog>
   {% include "v3/right_panel.html" %}
 </div>
 <div class="palette" id="palette" hidden role="dialog" aria-label="Search everything">

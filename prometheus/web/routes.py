@@ -470,7 +470,7 @@ def register_routes(app: FastAPI, services: Services) -> None:
         except Exception:
             return JSONResponse({"error": "That didn't look right."}, status_code=400)
         items = clean_quick(body.get("actions") if isinstance(body, dict) else None)
-        services.settings = replace(services.settings, quick_actions=items)
+        services.settings.quick_actions = items         # changed in place: other parts hold this same object
         save_settings(services.settings)
         return {"actions": items}
 
@@ -485,18 +485,19 @@ def register_routes(app: FastAPI, services: Services) -> None:
         except (TypeError, ValueError):
             return JSONResponse({"error": "That didn't look right."}, status_code=400)
         pick = lambda v, ok, d: v if v in ok else d
-        services.settings = replace(s, ui_glow=glow, ui_text=text,
-                                    ui_sphere=pick(form.get("ui_sphere"), ("auto", "low", "medium", "high"), s.ui_sphere),
-                                    ui_motion=pick(form.get("ui_motion"), ("auto", "reduced", "full"), s.ui_motion),
-                                    ui_density=pick(form.get("ui_density"), ("comfortable", "compact"), s.ui_density))
-        save_settings(services.settings)
+        # changed in place: replacing the object let older copies save over it later (the name vanished)
+        s.ui_glow, s.ui_text = glow, text
+        s.ui_sphere = pick(form.get("ui_sphere"), ("auto", "low", "medium", "high"), s.ui_sphere)
+        s.ui_motion = pick(form.get("ui_motion"), ("auto", "reduced", "full"), s.ui_motion)
+        s.ui_density = pick(form.get("ui_density"), ("comfortable", "compact"), s.ui_density)
+        save_settings(s)
         n = services.settings
         return {"glow": n.ui_glow, "sphere": n.ui_sphere, "motion": n.ui_motion, "text": n.ui_text, "density": n.ui_density}
 
     @app.post("/api/v3/profile")
     def api_v3_profile(name: str = Form("")):
         name = re.sub(r"[\x00-\x1f<>]", "", name).strip()[:40]
-        services.settings = replace(services.settings, owner_name=name)
+        services.settings.owner_name = name             # in place: a copy held elsewhere can't wipe it later
         save_settings(services.settings)
         return {"name": name}
 
@@ -519,27 +520,10 @@ def register_routes(app: FastAPI, services: Services) -> None:
         win = getattr(desktop, "ACTIVE_WINDOW", None)
         if win is None:
             return JSONResponse({"error": "Not running in the desktop window."}, status_code=409)
+        if action not in desktop.WINDOW_ACTIONS:
+            return JSONResponse({"error": "Unknown window action."}, status_code=400)
         try:
-            if action == "minimize":
-                win.minimize()
-            elif action == "maximize":
-                if getattr(win, "fullscreen", False):
-                    win.toggle_fullscreen()
-                elif desktop.is_maximised(win):
-                    win.restore()
-                else:
-                    win.maximize()                  # stops at the taskbar (maximise_above_taskbar)
-            elif action == "restore":
-                win.restore()
-            elif action == "fullscreen":
-                win.toggle_fullscreen()
-            elif action == "close":
-                if getattr(desktop, "ACTIVE_TRAY", None) is not None:
-                    win.hide()                  # the tray keeps Prometheus running; Quit is in its menu
-                else:
-                    win.destroy()
-            else:
-                return JSONResponse({"error": "Unknown window action."}, status_code=400)
+            desktop.window_action(win, action)
         except Exception as e:
             return JSONResponse({"error": str(e)[:200]}, status_code=500)
         return {"ok": True}

@@ -126,7 +126,8 @@ a { color: var(--amber); }
 .topbar-title canvas { width: 34px; height: 34px; flex: none; }
 .topbar-title b { color: var(--text); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .topbar-tools { margin-left: auto; display: flex; align-items: center; gap: 4px; }
-#assistant-state { color: var(--amber); font-size: 0.85rem; margin-inline: 1rem; }
+#assistant-state { color: var(--amber); font-size: 0.85rem; margin-inline: 1rem; text-decoration: none; }
+#assistant-state[href] { cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
 .bell { position: relative; }
 .stopall { border: 1px solid rgb(var(--bad-rgb) / 0.7); background: rgb(var(--bad-rgb) / 0.1); color: var(--bad); border-radius: 999px;
            padding: 6px 14px; font-size: 13px; margin-right: 6px; }
@@ -1017,3 +1018,19 @@ html[data-motion="reduced"] *, html[data-motion="reduced"] *::before { animation
   -webkit-mask-image: linear-gradient(to bottom, var(--base) 70%, transparent); mask-image: linear-gradient(to bottom, var(--base) 70%, transparent); }
 .fold-btn { background: none; border: 0; padding: 4px 0; color: var(--amber); font-size: 13px; }
 .fold-btn:hover { text-decoration: underline; }
+
+/* the name box */
+.name-dialog { width: min(420px, 92vw); }
+.name-dialog input { width: 100%; margin-top: 12px; padding: 10px 12px; border-radius: var(--r-md); color: var(--text);
+                     background: var(--base); border: 1px solid rgb(var(--text-rgb) / 0.14); }
+.name-dialog input:focus { border-color: var(--orange); outline: none; }
+
+/* edges of the frameless desktop window: drag to resize */
+.grip { position: fixed; z-index: 9999; }
+.grip-n, .grip-s { left: 8px; right: 8px; height: 5px; cursor: ns-resize; }
+.grip-n { top: 0; } .grip-s { bottom: 0; }
+.grip-e, .grip-w { top: 8px; bottom: 8px; width: 5px; cursor: ew-resize; }
+.grip-e { right: 0; } .grip-w { left: 0; }
+.grip-ne, .grip-nw, .grip-se, .grip-sw { width: 10px; height: 10px; }
+.grip-ne { top: 0; right: 0; cursor: nesw-resize; } .grip-sw { bottom: 0; left: 0; cursor: nesw-resize; }
+.grip-nw { top: 0; left: 0; cursor: nwse-resize; } .grip-se { bottom: 0; right: 0; cursor: nwse-resize; }

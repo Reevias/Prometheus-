@@ -35,8 +35,9 @@ def _tables(store) -> set[str]:
 def export(store, since: float) -> dict:
     """Everything made or changed after `since` (small tables are sent whole; their keys make that harmless)."""
     have = _tables(store)
-    chats = {r["id"]: (r["title"], r["created"]) for r in store._rows("SELECT id, title, created FROM chats")}
-    out = {"chats": [{"title": t, "created": c} for t, c in chats.values()],
+    chats = {r["id"]: (r["title"], r["created"], r["uid"]) for r in store._rows("SELECT id, title, created, uid FROM chats")}
+    out = {"deleted_chats": [g for g in store.kv_get("deleted_chats", []) or [] if isinstance(g, str)],
+           "chats": [{"title": t, "created": c, "uid": u} for t, c, u in chats.values()],
            "messages": [{"chat": list(chats.get(r["chat_id"], ("", 0))), "role": r["role"],
                          "text": PRIVATE_NOTE if r["private"] else r["text"],
                          "created": r["created"], "model": r["model"], "private": r["private"], "topic": r["topic"]}
@@ -76,20 +77,38 @@ def merge(store, data: dict, trust_goals: bool = True) -> dict:
     Money(store)
     Assignments(store)
     n = {k: 0 for k in ("chats", "messages", "memories", "facts", "cards", "spending", "assignments", "reminders")}
-    chat_ids = {(r["title"], round(r["created"], 3)): r["id"] for r in store._rows("SELECT id, title, created FROM chats")}
+    from prometheus.memory.store import chat_uid_for
+
+    def uid_of(key) -> str:
+        """[title, created, uid]; an older copy sends no uid: the same id is worked out from title and start time."""
+        return str(key[2]) if len(key) > 2 and key[2] else chat_uid_for(key[0], key[1])
+
+    # chats deleted on either side stay deleted: deleted here too, and never added back (laptop check, 20 Nov)
+    gone = {g for g in store.kv_get("deleted_chats", []) or [] if isinstance(g, str)}
+    incoming = {g for g in data.get("deleted_chats", []) or [] if isinstance(g, str)}
+    for r in store._rows("SELECT id, uid FROM chats"):
+        if r["uid"] in incoming:
+            store.delete_chat(r["id"])
+    if incoming - gone:
+        store.kv_set("deleted_chats", sorted(gone | incoming)[-5000:])
+    gone |= incoming
+    # a chat is known by its permanent id, not its title: a renamed chat isn't added again under its old name
+    chat_ids = {r["uid"]: r["id"] for r in store._rows("SELECT id, uid FROM chats")}
 
     def chat_id(key) -> int | None:
-        title, created = key[0], round(float(key[1] or 0), 3)
-        if not title:
+        if not key or not key[0]:
             return None
-        if (title, created) not in chat_ids:
-            chat_ids[(title, created)] = store._write("INSERT INTO chats (title, created) VALUES (?, ?)",
-                                                      (title, created))
+        uid = uid_of(key)
+        if uid in gone:
+            return None
+        if uid not in chat_ids:
+            chat_ids[uid] = store._write("INSERT INTO chats (title, created, uid) VALUES (?, ?, ?)",
+                                         (key[0], round(float(key[1] or 0), 3), uid))
             n["chats"] += 1
-        return chat_ids[(title, created)]
+        return chat_ids[uid]
 
     for c in data.get("chats", []):
-        chat_id([c["title"], c["created"]])
+        chat_id([c["title"], c["created"], c.get("uid", "")])
     seen = {(r["chat_id"], round(r["created"], 3), _h(r["text"]))
             for r in store._rows("SELECT chat_id, created, text FROM messages WHERE created > ?",
                                  (min([m["created"] for m in data.get("messages", [])] or [time.time()]) - 1,))}
@@ -153,6 +172,8 @@ def merge(store, data: dict, trust_goals: bool = True) -> dict:
     mine = {(r["text"], round(r["created"], 3)): r for r in store._rows("SELECT * FROM reminders")}
     for r in data.get("reminders", []):
         key = (r["text"], round(r["created"], 3))
+        if r["chat"] and r["chat"][0] and uid_of(r["chat"]) in gone:
+            continue                          # it belonged to a deleted chat
         if key not in mine:
             cid = chat_id(r["chat"]) or 0
             state = r["state"]

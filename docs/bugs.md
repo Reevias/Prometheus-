@@ -2,7 +2,17 @@
 
 Every bug found and fixed, newest first, so the count is always exact. Add a line for each new one.
 
-**Total fixed: 137** (as of 20 November 2026)
+**Total fixed: 142** (as of 20 November 2026)
+
+## 20 November 2026, the owner's second laptop check (5)
+
+| # | Bug | Fixed by |
+|---|---|---|
+| 142 | Minimise, maximise and fullscreen did nothing when Prometheus also ran in the background; the window couldn't be resized | The buttons talk to the window directly; edges resize it |
+| 141 | "Waiting for your approval" gave no way to find the approval | It names the kind and opens it |
+| 140 | Renaming a chat could bring back a copy under the old name | Chats have a permanent id |
+| 139 | Deleted chats came back after syncing with the cloud copy | Deletions travel with the sync |
+| 138 | Your name was forgotten | Settings changed in place; the name box is the page's own |
 
 ## 20 November 2026, the owner's first laptop test of M3 (11)
 
