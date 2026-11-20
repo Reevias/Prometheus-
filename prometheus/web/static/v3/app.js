@@ -76,14 +76,23 @@
   });
   var menuShrink = $("#menu-shrink");
   if (menuShrink) menuShrink.addEventListener("click", function () { closeMenus(); if (collapse) collapse.click(); });
-  var setName = $("#set-name");
-  if (setName) setName.addEventListener("click", function () {
-    closeMenus();
-    var name = (prompt("What should Prometheus call you?") || "").trim();
-    if (!name) return;
-    var f = new FormData(); f.append("name", name);
-    post("/api/v3/profile", f).then(function (r) { if (r.ok) location.reload(); else toast("Couldn't save your name.", true); });
-  });
+  // the name box is the page's own dialog: a browser prompt() may not show inside the desktop window
+  var setName = $("#set-name"), nameBox = $("#name-dialog");
+  function askName() {
+    closeMenus(); if (!nameBox) return;
+    nameBox.showModal(); var i = nameBox.querySelector("input"); i.focus(); i.select();
+  }
+  if (setName) setName.addEventListener("click", askName);
+  $$(".profile-name.unnamed").forEach(function (n) { n.style.cursor = "pointer"; n.addEventListener("click", askName); });
+  if (nameBox) {
+    $("#name-cancel").addEventListener("click", function () { nameBox.close(); });
+    $("#name-form").addEventListener("submit", function (e) {
+      e.preventDefault();
+      var name = nameBox.querySelector("input").value.trim(); if (!name) return;
+      var f = new FormData(); f.append("name", name);
+      post("/api/v3/profile", f).then(function (r) { if (r.ok) location.reload(); else toast("Couldn't save your name.", true); });
+    });
+  }
 
   // ---- command bar ------------------------------------------------------------------------------------------
   var form = $("#command"), input = $("#command-input"), send = $("#send"), fileInput = $("#file-input");

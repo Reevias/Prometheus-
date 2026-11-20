@@ -1017,3 +1017,9 @@ html[data-motion="reduced"] *, html[data-motion="reduced"] *::before { animation
   -webkit-mask-image: linear-gradient(to bottom, var(--base) 70%, transparent); mask-image: linear-gradient(to bottom, var(--base) 70%, transparent); }
 .fold-btn { background: none; border: 0; padding: 4px 0; color: var(--amber); font-size: 13px; }
 .fold-btn:hover { text-decoration: underline; }
+
+/* the name box */
+.name-dialog { width: min(420px, 92vw); }
+.name-dialog input { width: 100%; margin-top: 12px; padding: 10px 12px; border-radius: var(--r-md); color: var(--text);
+                     background: var(--base); border: 1px solid rgb(var(--text-rgb) / 0.14); }
+.name-dialog input:focus { border-color: var(--orange); outline: none; }

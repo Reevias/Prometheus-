@@ -362,3 +362,21 @@ def test_long_answers_fold_and_open(live, browser):
     assert body.bounding_box()["height"] > 1000 and page.inner_text(".fold-btn") == "Show less"
     page.wait_for_timeout(5500)                      # the chat refreshes itself: it stays open
     assert page.locator(".msg.assistant > .body").last.bounding_box()["height"] > 1000
+
+
+def test_the_name_box_saves_your_name(live, browser):
+    """Laptop check (20 Nov): the name was forgotten; the box is now the page's own (no browser pop-up)."""
+    base, _ = live
+    page = browser.new_page(viewport={"width": 1400, "height": 900})
+    page.goto(base + "/login")
+    page.fill("input[name=password]", PASSWORD)
+    page.press("input[name=password]", "Enter")
+    page.wait_for_url(base + "/")
+    page.click(".profile-name")
+    page.fill("#name-dialog input", "Saiveer")
+    page.click("#name-dialog button[type=submit]")
+    page.wait_for_load_state("networkidle")
+    page.wait_for_timeout(500)
+    assert "Saiveer" in page.inner_text(".profile-name")
+    page.goto(base + "/v3/chats")
+    assert "Saiveer" in page.inner_text(".profile-name")

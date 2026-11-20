@@ -66,6 +66,16 @@
       </svg>
     </div>
   </main>
+  <dialog class="dialog name-dialog" id="name-dialog" aria-labelledby="name-title">
+    <form method="dialog" id="name-form">
+      <h2 id="name-title">What should Prometheus call you?</h2>
+      <input type="text" name="name" maxlength="40" autocomplete="given-name" value="{{ owner or '' }}" required>
+      <div class="dialog-bar"><span class="grow"></span>
+        <button type="button" id="name-cancel">Cancel</button>
+        <button type="submit" class="primary">Save</button>
+      </div>
+    </form>
+  </dialog>
   {% include "v3/right_panel.html" %}
 </div>
 <div class="palette" id="palette" hidden role="dialog" aria-label="Search everything">
