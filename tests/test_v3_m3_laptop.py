@@ -173,3 +173,42 @@ def test_a_chart_the_script_made_shows_under_its_answer(app_client, tmp_path):
     assert f"/api/v3/outputs/{out_id}/file" in block and 'class="msg-images"' in block
     earlier = page.split(f'id="m{first}"', 1)[1].split(f'id="m{second}"', 1)[0]
     assert f"/api/v3/outputs/{out_id}/file" not in earlier
+
+
+# -- "how much did I spend on food last month" answered "Nothing recorded this month yet." ----------------------------
+
+def _money(make_ctx):
+    import time as _t
+
+    from prometheus.money import Money
+
+    now = _t.mktime((2026, 11, 20, 20, 0, 0, 0, 0, -1))
+    m = Money(make_ctx().store, clock=lambda: now)
+    m.add(300, "Swiggy", when=_t.mktime((2026, 10, 12, 13, 0, 0, 0, 0, -1)))       # food, last month
+    m.add(120, "Uber", when=_t.mktime((2026, 10, 14, 9, 0, 0, 0, 0, -1)))         # travel, last month
+    m.add(80, "Zomato", when=_t.mktime((2026, 11, 18, 21, 0, 0, 0, 0, -1)))       # food, this month
+    return m
+
+
+def test_spending_by_period_and_category(make_ctx):
+    m = _money(make_ctx)
+    assert "₹300" in m.spent("last month", "Food") and "October" in m.spent("last month", "Food")
+    assert "₹420" in m.spent("last month")
+    assert "₹80" in m.spent("this month", "Food")
+    assert "Nothing" in m.spent("last month", "Health")
+
+
+@pytest.mark.parametrize("text, period, cat", [
+    ("how much did I spend on food last month", "last month", "Food"),
+    ("how much did i spend this week", "this week", ""),
+    ("how much have I spent on travel this year", "this year", "Travel"),
+    ("how much did I spend today", "today", ""),
+    ("how much did I spend", "this month", ""),
+])
+def test_the_spending_shortcut_keeps_period_and_category(text, period, cat):
+    from prometheus.quick import understand
+
+    q = understand(text)
+    step = q.steps[0]
+    assert step["agent"] == "money" and step["inputs"]["action"] == "spent"
+    assert step["inputs"]["period"] == period and step["inputs"].get("category", "") == cat

@@ -10,7 +10,9 @@ MONEY = None         # the app's Money
 class MoneyAgent(Agent):
     name = "money"
     description = ("The owner's spending (from bank and UPI emails, and what they tell you). Actions: add (amount, "
-                   "what = where or what it was for), report (this month by category, against budgets), today, "
+                   "what = where or what it was for), spent (period = today, yesterday, this week, last week, this month, last "
+                   "month or this year; category optional, e.g. Food), report (this month by category, against "
+                   "budgets), today, "
                    "excel (writes the spending sheet and shows it), scan (check email for new bank alerts now). "
                    "Budgets are set in Settings.")
     tools = {"read_files"}
@@ -30,6 +32,9 @@ class MoneyAgent(Agent):
             what = str(inputs.get("what") or inputs.get("merchant") or "something")
             MONEY.add(amount, what, said=what)
             return StepResult("done", f"Noted ₹{amount:,.0f} on {what}. " + MONEY.month_line())
+        if action == "spent":
+            return StepResult("done", MONEY.spent(str(inputs.get("period") or "this month").lower(),
+                                                  str(inputs.get("category") or "").strip()))
         if action == "report":
             return StepResult("done", MONEY.report())
         if action == "today":

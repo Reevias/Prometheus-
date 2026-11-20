@@ -47,6 +47,26 @@ TELL = re.compile(r"^(?:i\s+)?(?:spent|paid|gave|bought\s+.+?\s+for)\s+(?:rs\.?|
                   r"\s*(?:rs|rupees|₹)?\s*(?:on|for|at|to)?\s*(.*)$", re.I)
 
 
+PERIODS = ("today", "yesterday", "this week", "last week", "this month", "last month", "this year")
+CATEGORY_WORDS = {"food": "Food", "eating": "Food", "groceries": "Groceries", "grocery": "Groceries",
+                  "travel": "Travel", "transport": "Travel", "cab": "Travel", "shopping": "Shopping",
+                  "bills": "Bills and recharge", "bill": "Bills and recharge", "recharge": "Bills and recharge",
+                  "rent": "Bills and recharge", "entertainment": "Entertainment", "movies": "Entertainment",
+                  "education": "Education", "study": "Education", "books": "Education", "health": "Health",
+                  "medicine": "Health", "medicines": "Health"}
+
+
+def question_parts(text: str) -> tuple[str, str]:
+    """"how much did I spend on food last month" -> ("last month", "Food"). The period defaults to this month."""
+    low = (text or "").lower()
+    period = next((p for p in PERIODS if re.search(rf"\b{p}\b", low)), "")
+    if not period:
+        other = {"aaj": "today", "past week": "last week", "previous month": "last month"}
+        period = next((v for w, v in other.items() if re.search(rf"\b{w}\b", low)), "this month")
+    cat = next((c for w, c in CATEGORY_WORDS.items() if re.search(rf"\b{w}\b", low)), "")
+    return period, cat
+
+
 def category(merchant: str, said: str = "") -> str:
     text = f"{merchant} {said}".lower()
     for name, pattern in CATEGORIES:
@@ -166,6 +186,43 @@ class Money:
     def day_start(now: float) -> float:
         lt = time.localtime(now)
         return time.mktime((lt.tm_year, lt.tm_mon, lt.tm_mday, 0, 0, 0, 0, 0, -1))
+
+    def period_range(self, period: str) -> tuple[float, float, str]:
+        """(start, end, a name for it) of 'today', 'last month'..."""
+        now = self.clock()
+        day = self.day_start(now)
+        lt = time.localtime(now)
+        month = self.month_start(now)
+        if period == "today":
+            return day, now + 1, "today"
+        if period == "yesterday":
+            return day - 86400, day, "yesterday"
+        if period in ("this week", "last week"):
+            monday = day - lt.tm_wday * 86400
+            return (monday, now + 1, "this week") if period == "this week" else (monday - 7 * 86400, monday, "last week")
+        if period == "last month":
+            prev = self.month_start(month - 86400)
+            return prev, month, "last month (" + time.strftime("%B", time.localtime(prev)) + ")"
+        if period == "this year":
+            return time.mktime((lt.tm_year, 1, 1, 0, 0, 0, 0, 0, -1)), now + 1, "this year"
+        return month, now + 1, "this month (" + time.strftime("%B", lt) + ")"
+
+    def spent(self, period: str = "this month", cat: str = "") -> str:
+        """'Last month (October) you spent ₹300 on Food.' for a period and, optionally, one category."""
+        start, end, name = self.period_range(period or "this month")
+        rows = [r for r in self._since(start) if r["created"] < end and (not cat or r["category"] == cat)]
+        on = f" on {cat}" if cat else ""
+        if not rows:
+            return f"Nothing{on} recorded for {name}."
+        total = sum(r["amount"] for r in rows)
+        line = f"{name[0].upper() + name[1:]} you spent ₹{total:,.0f}{on}"
+        if not cat:
+            cats: dict[str, float] = {}
+            for r in rows:
+                cats[r["category"]] = cats.get(r["category"], 0) + r["amount"]
+            top = sorted(cats.items(), key=lambda kv: -kv[1])[:4]
+            line += " (" + ", ".join(f"{k} ₹{v:,.0f}" for k, v in top) + ")"
+        return line + f", in {len(rows)} payment{'s' if len(rows) != 1 else ''}."
 
     def by_category(self, start: float) -> dict[str, float]:
         out: dict[str, float] = {}
