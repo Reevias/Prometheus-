@@ -276,3 +276,71 @@ def test_the_browser_bar_only_shows_while_it_is_in_use_and_can_be_closed(app_cli
     page = client.get(f"/c/{chat}/live").text
     assert "Prometheus is using it" in page and "/api/v3/browser/close" in page
     assert client.post("/api/v3/browser/close", headers=h).status_code == 200 and services.browser.closed
+
+
+# -- voice kept hearing after voice off, Stop all and closing the app --------------------------------------------------
+
+def test_stop_all_switches_the_microphone_off_until_resume(app_client, monkeypatch):
+    from conftest import login
+
+    client, services = app_client()
+    h = {"X-CSRF-Token": login(client)}
+    calls = []
+    monkeypatch.setattr(services.voice, "stop", lambda: calls.append("stop"))
+    monkeypatch.setattr(services.voice, "start_if_enabled", lambda: calls.append("start_if_enabled"))
+    client.post("/kill", headers=h)
+    assert calls == ["stop"]
+    r = client.post("/api/v3/voice/listen", headers=h)            # the mic button can't start it while stopped
+    assert r.status_code == 409 and "stopped" in r.json()["error"].lower()
+    client.post("/kill/reset", headers=h)
+    assert calls == ["stop", "start_if_enabled"]
+
+
+def test_voice_never_starts_while_everything_is_stopped(app_client):
+    _, services = app_client()
+    services.killswitch.trigger("test")
+    assert services.voice.start() is False and services.voice.loop is None
+    assert "stopped" in services.voice.error.lower()
+
+
+def test_voice_switched_off_while_it_was_starting_stays_off(app_client):
+    _, services = app_client()
+    services.settings.voice_enabled = False                 # switched off after start_if_enabled was called
+    assert services.voice.start(only_if_enabled=True) is False and services.voice.loop is None
+
+
+def test_quit_ends_this_copy_and_its_listening(app_client, monkeypatch):
+    """Quit in the tray only closed the window; a background copy it was attached to kept listening."""
+    from conftest import login
+
+    from prometheus.web import routes
+
+    client, services = app_client()
+    h = {"X-CSRF-Token": login(client)}
+    calls = []
+    monkeypatch.setattr(services.voice, "stop", lambda: calls.append("voice off"))
+    monkeypatch.setattr(routes, "_leave", lambda: calls.append("exit"))
+    assert client.post("/api/v3/quit", headers=h).status_code == 200
+    import time
+    for _ in range(50):
+        if "exit" in calls:
+            break
+        time.sleep(0.05)
+    assert calls == ["voice off", "exit"]
+
+
+def test_tray_quit_asks_the_server_to_quit_too():
+    import time
+    from types import SimpleNamespace
+
+    from test_v16_notify_tray import FakePystray, FakeWindow
+
+    from prometheus.desktop import attach_tray
+
+    window = FakeWindow()
+    ran = []
+    window.evaluate_js = ran.append
+    tray = attach_tray(window, SimpleNamespace(tray=True), pystray=FakePystray)
+    time.sleep(0.05)
+    tray.quit()
+    assert window.destroyed and any("/api/v3/quit" in js for js in ran)

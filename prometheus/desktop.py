@@ -179,6 +179,11 @@ def attach_tray(window, settings, pystray=None):
 
     def quit_app():
         state["quitting"] = True
+        try:            # the server this window shows ends too, microphone first (it may be the background copy)
+            window.evaluate_js("fetch('/api/v3/quit', {method: 'POST', credentials: 'same-origin', headers: "
+                               "{'X-CSRF-Token': document.body.dataset.csrf || ''}})")
+        except Exception:
+            pass
         window.destroy()
 
     tray = Tray(show=window.show, hide=window.hide, quit_app=quit_app, pystray=pystray)

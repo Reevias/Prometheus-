@@ -1,6 +1,7 @@
 """Page and htmx routes."""
 from __future__ import annotations
 
+import os
 import re
 import threading
 import time
@@ -31,6 +32,10 @@ REPO_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,38}/[A-Za-z0-9._-]{1,100}$
 
 def clean_note(text: str) -> str:
     return " ".join((text or "").split())[:500]
+
+
+def _leave() -> None:
+    os._exit(0)
 
 
 def register_routes(app: FastAPI, services: Services) -> None:
@@ -324,6 +329,8 @@ def register_routes(app: FastAPI, services: Services) -> None:
         v = services.voice
         if v is None:
             return JSONResponse({"error": "Voice isn't set up on this computer (Settings → Voice)."}, status_code=409)
+        if services.killswitch.is_set:
+            return JSONResponse({"error": "Everything is stopped. Press Resume to use voice."}, status_code=409)
         if v.loop is not None:
             if not v.loop.listen_now():
                 return JSONResponse({"error": "The microphone is muted. Unmute it first."}, status_code=409)
@@ -335,6 +342,21 @@ def register_routes(app: FastAPI, services: Services) -> None:
 
         threading.Thread(target=start_then_listen, name="prometheus-voice-button", daemon=True).start()
         return {"starting": True}
+
+    @app.post("/api/v3/quit")
+    def api_quit():
+        """Quit in the tray: this copy ends, microphone first. A window attached to the background copy (started with
+        Windows) sends this, so the copy that was listening ends too (laptop test)."""
+        if services.voice is not None:
+            services.voice.stop()
+        store.audit("user", "quit", {})
+
+        def leave_soon():
+            time.sleep(0.5)                      # let this answer reach the window first
+            _leave()
+
+        threading.Thread(target=leave_soon, name="prometheus-quit", daemon=True).start()
+        return {"ok": True}
 
     @app.post("/api/v3/voice/mute")
     def api_v3_voice_mute():
@@ -1789,6 +1811,8 @@ def register_routes(app: FastAPI, services: Services) -> None:
         services.killswitch.trigger("Stopped by the user")
         services.settings.paused = True
         save_settings(services.settings)
+        if services.voice is not None:          # Stop all switches the microphone off too (laptop test)
+            services.voice.stop()
         store.audit("user", "kill", {})
         return HTMLResponse("")
 
@@ -1797,6 +1821,8 @@ def register_routes(app: FastAPI, services: Services) -> None:
         services.killswitch.reset()
         services.settings.paused = False
         save_settings(services.settings)
+        if services.voice is not None:
+            services.voice.start_if_enabled()
         store.audit("user", "kill_reset", {})
         return HTMLResponse("")
 
