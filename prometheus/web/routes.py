@@ -643,6 +643,8 @@ def register_routes(app: FastAPI, services: Services) -> None:
         if result == STOPPED_MESSAGE:
             store.add_message(chat_id, "assistant", result, "approval")
             return Response(status_code=204)
+        if str(result).startswith("Already "):          # a second click: the first one already said what happened
+            return Response(status_code=204)
         text = ("Not done: you said no." if not approved else
                 (result if not str(result).startswith("Failed") else f"That didn't work: {result}"))
         store.add_message(chat_id, "assistant", str(text), "approval")

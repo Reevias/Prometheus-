@@ -1011,3 +1011,9 @@ html[data-motion="reduced"] *, html[data-motion="reduced"] *::before { animation
 .msg-images .out-img { padding: 0; border: 1px solid rgb(var(--text-rgb) / 0.12); border-radius: var(--r-md);
                        background: var(--raised); overflow: hidden; }
 .msg-images img { display: block; max-width: min(520px, 100%); max-height: 360px; }
+
+/* long answers fold to a few lines */
+.msg > .body.folded { max-height: 320px; overflow: hidden;
+  -webkit-mask-image: linear-gradient(to bottom, #000 70%, transparent); mask-image: linear-gradient(to bottom, #000 70%, transparent); }
+.fold-btn { background: none; border: 0; padding: 4px 0; color: var(--amber); font-size: 13px; }
+.fold-btn:hover { text-decoration: underline; }

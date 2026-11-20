@@ -212,3 +212,67 @@ def test_the_spending_shortcut_keeps_period_and_category(text, period, cat):
     step = q.steps[0]
     assert step["agent"] == "money" and step["inputs"]["action"] == "spent"
     assert step["inputs"]["period"] == period and step["inputs"].get("category", "") == cat
+
+
+# -- clutter -----------------------------------------------------------------------------------------------------------
+
+def test_without_a_writer_the_answer_is_short_not_every_steps_full_output():
+    """Bug: when the AI that writes the answer was busy, every step's whole output was pasted in."""
+    from types import SimpleNamespace as S
+
+    from prometheus.orchestrator.planner import short_report
+
+    steps = [S(agent="opener", status="done", result="* Core Concepts: " + "long text " * 300),
+             S(agent="code", status="failed", result="SyntaxError: invalid syntax"),
+             S(agent="obsidian", status="done", result="Created the note Photosynthesis.")]
+    text = short_report(steps)
+    lines = text.splitlines()
+    assert len(text) < 900 and len(lines) <= 6 and "steps" in lines[0].lower()
+    assert any("didn't work" in l and "SyntaxError" in l for l in lines)
+    assert all(len(l) <= 220 for l in lines)
+
+
+def test_a_second_click_on_a_chat_approval_adds_nothing(app_client):
+    """Bug: an extra 'Already approved.' message after a double click."""
+    from conftest import login
+
+    client, services = app_client()
+    h = {"X-CSRF-Token": login(client)}
+    services.approvals.register("open_link", lambda p: "Opened it")
+    chat = services.store.create_chat("x")
+    _, aid = services.approvals.ask("open_link", "Open a page", {"url": "https://example.com"},
+                                    ("https://example.com", "example.com"), chat_id=chat)
+    for _ in range(2):
+        assert client.post(f"/ask/{aid}", data={"decision": "allow"}, headers=h).status_code == 204
+    said = [m.text for m in services.store.messages(chat) if m.role == "assistant"]
+    assert said == ["Opened it"]
+
+
+class _Browser:
+    def __init__(self, used_ago):
+        import threading
+        import time
+
+        self.paused = False
+        self.closed = False
+        self._thread = threading.Thread(target=time.sleep, args=(2,), daemon=True)
+        self._thread.start()
+        self.last_used = time.monotonic() - used_ago
+
+    def close(self):
+        self.closed = True
+
+
+def test_the_browser_bar_only_shows_while_it_is_in_use_and_can_be_closed(app_client):
+    """Bug: 'Browser: Prometheus is using it' stayed above the chat for good, with no way to close it."""
+    from conftest import login
+
+    client, services = app_client()
+    h = {"X-CSRF-Token": login(client)}
+    chat = services.store.create_chat("x")
+    services.browser = _Browser(used_ago=600)
+    assert "Prometheus is using it" not in client.get(f"/c/{chat}/live").text
+    services.browser = _Browser(used_ago=5)
+    page = client.get(f"/c/{chat}/live").text
+    assert "Prometheus is using it" in page and "/api/v3/browser/close" in page
+    assert client.post("/api/v3/browser/close", headers=h).status_code == 200 and services.browser.closed

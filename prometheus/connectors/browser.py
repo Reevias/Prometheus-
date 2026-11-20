@@ -7,6 +7,7 @@ from __future__ import annotations
 import queue
 import re
 import threading
+import time
 from pathlib import Path
 
 PAGE_CHARS = 8000
@@ -39,6 +40,7 @@ class BrowserSession:
     def __init__(self, profile: Path, headless: bool = False, channel: str | None = "msedge", executable: str = ""):
         self.profile, self.headless, self.channel, self.executable = Path(profile), headless, channel, executable
         self.paused = False             # the owner pressed "Take over"
+        self.last_used = 0.0            # time.monotonic() of the last action: the chat's bar shows only while in use
         self._q: queue.Queue = queue.Queue()
         self._thread: threading.Thread | None = None
         self._page = None
@@ -85,6 +87,7 @@ class BrowserSession:
         if self._thread is None or not self._thread.is_alive():
             self._thread = threading.Thread(target=self._worker, name="prometheus-browser", daemon=True)
             self._thread.start()
+        self.last_used = time.monotonic()
         reply: queue.Queue = queue.Queue()
         self._q.put((fn, reply))
         try:

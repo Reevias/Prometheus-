@@ -23,7 +23,26 @@
               c: "c", cpp: "cpp", csharp: "cs", cs: "cs", go: "go", rust: "rs", ruby: "rb", php: "php", yaml: "yml",
               yml: "yml", xml: "xml", markdown: "md", md: "md", kotlin: "kt", swift: "swift", r: "r", lua: "lua" };
 
+  // long answers fold to a few lines with "Show more"; the choice survives the chat's refreshes (laptop test)
+  var unfolded = {};
+  function fold() {
+    [].slice.call(msgs.querySelectorAll(".msg.assistant > .body:not([data-fold])")).forEach(function (body) {
+      body.dataset.fold = "1";
+      if (body.scrollHeight < 460) return;
+      var id = body.parentElement.dataset.id;
+      var btn = document.createElement("button"); btn.type = "button"; btn.className = "fold-btn";
+      function show(open) {
+        body.classList.toggle("folded", !open); btn.textContent = open ? "Show less" : "Show more";
+        btn.setAttribute("aria-expanded", open ? "true" : "false");
+      }
+      btn.addEventListener("click", function () { unfolded[id] = !unfolded[id]; show(unfolded[id]); });
+      body.insertAdjacentElement("afterend", btn);
+      show(!!unfolded[id]);
+    });
+  }
+
   function enhance() {
+    fold();
     // code blocks: a bar with the language, Copy and Download; highlighting once the library is there
     var codes = [].slice.call(msgs.querySelectorAll(".msg.assistant pre > code:not([data-done])"));
     codes.forEach(function (code) {

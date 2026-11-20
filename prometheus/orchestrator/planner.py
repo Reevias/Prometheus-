@@ -321,6 +321,18 @@ def resolve_inputs(inputs: dict, results: dict[int, StepResult], private_steps: 
     return out
 
 
+def short_report(steps) -> str:
+    """The answer when no AI can write one: a line per step, not every step's whole output (laptop test)."""
+    lines = ["I couldn't write a proper answer just now (the AIs are busy), so here's what each step did. "
+             "Open the steps below for the details."]
+    for s in list(steps)[:8]:
+        said = " ".join(str(s.result or "").split())
+        said = said[:150] + ("…" if len(said) > 150 else "")
+        how = {"done": "done", "failed": "didn't work"}.get(s.status, s.status)
+        lines.append(f"- {str(s.agent).replace('_', ' ').capitalize()}: {how}. {said}".rstrip())
+    return "\n".join(lines[:9])
+
+
 class Orchestrator:
     def __init__(self, store, router, registry: dict, make_context: Callable[[int, int], AgentContext],
                  killswitch, prompts_dir: Path | None = None, skills=None):
@@ -1025,7 +1037,7 @@ class Orchestrator:
             answer = reply.text.strip()
             written_by = f"{reply.provider} · {reply.model}"
         except (ProviderUnavailable, BudgetExceeded):
-            answer = "\n".join(f"- {s.agent}: {s.status}. {s.result}" for s in self.store.steps(task_id))
+            answer = short_report(self.store.steps(task_id))
         except Stopped as e:
             return self._finish(chat_id, task_id, "stopped", str(e))
         status = "failed" if bad and len(bad) == len(plan.steps) else "done"

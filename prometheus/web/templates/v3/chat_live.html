@@ -12,4 +12,5 @@
 {% if browser.started %}<div class="live-card">
   <span class="muted">Browser: {{ "you're driving, Prometheus waits" if browser.paused else "Prometheus is using it" }}</span>
   <button type="button" class="pill" data-api="/api/v3/browser/toggle" data-then="/c/{{ chat_id }}">{{ "Hand back" if browser.paused else "Take over" }}</button>
+  <button type="button" class="pill" data-api="/api/v3/browser/close" data-then="/c/{{ chat_id }}" title="Close the browser Prometheus opened">Close browser</button>
 </div>{% endif %}
