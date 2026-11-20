@@ -254,6 +254,13 @@ def register_routes(app: FastAPI, services: Services) -> None:
                      recent=[c for c in everything if c[0] not in flags["pinned"] and c[0] not in flags["archived"]],
                      archived=[c for c in everything if c[0] in flags["archived"]])
 
+    @app.get("/api/v3/sidebar", response_class=HTMLResponse)
+    def api_v3_sidebar(request: Request, chat: int = 0):
+        """The sidebar's lists: projects with their chats, and recent chats (laptop check, 20 Nov)."""
+        from prometheus.web.sidebar import sidebar_data
+
+        return page(request, "v3/sidebar_lists.html", **sidebar_data(store, chat))
+
     @app.post("/api/v3/chats/{chat_id}/pin")
     def api_v3_chat_pin(chat_id: int):
         return toggle_flag(chat_id, "pinned")

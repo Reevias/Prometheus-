@@ -1,0 +1,21 @@
+{% from "v3/icons.html" import icon %}
+{# The sidebar's lists (fetched by HTMX from /api/v3/sidebar, again on every "sidebar-refresh"). #}
+{% macro chat_row(c) -%}
+<div class="side-row"><a href="/c/{{ c.id }}" class="side-chat{{ ' on' if c.id == open_chat }}"{% if c.id == open_chat %} aria-current="page"{% endif %} title="{{ c.title }}"><span>{{ c.title }}</span></a>
+  <button type="button" class="side-more" data-chat-menu="{{ c.id }}" data-title="{{ c.title }}" aria-label="More for {{ c.title }}" title="Rename, move, pin or delete">⋯</button></div>
+{%- endmacro %}
+<div class="side-head"><span>Projects</span><a href="/v3/projects" class="side-add" title="New project" aria-label="New project">{{ icon("plus") }}</a></div>
+{% for p in projects %}
+<details class="side-project" data-project="{{ p.id }}">
+  <summary><span class="side-caret" aria-hidden="true"></span><span class="side-pname">{{ p.name }}</span>
+    <a href="/v3/projects/{{ p.id }}" class="side-open" title="Open the project" aria-label="Open {{ p.name }}">{{ icon("projects") }}</a></summary>
+  {% for c in p.chats %}{{ chat_row(c) }}{% endfor %}
+  <button type="button" class="side-new" data-new-in="/api/v3/projects/{{ p.id }}/chats/new">{{ icon("plus") }}<span>New chat here</span></button>
+  {% if p.more %}<a href="/v3/projects/{{ p.id }}" class="side-all">All chats in this project</a>{% endif %}
+</details>
+{% else %}
+<p class="side-empty muted">No projects yet.</p>
+{% endfor %}
+<div class="side-head"><span>Recents</span></div>
+{% for c in recents %}{{ chat_row(c) }}{% else %}<p class="side-empty muted">No chats yet.</p>{% endfor %}
+<a href="/v3/chats" class="side-all">Show all chats</a>
