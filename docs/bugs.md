@@ -2,7 +2,17 @@
 
 Every bug found and fixed, newest first, so the count is always exact. Add a line for each new one.
 
-**Total fixed: 149** (as of 20 November 2026)
+**Total fixed: 154** (as of 21 November 2026)
+
+## 21 November 2026, review of M4.1–M4.3 and M4.8 (5)
+
+| # | Bug | Fixed by |
+|---|---|---|
+| 154 | The Candidates line listed file types (reStructuredText, YAML, JSON) as if they were programming languages | Only programming languages are named |
+| 153 | A repo that was found unsafe, or never downloaded and checked, could still be accepted | No Accept button for those, and the server refuses it |
+| 152 | A repo could ship its own `codemap.json` or `profile.json`: symbol search trusted the fake map, and a folder with that name crashed the save | Those names at the top of a repo are refused |
+| 151 | Folders inside a repo's zip didn't count towards the 20 000 limit, so a zip of millions of empty folders was unpacked | Folders count too |
+| 150 | One file that couldn't be saved (a file and a folder with the same name; on Windows a path that is too long) stopped the whole download with a raw error | That file is listed as refused and the rest is read |
 
 ## 20 November 2026, fewer pages (5)
 

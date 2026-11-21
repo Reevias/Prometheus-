@@ -38,6 +38,8 @@ CHUNK = 1024 * 1024
 SHA = re.compile(r"^[0-9a-f]{40}$")
 REF = re.compile(r"^[A-Za-z0-9._/-]{1,200}$")
 DOWNLOAD_HOST = "codeload.github.com"
+# Prometheus's own files in the top folder (profile.json, M4.2's codemap.json): a repo's copy would be trusted later
+OWN_NAMES = {"profile.json", "profile.json.tmp", "codemap.json"}
 
 
 class RepoReadError(Exception):
@@ -163,8 +165,9 @@ def _unpack(zip_path: Path, folder: Path, refused: list[str]) -> None:
     with z:
         infos = z.infolist()
         files = [i for i in infos if not i.is_dir()]
-        if len(files) > MAX_FILES:
-            raise RepoReadError(f"The repository has too many files ({len(files)}; the limit is {MAX_FILES}).")
+        if len(files) > MAX_FILES or len(infos) > 2 * MAX_FILES:      # folders count too (each one is made on disk)
+            raise RepoReadError(f"The repository has too many files or folders ({len(files)} files, "
+                                f"{len(infos) - len(files)} folders; the limit is {MAX_FILES} files).")
         declared = sum(i.file_size for i in files)
         if declared > MAX_BYTES:
             raise RepoReadError(f"The repository is too big unpacked ({_mb(declared)}; the limit is "
@@ -187,6 +190,8 @@ def _unpack(zip_path: Path, folder: Path, refused: list[str]) -> None:
             if not parts:
                 continue
             why = next((w for w in map(_bad_part, parts) if w), "")
+            if not why and parts[0].lower() in OWN_NAMES:
+                why = "has the name of a file Prometheus keeps there"
             if why:
                 refused.append(f"{name} ({why})")
                 continue
@@ -197,18 +202,27 @@ def _unpack(zip_path: Path, folder: Path, refused: list[str]) -> None:
             rel = "/".join(parts)
             target = folder.joinpath(*parts)
             if info.is_dir():
-                target.mkdir(parents=True, exist_ok=True)
+                try:
+                    target.mkdir(parents=True, exist_ok=True)
+                except OSError as e:
+                    refused.append(f"{name} (can't be saved on this computer: {e.strerror or type(e).__name__})")
                 continue
             key = rel.lower()
             if key in seen:
                 refused.append(f"{name} (same name as another file when case is ignored)")
                 continue
             seen.add(key)
-            target.parent.mkdir(parents=True, exist_ok=True)
-            if not _inside(target.parent.resolve(), root) or target.parent.is_symlink():
-                refused.append(f"{name} (goes outside the folder)")
+            # a file and a folder with the same name, or (on Windows) a path that is too long: refuse that one file
+            try:
+                target.parent.mkdir(parents=True, exist_ok=True)
+                if not _inside(target.parent.resolve(), root) or target.parent.is_symlink():
+                    refused.append(f"{name} (goes outside the folder)")
+                    continue
+                out = open(target, "xb")
+            except OSError as e:
+                refused.append(f"{name} (can't be saved on this computer: {e.strerror or type(e).__name__})")
                 continue
-            with z.open(info) as src, open(target, "xb") as dst:
+            with z.open(info) as src, out as dst:
                 while chunk := src.read(CHUNK):
                     written += len(chunk)
                     if written > MAX_BYTES:

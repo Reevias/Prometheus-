@@ -129,3 +129,40 @@ def test_add_repo_one_goes_to_candidates_not_skills(app_client):
     assert [c["repo"] for c in candidates(services.store)] == [first]
     assert services.skills.get("repo-" + first.replace("/", "-")) is None                  # not in Skills yet
     assert first in client.get("/v3/candidates").text
+
+
+# -- review A (M4.1-4.3): found by the independent review, each failed before its fix ---------------------------
+
+def test_a_dangerous_or_unchecked_repo_cant_be_accepted(app_client):
+    """Accept is the owner's yes that (from M4.4) turns a repo into a skill: a repo that was removed as unsafe, or one
+    that hasn't been downloaded and checked yet, gets no Accept button and the server refuses it."""
+    from prometheus.repo_of_day import add_candidate, candidates
+
+    client, services = app_client()
+    h = {"X-CSRF-Token": login(client)}
+    bad = _add(services, "d/bad", verdict="danger", findings=["Steals passwords: x.py"])
+    unchecked = add_candidate(services.store, "e/unchecked", description="Not downloaded yet")
+    page = client.get("/v3/candidates").text
+    for c in (bad, unchecked):
+        assert f'/api/v3/candidates/{c["id"]}/accept' not in page
+        r = client.post(f"/api/v3/candidates/{c['id']}/accept", headers=h)
+        assert r.status_code == 409 and r.json()["error"]
+    assert {c["repo"]: c["status"] for c in candidates(services.store)} == {"d/bad": "new", "e/unchecked": "new"}
+    assert client.post(f"/api/v3/candidates/{bad['id']}/reject", headers=h).status_code == 200   # reject still works
+
+
+def test_the_one_line_says_programming_languages_not_file_types(app_client):
+    client, services = app_client()
+    login(client)
+    folder = _profile("p/docs-heavy")
+    from prometheus.repos.profile import load
+
+    prof = load(folder)
+    prof.languages = {"reStructuredText": 11, "YAML": 7, "Markdown": 4, "JSON": 3, "Python": 2}
+    save(prof)
+    from prometheus.repo_of_day import add_candidate
+
+    add_candidate(services.store, "p/docs-heavy", description="Signs data", folder=str(folder))
+    page = client.get("/v3/candidates").text
+    assert "Signs data (Python)" in page
+    assert "reStructuredText" not in page and "YAML" not in page

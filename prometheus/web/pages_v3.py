@@ -486,18 +486,28 @@ def register_skill_pages(app: FastAPI, services, shell) -> None:
                     "before it copies any of the code.")
         return "A less common licence: read it before using the code."
 
+    NOT_CODE = {"Markdown", "reStructuredText", "Text", "JSON", "TOML", "YAML", "INI", "XML"}   # file types, not languages
+
+    def candidate_profile(c: dict):
+        from prometheus.repos.profile import load
+
+        if not c.get("folder"):
+            return None
+        try:
+            return load(Path(c["folder"]))
+        except Exception:
+            return None
+
+    def can_accept(prof) -> bool:
+        """Only a repo that was downloaded and checked, and wasn't found unsafe, can be accepted."""
+        return prof is not None and prof.verdict in ("clean", "caution")
+
     def candidate_card(c: dict) -> dict:
         from prometheus.config import data_dir
         from prometheus.repo_of_day import candidate_scripts
-        from prometheus.repos.profile import load
 
         quarantine = data_dir() / "quarantine"
-        prof = None
-        if c.get("folder"):
-            try:
-                prof = load(Path(c["folder"]))
-            except Exception:
-                prof = None
+        prof = candidate_profile(c)
         verdict = prof.verdict if prof else ""
         findings = [str(f) for f in (prof.findings if prof else [])][:8]
         if verdict == "clean":
@@ -509,13 +519,13 @@ def register_skill_pages(app: FastAPI, services, shell) -> None:
         else:
             safety, tone = "Not checked yet", ""
         what = c.get("description") or ""
-        if prof and prof.languages:
-            top = ", ".join(sorted(prof.languages, key=lambda k: -prof.languages[k])[:3])
-            what = (what + " " if what else "") + f"({top})"
+        code = [k for k in sorted((prof.languages if prof else {}), key=lambda k: -prof.languages[k]) if k not in NOT_CODE]
+        if code:
+            what = (what + " " if what else "") + f"({', '.join(code[:3])})"
         sug = c.get("suggestion") if isinstance(c.get("suggestion"), dict) else None
         return {**c, "what": what or "No description.", "licence": prof.licence if prof else "unknown",
                 "licence_note": licence_note(prof.licence if prof else "unknown"), "safety": safety, "tone": tone,
-                "suggestion": sug, "scripts": candidate_scripts(c.get("folder", ""), quarantine)}
+                "suggestion": sug, "can_accept": can_accept(prof), "scripts": candidate_scripts(c.get("folder", ""), quarantine)}
 
     @app.get("/v3/candidates")
     def candidates_page(request: Request):
@@ -538,6 +548,16 @@ def register_skill_pages(app: FastAPI, services, shell) -> None:
 
     @app.post("/api/v3/candidates/{candidate_id}/accept")
     def api_candidate_accept(candidate_id: int):
+        from prometheus.repo_of_day import candidates
+
+        c = next((c for c in candidates(store) if c["id"] == candidate_id), None)
+        if c is None:
+            return JSONResponse({"error": "That candidate is gone."}, status_code=404)
+        prof = candidate_profile(c)
+        if not can_accept(prof):
+            why = ("it was found unsafe and removed" if prof is not None and prof.verdict == "danger"
+                   else "it hasn't been downloaded and checked yet")
+            return JSONResponse({"error": f"{c['repo']} can't be accepted: {why}."}, status_code=409)
         return _set_candidate(candidate_id, "accepted")
 
     @app.post("/api/v3/candidates/{candidate_id}/reject")

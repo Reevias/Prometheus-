@@ -271,3 +271,41 @@ def test_already_downloaded_is_refused_plainly(tmp_path):
     read(tmp_path, {"a.txt": "a"})
     with pytest.raises(reader.RepoReadError, match="already"):
         read(tmp_path, {"a.txt": "a"})
+
+
+# -- review A (M4.1-4.3): found by the independent review, each failed before its fix ---------------------------
+
+def test_a_file_that_cant_be_saved_is_refused_not_a_crash(tmp_path):
+    """A member that can't be created (a file and a folder with the same name here; on Windows also paths over 260
+    characters) is listed as refused; the rest is still read, with no raw OSError."""
+    refused: list[str] = []
+    zb = make_zip({"a": "x", "a/b.txt": "y", "ok.txt": "z"})
+    folder = reader.fetch("octo/demo", "", tmp_path / "quarantine", http=fake_github(zb), defender=NO_DEFENDER,
+                          refused=refused)
+    assert (folder / "ok.txt").read_text(encoding="utf-8") == "z"
+    assert any("a/b.txt" in r and "can't be saved" in r for r in refused), refused
+
+
+def test_folder_entries_count_towards_the_limit(tmp_path, monkeypatch):
+    monkeypatch.setattr(reader, "MAX_FILES", 3)
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr("octo-demo-aaaaaaa/", "")
+        for i in range(10):
+            z.writestr(f"octo-demo-aaaaaaa/d{i}/", "")
+    with pytest.raises(reader.RepoReadError, match="too many"):
+        reader.fetch("octo/demo", "", tmp_path / "quarantine", http=fake_github(buf.getvalue()), defender=NO_DEFENDER)
+    assert not (tmp_path / "quarantine" / "octo__demo__aaaaaaa").exists()
+
+
+@pytest.mark.parametrize("planted", ["codemap.json", "profile.json/x.txt", "Profile.JSON.tmp", "CODEMAP.json/y"])
+def test_a_repo_cant_plant_prometheus_own_files(tmp_path, planted):
+    """profile.json and codemap.json at the top are Prometheus's own; a repo's copy would be trusted later
+    (symbol search, repo links) or break the save, so it is refused."""
+    from prometheus.actions.atomic_fs import find_symbol
+
+    refused: list[str] = []
+    p = read(tmp_path, {"a.py": "x = 1", planted: '{"symbols": {"run": ["src/evil.py:1"]}}'}, refused=refused)
+    assert find_symbol(p.folder, "run") == []
+    assert load(Path(p.folder)).repo == "octo/demo"
+    assert any(planted.split("/")[0] in r for r in refused), refused

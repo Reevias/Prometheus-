@@ -7,6 +7,18 @@ Not yet run end to end on the owner's real laptop.
 
 Phases A to D are done (D6 exit check 20 Nov: 3 more bugs fixed, bug log 123-125). Still to do: run it on the owner's laptop and the owner's licence sign-off in `THIRD_PARTY_LICENSES.md`. Billed catalog models need rates on their model cards. Local cost estimates can differ from the provider's invoice.
 
+## M4 review A (M4.1–M4.3, M4.8), 21 November 2026
+
+Five bugs fixed (bug log 150-154). Still open, for the owner or a later step:
+- **repo_check calls many normal repos dangerous and deletes them**: a setup script that installs a tool with
+  `curl … | sh` (common in `.devcontainer/` and CI files; pallets/itsdangerous has one) counts as "downloads and runs
+  code". Changing repo_check's rules is the owner's call; a likely answer is "check this first" for files in
+  `.devcontainer/` and `.github/`, which Prometheus never runs. Until then the exit gate's real Python repo has to be
+  one without such a script.
+- Code maps don't list CommonJS `require(...)` as imports, and TypeScript declaration files (`.d.ts`) show no functions.
+- The real download from GitHub (API + codeload) was not run in the review (this cloud session can't reach the GitHub
+  API for other repos); real repos were read from their own zips through a fake GitHub.
+
 ## Just finished
 - **One-line install, Prometheus-Setup.exe and Prometheus.apk** (built by GitHub on each release), own icon in Windows search, **simpler Settings with Features on and off**, **Stop all that stays stopped**, **weekly report card**, **practice tests** and **ready-made jobs** (everything from the "Build your first AI agent" guide).
 - **Chatbot-level voice**: ElevenLabs hearing (Scribe v2) and speaking (Flash), falling back to the laptop by itself; **double clap** to be greeted with a brief and talk without the name; **talk over it** to interrupt.

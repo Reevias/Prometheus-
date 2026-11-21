@@ -22,7 +22,7 @@
         <p><span class="state {{ c.tone }}">{{ c.safety }}</span></p>
         <p class="muted">{% if c.suggestion %}Suggested skill: <b>{{ c.suggestion.name }}</b>{% if c.suggestion.description %}: {{ c.suggestion.description }}{% endif %}{% else %}No skill suggested yet.{% endif %}</p>
         <div class="dialog-bar" style="margin-top:10px;flex-wrap:wrap">
-          {% if c.status == "new" %}<button type="button" class="pill ok" data-api="/api/v3/candidates/{{ c.id }}/accept">Accept</button>{% endif %}
+          {% if c.status == "new" and c.can_accept %}<button type="button" class="pill ok" data-api="/api/v3/candidates/{{ c.id }}/accept">Accept</button>{% elif c.status == "new" %}<span class="muted small">Can't be accepted {% if c.safety == "Removed: unsafe" %}(found unsafe){% else %}until it has been downloaded and checked{% endif %}.</span>{% endif %}
           <button type="button" class="pill danger" data-api="/api/v3/candidates/{{ c.id }}/reject" data-then="/v3/candidates">Reject</button>
           <button type="button" class="pill" data-scripts="scripts-{{ c.id }}">Show the scripts</button>
         </div>
