@@ -543,6 +543,10 @@ def register_skill_pages(app: FastAPI, services, shell) -> None:
         if got is None:
             return JSONResponse({"error": "That candidate is gone."}, status_code=404)
         store.audit("user", "candidate_" + status, {"repo": got["repo"]})
+        from prometheus.config import data_dir
+        from prometheus.repos.knowledge import sync_candidate
+
+        sync_candidate(store, got, data_dir() / "quarantine")        # accepted: its notes join the search; else forgotten
         word = {"accepted": "Accepted", "rejected": "Rejected: it won't be suggested again"}[status]
         return {"ok": True, "message": f"{word} ({got['repo']})."}
 

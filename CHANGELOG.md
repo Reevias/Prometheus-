@@ -1,6 +1,7 @@
 # Changelog
 
 ## Prometheus 3.0, M4 (on the prometheus-v3 branch, not released yet)
+- **Repo knowledge for search (M4.7):** when you accept a candidate, the useful parts of that repo (README sections, docstrings of its public functions, example files; at most 200 notes) join your search, each saying "from owner/name at abc1234". Rejecting it removes them. They stay on the laptop and are kept as the repo's own words, never as instructions.
 - **Review of M4.1–M4.3 and M4.8:** a repo found unsafe, or not yet downloaded and checked, can't be accepted; a file that can't be saved on this computer is skipped instead of stopping the download; folders count towards the file limit; a repo can't plant its own code map or profile; the Candidates line names only programming languages.
 - Prometheus can find functions and classes by name and show how your repositories are related without running their code.
 - **Candidates tab (M4.3):** Abilities has a third tab, Candidates. Each repo waiting there shows what it is, its licence (with a plain-words note), whether it looks safe, the suggested skill, and Accept, Reject and "Show the scripts" (read-only). A rejected repo is never suggested again, and "add repo 3" in Repos of the day now sends the repo there instead of straight into Skills.
