@@ -5,9 +5,10 @@
             ("automations", "Scheduled", "/v3/automations")],
   "abilities": [("agents", "Agents", "/v3/agents"), ("skills", "Skills", "/v3/skills"), ("candidates", "Candidates", "/v3/candidates")],
   "study": [("study", "Study", "/v3/research?mode=study"), ("money", "Money", "/v3/research?mode=money")],
-  "settings": [("general", "General", "/settings#general"), ("ai", "AI", "/settings#ai"), ("voice", "Voice", "/settings#voice"),
-               ("connections", "Connections", "/settings#connections"), ("memory", "Memory", "/v3/memory"),
-               ("system", "System", "/v3/system"), ("advanced", "Advanced", "/settings#advanced")],
+  "settings": [("general", "General", "/settings#general"), ("ai", "AI and models", "/settings#ai"), ("voice", "Voice", "/settings#voice"),
+               ("connections", "Connections", "/settings#connections"), ("daily", "Daily life", "/settings#daily"),
+               ("privacy", "Privacy and safety", "/settings#privacy"), ("memory", "Memory", "/v3/memory"),
+               ("system", "System", "/v3/system")],
 } %}
 {% macro page_tabs(group, current, waiting=0) -%}
 <nav class="page-tabs" data-group="{{ group }}" aria-label="{{ group | title }}">

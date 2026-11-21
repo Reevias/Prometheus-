@@ -469,6 +469,22 @@
     });
   });
   if (window.pywebview) desktopReady(); else window.addEventListener("pywebviewready", desktopReady);
+  // the title bar: double-click maximises or restores; a drag that ends at the top edge of the screen fills it,
+  // like Windows' own snap (owner, 21 Nov). Only the bare bar drags; its buttons never do.
+  function onBar(t) { return t && t.matches && t.matches(".pywebview-drag-region"); }
+  document.addEventListener("dblclick", function (e) { if (onBar(e.target)) win("maximize"); });
+  document.addEventListener("mousedown", function (e) {
+    if (e.button !== 0 || !onBar(e.target) || !desktop) return;
+    var sx = e.screenX, sy = e.screenY, moved = false;
+    function move(ev) {
+      if (!moved && Math.abs(ev.screenX - sx) + Math.abs(ev.screenY - sy) > 6) { moved = true; win("drag_start"); }
+    }
+    function up(ev) {
+      window.removeEventListener("mousemove", move); window.removeEventListener("mouseup", up);
+      if (moved && ev.screenY <= 2) win("snap_top");
+    }
+    window.addEventListener("mousemove", move); window.addEventListener("mouseup", up);
+  });
   $$("[data-win]").forEach(function (b) { b.addEventListener("click", function () { win(b.dataset.win); if (b.dataset.win === "maximize") fullscreen = false; }); });
 
   // ---- "?" next to a hard setting: a small bubble with the explanation (20 Nov) ---------------------------------

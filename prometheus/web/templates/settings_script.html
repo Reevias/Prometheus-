@@ -15,45 +15,115 @@
     } catch (e) { (window.promToast || alert)("Couldn't play the sample: " + e.message); }
     finally { if (btn.textContent !== "Playing…") { btn.textContent = was; btn.disabled = false; } }
   }
-  // one tab at a time (20 Nov): the address picks the tab, either by name (#voice) or by a section in it
-  var PROM_TABS = ["general", "ai", "voice", "connections", "advanced"];   // var: the script can run twice
-  function promTab(keepPlace) {
-    const want = decodeURIComponent((location.hash || "").slice(1));
-    const sec = want && document.getElementById(want);
-    const box = sec && sec.closest("section.set");
-    const tab = PROM_TABS.includes(want) ? want : (box && box.dataset.tab) || "general";
-    document.querySelectorAll("section.set").forEach((s) => { s.hidden = s.dataset.tab !== tab; });
-    document.querySelectorAll(".set-nav a[data-tab]").forEach((a) => { a.hidden = a.dataset.tab !== tab; });
-    document.querySelectorAll('.page-tabs[data-group="settings"] a').forEach((a) => {
-      const on = a.dataset.tab === tab; a.classList.toggle("on", on);
+  // ---- Settings: one category at a time, search across all of them (redesign, owner 21 Nov 2026) -------------------
+  // The menu on the left is the single source of truth: its categories, and inside each one its sections in order.
+  // Everything here runs again after a save (app.js swaps in the new settings area and calls promTab(true)).
+  var PROM_OLD = { advanced: "daily", "connections-tab": "connections" };       // var: the script can run twice
+  var promCat = "general", promAdvOpen = {};
+  function promCats() { return Array.from(document.querySelectorAll(".set-cat[data-cat]")).map(function (a) { return a.dataset.cat; }); }
+  function promSection(id) { var el = id && document.getElementById(id); return el && el.matches("section.set") ? el : null; }
+  function promCatOf(sec) { return sec ? sec.dataset.tab : ""; }
+  function promOrder() {
+    // put each section where the menu lists it: everyday ones first, then the "Show advanced" bar, then advanced ones
+    var bar = document.getElementById("set-adv"), none = document.getElementById("set-none");
+    if (!bar || !none) return;
+    document.querySelectorAll(".set-sub a[href^='#']").forEach(function (a) {
+      var sec = promSection(a.getAttribute("href").slice(1));
+      if (!sec) return;
+      sec.dataset.adv = a.dataset.adv ? "1" : "";
+      sec.dataset.catName = (document.querySelector('.set-cat[data-cat="' + a.dataset.tab + '"] b') || {}).textContent || "";
+      bar.parentNode.insertBefore(sec, a.dataset.adv ? none : bar);
+    });
+  }
+  function promShow(cat, target) {
+    promCat = cat;
+    var advSecs = 0, open = !!promAdvOpen[cat] || !!(target && target.dataset.adv);
+    if (open) promAdvOpen[cat] = true;
+    document.querySelectorAll("section.set").forEach(function (sec) {
+      var mine = sec.dataset.tab === cat, adv = sec.dataset.adv === "1";
+      if (mine && adv) advSecs++;
+      sec.hidden = !mine || (adv && !open);
+    });
+    document.querySelectorAll(".set-cat[data-cat]").forEach(function (a) {
+      var on = a.dataset.cat === cat; a.classList.toggle("on", on);
       if (on) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
     });
-    const search = document.getElementById("set-search"); if (search) search.value = "";
+    document.querySelectorAll(".set-sub").forEach(function (u) { u.hidden = u.dataset.cat !== cat; });
+    var head = document.querySelector('.set-cat[data-cat="' + cat + '"]');
+    var title = document.getElementById("set-title"), desc = document.getElementById("set-desc");
+    if (head && title) { title.textContent = head.querySelector("b").textContent; desc.textContent = head.querySelector("small").textContent; }
+    var bar = document.getElementById("set-adv"), btn = document.getElementById("set-adv-toggle");
+    if (bar) bar.hidden = !advSecs;
+    if (btn) {
+      btn.setAttribute("aria-expanded", open ? "true" : "false");
+      btn.textContent = (open ? "Hide advanced settings" : "Show advanced settings") + " (" + advSecs + ")";
+    }
+  }
+  function promTab(keepPlace) {
+    promOrder();
+    var want = decodeURIComponent((location.hash || "").slice(1));
+    want = PROM_OLD[want] || want;
+    var cats = promCats(), inner = want && document.getElementById(want);
+    var sec = promSection(want) || (inner && inner.closest && inner.closest("section.set"));
+    var cat = cats.indexOf(want) >= 0 ? want : (promCatOf(sec) || (keepPlace === true ? promCat : "general"));
+    var search = document.getElementById("set-search");
+    if (search && search.value && keepPlace === true) { promFilterSettings(search.value); return; }   // a save while searching
+    if (search && keepPlace !== true) search.value = "";
     document.body.classList.remove("searching");
-    const none = document.getElementById("set-none"); if (none) none.hidden = true;
-    // a tab by name opens at the top (the browser's own jump to #voice would hide the tab bar); a section is shown
+    var none = document.getElementById("set-none"); if (none) none.hidden = true;
+    var count = document.getElementById("set-count"); if (count) count.textContent = "";
+    promShow(cat, sec);
+    if (keepPlace === true) return;               // after a save: stay where the owner was
     function place() {
-      if (sec && !PROM_TABS.includes(want)) { sec.scrollIntoView({ block: "start" }); return; }
+      if (inner && cats.indexOf(want) < 0) { inner.scrollIntoView({ block: "start" }); return; }
       var main = document.getElementById("main"); if (main) main.scrollTop = 0; window.scrollTo(0, 0);
       document.querySelectorAll(".set-body, .v3set").forEach(function (el) { el.scrollTop = 0; });
     }
-    if (keepPlace === true) return;               // after a save: stay where the owner was
     setTimeout(place, 0);
     if (document.readyState !== "complete") window.addEventListener("load", function () { setTimeout(place, 0); }, { once: true });
   }
+  function promToggleAdvanced() {
+    promAdvOpen[promCat] = !promAdvOpen[promCat];
+    promShow(promCat);
+    if (promAdvOpen[promCat]) {
+      var first = document.querySelector('section.set[data-tab="' + promCat + '"][data-adv="1"]');
+      if (first) first.scrollIntoView({ block: "start", behavior: "smooth" });
+    }
+  }
+  // search: every word you type must start a word in the setting (its title, text, keywords or category), so "ai"
+  // finds the AI settings and not every "email" and "details" (owner's screenshot, 21 Nov)
+  function promWords(t) { return (t || "").toLowerCase().split(/[^a-z0-9]+/).filter(Boolean); }
+  function promFilterSettings(q) {
+    var terms = promWords(q);
+    if (!terms.length) { promShow(promCat); document.body.classList.remove("searching");
+      document.getElementById("set-none").hidden = true; document.getElementById("set-count").textContent = ""; return; }
+    promOrder();
+    document.body.classList.add("searching");
+    var shown = 0, best = [], rest = [];
+    function has(words) { return terms.every(function (t) { return words.some(function (w) { return w.indexOf(t) === 0; }); }); }
+    document.querySelectorAll("section.set").forEach(function (sec) {
+      var title = (sec.querySelector("h3") || {}).textContent || "";
+      var strong = has(promWords(title + " " + (sec.dataset.keys || "") + " " + (sec.dataset.catName || "")));
+      var hit = strong || has(promWords(sec.textContent));
+      sec.hidden = !hit;
+      if (hit) { shown++; (strong ? best : rest).push(sec); }
+    });
+    // the best matches (in the title, its keywords or its category) come first, then settings that only mention it
+    var bar = document.getElementById("set-adv"), none = document.getElementById("set-none");
+    best.forEach(function (sec) { bar.parentNode.insertBefore(sec, bar); });
+    rest.forEach(function (sec) { bar.parentNode.insertBefore(sec, none); });
+    bar.hidden = true;
+    document.getElementById("set-none").hidden = shown > 0;
+    document.getElementById("set-count").textContent = shown ? shown + (shown === 1 ? " setting found" : " settings found") : "";
+  }
+  function promSearchKey(e) {
+    if (e.key === "Escape") { e.target.value = ""; promFilterSettings(""); return; }
+    if (e.key === "Enter") {
+      e.preventDefault();
+      var first = document.querySelector("section.set:not([hidden])");
+      if (first) { first.scrollIntoView({ block: "start" }); var f = first.querySelector("input, select, textarea, button"); if (f) f.focus({ preventScroll: true }); }
+    }
+  }
   window.addEventListener("hashchange", promTab);
   promTab();
-  function promFilterSettings(q) {
-    q = (q || "").toLowerCase().trim();
-    if (!q) { promTab(); return; }                     // back to the open tab
-    document.body.classList.add("searching");          // searching looks in every tab
-    let shown = 0;
-    document.querySelectorAll("section.set").forEach((s) => {
-      const hit = s.textContent.toLowerCase().includes(q);
-      s.hidden = !hit; if (hit) shown++;
-      const link = document.querySelector(`.set-nav a[href="#${s.id}"]`);
-      if (link) link.hidden = !hit;
-    });
-    document.getElementById("set-none").hidden = shown > 0;
-  }
 </script>

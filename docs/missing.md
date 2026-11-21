@@ -19,6 +19,11 @@ Five bugs fixed (bug log 150-154). Still open, for the owner or a later step:
 - The real download from GitHub (API + codeload) was not run in the review (this cloud session can't reach the GitHub
   API for other repos); real repos were read from their own zips through a fake GitHub.
 
+## M4 merged, 21 November 2026 (owner's instruction)
+Still to check on the laptop (NOT VERIFIED on Windows): the window buttons, drag-to-top and double-click on the title
+bar; the real skills library (steps in `docs/reports/M4_REPORT.md`); RAM use with voice and photos. The two own-repo
+findings below were fixed by the builder session (bug log 159-160).
+
 ## M4 final audit, 21 November 2026 (not merged; `docs/reports/M4_REPORT.md`)
 - The two Important findings (own repos not wired; your main repo deleted as dangerous) were fixed on 21 Nov (bug log
   159-160); the auditor re-checks them before any merge. Still open there: the old "add repo on screen" path

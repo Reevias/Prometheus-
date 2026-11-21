@@ -28,7 +28,7 @@
   <div class="drawer-shade" id="drawer-shade" hidden></div>
   <header class="topbar pywebview-drag-region">
     <button type="button" class="icon-btn menu-btn" id="menu-btn" aria-label="Open the menu" aria-controls="sidebar" aria-expanded="false">{{ icon("list") }}</button>
-    <div class="topbar-title" style="position: relative">{% block topbar %}{% endblock %}</div>
+    <div class="topbar-title pywebview-drag-region" style="position: relative">{% block topbar %}{% endblock %}</div>
     <div class="topbar-tools">
       {% if voice_ready %}<button type="button" class="icon-btn mic-toggle{{ ' off' if not voice_on }}" id="mic-toggle"
               aria-pressed="{{ 'true' if voice_on else 'false' }}"{% if stopped %} disabled title="Everything is stopped. Press Resume to use voice."{% else %}

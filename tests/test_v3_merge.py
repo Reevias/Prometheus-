@@ -78,14 +78,15 @@ def test_study_and_money_have_no_research_tab(app_client):
 
 # -- Task 2: Settings in tabs ------------------------------------------------------------------------------------------------
 
-TABS = {"general": ["features", "appearance", "general", "notifications", "focus-mode", "daily-summary", "safety-check",
-                    "about", "log-out"],
-        "ai": ["ai", "costs", "practice-tests"],
+# Settings redesign (owner, 21 Nov 2026): categories instead of tabs; every section still in exactly one of them
+TABS = {"general": ["appearance", "features", "notifications", "updates", "about", "log-out"],
+        "ai": ["ai", "spending", "costs", "models", "practice-tests"],
         "voice": ["voice"],
-        "connections": ["connection-status", "connections", "use-prometheus-from-other-ai-apps", "obsidian", "github",
-                        "other-keys"],
-        "advanced": ["assignments", "study-coach", "clipboard-and-screenshot-memory", "money-tracker",
-                     "search-inside-files", "watchers", "always-allowed", "places-prometheus-may-use"]}
+        "connections": ["connection-status", "connections", "github", "other-keys", "phone", "cloud-copy", "obsidian",
+                        "use-prometheus-from-other-ai-apps", "webhook"],
+        "daily": ["daily-summary", "focus-mode", "assignments", "study-coach", "money-tracker",
+                  "clipboard-and-screenshot-memory", "watchers", "search-inside-files"],
+        "privacy": ["always-allowed", "places-prometheus-may-use", "backup", "safety-check", "wifi-access"]}
 
 
 def test_every_settings_section_belongs_to_exactly_one_tab(app_client):
@@ -95,7 +96,8 @@ def test_every_settings_section_belongs_to_exactly_one_tab(app_client):
     found = dict(re.findall(r'<section class="set[^"]*" id="([^"]+)"[^>]*data-tab="([^"]+)"', page))
     want = {sid: tab for tab, ids in TABS.items() for sid in ids}
     assert found == want
-    assert 'class="page-tabs" data-group="settings"' in page
+    for cat in TABS:
+        assert f'class="set-cat" href="#{cat}" data-cat="{cat}"' in page
 
 
 def test_connections_page_is_now_a_settings_tab(app_client):

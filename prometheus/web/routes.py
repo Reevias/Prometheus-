@@ -999,32 +999,44 @@ def register_routes(app: FastAPI, services: Services) -> None:
         return settings_page(request)
 
     @app.post("/settings", response_class=HTMLResponse)
-    def save(request: Request, budget_usd: str = Form(...), ollama_model: str = Form(""),
-             anthropic_model: str = Form(""), allow_lan: str = Form(""), openrouter_model: str = Form(""),
-             openrouter_fast_model: str = Form(""), github_repo: str = Form(""), step_tries: str = Form(""),
-             task_budget_usd: str = Form("")):
+    def save(request: Request, budget_usd: str | None = Form(None), ollama_model: str | None = Form(None),
+             anthropic_model: str | None = Form(None), allow_lan: str = Form(""), allow_lan_form: str = Form(""),
+             openrouter_model: str | None = Form(None), openrouter_fast_model: str | None = Form(None),
+             github_repo: str | None = Form(None), step_tries: str | None = Form(None),
+             task_budget_usd: str | None = Form(None)):
+        """The small settings forms (spending, models, GitHub, Wi-Fi) all post here. A field that isn't sent stays as
+        it was, so each form changes only its own settings (Settings redesign, 21 Nov 2026)."""
+        cur = services.settings
         try:
-            budget = float(budget_usd)
+            budget = float(budget_usd) if budget_usd is not None and budget_usd.strip() else cur.budget_usd
             if not 0 <= budget <= 1000:
                 raise ValueError
         except ValueError:
             return settings_page(request, 400, error="The spending cap must be a number between 0 and 1000.")
         try:
-            tries = int(step_tries) if step_tries.strip() else services.settings.step_tries
-            task_cap = float(task_budget_usd) if task_budget_usd.strip() else services.settings.task_budget_usd
+            tries = int(step_tries) if step_tries is not None and step_tries.strip() else cur.step_tries
+            task_cap = float(task_budget_usd) if task_budget_usd is not None and task_budget_usd.strip() \
+                else cur.task_budget_usd
             if not (1 <= tries <= 6 and 0.01 <= task_cap <= 10):
                 raise ValueError
         except ValueError:
             return settings_page(request, 400, error="Tries must be 1 to 6, and the task limit between $0.01 and $10.")
-        github_repo = github_repo.strip() or services.settings.github_repo
-        if not REPO_NAME.fullmatch(github_repo):
+        repo = (github_repo or "").strip() or cur.github_repo
+        if not REPO_NAME.fullmatch(repo):
             return settings_page(request, 400, error="The GitHub repository must look like owner/name.")
-        new = replace(services.settings, github_repo=github_repo, budget_usd=budget, step_tries=tries,
-                      task_budget_usd=task_cap,
-                      ollama_model=ollama_model.strip()[:100] or services.settings.ollama_model,
-                      anthropic_model=anthropic_model.strip()[:100] or services.settings.anthropic_model, allow_lan=bool(allow_lan),
-                      openrouter_model=openrouter_model.strip()[:150] or services.settings.openrouter_model,
-                      openrouter_fast_model=openrouter_fast_model.strip()[:150])
+
+        def text(value: str | None, old: str, limit: int, keep_empty_old: bool = True) -> str:
+            if value is None:
+                return old
+            value = value.strip()[:limit]
+            return value or (old if keep_empty_old else "")
+
+        new = replace(cur, github_repo=repo, budget_usd=budget, step_tries=tries, task_budget_usd=task_cap,
+                      ollama_model=text(ollama_model, cur.ollama_model, 100),
+                      anthropic_model=text(anthropic_model, cur.anthropic_model, 100),
+                      allow_lan=bool(allow_lan) if allow_lan_form else cur.allow_lan,
+                      openrouter_model=text(openrouter_model, cur.openrouter_model, 150),
+                      openrouter_fast_model=text(openrouter_fast_model, cur.openrouter_fast_model, 150, False))
         save_settings(new)
         services.settings.__dict__.update(new.__dict__)
         apply_settings(services)

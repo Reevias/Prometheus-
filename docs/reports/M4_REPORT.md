@@ -113,6 +113,35 @@ auditor has re-checked it.
 - The library key needs Contents and Pull requests (read and write) on `prometheus-skills` only.
 - Code maps miss CommonJS `require(...)` imports and `.d.ts` functions; JavaScript repos give guides only.
 
+## After the audit (21 Nov 2026)
+- **Own repos** (the two open Important findings): fixed by a separate builder session (bug log 159-160): a repo under
+  the owner's GitHub account is read as theirs, kept as "check this first" instead of deleted (Defender still deletes
+  real threats), linked to the owner's other repos and given a NOTES.md.
+- **Owner's laptop screenshots:** Don't allow ends the task; one microphone button; the skills library key in Settings;
+  the window buttons and drag-to-top (NOT VERIFIED on Windows); a print-only script is said, not asked; photo models
+  released after 2 idle minutes; the local voice loads only when ElevenLabs needs it (bug log 161-170).
+- **Settings redesign** (owner's brief; Hallmark's floor used as the quality bar: focus outlines, contrast, reduced
+  motion, phone width, no fake controls). Every setting was kept and every existing save address is unchanged:
+
+| Category | Sections (advanced ones fold under "Show advanced settings") |
+|---|---|
+| General | Appearance, Features on and off, Notifications, Updates and suggestions (was in General's form), About and shortcuts, Log out (now asks first) |
+| AI and models | AI services and keys, Spending limits (from General's form), What paid AI has cost; advanced: Choose models yourself (model names, tries per step, model cards), Practice tests |
+| Voice | Voice |
+| Connections | What's connected, Email and calendar, GitHub (now with the repository field), Keys (was "Other keys": GitHub and skills library), Phone control and Cloud copy (were inside "Phone, cloud copy, backup, safety check"), Obsidian; advanced: Other AI apps (MCP), Webhook (was inside Daily summary) |
+| Daily life | Daily summary, Focus mode, Assignments, Study coach, Money tracker, Clipboard memory, Watchers (these were wrongly under "Advanced"); advanced: Search inside files |
+| Privacy and safety | Always allowed, Places it may use, Backup, Safety check; advanced: Access from other devices (Wi-Fi, from General's form) |
+| Memory, System | their own pages, linked from the menu |
+
+  What was wrong: a General form mixing five subjects, an "Advanced" tab used as a dumping ground for everyday features,
+  one section holding four unrelated things, search that matched letters anywhere, Memory and System jumping pages from
+  the same tab bar, and the chats list taking room beside Settings. Architecture: the POST /settings save now changes
+  only the fields a form sends (before, a form without the Wi-Fi box switched Wi-Fi access off); the menu in
+  `v3/settings.html` is the single list of categories and section order, and `settings_script.html` shows one category,
+  folds advanced sections and searches. Tests: `tests/test_v3_settings_redesign.py`, the updated click-through tests and
+  `tests/test_v3_owner_laptop_m4.py`.
+
 ## Merge
-Not merged. Conditions not met: (1) two open Important findings (above); (2) the owner's laptop check of M4 hasn't
-been done and "merge M4" wasn't written in this session. GitHub's run on the branch is green.
+Merged into main on 21 Nov 2026 on the owner's explicit instruction ("after fixing the setting push everything to main
+branch and M4 is done; I'll get a separate checker"). The laptop check had not been done at that point; the separate
+checker and the laptop check (steps above) come next.

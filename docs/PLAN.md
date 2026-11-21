@@ -5,7 +5,7 @@ M2's detailed steps: [`docs/m2/M2_PLAN.md`](m2/M2_PLAN.md). Friday Mark 2 compar
 [`docs/reports/FRIDAY_MARK2_RESEARCH.md`](reports/FRIDAY_MARK2_RESEARCH.md).
 
 **11 milestones, 60 steps.** Done: M0, M1, M2 (15 steps; M2 merged into main 15 Nov, waiting for the owner's laptop check).
-Done: M3 (6 steps, 16 Nov; audit fixes A-D and exit check 20 Nov; merged into main 20 Nov; laptop check to come; report `docs/reports/M3_REPORT.md`). M4 built on the branch (8 steps, reviews A and B, final audit 21 Nov: not merged, two open findings about your own repos; report `docs/reports/M4_REPORT.md`). Not started: M5 to M10.
+Done: M3 (6 steps, 16 Nov; audit fixes A-D and exit check 20 Nov; merged into main 20 Nov; laptop check to come; report `docs/reports/M3_REPORT.md`). M4 (8 steps, reviews A and B, final audit, own-repos fix, Settings redesign) merged into main 21 Nov on the owner's instruction; a separate checker and the laptop check come next; report `docs/reports/M4_REPORT.md`. Not started: M5 to M10.
 
 Status words: **Done** = built, tested, audited and accepted · **Built** = code and tests are in, waiting for the
 owner's laptop check and the audit · **In progress** · **Not started**.
@@ -19,7 +19,7 @@ already written down elsewhere in the repo, missing from the old roadmap.
 | M1 Tool primitives | 5 | Done (on main) |
 | M2 Desktop interface | 5 | Done, merged into main; sidebar reworked after the laptop check (20 Nov: projects and recents first; four pages, the rest in tab bars and Settings tabs) |
 | M3 Orchestration and model routing | 6 | Done, merged into main 20 Nov (laptop check to come) |
-| M4 Repository-to-skill | 8 | Built on prometheus-v3; final audit 21 Nov: not merged (own repos not wired; laptop check to come) |
+| M4 Repository-to-skill | 8 | Done, merged into main 21 Nov (owner's instruction; separate checker and laptop check to come) |
 | M5 Many agents | 6 | Not started |
 | M6 Runtime / Cloudroom | 5 | Not started |
 | M7 Security hardening | 5 | Not started |
@@ -119,7 +119,7 @@ Study (Friday, ideas only): `router/smart_router.py`, `router/llm_router.py`, `t
 `agents/registry.py`, `awareness/live_context.py`.
 Exit gate: routing (each route, classifier timeout → rules), cancel, streaming and registry tests; Windows CI; audit.
 
-## M4 Repository-to-skill — Built, audited 21 Nov, not merged · 8 steps (detailed plan with who builds what: `docs/m4/M4_PLAN.md`)
+## M4 Repository-to-skill — Done, merged 21 Nov · 8 steps (detailed plan with who builds what: `docs/m4/M4_PLAN.md`)
 Owner, 20 Nov: skills are a guide plus sandboxed scripts kept in a **GitHub skills library and loaded only when
 needed**; public and own repos equally; candidates wait in Abilities → Candidates. Running whole repos is M6.
 - **M4.1** Read repos safely without running them; map files, stack and dependencies (builds on M1's file tools).

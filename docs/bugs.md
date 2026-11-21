@@ -2,7 +2,19 @@
 
 Every bug found and fixed, newest first, so the count is always exact. Add a line for each new one.
 
-**Total fixed: 163** (as of 21 November 2026)
+**Total fixed: 170** (as of 21 November 2026)
+
+## 21 November 2026, Settings redesign and the owner's second set of screenshots (7)
+
+| # | Bug | Fixed by |
+|---|---|---|
+| 170 | With an ElevenLabs key the local voice (Kokoro) was still loaded at start, only as a fallback, keeping hundreds of MB busy | It loads the first time the fallback is needed |
+| 169 | The photo models (about 1 GB) loaded once and were never let go, so RAM stayed high after sorting photos | Released 2 minutes after their last use |
+| 168 | The AI asked to run a Python script that only printed a sentence ("Conversation acknowledged…") | A script that only prints fixed text is said straight away: nothing runs, nothing is asked |
+| 167 | Dragging the window to the top of the screen didn't fill it; double-clicking the title bar did nothing | Drag to the top edge = maximise, dragging a maximised window restores it, double-click = maximise/restore (NOT VERIFIED on Windows) |
+| 166 | Minimise / maximise / close never worked: a press on them started pywebview's window move (the whole title bar was a drag area) | Only the bare title bar drags (NOT VERIFIED on Windows) |
+| 165 | Settings search matched letters anywhere ("Ai" found every "email" and "details"), and the chats list stayed beside Settings | Words must start with what you type, best matches first; no chats list on Settings |
+| 164 | The General settings form mixed spending, GitHub, Wi-Fi, updates and models; splitting it would have switched Wi-Fi access off | The save changes only the fields a form sends; each part lives in its own category |
 
 ## 21 November 2026, from the owner's laptop screenshots (3)
 

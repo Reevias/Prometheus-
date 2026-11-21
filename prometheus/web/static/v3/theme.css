@@ -1204,3 +1204,44 @@ html[data-motion="reduced"] *, html[data-motion="reduced"] *::before { animation
 .step-inputs dt { color: var(--muted); }
 .step-inputs dd { margin: 0; overflow-wrap: anywhere; }
 .model-tag { font-family: var(--font); font-size: 12px; }
+
+/* ---- Settings redesign (owner, 21 Nov 2026): categories on the left, one category at a time ------------------------ */
+body[data-page="settings"] #side-lists { display: none; }      /* Settings gets the screen: no chats list beside it */
+.v3set { grid-template-columns: 270px minmax(0, 1fr); gap: 24px; }
+.v3set .set-nav { gap: 0; padding-right: 4px; }
+.v3set .set-find { position: sticky; top: 0; z-index: 1; padding-bottom: 8px; background: var(--base); }
+.v3set .set-find input { width: 100%; margin: 0; }
+.v3set .set-count { margin: 6px 4px 0; min-height: 0; font-size: 12.5px; }
+.v3set .set-count:empty { display: none; }
+.v3set .set-cats, .v3set .set-sub { list-style: none; margin: 0; padding: 0; }
+.v3set .set-nav a.set-cat { display: flex; gap: 12px; align-items: flex-start; padding: 10px 12px; border-radius: 12px; color: var(--text);
+  border: 1px solid transparent; margin: 2px 0; }
+.v3set .set-nav a.set-cat svg { width: 20px; height: 20px; flex: none; margin-top: 1px; stroke: var(--muted); }
+.v3set .set-nav a.set-cat b { display: block; font-weight: 500; font-size: 14.5px; }
+.v3set .set-nav a.set-cat small { display: block; color: var(--muted); font-size: 12.5px; line-height: 1.35; margin-top: 2px; }
+.v3set .set-nav a.set-cat.on { background: rgb(var(--orange-rgb) / 0.1); border-color: rgb(var(--orange-rgb) / 0.35); }
+.v3set .set-nav a.set-cat.on svg { stroke: var(--orange); }
+.v3set .set-sub { margin: 2px 0 8px 44px; border-left: 1px solid rgb(var(--text-rgb) / 0.1); }
+.v3set .set-sub a { display: block; padding: 5px 10px; font-size: 13.5px; color: var(--muted); border-radius: 8px; }
+.v3set .set-sub a:hover { color: var(--text); }
+.v3set .set-nav a:focus-visible, .v3set button:focus-visible, .v3set summary:focus-visible, .v3set input:focus-visible,
+.v3set select:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+.v3set .set-head { margin: 4px 0 16px; }
+.v3set .set-head h2 { margin: 0 0 4px; font-size: 26px; font-weight: 400; }
+.v3set .set-head p { margin: 0; }
+body.searching .v3set .set-head, body.searching .v3set .set-sub { display: none; }
+body.searching .v3set section.set:not([hidden])::before { content: attr(data-cat-name); display: inline-block; font-size: 12px;
+  color: var(--amber); border: 1px solid rgb(var(--orange-rgb) / 0.35); border-radius: 999px; padding: 1px 9px; margin-bottom: 10px; }
+.v3set .set-adv { margin: 8px 0 18px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+.v3set .set-adv .small { margin: 0; font-size: 12.5px; }
+.v3set .set-sub .tag { font-size: 10.5px; padding: 0 6px; margin-left: 4px; }
+@media (max-width: 700px) {
+  .v3set { grid-template-columns: minmax(0, 1fr); }
+  .v3set .set-nav { position: static; max-height: none; overflow: visible; padding: 0; }
+  .v3set .set-find { position: static; }
+  .v3set .set-cats { flex: none; display: flex; gap: 6px; overflow-x: auto; padding-bottom: 6px; }
+  .v3set .set-cats > li { flex: none; }
+  .v3set .set-nav a.set-cat { display: flex; padding: 7px 12px; align-items: center; }
+  .v3set .set-nav a.set-cat small, .v3set .set-sub { display: none !important; }
+}
+@media (prefers-reduced-motion: reduce) { .v3set * { scroll-behavior: auto !important; } }

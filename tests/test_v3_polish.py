@@ -74,8 +74,10 @@ def test_hard_settings_have_a_question_mark_that_explains_them(app_client):
         block = page.split(f'id="{sid}"', 1)[1].split("</h3>", 1)[0]
         m = re.search(r'class="help-q"[^>]*data-help="([^"]+)"', block)
         assert m and len(m.group(1)) > 30, sid
-    general = page.split('id="general"', 1)[1].split("</section>", 1)[0]
-    assert general.count('class="help-q"') >= 5                    # limits, tries, repository, Wi-Fi…
+    # the old General form was split by the Settings redesign (21 Nov): its "?" marks went with their settings
+    moved = "".join(page.split(f'id="{sid}"', 1)[1].split("</section>", 1)[0]
+                    for sid in ("spending", "models", "github", "wifi-access"))
+    assert moved.count('class="help-q"') >= 5                      # limits, tries, repository, Wi-Fi…
 
 
 def test_the_voice_fix_is_a_sentence_and_a_copy_button_not_a_raw_command():
