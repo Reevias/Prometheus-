@@ -445,6 +445,10 @@ def test_a_project_chat_is_two_clicks_and_the_fold_is_remembered(live, browser):
     project = page.locator("#side-lists details.side-project").first
     project.locator("summary .side-pname").click()
     assert project.get_attribute("open") is not None
+    # the fold is saved on the browser's "toggle" event, a moment after the click: wait for it before reloading
+    # (GitHub's slower Windows runner sometimes reloaded first)
+    pid = project.get_attribute("data-project")
+    page.wait_for_function("id => JSON.parse(localStorage.getItem('prom-open-projects') || '[]').indexOf(id) >= 0", arg=pid)
     page.reload()
     page.wait_for_selector("#side-lists details.side-project[open]")
     link = page.locator("#side-lists details.side-project[open] a.side-chat").first
