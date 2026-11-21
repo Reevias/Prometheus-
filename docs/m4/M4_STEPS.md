@@ -10,6 +10,8 @@ the owner** (2–4 questions, recommended answer first); don't guess.
 ## Rules for every step (read once, follow always)
 
 **Before you start**
+0. A new cloud session has no Python 3.14 set up: create it first with uv (see the SETUP line at the
+   top of every prompt in `docs/m4/M4_PROMPTS.md`). This is allowed; it is not a "replacement".
 1. `git fetch origin && git checkout prometheus-v3 && git pull --ff-only` (never work on `main` or `prometheus-v3`).
 2. Read `CLAUDE.md`, `AGENTS.md`, `docs/m4/M4_PLAN.md` and your step's section here. Read every file listed under
    "Read first" for your step before writing code.
