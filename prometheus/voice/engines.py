@@ -292,6 +292,38 @@ class WakeSpotter:
         return None
 
 
+class LazySpeaker:
+    """A speaker that is only made the first time it is needed: the local voice behind ElevenLabs is a fallback, and
+    loading it at start kept hundreds of MB busy on an 8 GB laptop (owner, 21 Nov 2026)."""
+
+    interruptible = True
+
+    def __init__(self, make):
+        self._make, self._real, self._lock = make, None, threading.Lock()
+
+    def _get(self):
+        with self._lock:
+            if self._real is None:
+                self._real = self._make()
+            return self._real
+
+    def say(self, *a, **k):
+        return self._get().say(*a, **k)
+
+    def ack(self):
+        return self._get().ack()
+
+    def ask(self):
+        return self._get().ask()
+
+    def chime(self):
+        return self._get().chime()
+
+    def stop(self):
+        if self._real is not None:          # never load the voice just to stop it
+            self._real.stop()
+
+
 class KokoroSpeaker:
     """A natural local voice (Kokoro). Long answers are spoken sentence by sentence: the first one starts while
     the rest is still being made. "Yes sir" is made once at start, so it plays instantly."""

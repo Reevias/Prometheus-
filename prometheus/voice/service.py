@@ -110,8 +110,14 @@ class VoiceService:
                 transcriber = Transcriber(self.models)
                 command_tr = (Transcriber(self.models, command=True)
                               if self.models.command_whisper != self.models.whisper else transcriber)
-                speaker = KokoroSpeaker(self.models, s.voice_name)
                 key = self.eleven_key()
+                if key:                                    # the local voice is only the fallback: made when needed
+                    from prometheus.voice.engines import LazySpeaker
+
+                    models, name = self.models, s.voice_name
+                    speaker = LazySpeaker(lambda: KokoroSpeaker(models, name))
+                else:
+                    speaker = KokoroSpeaker(self.models, s.voice_name)
                 if key:
                     # the chatbot-level voice; the local models stay ready as the fallback
                     from prometheus.voice.cloud import ElevenHearing, ElevenSpeaker
@@ -123,6 +129,7 @@ class VoiceService:
                     from prometheus.voice.clap import ClapDetector
 
                     clap = ClapDetector(getattr(s, "clap_sensitivity", 1.0))
+                self._speaker = speaker
                 loop = VoiceLoop(Microphone(), WakeSpotter(self.models, transcriber), command_tr, speaker,
                                  self.command, log=lambda m: self.services.store.audit("voice", "note", {"text": m}),
                                  clap=clap, on_clap=self.clap_brief)

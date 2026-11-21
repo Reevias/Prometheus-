@@ -2,7 +2,58 @@
 
 Every bug found and fixed, newest first, so the count is always exact. Add a line for each new one.
 
-**Total fixed: 149** (as of 20 November 2026)
+**Total fixed: 170** (as of 21 November 2026)
+
+## 21 November 2026, Settings redesign and the owner's second set of screenshots (7)
+
+| # | Bug | Fixed by |
+|---|---|---|
+| 170 | With an ElevenLabs key the local voice (Kokoro) was still loaded at start, only as a fallback, keeping hundreds of MB busy | It loads the first time the fallback is needed |
+| 169 | The photo models (about 1 GB) loaded once and were never let go, so RAM stayed high after sorting photos | Released 2 minutes after their last use |
+| 168 | The AI asked to run a Python script that only printed a sentence ("Conversation acknowledged…") | A script that only prints fixed text is said straight away: nothing runs, nothing is asked |
+| 167 | Dragging the window to the top of the screen didn't fill it; double-clicking the title bar did nothing | Drag to the top edge = maximise, dragging a maximised window restores it, double-click = maximise/restore (NOT VERIFIED on Windows) |
+| 166 | Minimise / maximise / close never worked: a press on them started pywebview's window move (the whole title bar was a drag area) | Only the bare title bar drags (NOT VERIFIED on Windows) |
+| 165 | Settings search matched letters anywhere ("Ai" found every "email" and "details"), and the chats list stayed beside Settings | Words must start with what you type, best matches first; no chats list on Settings |
+| 164 | The General settings form mixed spending, GitHub, Wi-Fi, updates and models; splitting it would have switched Wi-Fi access off | The save changes only the fields a form sends; each part lives in its own category |
+
+## 21 November 2026, from the owner's laptop screenshots (3)
+
+| # | Bug | Fixed by |
+|---|---|---|
+| 163 | The "GitHub skills library" key (M4.5) had nowhere to be pasted in Settings | Settings → Connections → Other keys lists it, with how to make it |
+| 162 | Two identical microphone buttons next to Stop all (Voice on/off and the older Mute) | One button when voice is set up; Ctrl+Shift+M still mutes |
+| 161 | "Don't allow" seemed to do nothing: the task carried on and its AI asked for the same script again, so an identical card came back | A no ends that task |
+
+## 21 November 2026, M4 fix: your own repos (2)
+
+| # | Bug | Fixed by |
+|---|---|---|
+| 160 | Reevias/Prometheus- was deleted as dangerous (its README's install line and repo_check's own malware patterns), so your main repo could never become a skill | repo_check has an `own` flag set from the repo's GitHub owner (never from its files): pattern matches give "check this first"; Defender's threat still deletes |
+| 159 | Your own repos were never treated as yours (`read_repo` never got `own=True`), so the links between your repos and their NOTES.md were never made | same owner as `github_repo` → `own=True`; links and NOTES.md on the Candidates card (`prometheus/repos/own.py`) |
+
+## 21 November 2026, M4.4 extra (1)
+
+| # | Bug | Fixed by |
+|---|---|---|
+| 158 | repo_check's setup-folder rule also softened a top-level *file* named `.github` or `.devcontainer` (not a folder): its `curl … \| sh` line gave "check this first" instead of "danger" | Only files inside those folders count |
+
+## 21 November 2026, review of M4.4–M4.7 (3)
+
+| # | Bug | Fixed by |
+|---|---|---|
+| 157 | The owner's rule for repo_check (21 Nov) was never built: a `curl … \| sh` line in `.devcontainer/` or `.github/` still deleted the whole repo as dangerous (pallets/itsdangerous) | Those two top folders give "check this first"; everywhere else, and any other danger there, stays as strict |
+| 156 | A skill whose scripts need the internet was switched on after Accept although none of its scripts had been run | It stays off; the owner can switch it on in Skills |
+| 155 | A skill could be published to the skills library without passing its sandbox trial (or after being changed), and every device then loads library skills without a trial | Publishing needs a passed trial on exactly those files |
+
+## 21 November 2026, review of M4.1–M4.3 and M4.8 (5)
+
+| # | Bug | Fixed by |
+|---|---|---|
+| 154 | The Candidates line listed file types (reStructuredText, YAML, JSON) as if they were programming languages | Only programming languages are named |
+| 153 | A repo that was found unsafe, or never downloaded and checked, could still be accepted | No Accept button for those, and the server refuses it |
+| 152 | A repo could ship its own `codemap.json` or `profile.json`: symbol search trusted the fake map, and a folder with that name crashed the save | Those names at the top of a repo are refused |
+| 151 | Folders inside a repo's zip didn't count towards the 20 000 limit, so a zip of millions of empty folders was unpacked | Folders count too |
+| 150 | One file that couldn't be saved (a file and a folder with the same name; on Windows a path that is too long) stopped the whole download with a raw error | That file is listed as refused and the rest is read |
 
 ## 20 November 2026, fewer pages (5)
 

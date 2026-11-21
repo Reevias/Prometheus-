@@ -1,0 +1,66 @@
+{% from "v3/tabs.html" import page_tabs %}
+{% extends "v3/layout.html" %}
+{% from "v3/icons.html" import icon %}
+{% from "v3/help.html" import help %}
+{% block title %}Candidates · Prometheus{% endblock %}
+{% block topbar %}<b>Abilities</b>{% endblock %}
+{% block content %}
+<section class="page candidates-page">
+  {{ page_tabs("abilities", "candidates") }}
+  <h1 class="sr">Candidates</h1>
+  <p class="muted lead">Repositories Prometheus found that could become skills. Nothing here is installed or run: you
+    read it, then accept or reject.{% if rejected %} {{ rejected }} rejected: they won't be suggested again.{% endif %}</p>
+  <div class="rows" style="max-width:none">
+  {% for c in cards %}
+    <div class="repo-row" data-candidate="{{ c.id }}">
+      <div>
+        <b>{{ c.repo }}</b>
+        {% if c.status == "accepted" %}<span class="state s-done">Accepted</span>{% endif %}
+        {% if c.sensitive %}<span class="state s-failed">about tracking, accounts or security</span>{% endif %}
+        <p>{{ c.what }}</p>
+        <p class="muted">Licence: <b>{{ c.licence }}</b> {{ help("A licence is the author's rule for what you may do with their code. Some let you do almost anything; some say that anything you share must stay open under the same licence; with no licence you may not copy the code at all.") }}<br>{{ c.licence_note }}</p>
+        <p><span class="state {{ c.tone }}">{{ c.safety }}</span></p>
+        {% if c.own %}<p class="muted">Your own repository. {{ help("Repositories under your own GitHub name. A pattern that looks risky only gives “Check this first” for them; Microsoft Defender finding a threat still removes them.") }}</p>
+        {% if c.links %}<p class="muted">Linked to your other repos:</p><ul class="muted">{% for l in c.links %}<li>{{ l }}</li>{% endfor %}</ul>{% endif %}
+        {% if c.notes %}<details class="muted"><summary>Notes</summary><pre class="io" style="white-space:pre-wrap;word-break:break-word;max-height:30vh;overflow:auto">{{ c.notes }}</pre></details>{% endif %}{% endif %}
+        <p class="muted">{% if c.suggestion %}Suggested skill: <b>{{ c.suggestion.name }}</b>{% if c.suggestion.description %}: {{ c.suggestion.description }}{% endif %}{% else %}No skill suggested yet.{% endif %}</p>
+        {% if c.trial %}<p><span class="state {{ 's-done' if c.trial.ok else 's-failed' }}">Trial run</span> {{ c.trial.line }} {{ help("Before a skill can be switched on, its small scripts are run once in the sandbox, a locked room with no internet and no access to your files, to see that they work.") }}</p>
+        <details class="muted"><summary>Show details</summary>
+          {% for s in c.trial.scripts %}<p><b>{{ s.file }}</b>: {{ s.word }}{% if s.reason %}. {{ s.reason }}{% endif %}</p>
+          {% if s.details %}<pre class="io" style="white-space:pre-wrap;word-break:break-word;max-height:30vh;overflow:auto">{{ s.details }}</pre>{% endif %}
+          {% else %}<p>This skill has no scripts to run.</p>{% endfor %}</details>{% endif %}
+        {% if c.suggestion and c.suggestion.needs_signoff and c.status == "new" %}<p class="muted">Its licence ({{ c.licence }}) is share-alike, so the suggested skill is a guide only. May Prometheus copy code from it? The skill's scripts must then stay under the same licence. {{ help("Share-alike (copyleft) licences let you use and change the code, but anything you share that is built from it must be shared under the same licence.") }}</p>{% endif %}
+        <div class="dialog-bar" style="margin-top:10px;flex-wrap:wrap">
+          {% if c.status == "new" and c.can_accept %}<button type="button" class="pill ok" data-api="/api/v3/candidates/{{ c.id }}/accept">Accept</button>{% elif c.status == "new" %}<span class="muted small">Can't be accepted {% if c.safety == "Removed: unsafe" %}(found unsafe){% else %}until it has been downloaded and checked{% endif %}.</span>{% endif %}
+          {% if c.suggestion and c.suggestion.needs_signoff and c.status == "new" and c.can_accept %}<button type="button" class="pill" data-api="/api/v3/candidates/{{ c.id }}/allow-copying" data-then="/v3/candidates">Allow copying</button>{% endif %}
+          <button type="button" class="pill danger" data-api="/api/v3/candidates/{{ c.id }}/reject" data-then="/v3/candidates">Reject</button>
+          <button type="button" class="pill" data-scripts="scripts-{{ c.id }}">Show the scripts</button>
+        </div>
+      </div>
+      <dialog class="dialog" id="scripts-{{ c.id }}" aria-labelledby="scripts-title-{{ c.id }}">
+        <h2 id="scripts-title-{{ c.id }}">Scripts in {{ c.repo }}</h2>
+        <p class="muted">Read only. Nothing here has been run.</p>
+        {% for s in c.scripts %}
+        <h3>{{ s.rel }}</h3>
+        <pre class="io" style="white-space:pre-wrap;word-break:break-word;max-height:40vh;overflow:auto">{{ s.text }}</pre>
+        {% if s.cut %}<p class="muted">Only the start of this file is shown.</p>{% endif %}
+        {% else %}<p class="muted">No scripts to show{% if not c.folder %}: the repository hasn't been downloaded yet{% endif %}.</p>{% endfor %}
+        <div class="dialog-bar"><span class="grow"></span><button type="button" class="primary" data-close>Close</button></div>
+      </dialog>
+    </div>
+  {% else %}
+    <p class="muted empty">No candidates yet. Say “add repo 3” after Repos of the day, or pick one on the Skills page.</p>
+  {% endfor %}
+  </div>
+</section>
+<script>
+(function () {
+  document.addEventListener("click", function (e) {
+    var open = e.target.closest("[data-scripts]");
+    if (open) { var d = document.getElementById(open.dataset.scripts); if (d && d.showModal) d.showModal(); return; }
+    var close = e.target.closest("[data-close]");
+    if (close) { var dlg = close.closest("dialog"); if (dlg) dlg.close(); }
+  });
+})();
+</script>
+{% endblock %}

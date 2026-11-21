@@ -45,6 +45,7 @@ MIN_TEXT = 12
 SORT_LIMIT = 2000
 
 CURRENT = None          # the app's PhotoIndex
+IDLE_SECONDS = 120      # the photo models (about 1 GB) are let go this long after their last use (owner, 21 Nov)
 
 
 class Looker:
@@ -54,6 +55,22 @@ class Looker:
         self._lock = threading.Lock()
         self._clip = self._ocr = None
         self._labels = None
+        self._timer = None
+
+    def _used(self) -> None:
+        """Start the idle clock again; when it runs out the models are released (an 8 GB laptop needs the RAM)."""
+        if self._timer is not None:
+            self._timer.cancel()
+        self._timer = threading.Timer(IDLE_SECONDS, self.release)
+        self._timer.daemon = True
+        self._timer.start()
+
+    def release(self) -> None:
+        import gc
+
+        with self._lock:
+            self._clip = self._ocr = self._labels = None
+        gc.collect()
 
     def _load(self):
         if self._clip is None:
@@ -81,8 +98,10 @@ class Looker:
         with self._lock:
             self._load()
             vec = np.array(list(self._clip.embed([str(path)]))[0])
+            labels = self._labels
+        self._used()
         vec = vec / np.linalg.norm(vec)
-        logits = 100 * (self._labels @ vec)
+        logits = 100 * (labels @ vec)
         probs = np.exp(logits - logits.max())
         probs /= probs.sum()
         order = np.argsort(-probs)
@@ -94,6 +113,7 @@ class Looker:
         with self._lock:
             self._load()
             result = self._ocr(str(path))
+        self._used()
         if hasattr(result, "txts"):                      # rapidocr 3 returns an object with the found texts
             words = " ".join(t for t in (result.txts or ()) if t)
         else:                                            # the older package returns (rows, timings)

@@ -35,7 +35,7 @@ def test_features_page_and_stop_all_stays_stopped(app_client):
     client, services = app_client()
     csrf = login(client)
     page = client.get("/settings").text
-    assert "Features on and off" in page and 'data-tab="advanced"' in page and 'class="set adv"' in page   # tabs (20 Nov)
+    assert "Features on and off" in page and 'data-tab="daily"' in page and 'class="set adv"' in page   # categories (21 Nov)
     r = client.post("/settings/feature", data={"key": "screen", "on": ""}, headers={"X-CSRF-Token": csrf})
     assert r.status_code == 200 and "screen" in services.settings.features_off
     client.post("/kill", headers={"X-CSRF-Token": csrf})

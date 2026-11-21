@@ -380,6 +380,13 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
                         router, orchestrator, patcher, prompts, skills)
     from prometheus.features import skill_on
     skills.is_off = lambda name: not skill_on(services.settings, name)   # the Skills page's switches
+    from prometheus.repos import library as _library
+
+    skills.library = _library.Library(data, repo=_library.library_repo(settings))      # M4.5: index only, a few KB
+    approvals.register(_library.PUBLISH_KIND,
+                       lambda payload: _library.publish_handler(skills.library, data / "skills", payload, store))
+    if providers is None:                       # the real app (tests never reach GitHub)
+        _library.start_daily_refresh(skills.library)
     archive.allowed = lambda chat_id: memory_collects(services.settings, chat_id)       # Memory → Privacy
     archive.left_out = lambda chat_id: chat_id in (services.settings.memory_off_chats or [])
     store.hidden_chats = lambda: set(services.settings.memory_off_chats or [])     # never recalled anywhere
@@ -501,6 +508,9 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
     _ph.CURRENT = services.photos
     approvals.register("photo_sort", lambda payload: _ph.sort_handler(payload, policy, files))
     approvals.register("add_skill", lambda payload: RepoOfTheDay(services).add(payload))
+    from prometheus.repos import skillmaker as _skillmaker
+
+    approvals.register(_skillmaker.APPROVAL_KIND, lambda payload: _skillmaker.prepare(services, payload))
     orchestrator.interceptors.append(lambda chat_id, text: RepoOfTheDay(services).answer(chat_id, text))
     from prometheus import resume as _resume
 

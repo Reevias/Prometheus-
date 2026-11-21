@@ -20,6 +20,7 @@
   <div class="task-actions">
     <button type="button" class="pill" id="skill-check">{{ icon("tasks") }}Check it</button>
     {% if s.on %}<button type="button" class="pill" id="skill-try">{{ icon("send") }}Try it</button>{% endif %}
+    {% if can_publish %}<button type="button" class="pill" id="skill-publish">{{ icon("send") }}Publish to library</button>{% endif %}
     {% if s.source == "user" %}<button type="button" class="pill danger" id="skill-remove">{{ icon("close") }}Remove</button>{% endif %}
   </div>
   <ul class="plain checks" id="skill-checks" hidden></ul>
@@ -62,6 +63,10 @@
     var q = prompt("What should Prometheus do with this skill?"); if (!q || !q.trim()) return;
     var f = new FormData(); f.append("question", q);
     post("try", f).then(function (x) { if (x[0]) location.href = x[1].url; else promToast(x[1].error || "Couldn't start it.", true); });
+  });
+  var pub = document.getElementById("skill-publish");
+  if (pub) pub.addEventListener("click", function () {
+    post("publish").then(function (x) { promToast(x[0] ? x[1].message : (x[1].error || "Couldn't ask."), !x[0]); });
   });
   var rm = document.getElementById("skill-remove");
   if (rm) rm.addEventListener("click", function () {

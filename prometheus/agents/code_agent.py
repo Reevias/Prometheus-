@@ -18,6 +18,26 @@ MAX_CODE = 20_000
 INPUTS_LINE = 'import json as _json; INPUTS = _json.load(open("inputs.json", encoding="utf-8"))  # results of earlier steps'
 
 
+def only_prints(code: str) -> str | None:
+    """The text a script would print, when it is nothing but print() of fixed words or numbers; else None.
+    (The planning AI sometimes used a script just to say something: owner's screenshots, 21 Nov 2026.)"""
+    import ast
+
+    try:
+        tree = ast.parse(code)
+    except (SyntaxError, ValueError, RecursionError):
+        return None
+    lines = []
+    for node in tree.body:
+        call = node.value if isinstance(node, ast.Expr) else None
+        if not (isinstance(call, ast.Call) and isinstance(call.func, ast.Name) and call.func.id == "print"
+                and not call.keywords and all(isinstance(a, ast.Constant) and isinstance(a.value, (str, int, float))
+                                              and not isinstance(a.value, bool) for a in call.args)):
+            return None
+        lines.append(" ".join(str(a.value) for a in call.args))
+    return "\n".join(lines) if lines else None
+
+
 def with_inputs(code: str, data: dict | None) -> tuple[str, dict[str, str]]:
     """Results of earlier steps reach a script as data in inputs.json, never pasted into its code."""
     if not data:
@@ -57,6 +77,9 @@ class CodeAgent(Agent):
                 return StepResult("failed", f"There's no file at {f}.")
             files.append(str(p))
         data = inputs.get("_code_inputs") or {}
+        said = None if files or data else only_prints(code)
+        if said is not None:                     # nothing to work out: say it, no sandbox and no question
+            return StepResult("done", said[:4000])
         code, _ = with_inputs(code, data)
         digest = hashlib.sha256(code.encode()).hexdigest()[:16]
         shown = code          # the WHOLE script, never a cut-down one: what you approve is exactly what runs

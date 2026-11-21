@@ -131,7 +131,16 @@ def open_control_page(page, url):
         if "net::ERR_ABORTED" not in str(exc) and "interrupted by another navigation" not in str(exc):
             raise
         page.wait_for_load_state("domcontentloaded")
-        page.goto(url)
+        try:
+            page.goto(url)
+        except sync_api.Error as again:
+            # an old address that the server forwards (/v3/connections → /settings#connections): Chromium on Windows
+            # sometimes calls the forward itself an interruption; landing on the forwarded page is the right result
+            target = re.search(r"interrupted by another navigation to \"([^\"]+)\"", str(again))
+            origin = url.split("/", 3)[:3]
+            if not target or target.group(1).split("/", 3)[:3] != origin:
+                raise
+            page.wait_for_load_state("domcontentloaded")
     page.wait_for_load_state("networkidle")
 
 
@@ -213,7 +222,13 @@ def test_every_control_does_something_and_nothing_breaks(live, browser):
     page.goto(base + "/settings")
     for link in page.query_selector_all(".set-nav a:visible"):
         target = link.get_attribute("href")
-        assert target.startswith("#") and page.query_selector(target), target
+        if not target.startswith("#"):                     # Memory and System are their own pages
+            assert target in ("/v3/memory", "/v3/system"), target
+            continue
+        if link.get_attribute("data-cat"):                # a category: it must hold at least one section
+            assert page.query_selector(f'section.set[data-tab="{target[1:]}"]'), target
+            continue
+        assert page.query_selector(target), target
     # every page in the sidebar and in More opens without an error
     page.goto(base + "/")
     # (the sidebar has no More group any more: every page is a link or in your menu)
@@ -317,7 +332,7 @@ def test_chat_notes_add_and_delete(live, browser):
     page.once("dialog", lambda d: d.accept())
     page.click("#notes-pop .note-row button")
     page.wait_for_load_state("networkidle")
-    page.wait_for_timeout(500)
+    page.wait_for_function("!document.documentElement.outerHTML.includes('buy milk')", timeout=15000)   # wait for the reload, not a fixed 500 ms (slow on Windows)
     assert "buy milk" not in page.content()
 
 
@@ -445,6 +460,10 @@ def test_a_project_chat_is_two_clicks_and_the_fold_is_remembered(live, browser):
     project = page.locator("#side-lists details.side-project").first
     project.locator("summary .side-pname").click()
     assert project.get_attribute("open") is not None
+    # the fold is saved on the browser's "toggle" event, a moment after the click: wait for it before reloading
+    # (GitHub's slower Windows runner sometimes reloaded first)
+    pid = project.get_attribute("data-project")
+    page.wait_for_function("id => JSON.parse(localStorage.getItem('prom-open-projects') || '[]').indexOf(id) >= 0", arg=pid)
     page.reload()
     page.wait_for_selector("#side-lists details.side-project[open]")
     link = page.locator("#side-lists details.side-project[open] a.side-chat").first
@@ -531,21 +550,26 @@ def _visible_sections(page):
     return [s.get_attribute("id") for s in page.locator("section.set:visible").all()]
 
 
-def test_settings_show_one_tab_at_a_time(live, browser):
-    """Owner (20 Nov): "voice only shows everything connected to voice, not if you scroll down you can read others"."""
+def _open_category(page):
+    return page.locator(".set-cat.on b").inner_text().strip()
+
+
+def test_settings_show_one_category_at_a_time(live, browser):
+    """Owner (20 Nov): "voice only shows everything connected to voice"; redesign (21 Nov): categories on the left."""
     page, base, _ = _signed_in(live, browser)
     page.goto(base + "/settings#voice")
     page.wait_for_timeout(300)
-    assert _visible_sections(page) == ["voice"]
-    assert page.locator('.page-tabs a.on').inner_text().strip() == "Voice"
-    assert page.locator(".set-body .page-tabs").bounding_box()["y"] >= 0     # the tab bar isn't scrolled away
-    page.click('.page-tabs a[data-tab="ai"]')
+    assert _visible_sections(page) == ["voice"] and _open_category(page) == "Voice"
+    page.click('.set-cat[data-cat="ai"]')
     page.wait_for_timeout(200)
-    assert set(_visible_sections(page)) == {"ai", "costs", "practice-tests"}
-    page.goto(base + "/settings#money-tracker")                 # an old link to a section opens its tab
+    assert _visible_sections(page) == ["ai", "spending", "costs"]            # advanced ones folded away
+    page.click("#set-adv-toggle")
+    page.wait_for_timeout(200)
+    assert _visible_sections(page)[-2:] == ["models", "practice-tests"]
+    page.goto(base + "/settings#money-tracker")                 # an old link to a section opens its category
     page.wait_for_timeout(300)
-    assert "money-tracker" in _visible_sections(page) and page.locator('.page-tabs a.on').inner_text().strip() == "Advanced"
-    page.fill("#set-search", "wake")                            # search looks in every tab
+    assert "money-tracker" in _visible_sections(page) and _open_category(page) == "Daily life"
+    page.fill("#set-search", "wake")                            # search looks in every category
     page.wait_for_timeout(200)
     assert "voice" in _visible_sections(page)
     page.fill("#set-search", "")
@@ -582,36 +606,146 @@ def test_the_chat_uses_the_width_when_the_panel_is_closed(live, browser):
     assert page.locator("#command").bounding_box()["width"] >= 1100
 
 
-ADVANCED = {"assignments", "study-coach", "clipboard-and-screenshot-memory", "money-tracker", "search-inside-files",
-            "watchers", "always-allowed", "places-prometheus-may-use"}
+DAILY = ["daily-summary", "focus-mode", "assignments", "study-coach", "money-tracker",
+         "clipboard-and-screenshot-memory", "watchers"]
 
 
-def test_a_save_in_settings_keeps_its_tab(live, browser):
+def test_a_save_in_settings_keeps_its_category(live, browser):
     """Review: after saving a Settings form every tab's sections showed at once."""
     page, base, _ = _signed_in(live, browser)
-    page.goto(base + "/settings#advanced")
+    page.goto(base + "/settings#advanced")                       # the old Advanced tab: its sections are in Daily life
     page.wait_for_timeout(300)
+    assert _open_category(page) == "Daily life"
     page.locator("#money-tracker form button[type=submit]").first.click()
     page.wait_for_timeout(1000)
-    assert set(_visible_sections(page)) == ADVANCED
-    assert page.locator('.set-body .page-tabs a.on').inner_text().strip() == "Advanced"
+    assert _visible_sections(page) == DAILY and _open_category(page) == "Daily life"
 
 
-def test_a_link_inside_a_section_opens_its_tab(live, browser):
+def test_a_link_inside_a_section_opens_its_category(live, browser):
     """Review: /settings#google-signin (the Google card's Connect) opened General with the sign-in hidden."""
     page, base, _ = _signed_in(live, browser)
     page.goto(base + "/settings#google-signin")
     page.wait_for_timeout(300)
-    assert page.locator('.set-body .page-tabs a.on').inner_text().strip() == "Connections"
+    assert _open_category(page) == "Connections"
     assert page.locator("#google-signin").is_visible()
 
 
-def test_every_settings_tab_is_visible_on_a_laptop_screen(live, browser):
-    """Review: at 1366x768 Memory, System and Advanced were cut off the tab bar with no sign they were there."""
+def test_every_settings_category_fits_a_laptop_screen(live, browser):
+    """Review: at 1366x768 some tabs were cut off; the category menu must fit beside the settings."""
     page, base, _ = _signed_in(live, browser, width=1366, height=768)
     page.goto(base + "/settings#general")
     page.wait_for_timeout(300)
-    bar = page.locator(".set-body .page-tabs").bounding_box()
-    for tab in page.locator(".set-body .page-tabs a").all():
-        b = tab.bounding_box()
-        assert b["x"] >= bar["x"] - 1 and b["x"] + b["width"] <= bar["x"] + bar["width"] + 1, tab.inner_text()
+    nav = page.locator(".set-nav").bounding_box()
+    body = page.locator(".set-body").bounding_box()
+    assert nav["x"] + nav["width"] <= body["x"] + 1
+    for cat in page.locator(".set-cat").all():
+        b = cat.bounding_box()
+        assert b["x"] >= nav["x"] - 1 and b["x"] + b["width"] <= nav["x"] + nav["width"] + 1, cat.inner_text()
+
+
+def test_add_a_decision_on_the_project_page(live, browser):
+    """M4.8: the Notes tab's "Add a decision" box saves into NOTES.md and the line shows up."""
+    page, base, _ = _signed_in(live, browser)
+    page.goto(base + "/v3/projects")
+    href = page.locator("a[href^='/v3/projects/']").first.get_attribute("href")
+    page.goto(f"{base}{href}?tab=notes")
+    page.fill("#add-decision input[name=text]", "Use the IEEE style")
+    page.click("#add-decision button[type=submit]")
+    page.wait_for_function("document.getElementById('notes-file').innerText.includes('Use the IEEE style')")
+    assert "## Decisions" in page.inner_text("#notes-file")
+
+
+def _seed_candidate():
+    """A repo waiting in Candidates (its profile and a script in the quarantine), written next to the running server."""
+    from prometheus.config import data_dir
+    from prometheus.memory.store import Store
+    from prometheus.repo_of_day import add_candidate
+    from prometheus.repos.profile import RepoProfile, save
+
+    folder = data_dir() / "quarantine" / "owner__tool__abc1234"
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "run.py").write_text("print('hello')  # " + "a-very-long-comment-" * 20 + "\n", encoding="utf-8")
+    save(RepoProfile(repo="owner/tool", commit="a" * 40, url="https://github.com/owner/tool", folder=str(folder),
+                     verdict="caution", findings=["Runs a program when it starts: setup.py"], licence="GPL-3.0-only",
+                     languages={"Python": 1}, size_files=1, size_bytes=10, made=time.time()))
+    store = Store(data_dir() / "memory.db")
+    add_candidate(store, "owner/tool", description="Turns notes into flashcards", folder=str(folder))
+
+
+def test_candidates_fit_a_phone_and_the_scripts_open_and_close(live, browser):
+    """M4.3: no sideways scroll at 390 px; "Show the scripts" opens a dialog and Close shuts it."""
+    _seed_candidate()
+    page, base, _ = _signed_in(live, browser, width=390, height=800)
+    page.goto(base + "/v3/candidates")
+    page.wait_for_selector("[data-candidate]")
+    assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth + 1")
+    page.click("[data-scripts]")
+    page.wait_for_selector("dialog[open]")
+    assert "print('hello')" in page.inner_text("dialog[open]")
+    assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth + 1")
+    page.click("dialog[open] [data-close]")
+    page.wait_for_selector("dialog[open]", state="detached")
+    page.close()
+
+
+def test_settings_search_finds_by_word_start_and_best_match_first(live, browser):
+    """Owner's screenshot (21 Nov): typing "Ai" listed every setting, because "ai" is inside "email" and "details".
+    Words must start with what is typed, and title or keyword matches come first."""
+    page, base, _ = _signed_in(live, browser)
+    page.goto(base + "/settings")
+    page.wait_for_timeout(300)
+    assert not page.locator("#side-lists").is_visible()                     # no chats list beside Settings
+    page.fill("#set-search", "ai")
+    page.wait_for_timeout(200)
+    found = _visible_sections(page)
+    assert found[:3] == ["ai", "spending", "costs"] and "appearance" not in found and "notifications" not in found
+    page.fill("#set-search", "microphone")
+    page.wait_for_timeout(200)
+    assert _visible_sections(page)[0] == "voice"
+    page.fill("#set-search", "api key")
+    page.wait_for_timeout(200)
+    assert "other-keys" in _visible_sections(page)
+    page.fill("#set-search", "zzzz")
+    page.wait_for_timeout(200)
+    assert _visible_sections(page) == [] and page.locator("#set-none").is_visible()
+    page.fill("#set-search", "backup")
+    page.press("#set-search", "Enter")                                       # Enter jumps to the first result
+    page.wait_for_timeout(200)
+    assert page.evaluate("document.activeElement.closest('section.set') && document.activeElement.closest('section.set').id") == "backup"
+    page.focus("#set-search")
+    page.press("#set-search", "Escape")                                      # Esc clears and goes back
+    page.wait_for_timeout(200)
+    assert page.input_value("#set-search") == "" and "backup" not in _visible_sections(page)
+
+
+FAKE_WINDOW_SNAP = """
+window.__calls = [];
+window.pywebview = { api: { window_action: function (a) { window.__calls.push(a); return Promise.resolve(true); },
+                            resize_to: function () { return Promise.resolve(true); } } };
+"""
+
+
+def test_window_buttons_and_snap_to_the_top(live, browser):
+    """Owner (21 Nov): the title-bar buttons did nothing, and dragging the window to the top of the screen didn't
+    fill it. The page side, with a stand-in for the desktop window (the real Windows window: NOT VERIFIED here)."""
+    page, base, _ = _signed_in(live, browser)
+    page.add_init_script(FAKE_WINDOW_SNAP)
+    page.goto(base + "/")
+    page.wait_for_selector("#win-controls:not([hidden])")
+    for act in ("minimize", "maximize", "close"):
+        page.click(f'[data-win="{act}"]')
+    page.wait_for_timeout(100)
+    assert page.evaluate("window.__calls") == ["minimize", "maximize", "close"]
+    assert page.locator(".topbar-tools").evaluate("e => !e.classList.contains('pywebview-drag-region')")
+    page.evaluate("window.__calls = []")
+    page.dblclick(".topbar", position={"x": 600, "y": 20})                    # double-click the bar: maximise / restore
+    page.wait_for_timeout(100)
+    assert page.evaluate("window.__calls") == ["maximize"]
+    page.evaluate("window.__calls = []")
+    # a drag of the bar that ends at the very top of the screen fills the screen
+    page.evaluate("""() => { const bar = document.querySelector('.topbar');
+        bar.dispatchEvent(new MouseEvent('mousedown', {bubbles: true, screenX: 600, screenY: 300, clientX: 600, clientY: 20}));
+        window.dispatchEvent(new MouseEvent('mousemove', {bubbles: true, screenX: 620, screenY: 120}));
+        window.dispatchEvent(new MouseEvent('mouseup', {bubbles: true, screenX: 620, screenY: 0})); }""")
+    page.wait_for_timeout(100)
+    assert page.evaluate("window.__calls") == ["drag_start", "snap_top"]   # a maximised window first comes back

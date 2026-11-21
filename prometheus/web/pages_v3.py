@@ -363,15 +363,56 @@ def register_skill_pages(app: FastAPI, services, shell) -> None:
             except ValueError:
                 pass
         return shell(request, "v3/skill.html", "skills", s=card(s), text=text, shown=shown, uses=uses(name),
-                     titles=dict(store.chats()), checks=None)
+                     titles=dict(store.chats()), checks=None, can_publish=not publish_problem(s))
+
+    def publish_problem(s) -> str:
+        """'' when the skill may be offered to the skills library: one of the owner's own, switched on, with a
+        manifest.json, and its sandbox trial (M4.6) passed on exactly these files. Otherwise the reason."""
+        from prometheus.repos.trial import load_result
+
+        if s is None or s.source != "user":
+            return "Only your own skills can be published."
+        if s.manifest is None:
+            return "Only skills made from a repository (with a manifest.json) can be published."
+        if not skill_on(services.settings, s.name):
+            return "Switch it on first: it's tested in the sandbox when it switches on."
+        tested = load_result(store, s.name)
+        if tested is None or not tested.still_valid(s.folder):
+            return "It has to pass its trial run in the sandbox first, and nothing may change after that."
+        return ""
+
+    @app.post("/api/v3/skills/{name}/publish")
+    def api_skill_publish(name: str):
+        """Asks the owner first (Approvals); nothing is sent to GitHub before the yes."""
+        from prometheus.repos.library import PUBLISH_KIND
+
+        s = book.get_any(name)
+        if s is None:
+            return _no_skill()
+        problem = publish_problem(s)
+        if problem:
+            return JSONResponse({"error": problem}, status_code=409)
+        services.approvals.request(PUBLISH_KIND, f"Publish /{name} to your skills library on GitHub (a pull request "
+                                   "you merge yourself)", {"name": name})
+        store.audit("user", "skill_publish_asked", {"skill": name})
+        return {"ok": True, "message": "Waiting for your yes on Approvals. Nothing is sent before that."}
 
     def _no_skill():
         return JSONResponse({"error": "No such skill."}, status_code=404)
 
     @app.post("/api/v3/skills/{name}/switch")
     def api_skill_switch(name: str, on: str = Form("")):
-        if book.get_any(name) is None:
+        skill = book.get_any(name)
+        if skill is None:
             return _no_skill()
+        if on and skill.manifest is not None:               # M4.6: a skill made from a repo is tested before it switches on
+            from prometheus.repos.trial import save_result, trial
+
+            tested = trial(skill.folder)
+            save_result(store, name, tested)
+            if not tested.passed:
+                store.audit("user", "skill_switch_refused", {"skill": name})
+                return JSONResponse({"error": f"Not switched on: {tested.reason}"}, status_code=409)
         set_skill_on(services.settings, name, bool(on))
         save_settings(services.settings)
         store.audit("user", "skill_switch", {"skill": name, "on": bool(on)})
@@ -472,6 +513,177 @@ def register_skill_pages(app: FastAPI, services, shell) -> None:
             return JSONResponse({"error": f"Couldn't add {full}: {e}"[:300]}, status_code=502)
         store.audit("user", "skill_add", {"repo": full})
         return {"added": full, "message": said}
+
+    # -- Candidates (M4.3): repos waiting for the owner's yes ----------------------------------------------------
+    PERMISSIVE = {"MIT", "Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "ISC", "Unlicense", "CC0-1.0"}
+
+    def licence_note(spdx: str) -> str:
+        if not spdx or spdx == "unknown":
+            return "No licence stated: by default you may not copy its code, so only a how-to guide could be made from it."
+        if spdx in PERMISSIVE:
+            return "Free to use and change, even in your own projects."
+        if spdx.startswith(("GPL", "AGPL", "LGPL", "MPL")):
+            return ("If you share a changed copy you must share it under the same licence, so Prometheus asks you "
+                    "before it copies any of the code.")
+        return "A less common licence: read it before using the code."
+
+    NOT_CODE = {"Markdown", "reStructuredText", "Text", "JSON", "TOML", "YAML", "INI", "XML"}   # file types, not languages
+
+    def candidate_profile(c: dict):
+        from prometheus.repos.profile import load
+
+        if not c.get("folder"):
+            return None
+        try:
+            return load(Path(c["folder"]))
+        except Exception:
+            return None
+
+    def can_accept(prof) -> bool:
+        """Only a repo that was downloaded and checked, and wasn't found unsafe, can be accepted."""
+        return prof is not None and prof.verdict in ("clean", "caution")
+
+    def trial_card(sug: dict | None) -> dict | None:
+        """The sandbox trial run (M4.6) in words: a sentence first, the details behind "Show details"."""
+        from prometheus.repos.trial import load_result
+
+        got = load_result(store, str(sug.get("name", ""))) if sug else None
+        if got is None:
+            return None
+        said = {"passed": "Passed", "failed": "Didn't pass", "skipped": "Not run"}
+        if got.passed:
+            line = "Passed in the sandbox."
+            if any(x.status == "skipped" for x in got.scripts):
+                line += " Scripts that need the internet were not run: you'll be asked at first real use."
+        else:
+            line = f"The skill stays off. {got.reason}"
+        return {"ok": got.passed, "line": line,
+                "scripts": [{"file": x.file, "word": said.get(x.status, x.status), "reason": x.reason,
+                             "details": x.details} for x in got.scripts]}
+
+    def candidate_card(c: dict, edges: list[dict] | None = None) -> dict:
+        from prometheus.config import data_dir
+        from prometheus.repo_of_day import candidate_scripts
+        from prometheus.repos.own import card_links, is_own, notes_text
+
+        quarantine = data_dir() / "quarantine"
+        prof = candidate_profile(c)
+        verdict = prof.verdict if prof else ""
+        findings = [str(f) for f in (prof.findings if prof else [])][:8]
+        if verdict == "clean":
+            safety, tone = "Looks clean", "s-done"
+        elif verdict == "caution":
+            safety, tone = "Check this first: " + ("; ".join(findings) or "something in it looked unusual"), "s-failed"
+        elif verdict == "danger":
+            safety, tone = "Removed: unsafe", "s-failed"
+        else:
+            safety, tone = "Not checked yet", ""
+        what = c.get("description") or ""
+        code = [k for k in sorted((prof.languages if prof else {}), key=lambda k: -prof.languages[k]) if k not in NOT_CODE]
+        if code:
+            what = (what + " " if what else "") + f"({', '.join(code[:3])})"
+        sug = c.get("suggestion") if isinstance(c.get("suggestion"), dict) else None
+        own = bool(prof and prof.own is True and is_own(prof.repo, services.settings.github_repo or ""))
+        return {**c, "trial": trial_card(sug), "what": what or "No description.", "licence": prof.licence if prof else "unknown",
+                "licence_note": licence_note(prof.licence if prof else "unknown"), "safety": safety, "tone": tone,
+                "suggestion": sug, "can_accept": can_accept(prof), "scripts": candidate_scripts(c.get("folder", ""), quarantine),
+                # the owner's own repos: how they link, and their NOTES.md (plain text; the template escapes it)
+                "own": own, "links": card_links(c["repo"], edges or []) if own else [],
+                "notes": notes_text(services, c.get("folder", "")) if own else ""}
+
+    @app.get("/v3/candidates")
+    def candidates_page(request: Request):
+        from prometheus.repo_of_day import candidates
+
+        from prometheus.repos.own import links
+
+        items = candidates(store)
+        edges = links(services)
+        shown = [candidate_card(c, edges) for c in items if c["status"] in ("new", "accepted")]
+        return shell(request, "v3/candidates.html", "skills", cards=shown[::-1],
+                     rejected=sum(1 for c in items if c["status"] == "rejected"))
+
+    def _set_candidate(candidate_id: int, status: str):
+        from prometheus.repo_of_day import set_candidate_status
+
+        got = set_candidate_status(store, candidate_id, status)
+        if got is None:
+            return JSONResponse({"error": "That candidate is gone."}, status_code=404)
+        store.audit("user", "candidate_" + status, {"repo": got["repo"]})
+        from prometheus.config import data_dir
+        from prometheus.repos.knowledge import sync_candidate
+
+        sync_candidate(store, got, data_dir() / "quarantine")        # accepted: its notes join the search; else forgotten
+        word = {"accepted": "Accepted", "rejected": "Rejected: it won't be suggested again"}[status]
+        return {"ok": True, "message": f"{word} ({got['repo']})."}
+
+    @app.post("/api/v3/candidates/{candidate_id}/accept")
+    def api_candidate_accept(candidate_id: int):
+        from prometheus.repo_of_day import candidates
+
+        c = next((c for c in candidates(store) if c["id"] == candidate_id), None)
+        if c is None:
+            return JSONResponse({"error": "That candidate is gone."}, status_code=404)
+        prof = candidate_profile(c)
+        if not can_accept(prof):
+            why = ("it was found unsafe and removed" if prof is not None and prof.verdict == "danger"
+                   else "it hasn't been downloaded and checked yet")
+            return JSONResponse({"error": f"{c['repo']} can't be accepted: {why}."}, status_code=409)
+        return _accept_with_skill(c)
+
+    def _accept_with_skill(c: dict):
+        """Accept (M4.4): a drafted skill is moved into the owner's skills, switched off until its trial run."""
+        from prometheus.repos.skillmaker import install
+
+        try:
+            made = install(services, c)
+        except (LookupError, FileExistsError, OSError) as e:
+            return JSONResponse({"error": str(e)}, status_code=409)
+        tried = _trial_installed(c) if made else ""
+        got = _set_candidate(c["id"], "accepted")
+        if made and isinstance(got, dict):
+            got["message"] = f"Accepted ({c['repo']}). {made} {tried}".strip()
+        return got
+
+    def _trial_installed(c: dict) -> str:
+        """M4.6: test-run the skill that was just saved (switched off); it switches on only if every script passed."""
+        from prometheus.config import data_dir, save_settings
+        from prometheus.features import set_skill_on
+        from prometheus.repos.trial import save_result, trial
+
+        name = str((c.get("suggestion") or {}).get("name", ""))
+        folder = data_dir() / "skills" / name
+        if not name or not (folder / "manifest.json").is_file():
+            return ""
+        tested = trial(folder)
+        save_result(store, name, tested)
+        if tested.passed and any(s.status == "skipped" for s in tested.scripts):
+            return ("Its scripts that need the internet weren't run in the trial, so it stays off: switch it on "
+                    "yourself in Skills if you want it.")
+        if tested.passed:                      # every script ran and passed (skipped is not passed)
+            set_skill_on(services.settings, name, True)
+            save_settings(services.settings)
+            return "Its trial run in the sandbox passed, so it is switched on."
+        return f"Its trial run in the sandbox didn't pass, so it stays off: {tested.reason}"
+
+    @app.post("/api/v3/candidates/{candidate_id}/allow-copying")
+    def api_candidate_allow_copying(candidate_id: int):
+        """The owner's sign-off for a share-alike (copyleft) licence: the skill is drafted again with scripts."""
+        from prometheus.repo_of_day import candidates
+        from prometheus.repos.skillmaker import allow_copying
+
+        c = next((c for c in candidates(store) if c["id"] == candidate_id), None)
+        sug = c.get("suggestion") if c else None
+        if c is None or not isinstance(sug, dict):
+            return JSONResponse({"error": "That candidate is gone."}, status_code=404)
+        if c["status"] != "new" or not sug.get("needs_signoff") or not can_accept(candidate_profile(c)):
+            return JSONResponse({"error": "There is nothing to allow for this one."}, status_code=409)
+        store.audit("user", "candidate_allow_copying", {"repo": c["repo"]})
+        return {"ok": True, "message": f"Copying allowed ({c['repo']}). {allow_copying(services, candidate_id)}"}
+
+    @app.post("/api/v3/candidates/{candidate_id}/reject")
+    def api_candidate_reject(candidate_id: int):
+        return _set_candidate(candidate_id, "rejected")
 
 
 # ---- Memory ---------------------------------------------------------------------------------------------------------
@@ -1812,6 +2024,7 @@ def register_project_pages(app: FastAPI, services, shell) -> None:
             ctx["agents"] = pj.agents_used(store, project_id)
         elif tab == "notes":
             ctx["notes"] = pj.notes(store, project_id)
+            ctx["notes_file"] = pj.notes_file(p)
         return shell(request, "v3/project.html", "projects", **ctx)
 
     def live(project_id: int) -> dict | None:
@@ -1884,6 +2097,18 @@ def register_project_pages(app: FastAPI, services, shell) -> None:
             pj.add_note(store, project_id, text)
         except pj.ProjectError as e:
             return bad(str(e))
+        return {"ok": True}
+
+    @app.post("/api/v3/projects/{project_id}/decisions")
+    def api_project_decision_add(project_id: int, text: str = Form("")):
+        if live(project_id) is None:
+            return bad("No such project.", 404)
+        try:
+            pj.add_note_entry(store, project_id, "Decisions", text)
+        except pj.ProjectError as e:
+            return bad(str(e))
+        except OSError as e:
+            return bad(f"Couldn't save it: {getattr(e, 'strerror', None) or e}"[:200], 409)
         return {"ok": True}
 
     @app.post("/api/v3/projects/{project_id}/notes/{note_id}/edit")

@@ -28,7 +28,7 @@
   <div class="drawer-shade" id="drawer-shade" hidden></div>
   <header class="topbar pywebview-drag-region">
     <button type="button" class="icon-btn menu-btn" id="menu-btn" aria-label="Open the menu" aria-controls="sidebar" aria-expanded="false">{{ icon("list") }}</button>
-    <div class="topbar-title" style="position: relative">{% block topbar %}{% endblock %}</div>
+    <div class="topbar-title pywebview-drag-region" style="position: relative">{% block topbar %}{% endblock %}</div>
     <div class="topbar-tools">
       {% if voice_ready %}<button type="button" class="icon-btn mic-toggle{{ ' off' if not voice_on }}" id="mic-toggle"
               aria-pressed="{{ 'true' if voice_on else 'false' }}"{% if stopped %} disabled title="Everything is stopped. Press Resume to use voice."{% else %}
@@ -39,7 +39,7 @@
       {% else %}<button type="button" class="stopall" hx-post="/kill" hx-swap="none" hx-on::after-request="location.reload()"
               hx-confirm="Stop everything? Running tasks stop, and background jobs stay paused until you press Resume."
               title="Stop every task and background job now">Stop all</button>{% endif %}
-      <button type="button" class="icon-btn mute" id="mute" hidden title="Microphone on: click to mute (Ctrl+Shift+M)" aria-label="Mute the microphone" aria-pressed="false">{{ icon("mic") }}</button>
+      {% if not voice_ready %}<button type="button" class="icon-btn mute" id="mute" hidden title="Microphone on: click to mute (Ctrl+Shift+M)" aria-label="Mute the microphone" aria-pressed="false">{{ icon("mic") }}</button>{% endif %}{# with voice set up, the Voice on/off button is the only microphone (owner, 21 Nov) #}
       <button type="button" class="icon-btn bell" id="bell" title="Notifications" aria-label="Notifications" aria-haspopup="true">
         {{ icon("bell") }}<span class="badge" id="bell-badge" hidden></span></button>
       <button type="button" class="icon-btn" id="panel-toggle" title="Show or hide the right panel" aria-label="Show or hide the right panel">{{ icon("panel") }}</button>

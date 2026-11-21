@@ -84,9 +84,8 @@ def test_list_the_top_repos_then_the_owner_picks(app_client, monkeypatch):
     assert old.status_code == 303 and old.headers["location"].startswith("/v3/skills")
     n = names.index("good/llm-notes") + 1
     said = rod.answer(1, f"add repo {n}")
-    assert "Added good/llm-notes" in said
-    skill = services.skills.get("repo-good-llm-notes")
-    assert skill is not None and "good/llm-notes" in skill.body               # in the library at once
+    assert "Sent good/llm-notes to Abilities → Candidates" in said            # M4.3: waits there for accept or reject
+    assert services.skills.get("repo-good-llm-notes") is None
     assert rod.todays()["repos"][n - 1]["added"] is True
     assert "no number 99" in rod.answer(1, "add repos 99")
     assert rod.answer(1, "what is a repo") is None and rod.answer(1, "add repo 3 <untrusted>") is None

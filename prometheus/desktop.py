@@ -290,7 +290,7 @@ def is_maximised(window) -> bool:
 
 
 MIN_SIZE = (860, 560)
-WINDOW_ACTIONS = ("minimize", "maximize", "restore", "fullscreen", "close")
+WINDOW_ACTIONS = ("minimize", "maximize", "restore", "fullscreen", "close", "snap_top", "drag_start")
 
 
 def window_action(win, action: str) -> None:
@@ -309,6 +309,12 @@ def window_action(win, action: str) -> None:
         win.restore()
     elif action == "fullscreen":
         win.toggle_fullscreen()
+    elif action == "snap_top":                  # dragged to the top edge of the screen: fill it (as Windows does)
+        if not is_maximised(win):
+            win.maximize()
+    elif action == "drag_start":                # dragging a maximised window first brings it back to its own size
+        if is_maximised(win):
+            win.restore()
     elif action == "close":
         if ACTIVE_TRAY is not None:
             win.hide()                          # the tray keeps Prometheus running; Quit is in its menu
@@ -401,6 +407,11 @@ def run_desktop(settings: Settings, webview=None, server=None) -> int:
         return 0
     if webview is None:
         import webview  # pywebview
+    try:
+        # only the bare title bar starts a drag: a press on its buttons moved the window instead (owner, 21 Nov)
+        webview.settings["DRAG_REGION_DIRECT_TARGET_ONLY"] = True
+    except (AttributeError, TypeError):
+        pass
     if server is None:
         server = AttachedServer(settings.port) if running_copy(settings.port) else LocalServer(settings)
     try:

@@ -7,6 +7,57 @@ Not yet run end to end on the owner's real laptop.
 
 Phases A to D are done (D6 exit check 20 Nov: 3 more bugs fixed, bug log 123-125). Still to do: run it on the owner's laptop and the owner's licence sign-off in `THIRD_PARTY_LICENSES.md`. Billed catalog models need rates on their model cards. Local cost estimates can differ from the provider's invoice.
 
+## M4 review A (M4.1–M4.3, M4.8), 21 November 2026
+
+Five bugs fixed (bug log 150-154). Still open, for the owner or a later step:
+- **repo_check calls many normal repos dangerous and deletes them**: a setup script that installs a tool with
+  `curl … | sh` (common in `.devcontainer/` and CI files; pallets/itsdangerous has one) counts as "downloads and runs
+  code". Changing repo_check's rules is the owner's call; a likely answer is "check this first" for files in
+  `.devcontainer/` and `.github/`, which Prometheus never runs. Until then the exit gate's real Python repo has to be
+  one without such a script.
+- Code maps don't list CommonJS `require(...)` as imports, and TypeScript declaration files (`.d.ts`) show no functions.
+- The real download from GitHub (API + codeload) was not run in the review (this cloud session can't reach the GitHub
+  API for other repos); real repos were read from their own zips through a fake GitHub.
+
+## M4 merged, 21 November 2026 (owner's instruction)
+Still to check on the laptop (NOT VERIFIED on Windows): the window buttons, drag-to-top and double-click on the title
+bar; the real skills library (steps in `docs/reports/M4_REPORT.md`); RAM use with voice and photos. The two own-repo
+findings below were fixed by the builder session (bug log 159-160).
+
+## M4 final audit, 21 November 2026 (not merged; `docs/reports/M4_REPORT.md`)
+- The two Important findings (own repos not wired; your main repo deleted as dangerous) were fixed on 21 Nov (bug log
+  159-160); the auditor re-checks them before any merge. Still open there: the old "add repo on screen" path
+  (`clone_and_check`, git clone) keeps the strict check for every repo, own or not.
+- Not done yet: the exit gate with your real `prometheus-skills` library, and your laptop check of M4.
+- Owner's answers (21 Nov): own repos = same GitHub owner; own repos get "check this first" (Defender still deletes
+  threats); built by a new builder session (prompt in docs/m4/M4_PROMPTS.md); the real library is tested by the owner
+  in the laptop check (steps in docs/reports/M4_REPORT.md), never from the cloud.
+
+## M4 review B (M4.4–M4.7), 21 November 2026
+
+Three bugs fixed (bug log 155-157). Answers to the questions below, and what is still open:
+- M4.7's second question can't happen any more: since review A, Accept needs a downloaded and checked repo.
+- Still open: Accept and Switch on wait for the whole trial run (73 s for a script that runs forever) with no
+  "testing…" on screen; a TOCTOU gap in the trial (the script is hashed, then read again to run it); nothing runs
+  skill scripts for real yet, so `still_valid` has no caller outside the switch and publish checks; there is no
+  "Publish" button yet (the approval exists, nothing asks for it); a skill whose manifest.json is removed or broken
+  switches on without a trial (it then loads as an old-style skill).
+- Real repos: drafts from mahmoud/boltons (one script, a joke that loops forever: the trial stopped it, the skill
+  stayed off), python-humanize/humanize and keon/algorithms (guides only: no file was self-contained enough).
+
+## M4.7 questions (21 November 2026), for Review B
+- Candidates has no "remove" action. If one is added, it must call `knowledge.sync_candidate` so that candidate's notes are forgotten.
+- A candidate accepted before it had a downloaded folder gets 0 notes. If it gets its folder later and is already
+  accepted, it should be indexed then (one `sync_candidate` call). Review B checks whether this can still happen
+  now that M4.4 downloads the repo before a candidate is added.
+
+## M4.6 questions (21 November 2026), for Review B
+- Accept waits for the trial run (up to about 3 minutes with three slow scripts). Fine for now; it should show
+  "testing…" so it doesn't look stuck.
+- A script edited after a skill was switched on is only caught the next time it is switched on. Whatever first runs
+  skill scripts for real must call `still_valid` first, and refuse and switch the skill off if it's false.
+- The trial uses the locked-down Python, not Windows Sandbox (`sandbox.run()` takes no timeout).
+
 ## Just finished
 - **One-line install, Prometheus-Setup.exe and Prometheus.apk** (built by GitHub on each release), own icon in Windows search, **simpler Settings with Features on and off**, **Stop all that stays stopped**, **weekly report card**, **practice tests** and **ready-made jobs** (everything from the "Build your first AI agent" guide).
 - **Chatbot-level voice**: ElevenLabs hearing (Scribe v2) and speaking (Flash), falling back to the laptop by itself; **double clap** to be greeted with a brief and talk without the name; **talk over it** to interrupt.

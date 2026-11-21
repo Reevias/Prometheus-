@@ -1,6 +1,7 @@
 """Repos of the day: once a day, look at github.com/trending and show the owner the first 10 (descriptions in
 English, translated when they aren't). The owner picks which ones to add to the skill library: on the Skills page,
-or by saying "add repo 3". Nothing is added by itself.
+or by saying "add repo 3", which sends it to Abilities → Candidates (M4.3) to accept or reject. Nothing is added
+by itself.
 
 What the skill is: a how-to guide (SKILL.md + references/readme.md) the planner can use later. Nothing is cloned,
 installed or run. The repository's own words (description, README) are kept as data, never as instructions.
@@ -11,7 +12,9 @@ phishing, attacking systems, deepfakes or cheating are labelled "sensitive" on t
 from __future__ import annotations
 
 import html as htmllib
+import os
 import re
+import threading
 import time
 from pathlib import Path
 
@@ -39,6 +42,124 @@ HARMFUL = re.compile(
     r"brute ?forc\w*|exploit\w*|pentest\w*|red team\w*|bypass (antivirus|av|edr)|evasion|deep ?fakes?|face ?swap\w*|"
     r"cheat\w*|aimbot|crack(ed|ing)?|keygen|piracy|torrent\w*|captcha (solver|bypass)|account (generator|checker))\b",
     re.I)
+
+
+# -- Candidates (M4.3): repos waiting for the owner's yes in Abilities -> Candidates ----------------------------------
+CANDIDATE_KEY = "repo_candidates"
+CANDIDATE_STATUS = ("new", "accepted", "rejected")
+SCRIPT_SUFFIXES = {".py", ".sh", ".bash", ".ps1", ".bat", ".cmd", ".js", ".mjs", ".cjs", ".ts"}
+SCRIPT_FILES, SCRIPT_CHARS = 12, 20_000
+_candidate_lock = threading.Lock()
+
+
+def _candidate_data(store) -> dict:
+    got = store.kv_get(CANDIDATE_KEY, None)
+    return got if isinstance(got, dict) and isinstance(got.get("items"), list) else {"next": 1, "items": []}
+
+
+def candidates(store) -> list[dict]:
+    """Every candidate, oldest first: {id, repo, description, language, folder, status, sensitive, added, suggestion}."""
+    return [dict(c) for c in _candidate_data(store)["items"]]
+
+
+def rejected(store) -> set[str]:
+    return {c["repo"].lower() for c in _candidate_data(store)["items"] if c.get("status") == "rejected"}
+
+
+def add_candidate(store, repo: str, description: str = "", language: str = "", folder: str = "") -> dict | None:
+    """Put a repo in Candidates (status "new"). None if the owner rejected it before: it is never suggested again.
+    Adding one that is already waiting just returns it. `folder` is the repo's quarantine folder with its profile."""
+    repo = (repo or "").strip()
+    if not REPO.fullmatch(repo):
+        raise ValueError("That isn't a GitHub repository name.")
+    with _candidate_lock:
+        data = _candidate_data(store)
+        for c in data["items"]:
+            if c["repo"].lower() == repo.lower():
+                if c["status"] == "rejected":
+                    return None
+                if folder:
+                    c["folder"] = folder
+                    store.kv_set(CANDIDATE_KEY, data)
+                return dict(c)
+        desc = " ".join((description or "").split())[:300]
+        item = {"id": data["next"], "repo": repo, "description": desc, "language": (language or "")[:40],
+                "folder": folder, "status": "new", "added": time.time(),
+                "sensitive": harmful({"full_name": repo, "description": desc})}
+        data["items"].append(item)
+        data["next"] += 1
+        store.kv_set(CANDIDATE_KEY, data)
+        return dict(item)
+
+
+def set_candidate_status(store, candidate_id: int, status: str) -> dict | None:
+    if status not in CANDIDATE_STATUS:
+        raise ValueError("Unknown status.")
+    with _candidate_lock:
+        data = _candidate_data(store)
+        for c in data["items"]:
+            if c["id"] == candidate_id:
+                c["status"] = status
+                store.kv_set(CANDIDATE_KEY, data)
+                return dict(c)
+    return None
+
+
+SUGGESTION_EXTRA = ("kind", "reason", "licence_kind", "copied", "needs_signoff", "folder")
+
+
+def set_candidate_suggestion(store, candidate_id: int, name: str, description: str, **extra) -> dict | None:
+    """Put the skill builder's suggestion (M4.4) on a candidate: {"name", "description", ...}. None if it's gone."""
+    with _candidate_lock:
+        data = _candidate_data(store)
+        for c in data["items"]:
+            if c["id"] == candidate_id:
+                sug = {"name": str(name)[:60], "description": " ".join(str(description).split())[:300]}
+                sug.update({k: extra[k] for k in SUGGESTION_EXTRA if k in extra})
+                c["suggestion"] = sug
+                store.kv_set(CANDIDATE_KEY, data)
+                return dict(c)
+    return None
+
+
+def allow_candidate_copying(store, candidate_id: int) -> dict | None:
+    """The owner's sign-off on the Candidates card: code under a share-alike licence may be copied into the skill."""
+    with _candidate_lock:
+        data = _candidate_data(store)
+        for c in data["items"]:
+            if c["id"] == candidate_id:
+                c["copy_allowed"] = True
+                store.kv_set(CANDIDATE_KEY, data)
+                return dict(c)
+    return None
+
+
+def candidate_scripts(folder: str, quarantine: Path) -> list[dict]:
+    """The scripts in a candidate's folder for the owner to read, as plain text ({rel, text, cut}). Only folders inside
+    the quarantine, never links, bounded in number and size. Nothing is run."""
+    try:
+        root = Path(folder).resolve()
+        if not folder or not root.is_relative_to(Path(quarantine).resolve()) or not root.is_dir():
+            return []
+    except (OSError, ValueError):
+        return []
+    out: list[dict] = []
+    for here, dirs, names in os.walk(root):                     # never follows links
+        dirs[:] = sorted(d for d in dirs if d not in (".git", "node_modules"))
+        for name in sorted(names):
+            path = Path(here) / name
+            if path.suffix.lower() not in SCRIPT_SUFFIXES or path.is_symlink() or not path.is_file():
+                continue
+            try:
+                with open(path, "rb") as f:
+                    raw = f.read(SCRIPT_CHARS * 4 + 1)
+            except OSError:
+                continue
+            text = raw.decode("utf-8", errors="replace")
+            out.append({"rel": path.relative_to(root).as_posix(), "text": text[:SCRIPT_CHARS], "cut": len(text) > SCRIPT_CHARS})
+            if len(out) >= SCRIPT_FILES:
+                return out
+    return out
 
 
 def parse_trending(page: str) -> list[dict]:
@@ -149,7 +270,8 @@ class RepoOfTheDay:
         Returns what happened, for the log."""
         resp = self.http.get(TRENDING)
         resp.raise_for_status()
-        repos = [r for r in parse_trending(resp.text)][:TOP]
+        no = rejected(self.services.store)                       # a repo the owner rejected is never suggested again
+        repos = [r for r in parse_trending(resp.text) if r["full_name"].lower() not in no][:TOP]
         if not repos:
             return "Nothing on GitHub trending today."
         try:
@@ -210,8 +332,18 @@ class RepoOfTheDay:
                 continue
             r = repos[n - 1]
             try:
-                said.append(self.add({"repo": r["full_name"], **{k: r.get(k) for k in
-                                                                 ("description", "language", "stars", "stars_today")}}))
+                got = add_candidate(self.services.store, r["full_name"], r.get("description") or "", r.get("language") or "")
+                if got is None:
+                    said.append(f"You rejected {r['full_name']} before, so I won't suggest it again.")
+                    continue
+                said.append(f"Sent {r['full_name']} to Abilities → Candidates. Nothing is installed or run: you decide there.")
+                if not got.get("folder"):
+                    from prometheus.repos.skillmaker import APPROVAL_KIND
+
+                    self.services.approvals.request(
+                        APPROVAL_KIND, f"Download {got['repo']} from GitHub and check it for malware (nothing is run)",
+                        {"repo": got["repo"], "candidate_id": got["id"]})
+                    said[-1] += " Say yes on Approvals to download and check it first."
                 r["added"] = True
             except Exception as e:
                 said.append(f"Couldn't add {r['full_name']} ({type(e).__name__}).")
