@@ -19,6 +19,13 @@ Five bugs fixed (bug log 150-154). Still open, for the owner or a later step:
 - The real download from GitHub (API + codeload) was not run in the review (this cloud session can't reach the GitHub
   API for other repos); real repos were read from their own zips through a fake GitHub.
 
+## M4 final audit, 21 November 2026 (not merged; `docs/reports/M4_REPORT.md`)
+- **Your own repos aren't wired** (Important): nothing sets a repo's profile to "yours", so the map of how your repos
+  link is never made and your own repos get no NOTES.md.
+- **Your main repo can't become a skill** (Important): repo_check deletes Reevias/Prometheus- as dangerous (its README's
+  install line and repo_check's own malware patterns). Needs your rule for repos you own.
+- Not done yet: the exit gate with your real `prometheus-skills` library, and your laptop check of M4.
+
 ## M4 review B (M4.4–M4.7), 21 November 2026
 
 Three bugs fixed (bug log 155-157). Answers to the questions below, and what is still open:

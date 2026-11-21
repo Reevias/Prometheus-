@@ -2,7 +2,7 @@
 
 Every bug found and fixed, newest first, so the count is always exact. Add a line for each new one.
 
-**Total fixed: 157** (as of 21 November 2026)
+**Total fixed: 157** (as of 21 November 2026; the M4 final audit fixed none and left two open, see docs/missing.md)
 
 ## 21 November 2026, review of M4.4–M4.7 (3)
 
