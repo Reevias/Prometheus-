@@ -317,7 +317,7 @@ def test_chat_notes_add_and_delete(live, browser):
     page.once("dialog", lambda d: d.accept())
     page.click("#notes-pop .note-row button")
     page.wait_for_load_state("networkidle")
-    page.wait_for_timeout(500)
+    page.wait_for_function("!document.documentElement.outerHTML.includes('buy milk')", timeout=15000)   # wait for the reload, not a fixed 500 ms (slow on Windows)
     assert "buy milk" not in page.content()
 
 
