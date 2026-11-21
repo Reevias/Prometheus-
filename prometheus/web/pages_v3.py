@@ -370,8 +370,17 @@ def register_skill_pages(app: FastAPI, services, shell) -> None:
 
     @app.post("/api/v3/skills/{name}/switch")
     def api_skill_switch(name: str, on: str = Form("")):
-        if book.get_any(name) is None:
+        skill = book.get_any(name)
+        if skill is None:
             return _no_skill()
+        if on and skill.manifest is not None:               # M4.6: a skill made from a repo is tested before it switches on
+            from prometheus.repos.trial import save_result, trial
+
+            tested = trial(skill.folder)
+            save_result(store, name, tested)
+            if not tested.passed:
+                store.audit("user", "skill_switch_refused", {"skill": name})
+                return JSONResponse({"error": f"Not switched on: {tested.reason}"}, status_code=409)
         set_skill_on(services.settings, name, bool(on))
         save_settings(services.settings)
         store.audit("user", "skill_switch", {"skill": name, "on": bool(on)})
@@ -502,6 +511,24 @@ def register_skill_pages(app: FastAPI, services, shell) -> None:
         """Only a repo that was downloaded and checked, and wasn't found unsafe, can be accepted."""
         return prof is not None and prof.verdict in ("clean", "caution")
 
+    def trial_card(sug: dict | None) -> dict | None:
+        """The sandbox trial run (M4.6) in words: a sentence first, the details behind "Show details"."""
+        from prometheus.repos.trial import load_result
+
+        got = load_result(store, str(sug.get("name", ""))) if sug else None
+        if got is None:
+            return None
+        said = {"passed": "Passed", "failed": "Didn't pass", "skipped": "Not run"}
+        if got.passed:
+            line = "Passed in the sandbox."
+            if any(x.status == "skipped" for x in got.scripts):
+                line += " Scripts that need the internet were not run: you'll be asked at first real use."
+        else:
+            line = f"The skill stays off. {got.reason}"
+        return {"ok": got.passed, "line": line,
+                "scripts": [{"file": x.file, "word": said.get(x.status, x.status), "reason": x.reason,
+                             "details": x.details} for x in got.scripts]}
+
     def candidate_card(c: dict) -> dict:
         from prometheus.config import data_dir
         from prometheus.repo_of_day import candidate_scripts
@@ -523,7 +550,7 @@ def register_skill_pages(app: FastAPI, services, shell) -> None:
         if code:
             what = (what + " " if what else "") + f"({', '.join(code[:3])})"
         sug = c.get("suggestion") if isinstance(c.get("suggestion"), dict) else None
-        return {**c, "what": what or "No description.", "licence": prof.licence if prof else "unknown",
+        return {**c, "trial": trial_card(sug), "what": what or "No description.", "licence": prof.licence if prof else "unknown",
                 "licence_note": licence_note(prof.licence if prof else "unknown"), "safety": safety, "tone": tone,
                 "suggestion": sug, "can_accept": can_accept(prof), "scripts": candidate_scripts(c.get("folder", ""), quarantine)}
 
@@ -572,10 +599,29 @@ def register_skill_pages(app: FastAPI, services, shell) -> None:
             made = install(services, c)
         except (LookupError, FileExistsError, OSError) as e:
             return JSONResponse({"error": str(e)}, status_code=409)
+        tried = _trial_installed(c) if made else ""
         got = _set_candidate(c["id"], "accepted")
         if made and isinstance(got, dict):
-            got["message"] = f"Accepted ({c['repo']}). {made}"
+            got["message"] = f"Accepted ({c['repo']}). {made} {tried}".strip()
         return got
+
+    def _trial_installed(c: dict) -> str:
+        """M4.6: test-run the skill that was just saved (switched off); it switches on only if every script passed."""
+        from prometheus.config import data_dir, save_settings
+        from prometheus.features import set_skill_on
+        from prometheus.repos.trial import save_result, trial
+
+        name = str((c.get("suggestion") or {}).get("name", ""))
+        folder = data_dir() / "skills" / name
+        if not name or not (folder / "manifest.json").is_file():
+            return ""
+        tested = trial(folder)
+        save_result(store, name, tested)
+        if tested.passed:
+            set_skill_on(services.settings, name, True)
+            save_settings(services.settings)
+            return "Its trial run in the sandbox passed, so it is switched on."
+        return f"Its trial run in the sandbox didn't pass, so it stays off: {tested.reason}"
 
     @app.post("/api/v3/candidates/{candidate_id}/allow-copying")
     def api_candidate_allow_copying(candidate_id: int):

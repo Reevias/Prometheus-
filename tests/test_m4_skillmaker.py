@@ -332,7 +332,7 @@ def test_after_the_yes_the_card_shows_licence_scripts_and_suggestion(app_client)
     assert "Suggested skill: <b>repo-owner-tool</b>" in page and "Looks clean" in page and "wordcount.py" in page
 
 
-def test_accept_makes_the_skill_switched_off(app_client):
+def test_accept_saves_the_skill_and_switches_it_on_after_its_trial(app_client):
     from prometheus.config import data_dir
     from prometheus.features import skill_on
     from prometheus.repo_of_day import add_candidate
@@ -347,8 +347,9 @@ def test_accept_makes_the_skill_switched_off(app_client):
     skill = services.skills.get_any("repo-owner-tool")
     assert skill is not None and skill.folder == data_dir() / "skills" / "repo-owner-tool"
     assert skill.manifest["source"]["repo"] == "owner/tool"
-    assert not skill_on(services.settings, "repo-owner-tool")
-    assert services.skills.get("repo-owner-tool") is None                  # the planner can't use it yet
+    assert "trial run in the sandbox passed" in r.json()["message"]        # M4.6: its script was test-run first
+    assert skill_on(services.settings, "repo-owner-tool")                  # ... and it passed, so it is switched on
+    assert services.skills.get("repo-owner-tool") is not None
     assert not (data_dir() / "skill_drafts" / "repo-owner-tool").exists()
 
 
