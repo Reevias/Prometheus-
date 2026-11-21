@@ -19,6 +19,12 @@ Five bugs fixed (bug log 150-154). Still open, for the owner or a later step:
 - The real download from GitHub (API + codeload) was not run in the review (this cloud session can't reach the GitHub
   API for other repos); real repos were read from their own zips through a fake GitHub.
 
+## M4.7 questions (21 November 2026), for Review B
+- Candidates has no "remove" action. If one is added, it must call `knowledge.sync_candidate` so that candidate's notes are forgotten.
+- A candidate accepted before it had a downloaded folder gets 0 notes. If it gets its folder later and is already
+  accepted, it should be indexed then (one `sync_candidate` call). Review B checks whether this can still happen
+  now that M4.4 downloads the repo before a candidate is added.
+
 ## Just finished
 - **One-line install, Prometheus-Setup.exe and Prometheus.apk** (built by GitHub on each release), own icon in Windows search, **simpler Settings with Features on and off**, **Stop all that stays stopped**, **weekly report card**, **practice tests** and **ready-made jobs** (everything from the "Build your first AI agent" guide).
 - **Chatbot-level voice**: ElevenLabs hearing (Scribe v2) and speaking (Flash), falling back to the laptop by itself; **double clap** to be greeted with a brief and talk without the name; **talk over it** to interrupt.
