@@ -189,6 +189,7 @@ KEY_NAMES = {
     "ANTHROPIC_API_KEY": "Claude (Anthropic)",
     "GEMINI_API_KEY": "Gemini (Argon)",
     "GITHUB_TOKEN": "GitHub",
+    "SKILLS_LIBRARY_TOKEN": "GitHub skills library",
     "EMAIL_PASSWORD": "Email app password",
     "CALENDAR_LINKS": "Calendar links",
     "GOOGLE_CLIENT": "Google client (ID|secret)",

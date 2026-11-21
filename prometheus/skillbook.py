@@ -43,7 +43,7 @@ def _plain_file(path: Path, folder: Path) -> bool:
         return False
 
 
-def _manifest(folder: Path) -> dict | None:
+def _manifest(folder: Path, name: str = "") -> dict | None:
     """manifest.json as a dict, only if it is a plain file inside the folder, readable JSON, and names this skill.
     Anything else is ignored: the skill then loads exactly as one without a manifest."""
     path = folder / "manifest.json"
@@ -55,11 +55,13 @@ def _manifest(folder: Path) -> dict | None:
         data = json.loads(path.read_text(encoding="utf-8-sig"))
     except (OSError, ValueError):
         return None
-    return data if isinstance(data, dict) and data.get("name") == folder.name else None
+    return data if isinstance(data, dict) and data.get("name") == (name or folder.name) else None
 
 
-def _parse(folder: Path, source: str) -> Skill | None:
-    if not NAME.match(folder.name):
+def _parse(folder: Path, source: str, name: str = "") -> Skill | None:
+    """name: for a library skill cached as <name>@<version>/ (M4.5); otherwise the folder's own name."""
+    name = name or folder.name
+    if not NAME.match(name):
         return None
     guide = folder / "SKILL.md"
     if not _plain_file(guide, folder):
@@ -78,12 +80,12 @@ def _parse(folder: Path, source: str) -> Skill | None:
         key, colon, value = line.partition(":")
         if colon:
             meta[key.strip()] = value.strip().strip('"').strip("'")
-    if meta.get("name") != folder.name or not meta.get("description"):
+    if meta.get("name") != name or not meta.get("description"):
         return None
     body = body.lstrip("\n")
     extra = {k: v[:200] for k, v in meta.items() if k not in ("name", "description")}
-    return Skill(folder.name, meta["description"][:300], body[:MAX_CHARS], folder, source, extra, len(body) > MAX_CHARS,
-                 _manifest(folder))
+    return Skill(name, meta["description"][:300], body[:MAX_CHARS], folder, source, extra, len(body) > MAX_CHARS,
+                 _manifest(folder, name))
 
 
 class SkillBook:
@@ -91,9 +93,14 @@ class SkillBook:
         self.builtin = Path(builtin)
         self.user = Path(user) if user else None
         self.is_off = lambda name: False     # set by the app: the owner's switches on the Skills page
+        self.library = None                  # the owner's skills library on GitHub (M4.5), set by the app
 
     def _all(self) -> dict[str, Skill]:
         found: dict[str, Skill] = {}
+        for e in (self.library.entries() if self.library is not None else []):
+            # listed from the saved index only: nothing is downloaded until the skill is used (get)
+            found[e["name"]] = Skill(e["name"], e["description"], "", self.library.cache / f"{e['name']}@{e['version']}",
+                                     "library", {"version": e["version"]})
         for root, source in ((self.builtin, "builtin"), (self.user, "user")):
             if root is None or not root.is_dir():
                 continue
@@ -117,8 +124,19 @@ class SkillBook:
         return "\n".join(f"- {s.name}: {s.description}" for s in self.catalog())
 
     def get(self, name: str) -> Skill | None:
+        """A skill to use now. A library skill is downloaded and checked the first time (library.load); if that
+        can't happen, LibraryError says why in plain words."""
         skill = self._all().get(name)
-        return None if skill is None or self.is_off(skill.name) else skill
+        if skill is None or self.is_off(skill.name):
+            return None
+        if skill.source == "library":
+            from prometheus.repos.library import LibraryError
+
+            loaded = _parse(self.library.load(name), "library", name)
+            if loaded is None:
+                raise LibraryError(f"/{name} from your skills library has no valid SKILL.md.")
+            return loaded
+        return skill
 
     def get_any(self, name: str) -> Skill | None:
         """A skill even if it's switched off (to show it, or switch it back on)."""
