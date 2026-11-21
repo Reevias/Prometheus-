@@ -200,6 +200,9 @@ the CSRF header; using `prompt()`/`alert()`; colours outside tokens.css.
    (a question in Candidates) before any code is copied; `unknown` → guide only, no copied code.
 4. `docs/m4/MANIFEST.md`: the manifest fields, examples, and what M4.5/M4.6 check.
 5. `skillbook.py` reads `manifest.json` when present (no change for skills without one).
+6. Wire Candidates (M4.3 left these for M4.4): "add repo N" → an approval → `reader.fetch` + `make_profile` →
+   `add_candidate(..., folder=...)`; `set_candidate_suggestion(store, candidate_id, name, description)` in
+   `repo_of_day.py`; Accept with a suggestion makes the skill.
 
 **Tests to write first** (`tests/test_m4_skillmaker.py`):
 - a profile matching an existing skill → "use the existing one", nothing new written.
