@@ -25,6 +25,13 @@ Five bugs fixed (bug log 150-154). Still open, for the owner or a later step:
   accepted, it should be indexed then (one `sync_candidate` call). Review B checks whether this can still happen
   now that M4.4 downloads the repo before a candidate is added.
 
+## M4.6 questions (21 November 2026), for Review B
+- Accept waits for the trial run (up to about 3 minutes with three slow scripts). Fine for now; it should show
+  "testing…" so it doesn't look stuck.
+- A script edited after a skill was switched on is only caught the next time it is switched on. Whatever first runs
+  skill scripts for real must call `still_valid` first, and refuse and switch the skill off if it's false.
+- The trial uses the locked-down Python, not Windows Sandbox (`sandbox.run()` takes no timeout).
+
 ## Just finished
 - **One-line install, Prometheus-Setup.exe and Prometheus.apk** (built by GitHub on each release), own icon in Windows search, **simpler Settings with Features on and off**, **Stop all that stays stopped**, **weekly report card**, **practice tests** and **ready-made jobs** (everything from the "Build your first AI agent" guide).
 - **Chatbot-level voice**: ElevenLabs hearing (Scribe v2) and speaking (Flash), falling back to the laptop by itself; **double clap** to be greeted with a brief and talk without the name; **talk over it** to interrupt.
