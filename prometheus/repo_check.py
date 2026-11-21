@@ -100,29 +100,36 @@ def _defender(folder: Path) -> str:
     return "no threats" if proc.returncode == 0 else f"exit {proc.returncode}"
 
 
-def scan(folder: Path, defender=_defender) -> Report:
+def scan(folder: Path, defender=_defender, own: bool = False) -> Report:
+    """`own` (owner's rule, 21 Nov 2026) is True only for the owner's own repos, decided by the caller from the repo's
+    GitHub owner (never from anything inside the folder): pattern matches then give "caution" (kept, reasons shown)
+    instead of "danger". Microsoft Defender finding a threat is "danger" either way."""
     folder = Path(folder)
     rep = Report()
+    own = own is True
+
+    def found(level: str, what: str, where: str) -> None:       # a pattern match (not Defender)
+        rep.add("caution" if own and level == "danger" else level, what, where)
     dangers = [(w, re.compile(p, re.I)) for w, p in DANGER]
     cautions = [(w, re.compile(p, re.I)) for w, p in CAUTION if p]
     for root, dirs, files in os.walk(folder):
         dirs[:] = [d for d in dirs if d != ".git"]
         for name in files:
             if rep.files >= MAX_FILES:
-                rep.add("caution", "too many files to check them all", str(folder))
+                found("caution", "too many files to check them all", str(folder))
                 break
             path = Path(root) / name
             rel = str(path.relative_to(folder))
             rep.files += 1
             ext = path.suffix.lower()
             if path.is_symlink():
-                rep.add("caution", "a link pointing outside the folder", rel)
+                found("caution", "a link pointing outside the folder", rel)
                 continue
             if ext in BINARY_DANGER:
-                rep.add("danger", f"ships a ready-made program ({ext})", rel)
+                found("danger", f"ships a ready-made program ({ext})", rel)
                 continue
             if ext in SCRIPT_CAUTION:
-                rep.add("caution", f"includes a script that runs on its own ({ext})", rel)
+                found("caution", f"includes a script that runs on its own ({ext})", rel)
             try:
                 size = path.stat().st_size
             except OSError:
@@ -141,13 +148,13 @@ def scan(folder: Path, defender=_defender) -> Report:
                     # Prometheus never runs) is "check this first"; any other match there stays "danger"
                     soft = setup and what == "downloads and runs code" and \
                         all(CURL_SH.fullmatch(m.group(0)) for m in rx.finditer(text))
-                    rep.add("caution" if soft else "danger", what, rel)
+                    found("caution" if soft else "danger", what, rel)
             for what, rx in cautions:
                 if rx.search(text):
-                    rep.add("caution", what, rel)
+                    found("caution", what, rel)
             if ext in (".py", ".js", ".ts", ".ps1") and not name.endswith((".min.js", ".bundle.js")) and \
                     any(len(line) > 3000 for line in text.splitlines()):
-                rep.add("caution", "very long single lines (often hidden code)", rel)
+                found("caution", "very long single lines (often hidden code)", rel)
             if name == "package.json":
                 try:
                     scripts = json.loads(text).get("scripts", {}) or {}
@@ -157,19 +164,19 @@ def scan(folder: Path, defender=_defender) -> Report:
                     if hook in scripts:
                         level = "danger" if re.search(r"curl|wget|http|node\s+-e|powershell|base64", str(scripts[hook]),
                                                       re.I) else "caution"
-                        rep.add(level, f"runs code when installed ({hook}: {str(scripts[hook])[:60]})", rel)
+                        found(level, f"runs code when installed ({hook}: {str(scripts[hook])[:60]})", rel)
             if name == "setup.py" and re.search(r"\b(urlopen|requests\.(get|post)|subprocess|os\.system|socket)\b",
                                                 text):
-                rep.add("caution", "setup.py downloads or runs things while installing", rel)
+                found("caution", "setup.py downloads or runs things while installing", rel)
     rep.defender = defender(folder)
     if rep.defender == "THREAT FOUND":
         rep.add("danger", "Microsoft Defender found a threat", str(folder.name))
     return rep
 
 
-def check_and_keep(folder: Path, defender=_defender) -> Report:
-    """Scan a freshly downloaded repo; delete it straight away if it's dangerous."""
-    rep = scan(folder, defender)
+def check_and_keep(folder: Path, defender=_defender, own: bool = False) -> Report:
+    """Scan a freshly downloaded repo; delete it straight away if it's dangerous. `own`: see scan()."""
+    rep = scan(folder, defender, own)
     if rep.verdict == "danger":
         shutil.rmtree(folder, ignore_errors=True)
     return rep

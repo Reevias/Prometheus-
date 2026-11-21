@@ -2,7 +2,14 @@
 
 Every bug found and fixed, newest first, so the count is always exact. Add a line for each new one.
 
-**Total fixed: 158** (as of 21 November 2026; the M4 final audit fixed none and left two open, see docs/missing.md)
+**Total fixed: 160** (as of 21 November 2026)
+
+## 21 November 2026, M4 fix: your own repos (2)
+
+| # | Bug | Fixed by |
+|---|---|---|
+| 160 | Reevias/Prometheus- was deleted as dangerous (its README's install line and repo_check's own malware patterns), so your main repo could never become a skill | repo_check has an `own` flag set from the repo's GitHub owner (never from its files): pattern matches give "check this first"; Defender's threat still deletes |
+| 159 | Your own repos were never treated as yours (`read_repo` never got `own=True`), so the links between your repos and their NOTES.md were never made | same owner as `github_repo` → `own=True`; links and NOTES.md on the Candidates card (`prometheus/repos/own.py`) |
 
 ## 21 November 2026, M4.4 extra (1)
 

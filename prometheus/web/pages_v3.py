@@ -561,9 +561,10 @@ def register_skill_pages(app: FastAPI, services, shell) -> None:
                 "scripts": [{"file": x.file, "word": said.get(x.status, x.status), "reason": x.reason,
                              "details": x.details} for x in got.scripts]}
 
-    def candidate_card(c: dict) -> dict:
+    def candidate_card(c: dict, edges: list[dict] | None = None) -> dict:
         from prometheus.config import data_dir
         from prometheus.repo_of_day import candidate_scripts
+        from prometheus.repos.own import card_links, is_own, notes_text
 
         quarantine = data_dir() / "quarantine"
         prof = candidate_profile(c)
@@ -582,16 +583,23 @@ def register_skill_pages(app: FastAPI, services, shell) -> None:
         if code:
             what = (what + " " if what else "") + f"({', '.join(code[:3])})"
         sug = c.get("suggestion") if isinstance(c.get("suggestion"), dict) else None
+        own = bool(prof and prof.own is True and is_own(prof.repo, services.settings.github_repo or ""))
         return {**c, "trial": trial_card(sug), "what": what or "No description.", "licence": prof.licence if prof else "unknown",
                 "licence_note": licence_note(prof.licence if prof else "unknown"), "safety": safety, "tone": tone,
-                "suggestion": sug, "can_accept": can_accept(prof), "scripts": candidate_scripts(c.get("folder", ""), quarantine)}
+                "suggestion": sug, "can_accept": can_accept(prof), "scripts": candidate_scripts(c.get("folder", ""), quarantine),
+                # the owner's own repos: how they link, and their NOTES.md (plain text; the template escapes it)
+                "own": own, "links": card_links(c["repo"], edges or []) if own else [],
+                "notes": notes_text(services, c.get("folder", "")) if own else ""}
 
     @app.get("/v3/candidates")
     def candidates_page(request: Request):
         from prometheus.repo_of_day import candidates
 
+        from prometheus.repos.own import links
+
         items = candidates(store)
-        shown = [candidate_card(c) for c in items if c["status"] in ("new", "accepted")]
+        edges = links(services)
+        shown = [candidate_card(c, edges) for c in items if c["status"] in ("new", "accepted")]
         return shell(request, "v3/candidates.html", "skills", cards=shown[::-1],
                      rejected=sum(1 for c in items if c["status"] == "rejected"))
 

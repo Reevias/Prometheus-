@@ -85,6 +85,13 @@ Each step is one working session of an AI agent (Opus, Sonnet or Codex), plus it
 into `main` **about one week after it starts** (for example, started on Monday 23 Nov → merged around 30 Nov 2026).
 It takes longer if a review finds something serious, or if you have to answer questions mid-way, so answer them soon.
 
+## Fix after the final audit: your own repos (21 Nov 2026)
+Built from the owner's decisions (docs/m4/M4_PROMPTS.md, "Builder · M4 fix: your own repos"): own = same GitHub owner
+as `github_repo` (case ignored); repo_check `own=True` makes pattern matches "check this first" (Defender still
+deletes); own repos get links (`codemap.link_repos`) and a `NOTES.md` on their Candidates card
+(`prometheus/repos/own.py`, tests `tests/test_m4_own.py`). The exit gate's own repo (this repository, read from a zip
+through a fake GitHub) is kept, profiled, drafted as a guide and its trial passes. Waiting for the auditor's re-check.
+
 ## Exit gate
 Skills made from three real repos (one Python, one JavaScript, one of yours) validate, test-run in the sandbox and load
 from your GitHub library on demand; code-map and reader tests pass on Windows (GitHub) and here; the independent audit

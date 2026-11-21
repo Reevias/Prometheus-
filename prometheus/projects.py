@@ -217,7 +217,10 @@ def _notes_template() -> str:
 
 
 def _notes_path(project: dict) -> Path:
-    folder = Path(project["folder"])
+    return _notes_path_in(Path(project["folder"]))
+
+
+def _notes_path_in(folder: Path) -> Path:
     if not folder.is_dir():
         raise ProjectError("The project folder isn't there any more.")
     path = folder / NOTES_NAME
@@ -258,20 +261,30 @@ def add_note_entry(store, project_id: int, section: str, text: str) -> None:
     again with a line saying so; a damaged one is first kept as NOTES.broken.md."""
     if section not in NOTES_SECTIONS:
         raise ProjectError("Pick one of: " + ", ".join(NOTES_SECTIONS) + ".")
-    line = " ".join((text or "").split())[:MAX_NOTE]
-    if not line:
-        raise ProjectError("The note is empty.")
     p = get(store, project_id)
     if p is None:
         raise ProjectError("No such project.")
-    path = _notes_path(p)
+    add_notes_entry_in(Path(p["folder"]), section, text)
+
+
+def add_notes_entry_in(folder: Path, section: str, text: str, first: bool = False) -> None:
+    """The NOTES.md writer itself, for any folder: a project's, or one of the owner's own repos next to its
+    profile.json (prometheus/repos/own.py). Same lock, same atomic write; see add_note_entry. `first`: the file is
+    being started now, so a missing file is not reported as rebuilt."""
+    if section not in NOTES_SECTIONS:
+        raise ProjectError("Pick one of: " + ", ".join(NOTES_SECTIONS) + ".")
+    line = " ".join((text or "").split())[:MAX_NOTE]
+    if not line:
+        raise ProjectError("The note is empty.")
+    folder = Path(folder)
+    path = _notes_path_in(folder)
     today = time.strftime("%Y-%m-%d")
     try:
         with FileLock(str(path.parent / f".{NOTES_NAME}.lock"), timeout=3.0, preserve_lock_file=True):
-            path = _notes_path(p)                                    # looked at again now that nobody else is writing
+            path = _notes_path_in(folder)                            # looked at again now that nobody else is writing
             current, rebuilt = "", ""
             if not path.exists():
-                rebuilt = "This file was missing, so Prometheus rebuilt it."
+                rebuilt = "" if first else "This file was missing, so Prometheus rebuilt it."
             else:
                 raw = path.read_bytes()
                 try:

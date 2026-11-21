@@ -20,6 +20,9 @@
         <p>{{ c.what }}</p>
         <p class="muted">Licence: <b>{{ c.licence }}</b> {{ help("A licence is the author's rule for what you may do with their code. Some let you do almost anything; some say that anything you share must stay open under the same licence; with no licence you may not copy the code at all.") }}<br>{{ c.licence_note }}</p>
         <p><span class="state {{ c.tone }}">{{ c.safety }}</span></p>
+        {% if c.own %}<p class="muted">Your own repository. {{ help("Repositories under your own GitHub name. A pattern that looks risky only gives “Check this first” for them; Microsoft Defender finding a threat still removes them.") }}</p>
+        {% if c.links %}<p class="muted">Linked to your other repos:</p><ul class="muted">{% for l in c.links %}<li>{{ l }}</li>{% endfor %}</ul>{% endif %}
+        {% if c.notes %}<details class="muted"><summary>Notes</summary><pre class="io" style="white-space:pre-wrap;word-break:break-word;max-height:30vh;overflow:auto">{{ c.notes }}</pre></details>{% endif %}{% endif %}
         <p class="muted">{% if c.suggestion %}Suggested skill: <b>{{ c.suggestion.name }}</b>{% if c.suggestion.description %}: {{ c.suggestion.description }}{% endif %}{% else %}No skill suggested yet.{% endif %}</p>
         {% if c.trial %}<p><span class="state {{ 's-done' if c.trial.ok else 's-failed' }}">Trial run</span> {{ c.trial.line }} {{ help("Before a skill can be switched on, its small scripts are run once in the sandbox, a locked room with no internet and no access to your files, to see that they work.") }}</p>
         <details class="muted"><summary>Show details</summary>

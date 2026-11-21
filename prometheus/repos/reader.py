@@ -38,8 +38,10 @@ CHUNK = 1024 * 1024
 SHA = re.compile(r"^[0-9a-f]{40}$")
 REF = re.compile(r"^[A-Za-z0-9._/-]{1,200}$")
 DOWNLOAD_HOST = "codeload.github.com"
-# Prometheus's own files in the top folder (profile.json, M4.2's codemap.json): a repo's copy would be trusted later
-OWN_NAMES = {"profile.json", "profile.json.tmp", "codemap.json"}
+# Prometheus's own files in the top folder (profile.json, M4.2's codemap.json, the owner's repo notes NOTES.md with
+# its lock, temporary and "broken" copies): a repo's copy would be trusted later
+OWN_NAMES = {"profile.json", "profile.json.tmp", "codemap.json", "notes.md"}
+OWN_PREFIXES = (".notes.md.", "notes.broken")
 
 
 class RepoReadError(Exception):
@@ -190,7 +192,7 @@ def _unpack(zip_path: Path, folder: Path, refused: list[str]) -> None:
             if not parts:
                 continue
             why = next((w for w in map(_bad_part, parts) if w), "")
-            if not why and parts[0].lower() in OWN_NAMES:
+            if not why and (parts[0].lower() in OWN_NAMES or parts[0].lower().startswith(OWN_PREFIXES)):
                 why = "has the name of a file Prometheus keeps there"
             if why:
                 refused.append(f"{name} ({why})")
@@ -232,7 +234,8 @@ def _unpack(zip_path: Path, folder: Path, refused: list[str]) -> None:
 
 def read_repo(repo: str, ref: str = "", dest: Path | None = None, own: bool = False, http: httpx.Client | None = None,
               defender=None, refused: list[str] | None = None) -> RepoProfile:
-    """Download, unpack, check and profile `repo` at `ref`. Returns the saved profile.
+    """Download, unpack, check and profile `repo` at `ref`. Returns the saved profile. `own`: the owner's own repo
+    (see prometheus/repos/own.py ``is_own``); it makes repo_check's pattern matches "check this first".
     Raises RepoReadError (plain message) or RepoDanger (folder already deleted, `.reasons`)."""
     from prometheus.repo_check import check_and_keep
 
@@ -265,7 +268,8 @@ def read_repo(repo: str, ref: str = "", dest: Path | None = None, own: bool = Fa
     finally:
         if http is None:
             client.close()
-    report = check_and_keep(final, defender) if defender else check_and_keep(final)
+    # own (the caller decides it from the repo's GitHub owner, never from the files): pattern matches are "caution"
+    report = check_and_keep(final, defender, own=own) if defender else check_and_keep(final, own=own)
     if report.verdict == "danger":
         shutil.rmtree(final, ignore_errors=True)
         raise RepoDanger(repo, [f"{what}: {where}" for level, what, where in report.findings if level == "danger"])

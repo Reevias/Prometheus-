@@ -20,10 +20,9 @@ Five bugs fixed (bug log 150-154). Still open, for the owner or a later step:
   API for other repos); real repos were read from their own zips through a fake GitHub.
 
 ## M4 final audit, 21 November 2026 (not merged; `docs/reports/M4_REPORT.md`)
-- **Your own repos aren't wired** (Important): nothing sets a repo's profile to "yours", so the map of how your repos
-  link is never made and your own repos get no NOTES.md.
-- **Your main repo can't become a skill** (Important): repo_check deletes Reevias/Prometheus- as dangerous (its README's
-  install line and repo_check's own malware patterns). Needs your rule for repos you own.
+- The two Important findings (own repos not wired; your main repo deleted as dangerous) were fixed on 21 Nov (bug log
+  159-160); the auditor re-checks them before any merge. Still open there: the old "add repo on screen" path
+  (`clone_and_check`, git clone) keeps the strict check for every repo, own or not.
 - Not done yet: the exit gate with your real `prometheus-skills` library, and your laptop check of M4.
 - Owner's answers (21 Nov): own repos = same GitHub owner; own repos get "check this first" (Defender still deletes
   threats); built by a new builder session (prompt in docs/m4/M4_PROMPTS.md); the real library is tested by the owner

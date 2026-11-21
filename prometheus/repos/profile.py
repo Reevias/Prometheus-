@@ -307,7 +307,7 @@ def make_profile(folder: Path, repo: str, commit: str, own: bool, report=None, d
 
     folder = Path(folder)
     if report is None:
-        report = repo_check.scan(folder, defender) if defender else repo_check.scan(folder)
+        report = repo_check.scan(folder, defender, own=bool(own)) if defender else repo_check.scan(folder, own=bool(own))
     files, size = _walk(folder)
     langs: dict[str, int] = {}
     for rel in files:

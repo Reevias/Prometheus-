@@ -549,10 +549,18 @@ def prepare(services, payload: dict, http=None, defender=None) -> str:
         return f"{repo} is no longer in Candidates, so nothing was downloaded."
     if candidate["status"] == "rejected":
         return f"You rejected {repo}, so nothing was downloaded."
+    from prometheus.repos.own import is_own, start_notes
+
+    own = is_own(repo, str(getattr(services.settings, "github_repo", "") or ""))     # from the name, never the files
     try:
-        prof = reader.read_repo(repo, "", data_dir() / "quarantine", http=http, defender=defender)
+        prof = reader.read_repo(repo, "", data_dir() / "quarantine", own=own, http=http, defender=defender)
     except reader.RepoReadError as e:              # RepoDanger too: the folder is already deleted
         return str(e)
+    if prof.own:
+        try:
+            start_notes(services, prof)
+        except (OSError, ValueError):              # notes are a help, never a reason to stop
+            pass
     candidate = add_candidate(services.store, repo, folder=prof.folder) or candidate
     sug = _draft_for(services, candidate, http, defender)
     return (f"{repo} was downloaded and checked (nothing was run). Suggested: {sug.reason} "
