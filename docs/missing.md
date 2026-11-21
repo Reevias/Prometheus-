@@ -25,6 +25,9 @@ Five bugs fixed (bug log 150-154). Still open, for the owner or a later step:
 - **Your main repo can't become a skill** (Important): repo_check deletes Reevias/Prometheus- as dangerous (its README's
   install line and repo_check's own malware patterns). Needs your rule for repos you own.
 - Not done yet: the exit gate with your real `prometheus-skills` library, and your laptop check of M4.
+- Owner's answers (21 Nov): own repos = same GitHub owner; own repos get "check this first" (Defender still deletes
+  threats); built by a new builder session (prompt in docs/m4/M4_PROMPTS.md); the real library is tested by the owner
+  in the laptop check (steps in docs/reports/M4_REPORT.md), never from the cloud.
 
 ## M4 review B (M4.4–M4.7), 21 November 2026
 

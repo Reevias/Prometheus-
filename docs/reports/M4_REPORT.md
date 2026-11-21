@@ -77,8 +77,33 @@ Reviewed: no new findings. The numbers below are for the code with it merged in.
   a file.
 - Paths longer than 260 characters being refused cleanly (tested by the same kind of failure on Linux and GitHub's
   Windows machine only).
-- A trial run in the sandbox and a library download on your laptop; publishing to your real `prometheus-skills`.
+- A trial run in the sandbox and a library download on your laptop; publishing to your real `prometheus-skills`
+  (you'll test it yourself: steps 5–7 of the laptop check; the cloud never uses your real library).
 - The Candidates page and the project NOTES.md on your screen.
+
+## Your laptop check of M4 (step by step)
+Do this after the own-repos fix (prompt "Builder · M4 fix: your own repos" in docs/m4/M4_PROMPTS.md) is in and the
+auditor has re-checked it.
+1. Update and switch to the branch (PowerShell): run the installer, then
+   `git -C "$env:USERPROFILE\Prometheus-" fetch origin prometheus-v3`,
+   `git -C "$env:USERPROFILE\Prometheus-" checkout prometheus-v3`, and
+   `& "$env:USERPROFILE\Prometheus-\.venv\Scripts\python.exe" -m pip install -e "$env:USERPROFILE\Prometheus-[desktop]"`.
+   Start Prometheus.
+2. **Download and check:** in chat say "add repo" for a small repo (or "add repo 1" after Repos of the day), say yes
+   on Approvals. Abilities → Candidates should show its licence, "Looks clean" or "Check this first", and a suggested
+   skill. Defender runs here for real.
+3. **Your own repo:** add Reevias/Prometheus-. It should be kept as "Check this first" (not deleted).
+4. **Accept** a candidate with scripts (TheAlgorithms/Python works). Wait up to a minute: the message should say the
+   trial passed and the skill is switched on. Check the phone width of Candidates too.
+5. **Your real library** (only you do this; the cloud never touched it): make the key as described at the top of
+   `prometheus/repos/library.py` (fine-grained, only `prometheus-skills`, Contents and Pull requests read/write) and
+   paste it in Settings as "GitHub skills library".
+6. **Publish:** open the skill's page in Abilities → Skills, press **Publish to library**, say yes on Approvals. A pull
+   request appears in Reevias/prometheus-skills on GitHub: look at it, then merge it.
+7. **Load on demand:** restart Prometheus (the index refreshes at start), remove the local copy of the skill (Remove
+   on its page), then use the skill (Try it): it should download from your library and work. Changing one file in
+   the library on GitHub (without changing index.json) and trying again on a clean cache should be refused.
+8. Write "merge M4" in the audit session if everything above worked; tell it what didn't.
 
 ## Residual risks
 - No scanner catches everything: "Looks clean" means nothing known-bad was found.

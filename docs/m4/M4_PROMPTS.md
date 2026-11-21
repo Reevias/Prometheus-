@@ -208,6 +208,34 @@ RULES:
 STOP AND REPORT (start with "DONE M4 AUDIT" and "MERGED" or "NOT MERGED: <reason>"): the report's summary, test numbers and where they ran, residual risks, and the installer command for the laptop.
 ```
 
+## Builder · M4 fix: your own repos (after the final audit, 21 Nov 2026)
+```
+You are fixing the two open Important findings of the M4 final audit on prometheus-v3 (docs/reports/M4_REPORT.md, "Findings of this audit"). Finish in this session, then stop. Don't merge into main.
+
+RULES:
+0. SETUP (allowed): if /home/user/venv314/bin/python does not exist: cd to the repo, uv venv -p 3.14 /home/user/venv314 && VIRTUAL_ENV=/home/user/venv314 uv pip install -e ".[dev]" && VIRTUAL_ENV=/home/user/venv314 uv pip install playwright pywebview. Browser tests: PROMETHEUS_CHROMIUM=/opt/pw-browsers/chromium. /home/user/venv314/bin/python --version must print 3.14.x, otherwise stop and report BLOCKED.
+1. git fetch origin && git checkout prometheus-v3 && git pull --ff-only. Never force-push, never push to main.
+2. Read: CLAUDE.md, AGENTS.md, docs/m4/M4_PLAN.md, docs/m4/M4_STEPS.md ("Shapes that several steps share", M4.1, M4.2, M4.8), docs/reports/M4_REPORT.md, then prometheus/repo_check.py, prometheus/repos/reader.py, profile.py, codemap.py (link_repos), skillmaker.py (prepare), prometheus/projects.py (NOTES.md functions), prometheus/repo_of_day.py (candidates).
+3. Tests first: each new test fails for the right reason before the code exists. Windows first (pathlib, utf-8, no POSIX-only calls). Repo text stays untrusted. Don't change the sandbox.
+4. Never claim a result you didn't see.
+
+THE OWNER'S DECISIONS (21 Nov 2026), build exactly these:
+a. Which repos are the owner's: any repo with the same GitHub owner as settings.github_repo (Reevias/...), compared ignoring case. Nothing to set. Pass own=True to reader.read_repo for those (skillmaker.prepare and anything else that reads a repo), so profile.own is true.
+b. repo_check for the owner's repos: pattern matches (the DANGER list, ready-made programs, install hooks) give "caution" ("check this first", kept, reasons shown) instead of "danger". Microsoft Defender finding a threat still means "danger" and deletes it. Other people's repos stay exactly as strict. Give repo_check an explicit own flag (default False); never trust anything inside the repo to decide it.
+c. Own repos get what M4.2 and M4.8 promised: codemap.link_repos is run over the owner's downloaded repos (their profiles in <data>/quarantine) and the links are shown on the repo's Candidates card in plain words ("uses owner/x: imports x"); each own repo gets a NOTES.md next to its profile.json (What it is, Decisions, Changes), written with the same lock and atomic write as project notes (reuse the projects.py helpers; don't copy them). Keep it read-only on screen (text, never HTML from the file).
+
+TESTS (tests/test_m4_own.py), each failing first:
+- a repo under the same owner as settings.github_repo (different capitals too) is read with own=True; another owner's repo isn't.
+- repo_check with own=True: a curl | sh line in install.sh at the top, and a file with the DANGER patterns as text, give "caution"; Defender's "THREAT FOUND" still gives "danger". With own=False the same files still give "danger".
+- two own repos where one imports the other: the card shows the link; a stranger's repo is never linked.
+- an own repo gets NOTES.md; two writers at once keep both entries; <script> in a note shows as text.
+- the exit gate's own repo: a zip of this repository (git archive origin/main) read through a fake GitHub as Reevias/Prometheus- is kept ("check this first"), profiled, drafted, and its trial passes.
+
+CHECKS BEFORE PUSHING: /home/user/venv314/bin/python -m pytest -q (all pass; 4 YouTube tests may fail only in sandboxes without DNS); PROMETHEUS_CHROMIUM=/opt/pw-browsers/chromium /home/user/venv314/bin/python -m pytest -q tests/test_v3_clickthrough.py; update CHANGELOG.md, docs/bugs.md (one line per bug, update the total), docs/missing.md (remove the two findings), docs/m4/M4_PLAN.md. git pull --ff-only, commit, push to prometheus-v3, wait for GitHub's run (gh api repos/reevias/prometheus-/commits/$(git rev-parse HEAD)/check-runs --jq '.check_runs[] | "\(.name): \(.status) \(.conclusion)"') to be all green.
+
+STOP AND REPORT (start with "DONE M4 OWN REPOS"): what changed, tests (numbers, where they ran), NOT VERIFIED ON WINDOWS items. After this, the Opus auditor re-checks it before any merge.
+```
+
 ## Sonnet prompts
 The four Sonnet prompts, in the order to use them: M4.8 (any time after M4 starts), M4.3 (after M4.1), M4.7 (after M4.3), M4.6 (after M4.4).
 
