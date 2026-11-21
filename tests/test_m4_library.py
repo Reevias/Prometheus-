@@ -298,3 +298,26 @@ def test_library_repo_is_next_to_the_owners_repo():
     class S:
         github_repo = "Reevias/Prometheus-"
     assert lib.library_repo(S()) == "Reevias/prometheus-skills"
+
+
+# -- review B (M4.4-4.7): found by the independent review, each failed before its fix ---------------------------
+
+def test_publishing_needs_a_passing_trial_of_exactly_these_files(app_client, tmp_path):
+    """A library skill is loaded on every device without a new trial, so only a skill whose sandbox trial passed, on
+    exactly the files being published, may go to the library."""
+    from prometheus.repos.trial import save_result, trial
+
+    _, services = app_client()
+    gh = FakeGitHub(library_files(entry()))
+    library = make(tmp_path, gh)
+    folder = _skill_folder(tmp_path)
+    with pytest.raises(lib.LibraryError, match="trial"):                     # never tested
+        lib.publish_handler(library, folder.parent, {"name": "repo-owner-tool"}, services.store)
+    save_result(services.store, "repo-owner-tool", trial(folder))             # passes (prints 'hi')
+    (folder / "scripts" / "count.py").write_bytes(b"while True: pass\n")      # changed after the trial
+    with pytest.raises(lib.LibraryError, match="trial"):
+        lib.publish_handler(library, folder.parent, {"name": "repo-owner-tool"}, services.store)
+    assert [r for r in gh.calls if r.method != "GET"] == []
+    (folder / "scripts" / "count.py").write_bytes(SCRIPT.encode("utf-8"))     # back as tested
+    said = lib.publish_handler(library, folder.parent, {"name": "repo-owner-tool"}, services.store)
+    assert f"https://github.com/{REPO}/pull/7" in said

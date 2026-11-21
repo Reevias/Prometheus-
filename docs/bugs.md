@@ -2,7 +2,15 @@
 
 Every bug found and fixed, newest first, so the count is always exact. Add a line for each new one.
 
-**Total fixed: 154** (as of 21 November 2026)
+**Total fixed: 157** (as of 21 November 2026)
+
+## 21 November 2026, review of M4.4–M4.7 (3)
+
+| # | Bug | Fixed by |
+|---|---|---|
+| 157 | The owner's rule for repo_check (21 Nov) was never built: a `curl … \| sh` line in `.devcontainer/` or `.github/` still deleted the whole repo as dangerous (pallets/itsdangerous) | Those two top folders give "check this first"; everywhere else, and any other danger there, stays as strict |
+| 156 | A skill whose scripts need the internet was switched on after Accept although none of its scripts had been run | It stays off; the owner can switch it on in Skills |
+| 155 | A skill could be published to the skills library without passing its sandbox trial (or after being changed), and every device then loads library skills without a trial | Publishing needs a passed trial on exactly those files |
 
 ## 21 November 2026, review of M4.1–M4.3 and M4.8 (5)
 

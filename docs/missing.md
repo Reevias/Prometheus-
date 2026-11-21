@@ -19,6 +19,18 @@ Five bugs fixed (bug log 150-154). Still open, for the owner or a later step:
 - The real download from GitHub (API + codeload) was not run in the review (this cloud session can't reach the GitHub
   API for other repos); real repos were read from their own zips through a fake GitHub.
 
+## M4 review B (M4.4–M4.7), 21 November 2026
+
+Three bugs fixed (bug log 155-157). Answers to the questions below, and what is still open:
+- M4.7's second question can't happen any more: since review A, Accept needs a downloaded and checked repo.
+- Still open: Accept and Switch on wait for the whole trial run (73 s for a script that runs forever) with no
+  "testing…" on screen; a TOCTOU gap in the trial (the script is hashed, then read again to run it); nothing runs
+  skill scripts for real yet, so `still_valid` has no caller outside the switch and publish checks; there is no
+  "Publish" button yet (the approval exists, nothing asks for it); a skill whose manifest.json is removed or broken
+  switches on without a trial (it then loads as an old-style skill).
+- Real repos: drafts from mahmoud/boltons (one script, a joke that loops forever: the trial stopped it, the skill
+  stayed off), python-humanize/humanize and keon/algorithms (guides only: no file was self-contained enough).
+
 ## M4.7 questions (21 November 2026), for Review B
 - Candidates has no "remove" action. If one is added, it must call `knowledge.sync_candidate` so that candidate's notes are forgotten.
 - A candidate accepted before it had a downloaded folder gets 0 notes. If it gets its folder later and is already

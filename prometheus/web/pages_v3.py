@@ -617,7 +617,10 @@ def register_skill_pages(app: FastAPI, services, shell) -> None:
             return ""
         tested = trial(folder)
         save_result(store, name, tested)
-        if tested.passed:
+        if tested.passed and any(s.status == "skipped" for s in tested.scripts):
+            return ("Its scripts that need the internet weren't run in the trial, so it stays off: switch it on "
+                    "yourself in Skills if you want it.")
+        if tested.passed:                      # every script ran and passed (skipped is not passed)
             set_skill_on(services.settings, name, True)
             save_settings(services.settings)
             return "Its trial run in the sandbox passed, so it is switched on."

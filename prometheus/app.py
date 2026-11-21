@@ -384,7 +384,7 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
 
     skills.library = _library.Library(data, repo=_library.library_repo(settings))      # M4.5: index only, a few KB
     approvals.register(_library.PUBLISH_KIND,
-                       lambda payload: _library.publish_handler(skills.library, data / "skills", payload))
+                       lambda payload: _library.publish_handler(skills.library, data / "skills", payload, store))
     if providers is None:                       # the real app (tests never reach GitHub)
         _library.start_daily_refresh(skills.library)
     archive.allowed = lambda chat_id: memory_collects(services.settings, chat_id)       # Memory → Privacy

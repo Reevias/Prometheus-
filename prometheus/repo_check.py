@@ -26,6 +26,8 @@ TEXT_EXT = {".py", ".js", ".mjs", ".cjs", ".ts", ".sh", ".bash", ".ps1", ".psm1"
             ".toml", ".cfg", ".ini", ".yml", ".yaml", ".rb", ".go", ".rs", ".php", ".lua", ".pl", ".txt", ".md", ""}
 BINARY_DANGER = {".exe", ".scr", ".com", ".pif", ".msi", ".hta", ".dll", ".sys", ".jar", ".vbe", ".jse", ".lnk"}
 SCRIPT_CAUTION = {".bat", ".cmd", ".ps1", ".vbs", ".wsf", ".sh"}
+SETUP_DIRS = {".devcontainer", ".github"}            # at the top of the repo; Prometheus never runs these files
+CURL_SH = re.compile(r"(curl|wget)[^\n|]{0,200}\|\s*(sudo\s+)?(ba)?sh\b", re.I)
 
 DANGER = [
     ("downloads and runs code", r"(curl|wget)[^\n|]{0,200}\|\s*(sudo\s+)?(ba)?sh\b|"
@@ -131,9 +133,14 @@ def scan(folder: Path, defender=_defender) -> Report:
                 text = path.read_text("utf-8", errors="replace")
             except OSError:
                 continue
+            setup = Path(rel).parts[0] in SETUP_DIRS if Path(rel).parts else False
             for what, rx in dangers:
                 if rx.search(text):
-                    rep.add("danger", what, rel)
+                    # owner's rule (21 Nov 2026): curl/wget | sh in .devcontainer/ or .github/ (setup files that
+                    # Prometheus never runs) is "check this first"; any other match there stays "danger"
+                    soft = setup and what == "downloads and runs code" and \
+                        all(CURL_SH.fullmatch(m.group(0)) for m in rx.finditer(text))
+                    rep.add("caution" if soft else "danger", what, rel)
             for what, rx in cautions:
                 if rx.search(text):
                     rep.add("caution", what, rel)

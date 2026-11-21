@@ -431,11 +431,18 @@ class Library:
         return url
 
 
-def publish_handler(library: Library, skills_dir: Path, payload: dict) -> str:
-    """The approval: the owner said yes to publishing one of their skills."""
+def publish_handler(library: Library, skills_dir: Path, payload: dict, store) -> str:
+    """The approval: the owner said yes to publishing one of their skills. Only a skill whose sandbox trial (M4.6)
+    passed on exactly these files is published: a library skill is loaded on every device without a new trial."""
+    from prometheus.repos.trial import load_result
+
     name = str(payload.get("name", ""))
     if not NAME.fullmatch(name):
         raise LibraryError("That isn't a skill name.")
+    tested = load_result(store, name)
+    if tested is None or not tested.still_valid(Path(skills_dir) / name):
+        raise LibraryError(f"/{name} wasn't published: it has to pass its trial run in the sandbox first (switch it on "
+                           "in Skills to test it), and nothing may change after that.")
     url = library.publish(Path(skills_dir) / name)
     return f"Opened a pull request to your skills library with /{name}: {url} (merge it on GitHub to add it)."
 
