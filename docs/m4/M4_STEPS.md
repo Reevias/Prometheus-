@@ -10,7 +10,7 @@ the owner** (2–4 questions, recommended answer first); don't guess.
 ## Rules for every step (read once, follow always)
 
 **Before you start**
-1. `git fetch origin && git checkout prometheus-m4 && git pull --ff-only` (never work on `main` or `prometheus-v3`).
+1. `git fetch origin && git checkout prometheus-v3 && git pull --ff-only` (never work on `main` or `prometheus-v3`).
 2. Read `CLAUDE.md`, `AGENTS.md`, `docs/m4/M4_PLAN.md` and your step's section here. Read every file listed under
    "Read first" for your step before writing code.
 3. Check the step before yours is finished: its "done means" list is true and its last GitHub run is green
@@ -35,7 +35,7 @@ the owner** (2–4 questions, recommended answer first); don't guess.
 11. If you changed a page: `PROMETHEUS_CHROMIUM=/opt/pw-browsers/chromium /home/user/venv314/bin/python -m pytest -q tests/test_v3_clickthrough.py`.
 12. Update `CHANGELOG.md` (one plain-words line), `docs/bugs.md` (one line per bug fixed, update the total) and
     `docs/missing.md` if something is still missing.
-13. `git pull --ff-only` again, then commit with a clear message, then `git push origin prometheus-m4`.
+13. `git pull --ff-only` again, then commit with a clear message, then `git push origin prometheus-v3`.
     **Never** force-push, never push to `main`, never rewrite history.
 14. Wait for GitHub's run on your commit; if any job fails, read the log
     (`gh api repos/reevias/prometheus-/actions/jobs/<job id>/logs`) and fix it with a test first.
