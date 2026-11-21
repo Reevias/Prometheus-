@@ -106,7 +106,8 @@ has no open important findings; the laptop check is done; the M4 report says hon
 
 ## Commands to paste
 
-Each command points to its section of **`docs/m4/M4_STEPS.md`** (the step-by-step guide: what to read, the exact
+**Full, ready-to-paste prompts for every step: `docs/m4/M4_PROMPTS.md`** (use those; the short commands below are
+summaries). Each command points to its section of **`docs/m4/M4_STEPS.md`** (the step-by-step guide: what to read, the exact
 shapes other steps rely on, the tests to write, the checks before pushing, what "done" means, and the mistakes to
 avoid). Paste each one as the first message of a **new** session in the tool named. Replace nothing; each prompt says what to
 read. Start the next step only after the previous one says "done" and GitHub's run is green.
