@@ -593,6 +593,7 @@
   </section>
   <section class="set adv" id="other-keys" data-tab="connections" data-group="General">
   <h3>Other keys {{ help("Keys for extra services. A key is like a password for one service; it is stored locked (encrypted) on this laptop.") }}</h3>
+  <p class="muted">GitHub skills library: a fine-grained key for <strong>only</strong> your <code>prometheus-skills</code> repository, with Contents and Pull requests set to read and write (make it at <code>github.com/settings/personal-access-tokens/new</code>).</p>
   {% for k in other_keys %}
   <form hx-post="/settings/keys" hx-target="body" class="panel row">
     <strong>{{ k.label }}</strong> <span class="{{ 'status-done' if k.set else 'muted' }}">{{ "set ✓" if k.set else "not set" }}</span>

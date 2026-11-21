@@ -548,17 +548,18 @@
     }).catch(function () { toast("Voice didn't start.", true); });
   }
   if (mic) mic.addEventListener("click", listen);
-  if (mute) mute.addEventListener("click", function () {
+  function toggleMute() {
     post("/api/v3/voice/mute").then(function (r) { return r.json(); }).then(function (j) {
       if (j.error) { toast(j.error, true); return; }
       voice.muted = j.muted; showVoice(voice);
       toast(j.muted ? "Microphone muted." : "Microphone on.");
     });
-  });
+  }
+  if (mute) mute.addEventListener("click", toggleMute);
   document.addEventListener("keydown", function (e) {
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "m") {
       e.preventDefault();
-      if (e.shiftKey) { if (mute && !mute.hidden) mute.click(); } else if (mic) listen();
+      if (e.shiftKey) { if (mute ? !mute.hidden : voice.available) toggleMute(); } else if (mic) listen();
     }
   });
 

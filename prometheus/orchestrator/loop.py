@@ -236,12 +236,18 @@ def _round_refs(inputs: dict) -> dict:
 
 def approval_resolved(store, approval_id: int, status: str, result: str) -> list[int]:
     """Called when a yes/no is given. Returns the loop tasks that were waiting only for this and can now carry on."""
-    from prometheus.orchestrator.planner import paused_runs, save_paused_run
+    from prometheus.orchestrator.planner import drop_paused_run, paused_runs, save_paused_run
 
     ready = []
     for key, saved in paused_runs(store).items():
         st = saved.get("loop") if isinstance(saved, dict) else None
         if not st or approval_id not in (st.get("waiting") or []):
+            continue
+        if status == "rejected":
+            # a no ends the task: carrying on let the AI ask for the same thing again, so the card came straight
+            # back and "Don't allow" looked like it did nothing (owner's laptop, 21 Nov 2026)
+            drop_paused_run(store, int(key))
+            store.set_task_status(int(key), "stopped")
             continue
         st.setdefault("outcomes", {})[str(approval_id)] = {"status": status, "result": result}
         save_paused_run(store, int(key), saved)

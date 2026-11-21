@@ -891,7 +891,8 @@ def register_routes(app: FastAPI, services: Services) -> None:
         # working first, then ones with a key, then free without a key, then the rest; unsupported last
         rows.sort(key=lambda r: (not r["supported"], not r["ready"], not r["key_set"], r["kind"] != "paid",
                                  not r["keyless"], r["name"].lower()))
-        other_keys = [{"name": "GITHUB_TOKEN", "label": KEY_NAMES["GITHUB_TOKEN"], "set": have["GITHUB_TOKEN"]}]
+        # the GitHub key and (M4.5) the skills library's own key, which had no place to be pasted (owner, 21 Nov)
+        other_keys = [{"name": k, "label": KEY_NAMES[k], "set": have[k]} for k in ("GITHUB_TOKEN", "SKILLS_LIBRARY_TOKEN")]
         from prometheus.safety.paths import extra_root_problem
 
         bad_places = {f: extra_root_problem(f, services.home) for f in s.extra_folders}

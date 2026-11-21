@@ -2,7 +2,15 @@
 
 Every bug found and fixed, newest first, so the count is always exact. Add a line for each new one.
 
-**Total fixed: 160** (as of 21 November 2026)
+**Total fixed: 163** (as of 21 November 2026)
+
+## 21 November 2026, from the owner's laptop screenshots (3)
+
+| # | Bug | Fixed by |
+|---|---|---|
+| 163 | The "GitHub skills library" key (M4.5) had nowhere to be pasted in Settings | Settings → Connections → Other keys lists it, with how to make it |
+| 162 | Two identical microphone buttons next to Stop all (Voice on/off and the older Mute) | One button when voice is set up; Ctrl+Shift+M still mutes |
+| 161 | "Don't allow" seemed to do nothing: the task carried on and its AI asked for the same script again, so an identical card came back | A no ends that task |
 
 ## 21 November 2026, M4 fix: your own repos (2)
 
