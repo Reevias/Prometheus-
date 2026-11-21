@@ -363,7 +363,39 @@ def register_skill_pages(app: FastAPI, services, shell) -> None:
             except ValueError:
                 pass
         return shell(request, "v3/skill.html", "skills", s=card(s), text=text, shown=shown, uses=uses(name),
-                     titles=dict(store.chats()), checks=None)
+                     titles=dict(store.chats()), checks=None, can_publish=not publish_problem(s))
+
+    def publish_problem(s) -> str:
+        """'' when the skill may be offered to the skills library: one of the owner's own, switched on, with a
+        manifest.json, and its sandbox trial (M4.6) passed on exactly these files. Otherwise the reason."""
+        from prometheus.repos.trial import load_result
+
+        if s is None or s.source != "user":
+            return "Only your own skills can be published."
+        if s.manifest is None:
+            return "Only skills made from a repository (with a manifest.json) can be published."
+        if not skill_on(services.settings, s.name):
+            return "Switch it on first: it's tested in the sandbox when it switches on."
+        tested = load_result(store, s.name)
+        if tested is None or not tested.still_valid(s.folder):
+            return "It has to pass its trial run in the sandbox first, and nothing may change after that."
+        return ""
+
+    @app.post("/api/v3/skills/{name}/publish")
+    def api_skill_publish(name: str):
+        """Asks the owner first (Approvals); nothing is sent to GitHub before the yes."""
+        from prometheus.repos.library import PUBLISH_KIND
+
+        s = book.get_any(name)
+        if s is None:
+            return _no_skill()
+        problem = publish_problem(s)
+        if problem:
+            return JSONResponse({"error": problem}, status_code=409)
+        services.approvals.request(PUBLISH_KIND, f"Publish /{name} to your skills library on GitHub (a pull request "
+                                   "you merge yourself)", {"name": name})
+        store.audit("user", "skill_publish_asked", {"skill": name})
+        return {"ok": True, "message": "Waiting for your yes on Approvals. Nothing is sent before that."}
 
     def _no_skill():
         return JSONResponse({"error": "No such skill."}, status_code=404)

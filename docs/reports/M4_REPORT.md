@@ -46,7 +46,7 @@ opens real pull requests in your account, which wasn't asked for).
 
 **Minor (open, from Review B, still true)**: Accept waits for the whole trial with nothing on screen (73 s with the
 boltons script); the trial hashes a script, then reads it again to run it (only something already on the laptop could
-swap it); a skill whose manifest.json is removed switches on without a trial; there is no Publish button yet; nothing
+swap it); a skill whose manifest.json is removed switches on without a trial; nothing
 runs skill scripts for real yet, so `still_valid` must be checked by whatever does that first (M5/M6); the drafted
 TheAlgorithms skill lists `pytest` as a package (it stays off on a laptop without pytest).
 
@@ -55,13 +55,21 @@ reader (unsaveable files refused, folders counted, a repo can't plant `profile.j
 (unsafe or unchecked repos can't be accepted), library (publishing needs a passed trial), Accept (skipped internet
 scripts keep the skill off), repo_check (your `.devcontainer/`/`.github/` rule).
 
+**New code that arrived during this audit** (b93a121, M4.4 extra): a **Publish to library** button on a skill's
+page (only for your own switched-on skill whose trial passed on exactly these files; it asks on Approvals first, and
+the approval re-checks the trial), and repo_check's setup-folder rule now counts only files *inside* those folders.
+Reviewed: no new findings. The numbers below are for the code with it merged in.
+
 ## Numbers, and where they ran
 | Where | What | Result |
 |---|---|---|
-| Here (Linux cloud, Python 3.14.6) | full suite, same code as GitHub's run (`5c16046`; this audit changed only docs) | 1648 passed, 64 skipped, 0 failed |
-| Here | browser click-through (`tests/test_v3_clickthrough.py`, Chromium) | 24 passed |
-| Here | M4's own tests: reader 21, code maps 15, candidates 8, skill builder 35, library 15, trial 13, knowledge 7, notes 7 | 121, part of the suite |
+| Here (Linux cloud, Python 3.14.6) | full suite on `5c16046` (before b93a121) | 1648 passed, 64 skipped, 0 failed |
+| Here | browser click-through on `5c16046` | 24 passed |
+| Here | full suite on the merged code (with b93a121) | 1664 passed, 64 skipped, 0 failed |
+| Here | click-through on the merged code | 24 passed |
+| Here | M4's own tests: reader 21, code maps 15, candidates 8, skill builder 35+, library 15+, trial 13, knowledge 7, notes 7 | 121 before b93a121 (it adds more), part of the suite |
 | GitHub (Windows and Ubuntu, `5c16046`) | Ubuntu 3.14 and 3.15, Windows 3.14 and 3.15, Windows click-through, Windows add-ons | all 6 green |
+| GitHub, this report's commit | the same 6 jobs | see the commit after this one (the report cannot contain its own result) |
 | Your laptop | M4 | **not run yet** |
 
 ## NOT VERIFIED ON WINDOWS (on your laptop)

