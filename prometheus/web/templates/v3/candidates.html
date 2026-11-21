@@ -1,0 +1,56 @@
+{% from "v3/tabs.html" import page_tabs %}
+{% extends "v3/layout.html" %}
+{% from "v3/icons.html" import icon %}
+{% from "v3/help.html" import help %}
+{% block title %}Candidates · Prometheus{% endblock %}
+{% block topbar %}<b>Abilities</b>{% endblock %}
+{% block content %}
+<section class="page candidates-page">
+  {{ page_tabs("abilities", "candidates") }}
+  <h1 class="sr">Candidates</h1>
+  <p class="muted lead">Repositories Prometheus found that could become skills. Nothing here is installed or run: you
+    read it, then accept or reject.{% if rejected %} {{ rejected }} rejected: they won't be suggested again.{% endif %}</p>
+  <div class="rows" style="max-width:none">
+  {% for c in cards %}
+    <div class="repo-row" data-candidate="{{ c.id }}">
+      <div>
+        <b>{{ c.repo }}</b>
+        {% if c.status == "accepted" %}<span class="state s-done">Accepted</span>{% endif %}
+        {% if c.sensitive %}<span class="state s-failed">about tracking, accounts or security</span>{% endif %}
+        <p>{{ c.what }}</p>
+        <p class="muted">Licence: <b>{{ c.licence }}</b> {{ help("A licence is the author's rule for what you may do with their code. Some let you do almost anything; some say that anything you share must stay open under the same licence; with no licence you may not copy the code at all.") }}<br>{{ c.licence_note }}</p>
+        <p><span class="state {{ c.tone }}">{{ c.safety }}</span></p>
+        <p class="muted">{% if c.suggestion %}Suggested skill: <b>{{ c.suggestion.name }}</b>{% if c.suggestion.description %}: {{ c.suggestion.description }}{% endif %}{% else %}No skill suggested yet.{% endif %}</p>
+        <div class="dialog-bar" style="margin-top:10px;flex-wrap:wrap">
+          {% if c.status == "new" %}<button type="button" class="pill ok" data-api="/api/v3/candidates/{{ c.id }}/accept">Accept</button>{% endif %}
+          <button type="button" class="pill danger" data-api="/api/v3/candidates/{{ c.id }}/reject" data-then="/v3/candidates">Reject</button>
+          <button type="button" class="pill" data-scripts="scripts-{{ c.id }}">Show the scripts</button>
+        </div>
+      </div>
+      <dialog class="dialog" id="scripts-{{ c.id }}" aria-labelledby="scripts-title-{{ c.id }}">
+        <h2 id="scripts-title-{{ c.id }}">Scripts in {{ c.repo }}</h2>
+        <p class="muted">Read only. Nothing here has been run.</p>
+        {% for s in c.scripts %}
+        <h3>{{ s.rel }}</h3>
+        <pre class="io" style="white-space:pre-wrap;word-break:break-word;max-height:40vh;overflow:auto">{{ s.text }}</pre>
+        {% if s.cut %}<p class="muted">Only the start of this file is shown.</p>{% endif %}
+        {% else %}<p class="muted">No scripts to show{% if not c.folder %}: the repository hasn't been downloaded yet{% endif %}.</p>{% endfor %}
+        <div class="dialog-bar"><span class="grow"></span><button type="button" class="primary" data-close>Close</button></div>
+      </dialog>
+    </div>
+  {% else %}
+    <p class="muted empty">No candidates yet. Say “add repo 3” after Repos of the day, or pick one on the Skills page.</p>
+  {% endfor %}
+  </div>
+</section>
+<script>
+(function () {
+  document.addEventListener("click", function (e) {
+    var open = e.target.closest("[data-scripts]");
+    if (open) { var d = document.getElementById(open.dataset.scripts); if (d && d.showModal) d.showModal(); return; }
+    var close = e.target.closest("[data-close]");
+    if (close) { var dlg = close.closest("dialog"); if (dlg) dlg.close(); }
+  });
+})();
+</script>
+{% endblock %}

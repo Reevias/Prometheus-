@@ -473,6 +473,77 @@ def register_skill_pages(app: FastAPI, services, shell) -> None:
         store.audit("user", "skill_add", {"repo": full})
         return {"added": full, "message": said}
 
+    # -- Candidates (M4.3): repos waiting for the owner's yes ----------------------------------------------------
+    PERMISSIVE = {"MIT", "Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "ISC", "Unlicense", "CC0-1.0"}
+
+    def licence_note(spdx: str) -> str:
+        if not spdx or spdx == "unknown":
+            return "No licence stated: by default you may not copy its code, so only a how-to guide could be made from it."
+        if spdx in PERMISSIVE:
+            return "Free to use and change, even in your own projects."
+        if spdx.startswith(("GPL", "AGPL", "LGPL", "MPL")):
+            return ("If you share a changed copy you must share it under the same licence, so Prometheus asks you "
+                    "before it copies any of the code.")
+        return "A less common licence: read it before using the code."
+
+    def candidate_card(c: dict) -> dict:
+        from prometheus.config import data_dir
+        from prometheus.repo_of_day import candidate_scripts
+        from prometheus.repos.profile import load
+
+        quarantine = data_dir() / "quarantine"
+        prof = None
+        if c.get("folder"):
+            try:
+                prof = load(Path(c["folder"]))
+            except Exception:
+                prof = None
+        verdict = prof.verdict if prof else ""
+        findings = [str(f) for f in (prof.findings if prof else [])][:8]
+        if verdict == "clean":
+            safety, tone = "Looks clean", "s-done"
+        elif verdict == "caution":
+            safety, tone = "Check this first: " + ("; ".join(findings) or "something in it looked unusual"), "s-failed"
+        elif verdict == "danger":
+            safety, tone = "Removed: unsafe", "s-failed"
+        else:
+            safety, tone = "Not checked yet", ""
+        what = c.get("description") or ""
+        if prof and prof.languages:
+            top = ", ".join(sorted(prof.languages, key=lambda k: -prof.languages[k])[:3])
+            what = (what + " " if what else "") + f"({top})"
+        sug = c.get("suggestion") if isinstance(c.get("suggestion"), dict) else None
+        return {**c, "what": what or "No description.", "licence": prof.licence if prof else "unknown",
+                "licence_note": licence_note(prof.licence if prof else "unknown"), "safety": safety, "tone": tone,
+                "suggestion": sug, "scripts": candidate_scripts(c.get("folder", ""), quarantine)}
+
+    @app.get("/v3/candidates")
+    def candidates_page(request: Request):
+        from prometheus.repo_of_day import candidates
+
+        items = candidates(store)
+        shown = [candidate_card(c) for c in items if c["status"] in ("new", "accepted")]
+        return shell(request, "v3/candidates.html", "skills", cards=shown[::-1],
+                     rejected=sum(1 for c in items if c["status"] == "rejected"))
+
+    def _set_candidate(candidate_id: int, status: str):
+        from prometheus.repo_of_day import set_candidate_status
+
+        got = set_candidate_status(store, candidate_id, status)
+        if got is None:
+            return JSONResponse({"error": "That candidate is gone."}, status_code=404)
+        store.audit("user", "candidate_" + status, {"repo": got["repo"]})
+        word = {"accepted": "Accepted", "rejected": "Rejected: it won't be suggested again"}[status]
+        return {"ok": True, "message": f"{word} ({got['repo']})."}
+
+    @app.post("/api/v3/candidates/{candidate_id}/accept")
+    def api_candidate_accept(candidate_id: int):
+        return _set_candidate(candidate_id, "accepted")
+
+    @app.post("/api/v3/candidates/{candidate_id}/reject")
+    def api_candidate_reject(candidate_id: int):
+        return _set_candidate(candidate_id, "rejected")
+
 
 # ---- Memory ---------------------------------------------------------------------------------------------------------
 MEMORY_TABS = ("memories", "files", "answers", "topics", "privacy")

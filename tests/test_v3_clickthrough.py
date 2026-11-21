@@ -627,3 +627,36 @@ def test_add_a_decision_on_the_project_page(live, browser):
     page.click("#add-decision button[type=submit]")
     page.wait_for_function("document.getElementById('notes-file').innerText.includes('Use the IEEE style')")
     assert "## Decisions" in page.inner_text("#notes-file")
+
+
+def _seed_candidate():
+    """A repo waiting in Candidates (its profile and a script in the quarantine), written next to the running server."""
+    from prometheus.config import data_dir
+    from prometheus.memory.store import Store
+    from prometheus.repo_of_day import add_candidate
+    from prometheus.repos.profile import RepoProfile, save
+
+    folder = data_dir() / "quarantine" / "owner__tool__abc1234"
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "run.py").write_text("print('hello')  # " + "a-very-long-comment-" * 20 + "\n", encoding="utf-8")
+    save(RepoProfile(repo="owner/tool", commit="a" * 40, url="https://github.com/owner/tool", folder=str(folder),
+                     verdict="caution", findings=["Runs a program when it starts: setup.py"], licence="GPL-3.0-only",
+                     languages={"Python": 1}, size_files=1, size_bytes=10, made=time.time()))
+    store = Store(data_dir() / "memory.db")
+    add_candidate(store, "owner/tool", description="Turns notes into flashcards", folder=str(folder))
+
+
+def test_candidates_fit_a_phone_and_the_scripts_open_and_close(live, browser):
+    """M4.3: no sideways scroll at 390 px; "Show the scripts" opens a dialog and Close shuts it."""
+    _seed_candidate()
+    page, base, _ = _signed_in(live, browser, width=390, height=800)
+    page.goto(base + "/v3/candidates")
+    page.wait_for_selector("[data-candidate]")
+    assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth + 1")
+    page.click("[data-scripts]")
+    page.wait_for_selector("dialog[open]")
+    assert "print('hello')" in page.inner_text("dialog[open]")
+    assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth + 1")
+    page.click("dialog[open] [data-close]")
+    page.wait_for_selector("dialog[open]", state="detached")
+    page.close()
