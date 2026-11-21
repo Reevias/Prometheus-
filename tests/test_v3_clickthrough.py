@@ -131,7 +131,16 @@ def open_control_page(page, url):
         if "net::ERR_ABORTED" not in str(exc) and "interrupted by another navigation" not in str(exc):
             raise
         page.wait_for_load_state("domcontentloaded")
-        page.goto(url)
+        try:
+            page.goto(url)
+        except sync_api.Error as again:
+            # an old address that the server forwards (/v3/connections → /settings#connections): Chromium on Windows
+            # sometimes calls the forward itself an interruption; landing on the forwarded page is the right result
+            target = re.search(r"interrupted by another navigation to \"([^\"]+)\"", str(again))
+            origin = url.split("/", 3)[:3]
+            if not target or target.group(1).split("/", 3)[:3] != origin:
+                raise
+            page.wait_for_load_state("domcontentloaded")
     page.wait_for_load_state("networkidle")
 
 
