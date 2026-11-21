@@ -9,7 +9,7 @@
   <h1 class="sr">Approvals</h1>
   <p class="muted lead">Prometheus asks here before anything big or risky. Nothing happens until you approve. Things you allowed for good are in
     <a href="/settings#always-allowed">Settings → Always allowed</a>.</p>
-  <h2 class="section">Waiting for you <span class="muted">{{ waiting|length }}</span></h2>
+  <h2 class="section">Waiting for you{% if waiting %} <span class="muted">{{ waiting|length }}</span>{% endif %}</h2>
   <div class="appr-list">
   {% for a in waiting %}
     <form class="appr-card" data-approval="{{ a.id }}">

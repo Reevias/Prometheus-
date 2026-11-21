@@ -1,8 +1,9 @@
+{% from "v3/help.html" import help %}
 {# The Settings sections, shared by the classic screen (settings.html) and the new one (v3/settings.html). #}
   {% if error %}<p class="error set-msg" role="alert">{{ error }}</p>{% endif %}{% if saved %}<p class="status-done set-msg" role="status">Saved.</p>{% endif %}{% if notice %}<p class="status-done set-msg" role="status">{{ notice }}</p>{% endif %}
 
   <section class="set" id="features" data-tab="general" data-group="Everyday">
-  <h3>Features on and off</h3>
+  <h3>Features on and off {{ help("Switch whole abilities on or off. Off means Prometheus can't use that ability at all, not even when you ask.") }}</h3>
   <p class="muted">Switch off anything you don't use. A switched-off feature does nothing in the background, and
   Prometheus won't use it for your requests. <strong>Stop all</strong> at the top pauses everything at once (it stays
   paused after a restart, until you press Resume).</p>
@@ -20,7 +21,7 @@
   </section>
 
   <section class="set" id="ai" data-tab="ai" data-group="AI and models">
-  <h3>AI</h3>
+  <h3>AI {{ help("Which AI services Prometheus may use to think and write. Free ones are tried first; paid ones only after your yes. A key is like a password that lets Prometheus use one service.") }}</h3>
   {% if key_error %}<p class="error">{{ key_error }}</p>{% endif %}{% if key_saved %}<p class="status-done">{{ key_saved }} is on.</p>{% endif %}
   <p class="muted">Search for an AI, paste its key, and it switches on at once. Prometheus picks the model and moves to
   another AI by itself if one is busy or out of credit. Keys stay on this laptop and are never shown again; adding or
@@ -114,7 +115,7 @@
 
   </section>
   <section class="set" id="voice" data-tab="voice" data-group="Voice">
-  <h3>Voice</h3>
+  <h3>Voice {{ help("How Prometheus hears and talks: the wake word (saying Prometheus), the speech model that turns your voice into text, and the voice it answers with.") }}</h3>
   {% if voice_error %}<p class="error">{{ voice_error }}</p>{% endif %}
   {% if voice %}
   <div class="panel" style="display:grid;gap:10px">
@@ -127,7 +128,8 @@
         <button type="submit" class="primary">Set up voice (about 250 MB)</button></form>
     {% endif %}
     {% if voice.progress %}<p class="muted" style="margin:0">{{ voice.progress }}</p>{% endif %}
-    {% if voice.error %}<p class="error" style="margin:0">{{ voice.error }}</p>{% endif %}
+    {% if voice.error %}<p class="error" style="margin:0">{{ voice.error }}</p>
+    {% if "installer" in voice.error %}<button type="button" class="copy-cmd" data-copy="irm https://raw.githubusercontent.com/Reevias/Prometheus-/main/scripts/install-windows.ps1 | iex">Copy the installer command</button>{% endif %}{% endif %}
     <form hx-post="/settings/voice" hx-target="body"><label class="check"><input type="checkbox" name="on" value="1" {{ "checked" if s.voice_enabled }} onchange="this.form.requestSubmit()">
       Listen for “Prometheus”</label></form>
     <form hx-post="/settings/voice/autostart" hx-target="body"><label class="check"><input type="checkbox" name="on" value="1" {{ "checked" if s.voice_autostart }} onchange="this.form.requestSubmit()">
@@ -188,7 +190,7 @@
 
   </section>
   <section class="set" id="connections" data-tab="connections" data-group="Connections">
-  <h3>Connections</h3>
+  <h3>Connections {{ help("Your email and calendar accounts. Prometheus reads them to answer you; sending or changing anything always asks first.") }}</h3>
   {% if conn_error %}<p class="error">{{ conn_error }}</p>{% endif %}
   <div class="panel" style="display:grid;gap:10px">
     <strong>Email</strong>
@@ -268,7 +270,7 @@
 
   </section>
   <section class="set adv" id="use-prometheus-from-other-ai-apps" data-tab="connections" data-group="Connections">
-  <h3>Use Prometheus from other AI apps</h3>
+  <h3>Use Prometheus from other AI apps {{ help("Lets another AI app on this laptop (for example Claude Desktop) use Prometheus's tools through MCP, a standard way for AI apps to share tools. A token makes sure only your apps can connect.") }}</h3>
   <div class="panel">
     <p class="muted">Antigravity, Claude Desktop, Cursor and other apps that support MCP can search what Prometheus
       remembers, find your files by name, and ask it questions. Anything that changes something waits for you on the
@@ -280,7 +282,7 @@
 
   </section>
   <section class="set adv" id="obsidian" data-tab="connections" data-group="Connections">
-  <h3>Obsidian</h3>
+  <h3>Obsidian {{ help("Obsidian is a notes app. Point Prometheus at your notes folder (Obsidian calls it a vault) and it can save and read notes there.") }}</h3>
   {% if obsidian_error %}<p class="error">{{ obsidian_error }}</p>{% endif %}
   <div class="panel" style="display:grid;gap:10px">
     {% if s.obsidian_vault %}
@@ -305,7 +307,7 @@
 
   </section>
   <section class="set adv" id="assignments" data-tab="advanced" data-group="Study and school">
-  <h3>Assignments</h3>
+  <h3>Assignments {{ help("Deadlines from your college email or what you tell Prometheus, with reminders before each one is due.") }}</h3>
   <form class="panel" hx-post="/settings/assignments" hx-target="body" style="display:grid;gap:8px">
     <label>College or school email senders to read for deadlines (addresses or domains, comma separated)
       <input name="senders" value="{{ s.assignment_senders|join(', ') }}" placeholder="@mycollege.edu.in, classroom.google.com" style="width:100%"></label>
@@ -316,7 +318,7 @@
 
   </section>
   <section class="set adv" id="study-coach" data-tab="advanced" data-group="Study and school">
-  <h3>Study coach</h3>
+  <h3>Study coach {{ help("Flashcards and quizzes made from your notes, shown again at the right moments (spaced repetition) so you remember them for exams.") }}</h3>
   <form class="panel" hx-post="/settings/study" hx-target="body" style="display:grid;gap:8px">
     <label class="check"><input type="checkbox" name="cloud" value="1" {{ "checked" if s.study_cloud }}> Let Claude make
       flashcards and mark answers (better questions; only the notes you choose are sent). Off: the local AI does it, on this laptop.</label>
@@ -343,7 +345,7 @@
 
   </section>
   <section class="set adv" id="focus-mode" data-tab="general" data-group="Daily life">
-  <h3>Focus mode</h3>
+  <h3>Focus mode {{ help("A work timer like Pomodoro: Prometheus stays quiet while you work and tells you when to take a break.") }}</h3>
   <form class="panel" hx-post="/settings/focus" hx-target="body" style="display:grid;gap:8px">
     <p class="muted">Say "focus for 2 hours", "focus until 6" or "focus mode on" (until you say "stop focus"). Prometheus
       holds its alerts (your reminders still ring) and tells you what came in at the end.</p>
@@ -357,7 +359,7 @@
 
   </section>
   <section class="set adv" id="clipboard-and-screenshot-memory" data-tab="advanced" data-group="Daily life">
-  <h3>Clipboard and screenshot memory</h3>
+  <h3>Clipboard and screenshot memory {{ help("Remembers what you copy and screenshot, only on this laptop, so you can ask things like 'what did I copy this morning?'.") }}</h3>
   <form class="panel" hx-post="/settings/clips" hx-target="body" style="display:grid;gap:8px">
     <label class="check"><input type="checkbox" name="on" value="1" {{ "checked" if s.clip_on }}> Remember text and links
       I copy, and the text in new screenshots, for {{ s.clip_days }} days (on this laptop only; passwords, card numbers,
@@ -368,7 +370,7 @@
 
   </section>
   <section class="set adv" id="money-tracker" data-tab="advanced" data-group="Daily life">
-  <h3>Money tracker</h3>
+  <h3>Money tracker {{ help("Reads bank and UPI messages in your email, sorts what you spent into categories and warns you at 80% and 100% of a budget.") }}</h3>
   <form class="panel" hx-post="/settings/money" hx-target="body" style="display:grid;gap:8px">
     <label class="check"><input type="checkbox" name="on" value="1" {{ "checked" if s.money_on }}> Read bank and UPI
       alerts from my email every half hour (on this laptop; no AI). The sheet is in Documents/Prometheus Money.</label>
@@ -381,7 +383,7 @@
 
   </section>
   <section class="set adv" id="search-inside-files" data-tab="advanced" data-group="Daily life">
-  <h3>Search inside files</h3>
+  <h3>Search inside files {{ help("Builds an index (a fast lookup list) of the words inside your documents, so Prometheus can find a file by what it says, not only by its name.") }}</h3>
   <div class="panel">
     <p class="muted">Prometheus reads the text of PDFs, Word, Excel, PowerPoint and text files in Documents, Desktop,
       Downloads and OneDrive (and folders added above), a little at a time at night, so you can find a file by what's
@@ -391,7 +393,7 @@
 
   </section>
   <section class="set adv" id="daily-summary" data-tab="general" data-group="Daily life">
-  <h3>Daily summary</h3>
+  <h3>Daily summary {{ help("A short brief in the morning (your day, deadlines, reminders) and in the evening (what got done).") }}</h3>
   <form class="panel" hx-post="/settings/briefing" hx-target="body" style="display:grid;gap:8px">
     <label class="check"><input type="checkbox" name="morning_on" value="1" {{ "checked" if s.briefing_morning_on }}> Morning briefing at
       <input name="morning" value="{{ s.briefing_morning }}" style="width:80px" pattern="[0-2][0-9]:[0-5][0-9]"></label>
@@ -414,7 +416,7 @@
 
   </section>
   <section class="set adv" id="watchers" data-tab="advanced" data-group="Daily life">
-  <h3>Watchers</h3>
+  <h3>Watchers {{ help("Things Prometheus checks by itself on a schedule, like a web page changing or a price dropping, and tells you when something happens.") }}</h3>
   <p class="muted">Prometheus speaks up by itself: in the “Prometheus alerts” chat, as a Windows notification, and out loud if voice is on.</p>
   <div class="panel" style="display:grid;gap:8px">
     {% for key, label in [("watch_battery", "Battery below 20%"), ("watch_disk", "Main drive over 90% full"), ("watch_cpu", "CPU over 90% for 5 minutes")] %}
@@ -436,7 +438,7 @@
 
   </section>
   <section class="set" id="safety-check" data-tab="general" data-group="Safety and privacy">
-  <h3>Phone control</h3>
+  <h3>Phone control {{ help("Lets Prometheus tap and type on your Android phone over Wi-Fi (Android calls it wireless debugging). Every action on the phone asks you first.") }}</h3>
   <div class="panel" style="display:grid;gap:8px">
     <p class="muted" style="margin:0">Prometheus can control your Android phone (open apps, see and tap the screen, settings,
       alarms, messages and calls; taps, typing, messages and calls are asked first). Steps are in
@@ -455,7 +457,7 @@
     </form>
   </div>
 
-  <h3>Cloud copy (always on)</h3>
+  <h3>Cloud copy (always on) {{ help("A second Prometheus on an always-on computer, kept in step with this laptop, so reminders and your phone keep working when the laptop is off.") }}</h3>
   <div class="panel" style="display:grid;gap:8px">
     {% if s.role == "cloud" %}
       <p style="margin:0"><strong>This is the cloud copy.</strong> <span class="muted">It handles reminders, alerts and
@@ -477,7 +479,7 @@
     {% endif %}
   </div>
 
-  <h3>Backup to Google Drive</h3>
+  <h3>Backup to Google Drive {{ help("Saves a locked (encrypted) copy of your memory and settings to your Google Drive. Only your password can open it.") }}</h3>
   <div class="panel" style="display:grid;gap:8px">
     <p class="muted" style="margin:0">Every night Prometheus backs up everything it knows (memory, chats, flashcards,
       spending, deadlines, settings, keys, skills, and the Prometheus folders in Documents) to the Drive folder
@@ -501,7 +503,7 @@
     {% endif %}
   </div>
 
-  <h3>Safety check</h3>
+  <h3>Safety check {{ help("Checks your setup for risky things (a weak password, network access left open, keys saved in plain text) and says how to fix each one.") }}</h3>
   <div class="panel">
     <p class="muted">Hides 10 known attacks (fake "system notes" in emails, web pages, files and error messages) in
       things Prometheus reads, and checks whether the planning AI would obey them: send email, delete files, open a
@@ -515,7 +517,7 @@
 
   </section>
   <section class="set adv" id="always-allowed" data-tab="advanced" data-group="Safety and privacy">
-  <h3>Always allowed</h3>
+  <h3>Always allowed {{ help("Things you answered with Always allow. Prometheus does them without asking again. Remove one and it asks you again next time.") }}</h3>
   <p class="muted">Small things you said yes to in a chat. They aren't asked again, in any chat. Big things (installs,
   power, Wi-Fi, GitHub posts, money) always wait on the Approvals page.</p>
   <ul class="plain">
@@ -526,7 +528,7 @@
 
   </section>
   <section class="set adv" id="places-prometheus-may-use" data-tab="advanced" data-group="Safety and privacy">
-  <h3>Places Prometheus may use</h3>
+  <h3>Places Prometheus may use {{ help("Folders Prometheus may read or change, besides your usual ones (Documents, Downloads, Desktop…). Everywhere else is off limits.") }}</h3>
   {% if place_error %}<p class="error">{{ place_error }}</p>{% endif %}
   <p class="muted">Prometheus can find, copy, move and rename files in these places, and every change can be undone on
   the History page. System folders, browser data, passwords, <code>.ssh</code> and its own files stay blocked everywhere.</p>
@@ -546,11 +548,11 @@
   <section class="set" id="general" data-tab="general" data-group="General">
   <h3>General</h3>
   <form hx-post="/settings" hx-target="body" class="panel" style="display:grid;gap:10px">
-    <label>Monthly limit for paid AI (USD) <input name="budget_usd" value="{{ s.budget_usd }}" inputmode="decimal"></label>
-    <label>Most one task may spend (USD) <input name="task_budget_usd" value="{{ s.task_budget_usd }}" inputmode="decimal"></label>
-    <label>Tries per step when something fails (1 to 6) <input name="step_tries" value="{{ s.step_tries }}" inputmode="numeric"></label>
-    <label>GitHub repository Prometheus may read and update <input name="github_repo" value="{{ s.github_repo }}"></label>
-    <label class="check"><input type="checkbox" name="allow_lan" value="1" {{ "checked" if s.allow_lan }}> Allow other devices on my Wi-Fi (needs restart, keep a strong password)</label>
+    <label>Monthly limit for paid AI (USD) {{ help("The most Prometheus may spend on paid AI in one calendar month. When it is reached, only free AIs are used until next month.") }} <input name="budget_usd" value="{{ s.budget_usd }}" inputmode="decimal"></label>
+    <label>Most one task may spend (USD) {{ help("The most one request may cost. A bigger job stops and tells you instead of spending more.") }} <input name="task_budget_usd" value="{{ s.task_budget_usd }}" inputmode="decimal"></label>
+    <label>Tries per step when something fails (1 to 6) {{ help("If one step fails (for example a website doesn't load), how many times Prometheus tries again before it gives up on that step.") }} <input name="step_tries" value="{{ s.step_tries }}" inputmode="numeric"></label>
+    <label>GitHub repository Prometheus may read and update {{ help("Where Prometheus's own code lives on GitHub (owner/name). It checks it for updates and, after your yes, can suggest changes there.") }} <input name="github_repo" value="{{ s.github_repo }}"></label>
+    <label class="check"><input type="checkbox" name="allow_lan" value="1" {{ "checked" if s.allow_lan }}> Allow other devices on my Wi-Fi (needs restart, keep a strong password) {{ help("Lets your phone or another computer at home open Prometheus. Anyone on the same Wi-Fi could reach the login page, so keep a strong password.") }} </label>
     <label class="check"><input type="checkbox" name="auto_update" value="1" {{ "checked" if s.auto_update }}
       hx-post="/settings/autoupdate" hx-vals='js:{on: event.target.checked ? "1" : ""}' hx-target="body" hx-trigger="change">
       Check for updates every evening at 23:30. Dependency changes and new top-level paths need your approval.</label>
@@ -584,13 +586,13 @@
   </form>
   </section>
   <section class="set adv" id="github" data-tab="connections" data-group="General">
-  <h3>GitHub</h3>
+  <h3>GitHub {{ help("Your GitHub account, so Prometheus can read your repositories and, after your yes, open issues or suggest changes.") }}</h3>
   <p class="muted">So Prometheus can read its own repository ({{ s.github_repo }}), and open issues, pull requests or update itself (each waits for your approval).
   Make a key at <code>github.com/settings/personal-access-tokens/new</code>: repository access <strong>only</strong> {{ s.github_repo }};
   permissions: Contents, Issues and Pull requests set to read and write, Actions and Metadata set to read. Paste it below.</p>
   </section>
   <section class="set adv" id="other-keys" data-tab="connections" data-group="General">
-  <h3>Other keys</h3>
+  <h3>Other keys {{ help("Keys for extra services. A key is like a password for one service; it is stored locked (encrypted) on this laptop.") }}</h3>
   {% for k in other_keys %}
   <form hx-post="/settings/keys" hx-target="body" class="panel row">
     <strong>{{ k.label }}</strong> <span class="{{ 'status-done' if k.set else 'muted' }}">{{ "set ✓" if k.set else "not set" }}</span>
@@ -604,7 +606,7 @@
 
   </section>
   <section class="set adv" id="practice-tests" data-tab="ai" data-group="General">
-  <h3>Practice tests</h3>
+  <h3>Practice tests {{ help("Your own real requests, replayed after each update. They only plan, nothing is done, so a broken update is caught before it bothers you.") }}</h3>
   <p class="muted">Your real requests, re-checked after every update so a change that breaks something shows up (it
   only plans, nothing is done). Add one by saying <strong>“save this as a practice test”</strong> after a request that
   went right. {{ practice_count }} tests.</p>

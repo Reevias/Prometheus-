@@ -4,8 +4,9 @@
   {% for s in steps %}
   <li class="step {{ s.status }}">
     <div class="step-head"><span class="step-dot"></span><b>{{ s.agent | title }}</b><span class="step-goal">{{ s.goal }}</span>
-      {% if live and s.status == "running" %}<span class="step-time">{{ s.secs }}s</span>{% endif %}<span class="step-status">{{ s.status }}</span></div>
-    {% if s.inputs %}<div class="step-io"><span>Inputs</span><code>{{ s.inputs | tojson }}</code></div>{% endif %}
+      {% if live and s.status == "running" %}<span class="step-time">{{ s.secs }}s</span>{% endif %}<span class="step-status" title="{{ s.status }}">{{ s.status | step_status }}</span></div>
+    {% set rows = s.inputs | step_inputs %}
+    {% if rows %}<div class="step-io"><span>Inputs</span><dl class="step-inputs">{% for k, v in rows %}<dt>{{ k }}</dt><dd>{{ v }}</dd>{% endfor %}</dl></div>{% endif %}
     {% if s.result %}<div class="step-io"><span>Result</span><div>{{ s.result }}</div></div>{% endif %}
   </li>
   {% endfor %}
@@ -25,7 +26,7 @@
   {% if m.role == "assistant" and steps_by and steps_by.get(m.id) %}
   <details class="steps"><summary>{{ steps_by[m.id] | length }} step{{ "s" if steps_by[m.id] | length != 1 }}</summary>{{ step_cards(steps_by[m.id]) }}</details>
   {% endif %}
-  {% if m.role == "assistant" and m.model %}<div class="model-tag">{{ m.model }}</div>{% endif %}
+  {% if m.role == "assistant" and m.model | who %}<div class="model-tag" title="{{ m.model }}">{{ m.model | who }}</div>{% endif %}
   <div class="actions" id="rate-{{ m.id }}">{% set r = ratings.get(m.id) %}
     <button type="button" data-act="copy" title="Copy">{{ icon("copy") }}Copy</button>
     {% if m.role == "user" %}

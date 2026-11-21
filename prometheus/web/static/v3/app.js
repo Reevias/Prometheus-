@@ -471,6 +471,29 @@
   if (window.pywebview) desktopReady(); else window.addEventListener("pywebviewready", desktopReady);
   $$("[data-win]").forEach(function (b) { b.addEventListener("click", function () { win(b.dataset.win); if (b.dataset.win === "maximize") fullscreen = false; }); });
 
+  // ---- "?" next to a hard setting: a small bubble with the explanation (20 Nov) ---------------------------------
+  var bubble = null;
+  function closeHelp() { if (bubble) { bubble.remove(); bubble = null; } }
+  document.addEventListener("click", function (e) {
+    var q = e.target.closest(".help-q");
+    var copy = e.target.closest(".copy-cmd");
+    if (copy) { e.preventDefault(); if (window.promCopy) window.promCopy(copy.dataset.copy, "Command copied: paste it in PowerShell."); return; }
+    if (!q) { if (!e.target.closest(".help-bubble")) closeHelp(); return; }
+    e.preventDefault(); e.stopPropagation();
+    var same = bubble && bubble.dataset.for === q.dataset.help; closeHelp(); if (same) return;
+    bubble = document.createElement("div"); bubble.className = "help-bubble"; bubble.setAttribute("role", "tooltip");
+    bubble.dataset.for = q.dataset.help; bubble.dataset.at = Date.now(); bubble.textContent = q.dataset.help;
+    document.body.appendChild(bubble);
+    var r = q.getBoundingClientRect(), w = Math.min(320, window.innerWidth - 24);
+    bubble.style.width = w + "px";
+    bubble.style.left = Math.max(12, Math.min(r.left - 12, window.innerWidth - w - 12)) + "px";
+    bubble.style.top = (r.bottom + 8 + bubble.offsetHeight > window.innerHeight ? r.top - bubble.offsetHeight - 8 : r.bottom + 8) + "px";
+  }, true);
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape") closeHelp(); });
+  document.addEventListener("scroll", function () {          // a real scroll closes it, not the jump to the "?"
+    if (bubble && Date.now() - (+bubble.dataset.at || 0) > 400) closeHelp();
+  }, true);
+
   // ---- notifications ---------------------------------------------------------------------------------------
   var bell = $("#bell"), notes = $("#notes");
   if (bell) bell.addEventListener("click", function () {

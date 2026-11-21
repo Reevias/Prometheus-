@@ -4,6 +4,7 @@
 {# Categories from the owner's plan. Each lists the existing 2.x sections it holds (nothing was dropped); a
    category with nothing in it yet (Agents, Tools, Skills) isn't shown. "adv" items appear with Show advanced. #}
 {% from "v3/tabs.html" import page_tabs %}
+{% from "v3/help.html" import help %}
 {# Settings in tabs (owner, 20 Nov 2026): each tab shows only its own settings. The menu on the left lists the open
    tab's sections; search looks in every tab. Memory and System are their own pages in the same tab bar. #}
 {% set cats = [

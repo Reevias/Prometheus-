@@ -43,6 +43,11 @@ def register_routes(app: FastAPI, services: Services) -> None:
     templates.env.filters["md"] = render_message
     templates.env.filters["marked"] = lambda t: Markup(str(escape(t)).replace(MARK_START, "<mark>")
                                                        .replace(MARK_END, "</mark>"))
+    from prometheus.web.polish import step_inputs, step_status, who_answered
+
+    templates.env.filters["who"] = who_answered            # words, not raw model ids (20 Nov)
+    templates.env.filters["step_status"] = step_status
+    templates.env.filters["step_inputs"] = step_inputs
     templates.env.filters["clock"] = lambda ts: time.strftime("%H:%M", time.localtime(ts)) if ts else ""
     templates.env.filters["day"] = lambda ts: time.strftime("%Y-%m-%d", time.localtime(ts)) if ts else ""
     app.mount("/static", StaticFiles(directory=str(WEB / "static")), name="static")

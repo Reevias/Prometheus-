@@ -1150,13 +1150,13 @@ html[data-motion="reduced"] *, html[data-motion="reduced"] *::before { animation
 .v3set section.set h3 { padding-bottom: 10px; border-bottom: 1px solid rgb(var(--text-rgb) / 0.08); }
 .v3set section.set > :is(label, p, form, div, details, h4) + :is(label, p, form, div, details, h4) {
   border-top: 1px solid rgb(var(--text-rgb) / 0.06); padding-top: 12px; margin-top: 12px; }
-.v3set section.set label:has(> input:not([type=checkbox]):not([type=radio]):not([type=hidden]), > select, > textarea) {
+.v3set section.set label:has(> input:not([type=checkbox]):not([type=radio]):not([type=hidden]), > select, > textarea):not(:has(input[type=checkbox])):not(:has(> :is(input, select, textarea) ~ :is(input, select, textarea))) {
   display: grid; grid-template-columns: minmax(150px, 34%) minmax(0, 1fr); gap: 6px 18px; align-items: center; }
-.v3set section.set label:has(> input:not([type=checkbox]):not([type=radio]):not([type=hidden]), > select, > textarea)
+.v3set section.set label:has(> input:not([type=checkbox]):not([type=radio]):not([type=hidden]), > select, > textarea):not(:has(input[type=checkbox])):not(:has(> :is(input, select, textarea) ~ :is(input, select, textarea)))
   + label { border-top: 1px solid rgb(var(--text-rgb) / 0.06); padding-top: 12px; margin-top: 12px; }
 .v3set section.set form > label + label { border-top: 1px solid rgb(var(--text-rgb) / 0.06); padding-top: 12px; margin-top: 12px; }
 @media (max-width: 700px) {
-  .v3set section.set label:has(> input:not([type=checkbox]):not([type=radio]):not([type=hidden]), > select, > textarea) {
+  .v3set section.set label:has(> input:not([type=checkbox]):not([type=radio]):not([type=hidden]), > select, > textarea):not(:has(input[type=checkbox])):not(:has(> :is(input, select, textarea) ~ :is(input, select, textarea))) {
     grid-template-columns: 1fr; }
 }
 
@@ -1189,3 +1189,18 @@ html[data-motion="reduced"] *, html[data-motion="reduced"] *::before { animation
 
 /* Settings tabs: wrap onto a second line on laptops so Memory, System and Advanced are never cut off (review) */
 @media (min-width: 701px) { .v3set .page-tabs { flex-wrap: wrap; overflow: visible; row-gap: 0; } }
+
+/* "?" next to hard settings, and its bubble */
+.help-q, .v3set .help-q, .v3set button.help-q { width: 18px; min-width: 0; height: 18px; border-radius: 50%; border: 1px solid rgb(var(--text-rgb) / 0.3); background: none;
+          color: var(--muted); font-size: 11px; line-height: 16px; padding: 0; margin-left: 6px; vertical-align: middle;
+          cursor: help; font-weight: 600; display: inline-grid; place-items: center; }
+.help-q:hover, .help-q:focus-visible { color: var(--amber); border-color: var(--amber); }
+.help-bubble { position: fixed; z-index: 100; background: var(--raised); color: var(--text); border: 1px solid rgb(var(--orange-rgb) / 0.35);
+               border-radius: var(--r-md); padding: 10px 12px; font-size: 13px; line-height: 1.45; font-weight: 400;
+               box-shadow: 0 12px 34px rgb(var(--shadow-rgb) / 0.5); }
+.copy-cmd { margin-top: 8px; }
+/* step inputs as rows, not raw data */
+.step-inputs { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; margin: 0; font-size: 13px; }
+.step-inputs dt { color: var(--muted); }
+.step-inputs dd { margin: 0; overflow-wrap: anywhere; }
+.model-tag { font-family: var(--font); font-size: 12px; }
