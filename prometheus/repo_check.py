@@ -133,7 +133,8 @@ def scan(folder: Path, defender=_defender) -> Report:
                 text = path.read_text("utf-8", errors="replace")
             except OSError:
                 continue
-            setup = Path(rel).parts[0] in SETUP_DIRS if Path(rel).parts else False
+            parts = Path(rel).parts
+            setup = len(parts) > 1 and parts[0] in SETUP_DIRS      # inside the folder, not a file with that name
             for what, rx in dangers:
                 if rx.search(text):
                     # owner's rule (21 Nov 2026): curl/wget | sh in .devcontainer/ or .github/ (setup files that

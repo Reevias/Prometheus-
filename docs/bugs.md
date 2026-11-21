@@ -2,7 +2,13 @@
 
 Every bug found and fixed, newest first, so the count is always exact. Add a line for each new one.
 
-**Total fixed: 157** (as of 21 November 2026)
+**Total fixed: 158** (as of 21 November 2026)
+
+## 21 November 2026, M4.4 extra (1)
+
+| # | Bug | Fixed by |
+|---|---|---|
+| 158 | repo_check's setup-folder rule also softened a top-level *file* named `.github` or `.devcontainer` (not a folder): its `curl … \| sh` line gave "check this first" instead of "danger" | Only files inside those folders count |
 
 ## 21 November 2026, review of M4.4–M4.7 (3)
 

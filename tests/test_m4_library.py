@@ -321,3 +321,65 @@ def test_publishing_needs_a_passing_trial_of_exactly_these_files(app_client, tmp
     (folder / "scripts" / "count.py").write_bytes(SCRIPT.encode("utf-8"))     # back as tested
     said = lib.publish_handler(library, folder.parent, {"name": "repo-owner-tool"}, services.store)
     assert f"https://github.com/{REPO}/pull/7" in said
+
+
+# -- the "Publish to library" button (owner, 21 Nov 2026) ----------------------------------------------------------
+
+def _tested_skill(services, name="my-skill", on=True, trial_it=True):
+    from prometheus.config import data_dir, save_settings
+    from prometheus.features import set_skill_on
+    from prometheus.repos.trial import save_result, trial
+
+    folder = data_dir() / "skills" / name
+    folder.mkdir(parents=True)
+    guide = f"---\nname: {name}\ndescription: A guide-only skill made from a repository\n---\n\nRead it.\n".encode()
+    (folder / "SKILL.md").write_bytes(guide)
+    manifest = {"name": name, "version": "1.0.0", "description": "A guide", "source": {"repo": "o/r", "commit": "a" * 40,
+                "licence": "MIT"}, "permissions": ["none"], "scripts": [], "packages": [], "files": {"SKILL.md": h(guide)}}
+    (folder / "manifest.json").write_bytes(json.dumps(manifest).encode())
+    if trial_it:
+        result = trial(folder)
+        assert result.passed
+        save_result(services.store, name, result)
+    set_skill_on(services.settings, name, on)
+    save_settings(services.settings)
+    return folder
+
+
+def test_publish_button_asks_first_and_sends_nothing(app_client):
+    from conftest import login
+
+    client, services = app_client()
+    hdr = {"X-CSRF-Token": login(client)}
+    _tested_skill(services)
+    page = client.get("/v3/skills/my-skill").text
+    assert 'id="skill-publish"' in page and "Publish to library" in page
+    assert client.post("/api/v3/skills/my-skill/publish").status_code == 403                 # CSRF
+    r = client.post("/api/v3/skills/my-skill/publish", headers=hdr)
+    assert r.status_code == 200 and "Approvals" in r.json()["message"]
+    [a] = services.store.approvals("pending")
+    assert a.kind == lib.PUBLISH_KIND and a.payload["name"] == "my-skill"
+    assert not (services.skills.library.home / "index.json").exists()                        # nothing sent before the yes
+
+
+@pytest.mark.parametrize("case", ["off", "no-trial", "changed", "no-manifest", "builtin"])
+def test_no_publish_button_unless_on_with_manifest_and_a_passed_trial(app_client, case):
+    from conftest import login
+
+    client, services = app_client()
+    hdr = {"X-CSRF-Token": login(client)}
+    name = "my-skill"
+    if case == "builtin":
+        name = services.skills.everything()[0].name
+        assert services.skills.get_any(name).source == "builtin"
+    else:
+        folder = _tested_skill(services, on=case != "off", trial_it=case != "no-trial")
+        if case == "changed":
+            (folder / "manifest.json").write_bytes((folder / "manifest.json").read_bytes() + b" ")
+        if case == "no-manifest":
+            (folder / "manifest.json").unlink()
+    page = client.get(f"/v3/skills/{name}").text
+    assert 'id="skill-publish"' not in page
+    r = client.post(f"/api/v3/skills/{name}/publish", headers=hdr)
+    assert r.status_code == 409 and r.json()["error"]
+    assert services.store.approvals("pending") == []
