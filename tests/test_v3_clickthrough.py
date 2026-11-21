@@ -615,3 +615,15 @@ def test_every_settings_tab_is_visible_on_a_laptop_screen(live, browser):
     for tab in page.locator(".set-body .page-tabs a").all():
         b = tab.bounding_box()
         assert b["x"] >= bar["x"] - 1 and b["x"] + b["width"] <= bar["x"] + bar["width"] + 1, tab.inner_text()
+
+
+def test_add_a_decision_on_the_project_page(live, browser):
+    """M4.8: the Notes tab's "Add a decision" box saves into NOTES.md and the line shows up."""
+    page, base, _ = _signed_in(live, browser)
+    page.goto(base + "/v3/projects")
+    href = page.locator("a[href^='/v3/projects/']").first.get_attribute("href")
+    page.goto(f"{base}{href}?tab=notes")
+    page.fill("#add-decision input[name=text]", "Use the IEEE style")
+    page.click("#add-decision button[type=submit]")
+    page.wait_for_function("document.getElementById('notes-file').innerText.includes('Use the IEEE style')")
+    assert "## Decisions" in page.inner_text("#notes-file")

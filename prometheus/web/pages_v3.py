@@ -1812,6 +1812,7 @@ def register_project_pages(app: FastAPI, services, shell) -> None:
             ctx["agents"] = pj.agents_used(store, project_id)
         elif tab == "notes":
             ctx["notes"] = pj.notes(store, project_id)
+            ctx["notes_file"] = pj.notes_file(p)
         return shell(request, "v3/project.html", "projects", **ctx)
 
     def live(project_id: int) -> dict | None:
@@ -1884,6 +1885,18 @@ def register_project_pages(app: FastAPI, services, shell) -> None:
             pj.add_note(store, project_id, text)
         except pj.ProjectError as e:
             return bad(str(e))
+        return {"ok": True}
+
+    @app.post("/api/v3/projects/{project_id}/decisions")
+    def api_project_decision_add(project_id: int, text: str = Form("")):
+        if live(project_id) is None:
+            return bad("No such project.", 404)
+        try:
+            pj.add_note_entry(store, project_id, "Decisions", text)
+        except pj.ProjectError as e:
+            return bad(str(e))
+        except OSError as e:
+            return bad(f"Couldn't save it: {getattr(e, 'strerror', None) or e}"[:200], 409)
         return {"ok": True}
 
     @app.post("/api/v3/projects/{project_id}/notes/{note_id}/edit")

@@ -51,6 +51,13 @@
     {% else %}<p class="muted empty">No notes yet.</p>{% endfor %}
   </div>
   <button type="button" class="pill" data-api="/api/v3/projects/{{ p.id }}/notes" data-prompt="A note for this project">{{ icon("plus") }}Add a note</button>
+
+  <h2>NOTES.md</h2>
+  <p class="muted small">A notes file in the project folder: what it is, the decisions made and what changed, each with its date.</p>
+  {% if notes_file.broken %}<p class="muted small"><b>An earlier NOTES.md was damaged.</b> Prometheus made a new one and kept the old one as NOTES.broken.md in the project folder.</p>{% endif %}
+  <pre class="notes-file" id="notes-file" style="white-space:pre-wrap;word-break:break-word">{{ notes_file.text or "No NOTES.md yet. Add a decision and Prometheus will make it." }}</pre>
+  <form class="add-skill" id="add-decision"><input type="text" name="text" maxlength="2000" required aria-label="A decision for this project" placeholder="We decided to…">
+    <button type="submit" class="pill">{{ icon("plus") }}Add a decision</button></form>
 {% else %}
   <div class="sys-grid">
     <section class="sys-card">
@@ -74,6 +81,14 @@
 <script>
 (function () {
   var page = document.querySelector(".project-page"), id = page.dataset.project, csrf = document.body.dataset.csrf;
+  var dec = document.getElementById("add-decision");
+  if (dec) dec.addEventListener("submit", function (e) {
+    e.preventDefault();
+    fetch("/api/v3/projects/" + id + "/decisions", { method: "POST", credentials: "same-origin", body: new FormData(dec),
+          headers: { "X-CSRF-Token": csrf } })
+      .then(function (r) { return r.json().then(function (j) { return [r.ok, j]; }); })
+      .then(function (x) { if (x[0]) location.reload(); else promToast(x[1].error || "Couldn't save it.", true); });
+  });
   var add = document.getElementById("add-chat");
   if (add) add.addEventListener("submit", function (e) {
     e.preventDefault();

@@ -11,10 +11,16 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import re
 import time
+import uuid
 import zipfile
 from pathlib import Path
+
+from filelock import FileLock, Timeout
+
+from prometheus.actions.atomic_fs import safe_replace_with_backoff
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS projects (id INTEGER PRIMARY KEY, name TEXT NOT NULL, folder TEXT NOT NULL,
@@ -199,6 +205,101 @@ def delete_note(store, project_id: int, note_id: int) -> bool:
         cur = store._db.execute("DELETE FROM project_notes WHERE id = ? AND project_id = ?", (note_id, project_id))
         store._db.commit()
     return cur.rowcount > 0
+
+
+# -- NOTES.md: a notes file in the project folder (M4.8) --------------------------------------------------------------
+NOTES_NAME = "NOTES.md"
+NOTES_SECTIONS = ("What it is", "Decisions", "Changes")
+
+
+def _notes_template() -> str:
+    return "# Notes\n\n" + "".join(f"## {name}\n\n" for name in NOTES_SECTIONS)
+
+
+def _notes_path(project: dict) -> Path:
+    folder = Path(project["folder"])
+    if not folder.is_dir():
+        raise ProjectError("The project folder isn't there any more.")
+    path = folder / NOTES_NAME
+    if path.is_symlink():
+        raise ProjectError(f"{NOTES_NAME} is a link to somewhere else, so Prometheus won't write to it.")
+    return path
+
+
+def _notes_ok(text: str) -> bool:
+    return all(re.search(rf"^## {re.escape(name)}[ \t]*$", text, re.M) for name in NOTES_SECTIONS)
+
+
+def notes_file(project: dict) -> dict:
+    """What the project page shows: the file's text (never changed by reading) and whether a damaged copy was kept."""
+    folder = Path(project["folder"])
+    path = folder / NOTES_NAME
+    text = ""
+    try:
+        if path.is_file() and not path.is_symlink():
+            text = path.read_bytes().decode("utf-8", errors="replace")[:200_000]
+    except OSError:
+        pass
+    return {"text": text, "broken": any(folder.glob("NOTES.broken*.md")) if folder.is_dir() else False}
+
+
+def _insert_entry(text: str, section: str, entry: str) -> str:
+    parts = re.split(r"(?m)^(?=## )", text.replace("\r\n", "\n"))
+    for i, part in enumerate(parts):
+        if re.match(rf"## {re.escape(section)}[ \t]*(\n|$)", part):
+            parts[i] = part.rstrip("\n") + "\n" + entry + "\n\n"
+            break
+    return "".join(parts)
+
+
+def add_note_entry(store, project_id: int, section: str, text: str) -> None:
+    """Add one dated line to a section of the project's NOTES.md. Safe when two things write at once (a lock), and a
+    crash halfway leaves the old file as it was (write a new file, then swap it in). A missing or damaged file is made
+    again with a line saying so; a damaged one is first kept as NOTES.broken.md."""
+    if section not in NOTES_SECTIONS:
+        raise ProjectError("Pick one of: " + ", ".join(NOTES_SECTIONS) + ".")
+    line = " ".join((text or "").split())[:MAX_NOTE]
+    if not line:
+        raise ProjectError("The note is empty.")
+    p = get(store, project_id)
+    if p is None:
+        raise ProjectError("No such project.")
+    path = _notes_path(p)
+    today = time.strftime("%Y-%m-%d")
+    try:
+        with FileLock(str(path.parent / f".{NOTES_NAME}.lock"), timeout=3.0, preserve_lock_file=True):
+            path = _notes_path(p)                                    # looked at again now that nobody else is writing
+            current, rebuilt = "", ""
+            if not path.exists():
+                rebuilt = "This file was missing, so Prometheus rebuilt it."
+            else:
+                raw = path.read_bytes()
+                try:
+                    current = raw.decode("utf-8")
+                    if not _notes_ok(current):
+                        raise ValueError
+                except ValueError:
+                    n, keep = 1, path.parent / "NOTES.broken.md"
+                    while keep.exists():
+                        n, keep = n + 1, path.parent / f"NOTES.broken ({n}).md"
+                    keep.write_bytes(raw)
+                    current, rebuilt = "", f"This file was damaged, so Prometheus rebuilt it. The old one is kept as {keep.name}."
+            if not current:
+                current = _notes_template()
+            if rebuilt:
+                current = _insert_entry(current, "Changes", f"- {today}: {rebuilt}")
+            new = _insert_entry(current, section, f"- {today}: {line}")
+            tmp = path.parent / f".{NOTES_NAME}.{uuid.uuid4().hex}.tmp"
+            try:
+                with open(tmp, "w", encoding="utf-8", newline="\n") as f:
+                    f.write(new)
+                    f.flush()
+                    os.fsync(f.fileno())
+                safe_replace_with_backoff(tmp, path)
+            finally:
+                tmp.unlink(missing_ok=True)                           # nothing half-written is left behind
+    except Timeout:
+        raise ProjectError("The notes file is busy. Try again in a moment.")
 
 
 def tasks(store, project_id: int, limit: int = 200) -> list[dict]:
