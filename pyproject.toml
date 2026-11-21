@@ -33,6 +33,15 @@ dependencies = [
     "youtube-transcript-api>=1.0",
     "filelock>=3.12",
     "psutil>=6.0",
+    # Static code maps: MIT runtime and language grammars, with Windows x64 wheels.
+    "tree-sitter==0.26.1",
+    "tree-sitter-python==0.25.0",
+    "tree-sitter-javascript==0.25.0",
+    "tree-sitter-typescript==0.23.2",
+    "tree-sitter-go==0.25.0",
+    "tree-sitter-rust==0.24.2",
+    "tree-sitter-c-sharp==0.24.0",
+    "tree-sitter-java==0.23.5",
 ]
 
 [project.optional-dependencies]

@@ -570,6 +570,33 @@ def apply_hunks_to_lines(original_lines: list[str], hunks: list[_DiffHunk], newl
     return result
 
 
+def find_symbol(folder: Path, name: str) -> list[dict]:
+    """Return relative source locations recorded in this repository's code map."""
+    path = Path(folder) / "codemap.json"
+    if path.is_symlink() or not path.is_file():
+        return []
+    try:
+        with path.open(encoding="utf-8") as stream:
+            mapping = json.load(stream)
+    except (OSError, ValueError, RecursionError):
+        return []
+    if not isinstance(mapping, dict) or not isinstance(mapping.get("symbols"), dict):
+        return []
+    locations = mapping["symbols"].get(name)
+    if not isinstance(locations, list):
+        return []
+    found = []
+    for location in locations:
+        if not isinstance(location, str):
+            continue
+        source, _, line = location.rpartition(":")
+        if not source or source.startswith("/") or "\\" in source or ":" in source or ".." in source.split("/"):
+            continue
+        if line.isascii() and line.isdecimal() and len(line) <= 10 and int(line) > 0:
+            found.append({"path": source, "line": int(line)})
+    return found
+
+
 class AtomicFiles:
     """Production atomic, verified filesystem primitives for Prometheus 3.0."""
 

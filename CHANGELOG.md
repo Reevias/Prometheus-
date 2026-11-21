@@ -1,6 +1,7 @@
 # Changelog
 
 ## Prometheus 3.0, M4 (on the prometheus-v3 branch, not released yet)
+- Prometheus can find functions and classes by name and show how your repositories are related without running their code.
 - **Candidates tab (M4.3):** Abilities has a third tab, Candidates. Each repo waiting there shows what it is, its licence (with a plain-words note), whether it looks safe, the suggested skill, and Accept, Reject and "Show the scripts" (read-only). A rejected repo is never suggested again, and "add repo 3" in Repos of the day now sends the repo there instead of straight into Skills.
 - **Read a repo safely (M4.1):** Prometheus downloads one pinned commit of a GitHub repo as a zip (no git, so nothing runs), refuses anything over 200 MB or 20 000 files or with unsafe file names, checks it for malware (dangerous ones are deleted) and writes a profile: licence, languages, size, main files, dependencies and the README (kept as untrusted text).
 - **A notes file per project:** each project folder gets a `NOTES.md` (What it is, Decisions, Changes, every line dated). The project's Notes tab shows it as plain text and has an "Add a decision" box; two writers at once never lose a line, and a damaged file is kept as `NOTES.broken.md` before it is rebuilt.
