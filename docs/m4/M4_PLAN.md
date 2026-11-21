@@ -1,4 +1,9 @@
-# M4: Repositories become skills (plan, 20 Nov 2026)
+# Prometheus 3.0 — M4 build plan (repositories become skills)
+
+Status: planned, owner's answers taken (20 Nov 2026). Starts after the owner's laptop check of M3 is accepted.
+Sources: `docs/PLAN.md` (M4.1–M4.7), the owner's answers below, and what already exists in the code. Built on the
+branch `prometheus-m4`, merged into `main` once it passes its tests, GitHub's Windows run, an audit and the laptop
+check (the same as M1–M3).
 
 ## What M4 is, in plain words
 You point Prometheus at a GitHub repository (one you paste, one from Repo of the Day, or one of your own). Prometheus
@@ -61,10 +66,35 @@ M4.2 and M4.3 only need M4.1's profile format; M4.5 and M4.6 need M4.4's manifes
 - **Codex**: a self-contained library job with clear inputs and outputs (Tree-sitter code maps), easy to test in
   isolation and unlikely to collide with the others' files.
 
+## Estimated time
+Each step is one working session of an AI agent (Opus, Sonnet or Codex), plus its test run and GitHub's Windows run.
+
+| Part | Steps | Estimate |
+|---|---|---|
+| Start | your M3 laptop check accepted; branch `prometheus-m4` made | depends on you (the check takes about 15 minutes) |
+| 1 | M4.1 read a repo safely (Opus) | about half a day |
+| 2 | M4.2 code maps (Codex) and M4.3 Candidates tab (Sonnet), side by side | about half a day |
+| 3 | review of 4.1–4.3 (Opus) and fixes | 2–3 hours |
+| 4 | M4.4 skill builder (Opus) | about half a day |
+| 5 | M4.5 skills library on GitHub (Opus) and M4.6 sandbox trial run (Sonnet), side by side | about a day |
+| 6 | M4.7 repo knowledge (Sonnet) and M4.8 project notes (Sonnet) | about half a day |
+| 7 | final audit, fixes, M4 report, GitHub's Windows run | about a day |
+| 8 | your laptop check of M4, then the merge into `main` | about an hour of your time |
+
+**Total: about 4–5 working days of agent work after the start**, so with one or two steps a day M4 can be merged
+into `main` **about one week after it starts** (for example, started on Monday 23 Nov → merged around 30 Nov 2026).
+It takes longer if a review finds something serious, or if you have to answer questions mid-way, so answer them soon.
+
 ## Exit gate
 Skills made from three real repos (one Python, one JavaScript, one of yours) validate, test-run in the sandbox and load
 from your GitHub library on demand; code-map and reader tests pass on Windows (GitHub) and here; the independent audit
 has no open important findings; the laptop check is done; the M4 report says honestly what was checked where.
+
+## Acceptance for each part
+- Tests written first, and the full suite green here and on GitHub's Windows run.
+- Nothing from a repository is ever run outside the sandbox; every script was shown to you and approved.
+- Plain words on every screen, a ? next to anything technical, phone width checked.
+- CHANGELOG, `docs/bugs.md`, `docs/missing.md` updated; an honest note of what was checked where.
 
 ## Risks we accept or watch
 - Tree-sitter wheels may lag behind Python 3.14 on Windows: the `ast` fallback covers Python; other languages then get
