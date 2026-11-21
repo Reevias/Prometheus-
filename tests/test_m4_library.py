@@ -234,8 +234,9 @@ def test_unused_for_31_days_is_removed(tmp_path):
 def _skill_folder(tmp_path) -> Path:
     folder = tmp_path / "skills" / "repo-owner-tool"
     (folder / "scripts").mkdir(parents=True)
-    (folder / "SKILL.md").write_text(SKILL_MD.replace("word-tools", "repo-owner-tool"), encoding="utf-8")
-    (folder / "scripts" / "count.py").write_text(SCRIPT, encoding="utf-8")
+    # exact bytes: write_text would turn \n into \r\n on Windows (GitHub's Windows run caught it)
+    (folder / "SKILL.md").write_bytes(SKILL_MD.replace("word-tools", "repo-owner-tool").encode("utf-8"))
+    (folder / "scripts" / "count.py").write_bytes(SCRIPT.encode("utf-8"))
     files = {"SKILL.md": h((folder / "SKILL.md").read_bytes()), "scripts/count.py": h(SCRIPT)}
     manifest = {"name": "repo-owner-tool", "version": "1.0.0", "description": "Count words",
                 "source": {"repo": "owner/tool", "commit": "b" * 40, "licence": "MIT"}, "permissions": ["none"],
