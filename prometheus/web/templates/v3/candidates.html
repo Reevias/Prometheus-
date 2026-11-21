@@ -21,8 +21,10 @@
         <p class="muted">Licence: <b>{{ c.licence }}</b> {{ help("A licence is the author's rule for what you may do with their code. Some let you do almost anything; some say that anything you share must stay open under the same licence; with no licence you may not copy the code at all.") }}<br>{{ c.licence_note }}</p>
         <p><span class="state {{ c.tone }}">{{ c.safety }}</span></p>
         <p class="muted">{% if c.suggestion %}Suggested skill: <b>{{ c.suggestion.name }}</b>{% if c.suggestion.description %}: {{ c.suggestion.description }}{% endif %}{% else %}No skill suggested yet.{% endif %}</p>
+        {% if c.suggestion and c.suggestion.needs_signoff and c.status == "new" %}<p class="muted">Its licence ({{ c.licence }}) is share-alike, so the suggested skill is a guide only. May Prometheus copy code from it? The skill's scripts must then stay under the same licence. {{ help("Share-alike (copyleft) licences let you use and change the code, but anything you share that is built from it must be shared under the same licence.") }}</p>{% endif %}
         <div class="dialog-bar" style="margin-top:10px;flex-wrap:wrap">
           {% if c.status == "new" and c.can_accept %}<button type="button" class="pill ok" data-api="/api/v3/candidates/{{ c.id }}/accept">Accept</button>{% elif c.status == "new" %}<span class="muted small">Can't be accepted {% if c.safety == "Removed: unsafe" %}(found unsafe){% else %}until it has been downloaded and checked{% endif %}.</span>{% endif %}
+          {% if c.suggestion and c.suggestion.needs_signoff and c.status == "new" and c.can_accept %}<button type="button" class="pill" data-api="/api/v3/candidates/{{ c.id }}/allow-copying" data-then="/v3/candidates">Allow copying</button>{% endif %}
           <button type="button" class="pill danger" data-api="/api/v3/candidates/{{ c.id }}/reject" data-then="/v3/candidates">Reject</button>
           <button type="button" class="pill" data-scripts="scripts-{{ c.id }}">Show the scripts</button>
         </div>

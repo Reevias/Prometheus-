@@ -105,6 +105,35 @@ def set_candidate_status(store, candidate_id: int, status: str) -> dict | None:
     return None
 
 
+SUGGESTION_EXTRA = ("kind", "reason", "licence_kind", "copied", "needs_signoff", "folder")
+
+
+def set_candidate_suggestion(store, candidate_id: int, name: str, description: str, **extra) -> dict | None:
+    """Put the skill builder's suggestion (M4.4) on a candidate: {"name", "description", ...}. None if it's gone."""
+    with _candidate_lock:
+        data = _candidate_data(store)
+        for c in data["items"]:
+            if c["id"] == candidate_id:
+                sug = {"name": str(name)[:60], "description": " ".join(str(description).split())[:300]}
+                sug.update({k: extra[k] for k in SUGGESTION_EXTRA if k in extra})
+                c["suggestion"] = sug
+                store.kv_set(CANDIDATE_KEY, data)
+                return dict(c)
+    return None
+
+
+def allow_candidate_copying(store, candidate_id: int) -> dict | None:
+    """The owner's sign-off on the Candidates card: code under a share-alike licence may be copied into the skill."""
+    with _candidate_lock:
+        data = _candidate_data(store)
+        for c in data["items"]:
+            if c["id"] == candidate_id:
+                c["copy_allowed"] = True
+                store.kv_set(CANDIDATE_KEY, data)
+                return dict(c)
+    return None
+
+
 def candidate_scripts(folder: str, quarantine: Path) -> list[dict]:
     """The scripts in a candidate's folder for the owner to read, as plain text ({rel, text, cut}). Only folders inside
     the quarantine, never links, bounded in number and size. Nothing is run."""
@@ -308,6 +337,13 @@ class RepoOfTheDay:
                     said.append(f"You rejected {r['full_name']} before, so I won't suggest it again.")
                     continue
                 said.append(f"Sent {r['full_name']} to Abilities → Candidates. Nothing is installed or run: you decide there.")
+                if not got.get("folder"):
+                    from prometheus.repos.skillmaker import APPROVAL_KIND
+
+                    self.services.approvals.request(
+                        APPROVAL_KIND, f"Download {got['repo']} from GitHub and check it for malware (nothing is run)",
+                        {"repo": got["repo"], "candidate_id": got["id"]})
+                    said[-1] += " Say yes on Approvals to download and check it first."
                 r["added"] = True
             except Exception as e:
                 said.append(f"Couldn't add {r['full_name']} ({type(e).__name__}).")

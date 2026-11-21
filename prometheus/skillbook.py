@@ -4,6 +4,7 @@ Built-in skills ship in prometheus/skills/. The user's own skills live in <data>
 """
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -11,6 +12,7 @@ from pathlib import Path
 NAME = re.compile(r"^[a-z][a-z0-9-]{0,40}$")
 REF = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,80}\.md$")
 MAX_CHARS = 20_000
+MAX_MANIFEST = 200_000      # bytes; manifest.json format: docs/m4/MANIFEST.md
 
 
 @dataclass
@@ -22,6 +24,7 @@ class Skill:
     source: str  # "builtin" or "user"
     meta: dict | None = None      # the other SKILL.md header lines (version, author, requires, permissions, category…)
     truncated: bool = False       # the guide was longer than MAX_CHARS and was cut
+    manifest: dict | None = None  # manifest.json next to SKILL.md (M4.4), if there is a valid one
 
     def references(self) -> list[str]:
         refs = self.folder / "references"
@@ -38,6 +41,21 @@ def _plain_file(path: Path, folder: Path) -> bool:
         return path.resolve().is_relative_to(folder.resolve())
     except OSError:
         return False
+
+
+def _manifest(folder: Path) -> dict | None:
+    """manifest.json as a dict, only if it is a plain file inside the folder, readable JSON, and names this skill.
+    Anything else is ignored: the skill then loads exactly as one without a manifest."""
+    path = folder / "manifest.json"
+    if not _plain_file(path, folder):
+        return None
+    try:
+        if path.stat().st_size > MAX_MANIFEST:
+            return None
+        data = json.loads(path.read_text(encoding="utf-8-sig"))
+    except (OSError, ValueError):
+        return None
+    return data if isinstance(data, dict) and data.get("name") == folder.name else None
 
 
 def _parse(folder: Path, source: str) -> Skill | None:
@@ -64,7 +82,8 @@ def _parse(folder: Path, source: str) -> Skill | None:
         return None
     body = body.lstrip("\n")
     extra = {k: v[:200] for k, v in meta.items() if k not in ("name", "description")}
-    return Skill(folder.name, meta["description"][:300], body[:MAX_CHARS], folder, source, extra, len(body) > MAX_CHARS)
+    return Skill(folder.name, meta["description"][:300], body[:MAX_CHARS], folder, source, extra, len(body) > MAX_CHARS,
+                 _manifest(folder))
 
 
 class SkillBook:

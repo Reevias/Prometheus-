@@ -558,7 +558,35 @@ def register_skill_pages(app: FastAPI, services, shell) -> None:
             why = ("it was found unsafe and removed" if prof is not None and prof.verdict == "danger"
                    else "it hasn't been downloaded and checked yet")
             return JSONResponse({"error": f"{c['repo']} can't be accepted: {why}."}, status_code=409)
-        return _set_candidate(candidate_id, "accepted")
+        return _accept_with_skill(c)
+
+    def _accept_with_skill(c: dict):
+        """Accept (M4.4): a drafted skill is moved into the owner's skills, switched off until its trial run."""
+        from prometheus.repos.skillmaker import install
+
+        try:
+            made = install(services, c)
+        except (LookupError, FileExistsError, OSError) as e:
+            return JSONResponse({"error": str(e)}, status_code=409)
+        got = _set_candidate(c["id"], "accepted")
+        if made and isinstance(got, dict):
+            got["message"] = f"Accepted ({c['repo']}). {made}"
+        return got
+
+    @app.post("/api/v3/candidates/{candidate_id}/allow-copying")
+    def api_candidate_allow_copying(candidate_id: int):
+        """The owner's sign-off for a share-alike (copyleft) licence: the skill is drafted again with scripts."""
+        from prometheus.repo_of_day import candidates
+        from prometheus.repos.skillmaker import allow_copying
+
+        c = next((c for c in candidates(store) if c["id"] == candidate_id), None)
+        sug = c.get("suggestion") if c else None
+        if c is None or not isinstance(sug, dict):
+            return JSONResponse({"error": "That candidate is gone."}, status_code=404)
+        if c["status"] != "new" or not sug.get("needs_signoff") or not can_accept(candidate_profile(c)):
+            return JSONResponse({"error": "There is nothing to allow for this one."}, status_code=409)
+        store.audit("user", "candidate_allow_copying", {"repo": c["repo"]})
+        return {"ok": True, "message": f"Copying allowed ({c['repo']}). {allow_copying(services, candidate_id)}"}
 
     @app.post("/api/v3/candidates/{candidate_id}/reject")
     def api_candidate_reject(candidate_id: int):

@@ -1,6 +1,7 @@
 # Changelog
 
 ## Prometheus 3.0, M4 (on the prometheus-v3 branch, not released yet)
+- **Skill builder (M4.4):** "add repo 3" now asks before downloading; after your yes the repo is checked and Prometheus suggests a skill on its Candidates card: the skill you already have, or a new one with a plain guide and at most three small sandbox scripts (only from code whose licence allows it, with credit to the authors; share-alike licences wait for your "Allow copying"; no licence means a guide only). Accept saves it switched off. Each skill has a manifest.json (docs/m4/MANIFEST.md).
 - **Review of M4.1–M4.3 and M4.8:** a repo found unsafe, or not yet downloaded and checked, can't be accepted; a file that can't be saved on this computer is skipped instead of stopping the download; folders count towards the file limit; a repo can't plant its own code map or profile; the Candidates line names only programming languages.
 - Prometheus can find functions and classes by name and show how your repositories are related without running their code.
 - **Candidates tab (M4.3):** Abilities has a third tab, Candidates. Each repo waiting there shows what it is, its licence (with a plain-words note), whether it looks safe, the suggested skill, and Accept, Reject and "Show the scripts" (read-only). A rejected repo is never suggested again, and "add repo 3" in Repos of the day now sends the repo there instead of straight into Skills.
