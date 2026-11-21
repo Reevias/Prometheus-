@@ -1,5 +1,8 @@
 # Changelog
 
+## Prometheus 3.0, M4 (on the prometheus-v3 branch, not released yet)
+- **Read a repo safely (M4.1):** Prometheus downloads one pinned commit of a GitHub repo as a zip (no git, so nothing runs), refuses anything over 200 MB or 20 000 files or with unsafe file names, checks it for malware (dangerous ones are deleted) and writes a profile: licence, languages, size, main files, dependencies and the README (kept as untrusted text).
+
 ## Prometheus 3.0, M3 (on the prometheus-v3 branch, not released yet)
 - **Fewer pages:** the sidebar shows Home, Tasks, Abilities and Study & Money (Ctrl+1…4). Tasks has tabs for Waiting
   for you (approvals) and Scheduled (automations); Abilities has Agents and Skills; Study & Money has Study and Money.
