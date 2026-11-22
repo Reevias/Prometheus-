@@ -13,7 +13,7 @@ The owner can make their own agents and see everything running on one screen.
 
 | # | Step | What "done" means | Tests that must fail first |
 |---|---|---|---|
-| 5.1 | **Job tracker** [F4] | One SQLite table of jobs: pending, running, paused, done, failed, cancelled. Every background task goes through it (the 29 files with raw `threading.Thread` / `asyncio.create_task` are moved over or listed as allowed). After a restart, "running" jobs become "paused" with a Resume button; nothing runs again by itself (owner, 22 Nov). `resume.py`'s queue becomes a user of the tracker. Stop all pauses every job. | Kill the process mid-job → on restart the job is paused, not lost. A lint test fails if a new untracked thread appears. |
+| 5.1 | **Job tracker** [F4] | One SQLite table of jobs: pending, running, paused, done, failed, cancelled. Every background task goes through it (the 30 files with raw `threading.Thread` / `asyncio.create_task` are moved over or listed as allowed). After a restart, "running" jobs become "paused" with a Resume button; nothing runs again by itself (owner, 22 Nov). `resume.py`'s queue becomes a user of the tracker. Stop all pauses every job. | Kill the process mid-job → on restart the job is paused, not lost. A lint test fails if a new untracked thread appears. |
 | 5.2 | **Task graph (DAG)** | Steps with dependencies, run side by side or one after another; retries with waits; cancelling a parent cancels its children; a failed step stops the steps that need it. Cycles are refused. Saved in the tracker, so a graph survives a restart. | Cycle refused; cancel spreads; retry count kept after restart; failed parent → children "cancelled". |
 | 5.3 | **Child agents at once** | A limit sized for 8 GB: default 2 at once (3 if free RAM > 3 GB, read with psutil, never faked). On Windows each child that runs a program goes in a Job Object with a memory cap. Start, status, clean-up; no orphans left after Stop all. | Start 5 jobs → only 2 run; RAM guard stops a 3rd when memory is low; Stop all leaves no child processes (checked on Windows CI). |
 | 5.5 | **Multi-agent view** | Replaces M2's "running now" list: each job, its graph, live status, Stop / Pause / Resume buttons, real times only. Uses the existing Jinja2/HTMX/Canvas look and colours. Built before 5.4 so the owner can see agents. | Browser tests: buttons work, a cancelled job shows cancelled; no dead buttons. |
@@ -120,7 +120,7 @@ glue.** Opus never reviews its own code; whoever built a step doesn't audit it.
 | 5.1 job table, states, restart recovery | **Codex** | Clear spec, mostly code + tests. |
 | 5.2 DAG engine (cancel spread, retries, recovery) | **Opus** builds, **Codex** writes extra edge-case tests | The hardest logic in M5. |
 | 5.3 concurrency limit, RAM guard, Windows Job Objects | **Opus** | Windows process handling + safety. |
-| Moving the 29 untracked threads onto the tracker | **Codex** | Repetitive and mechanical, with tests. |
+| Moving the 30 untracked threads onto the tracker | **Codex** | Repetitive and mechanical, with tests. |
 | 5.5 multi-agent view (HTML/HTMX/Canvas, browser tests) | **Sonnet** | UI work in the existing style. |
 | 5.4 own agents (forms, storage, Features switch) | **Sonnet** | Mostly UI + plain storage. Opus checks the tool-permission part. |
 | 5.6 conversation branching | **Codex** | Small, self-contained. |
