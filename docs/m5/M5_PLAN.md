@@ -1,7 +1,7 @@
-# M5 plan: Many agents (draft, 22 Nov 2026)
+# M5 plan: Many agents (22 Nov 2026)
 
-Status: **plan agreed 22 Nov 2026** (owner's answers below). M5 starts only after M3 is accepted and M4 is built,
-audited and accepted (PLAN.md rule 3). Nothing here adds scope: it is the 6 steps of M5 in `docs/PLAN.md`
+Status: **plan agreed 22 Nov 2026** (owner's answers below). M3 and M4 are merged into main; M5 starts after M4's
+separate checker and the owner's laptop check (PLAN.md rule 3). Nothing here adds scope: it is the 6 steps of M5 in `docs/PLAN.md`
 plus the browser tool moved from M3. Work happens on `prometheus-v3`.
 
 ## What M5 gives the owner
@@ -25,6 +25,89 @@ The owner can make their own agents and see everything running on one screen.
 **Exit gate** (from PLAN.md): parallel, cancel and restart tests pass; memory stays inside the laptop's limit;
 GitHub Windows CI green (not the owner's laptop: the laptop run is separate and marked NOT VERIFIED until done);
 audit passed; open-source check for any new dependency (none planned: SQLite, asyncio and psutil are already in).
+
+## Work for each step
+
+Each list is the whole job for that step. The builder does the items in order, a failing test first each time.
+Files named are where the work starts; the builder may add files next to them.
+
+### 5.1 Job tracker (builder: Codex · spec + review: Opus)
+1. New `prometheus/jobs/` package: `store.py` (SQLite table `jobs`: id, kind, title, state, parent_id, created,
+   started, finished, progress text, error, retries, payload JSON) using the existing database and M1's atomic writes.
+2. `states.py`: the allowed moves only (pending→running→done/failed/cancelled/paused; paused→pending on Resume).
+   Any other move raises an error.
+3. `runner.py`: `start_job(kind, func, ...)` runs work in a tracked thread or asyncio task and records every change.
+   Progress is only what the job really reports.
+4. On start-up: every job left "running" becomes "paused" with the reason "Prometheus restarted". Nothing restarts
+   by itself.
+5. Stop all (`safety/killswitch.py`) pauses every job; Resume all only lifts the stop, jobs stay paused until resumed.
+6. Move `resume.py`'s retry queue onto the tracker (same waits as now).
+7. Move the 30 files that start raw `threading.Thread` / `asyncio.create_task` onto `start_job`. Ones that must stay
+   (the web server, the hotkey listener and similar) go in a short allow-list with the reason written next to each.
+8. Lint test: a new raw thread or task outside the allow-list fails the suite.
+
+### 5.2 Task graph (builder: Opus · extra edge-case tests: Codex)
+1. `prometheus/jobs/graph.py`: a graph is a parent job; its steps are child jobs with a "needs" list.
+2. Checks when a graph is made: no loops, no missing steps, at most 50 steps.
+3. Runs every step whose needs are done; independent steps run side by side (within 5.3's limit).
+4. Retries per step (default 2, waits of 10 s then 60 s); the retry count is saved, so a restart doesn't reset it.
+5. A failed step marks the steps that need it "cancelled (needed step failed)"; other branches carry on.
+6. Cancelling the graph cancels every step not yet finished; pausing it pauses them.
+7. After a restart the graph is paused as a whole; Resume carries on from the finished steps.
+8. The M3 orchestrator can hand a multi-part plan to the graph instead of running it all in one loop.
+
+### 5.3 Child agents at once (builder: Opus)
+1. `prometheus/jobs/limits.py`: at most 2 child agents at once, 3 when psutil shows more than 3 GB of free RAM.
+   Extra jobs wait as "pending (waiting for a free slot)".
+2. Checks RAM again before each start; under 1 GB free, nothing new starts and the reason is shown.
+3. Any program a child starts on Windows goes in a Job Object with a memory cap and "kill on close" (reusing M1's
+   terminal Job Object code); on Linux, its own process group.
+4. Clean-up: when a job ends, is cancelled or Stop all is pressed, all its processes are ended; a check at start-up
+   ends any left over from a crash.
+5. Status of each child: state, how long it has run, its real memory use.
+6. Windows CI test: Stop all leaves no child processes behind.
+
+### 5.5 Multi-agent view (builder: Sonnet · review: Opus)
+1. Replace the "running now" list in `web/templates/v3/agents.html` with the full view.
+2. Each job: title, agent, state, real start time and run time, progress text, memory use.
+3. A graph shown as a small step diagram on the Canvas (done, running, waiting, failed, cancelled in the M2 colours).
+4. Stop, Pause and Resume buttons on jobs and graphs, wired to real routes; a button only appears when the move is
+   allowed (no dead buttons).
+5. Updates through HTMX every few seconds; nothing shown that wasn't read from the tracker.
+6. Works on the phone layout too.
+7. Browser tests for every button and for a cancelled and a failed job.
+
+### 5.4 Your own agents (builder: Sonnet · tool-permission check: Opus)
+1. Storage for own agents: name, short description, instructions, ticked tools, model card (from M3.4's table).
+2. Create, edit and remove from the Agents page; one switch "Own agents" in the Features list.
+3. A new agent has no tools until ticked; tools that need approval still ask every time.
+4. The check is in code: the orchestrator refuses any tool call the agent hasn't been given.
+5. Own agents can be picked with `@name`, like built-in ones, and can run as child agents (5.3).
+6. Removing an agent cancels its running jobs first (asks before doing it).
+7. Names can't copy a built-in agent's name.
+
+### 5.6 Conversation branching (builder: Codex · review: Opus)
+1. "Branch from here" on any message in a chat.
+2. Makes a new chat with the history up to that message (in `memory/store.py`); the original is not changed.
+3. The new chat shows where it came from, with a link back.
+4. Branching a branch works; deleting the original keeps the branch.
+5. Tests for each of the above.
+
+### 5.7 Accessibility-tree browser tool (builder: Sonnet · untrusted-text review: Opus)
+1. In `agents/browser_agent.py`: a snapshot tool returning the page's accessibility tree (role, name, state) with
+   short element ids, built on Playwright's own snapshot.
+2. Click, type and select by those ids, checking the element still exists first.
+3. All page text goes back to the model wrapped as untrusted (`has_untrusted`); a page saying "ignore your rules"
+   stays data.
+4. A size limit on snapshots, so a huge page doesn't fill the model's memory.
+5. Listed in the tool list with where it runs (laptop).
+
+### 5.8 Audit and report (Opus, a fresh session · writing: Sonnet)
+1. Independent review of all M5 changes: bugs, security, Windows behaviour, the 8 GB limit.
+2. Each finding fixed with a failing test first.
+3. Exit gate checks run and written down with real numbers.
+4. `docs/reports/M5_REPORT.md`, CHANGELOG, `docs/missing.md`, `docs/bugs.md` updated; laptop check listed as NOT
+   VERIFIED until the owner runs it.
 
 ## Who does what
 
@@ -58,4 +141,4 @@ Two builders never edit the same file at once; always `git pull` before starting
 ## Owner's answers (22 Nov 2026)
 - Jobs at once: 2, or 3 when more than 3 GB of RAM is free.
 - After a restart or crash: running jobs wait as "paused"; the owner presses Resume.
-- Codex is set up: its tasks are written as ready-to-paste prompts when each step starts.
+- Codex is set up. No ready-made prompts: each builder works from the step's work list below.
