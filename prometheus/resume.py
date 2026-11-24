@@ -75,10 +75,24 @@ def _save(store, queue: list[dict]) -> None:
         store.kv_set(KV, queue)
 
 
+def _finish_jobs(store, item_id: str, final: str, why: str = "") -> None:
+    """Close the tracker record of one waiting request (M5 review R3); never stops the queue itself."""
+    job_store = _get_job_store(store)
+    if job_store is None:
+        return
+    for j in job_store.list_jobs(kind="resume"):
+        if j.payload.get("id") == item_id:
+            try:
+                job_store.finish(j.id, final, error=why or None)
+            except Exception:
+                log.exception("Couldn't close the tracker record of a waiting request")
+
+
 def _without(store, item_id: str) -> None:
     """Remove one waiting request by its id (never another request with the same text)."""
     with _LOCK:
         _save(store, [q for q in _queue(store) if q.get("id") != item_id])
+        _finish_jobs(store, item_id, DONE)
 
 
 def note_limit(store, chat_id: int, text: str, error: str, now: float | None = None) -> str:
@@ -114,11 +128,7 @@ def note_limit(store, chat_id: int, text: str, error: str, now: float | None = N
         if item["tries"] >= len(WAITS):
             queue.remove(item)
             _save(store, queue)
-            if existing_jobs and job_store is not None:
-                try:
-                    job_store.set_state(existing_jobs[0].id, FAILED, error="Exceeded maximum retries (tried for a day)")
-                except Exception:
-                    pass
+            _finish_jobs(store, item["id"], FAILED, "Exceeded maximum retries (tried for a day)")
             return ("I've tried for a day and the AIs are still not answering, so I've stopped. "
                     "Ask me again when you like.")
         wait = WAITS[item["tries"]]
@@ -235,6 +245,7 @@ class Resumer:
                     if q["tries"] >= len(WAITS):      # the same limit as note_limit
                         queue.remove(q)
                         gave_up = True
+                        _finish_jobs(s.store, item["id"], FAILED, why[:200])
                     else:
                         q["due"] = self.clock() + WAITS[min(q["tries"], len(WAITS)) - 1] * 60
                     _save(s.store, queue)
@@ -302,7 +313,7 @@ class Resumer:
     def start(self) -> None:
         from prometheus.jobs.runner import start_job
 
-        start_job("resumer", "Resumer loop", self.loop, name="prometheus-resumer")
+        start_job("resumer", "Resumer loop", self.loop, name="prometheus-resumer", service=True)
 
     def stop(self) -> None:
         self._stop.set()

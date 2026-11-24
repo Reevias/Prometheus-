@@ -175,7 +175,7 @@ class Focus:
     def start_clock(self) -> None:
         from prometheus.jobs.runner import start_job
 
-        start_job("focus", "Focus clock loop", self.loop, name="prometheus-focus")
+        start_job("focus", "Focus clock loop", self.loop, name="prometheus-focus", service=True)
 
     def stop_clock(self) -> None:
         self._stop.set()

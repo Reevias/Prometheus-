@@ -135,7 +135,7 @@ class PhoneWaiter:
     def start(self) -> None:
         from prometheus.jobs.runner import start_job
 
-        start_job("phone_wait", "Phone waiter loop", self.loop, name="prometheus-phone-waiter")
+        start_job("phone_wait", "Phone waiter loop", self.loop, name="prometheus-phone-waiter", service=True)
 
     def stop(self) -> None:
         self._stop.set()

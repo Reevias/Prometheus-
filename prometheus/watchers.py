@@ -251,7 +251,7 @@ class Watchers:
     def start(self) -> None:
         from prometheus.jobs.runner import start_job
 
-        start_job("watchers", "Watchers clock loop", self.loop, name="prometheus-watchers")
+        start_job("watchers", "Watchers clock loop", self.loop, name="prometheus-watchers", service=True)
 
     def stop(self) -> None:
         self._stop.set()

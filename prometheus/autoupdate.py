@@ -147,7 +147,7 @@ class AutoUpdater:
     def start(self, background: bool = False) -> None:
         from prometheus.jobs.runner import start_job
 
-        start_job("autoupdate", "AutoUpdater loop", self.loop, args=(background,), name="prometheus-update")
+        start_job("autoupdate", "AutoUpdater loop", self.loop, args=(background,), name="prometheus-update", service=True)
 
     def stop(self) -> None:
         self._stop.set()

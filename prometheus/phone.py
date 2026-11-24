@@ -240,7 +240,7 @@ class LaptopJobs:
     def start(self) -> None:
         from prometheus.jobs.runner import start_job
 
-        start_job("phone_jobs", "Phone laptop jobs loop", self.loop, name="prometheus-laptop-jobs")
+        start_job("phone_jobs", "Phone laptop jobs loop", self.loop, name="prometheus-laptop-jobs", service=True)
 
     def stop(self) -> None:
         self._stop.set()

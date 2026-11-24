@@ -230,9 +230,29 @@ class JobStore:
                 progress=progress,
             )
 
-    def recover_after_restart(self) -> int:
-        """On startup: mark any jobs left in 'running' as 'paused' with restart reason."""
+    def finish(self, job_id: int, final: str, error: str | None = None) -> Job | None:
+        """End a job, also one that waits as paused or pending, through the allowed moves only
+        (paused -> pending -> running -> done/failed). Already finished jobs are left as they are."""
         with self._lock:
+            job = self.get_job(job_id)
+            if job is None or job.state in TERMINAL_STATES:
+                return job
+            if final != CANCELLED:
+                if job.state == PAUSED:
+                    self.set_state(job_id, PENDING)
+                if self.get_job(job_id).state == PENDING:
+                    self.set_state(job_id, RUNNING)
+            return self.set_state(job_id, final, error=error)
+
+    def recover_after_restart(self) -> int:
+        """On startup: jobs left 'running' become 'paused' (the owner presses Resume). Service loops (payload
+        "service") are started again by Prometheus itself, so their old record is closed as cancelled."""
+        now = time.time()
+        with self._lock:
+            self._db.execute(
+                "UPDATE jobs SET state = 'cancelled', finished = ?, "
+                "error = 'Ended when Prometheus closed (it starts again by itself)' "
+                "WHERE state = 'running' AND json_extract(payload, '$.service') = 1", (now,))
             cur = self._db.execute(
                 "UPDATE jobs SET state = 'paused', error = 'Prometheus restarted' WHERE state = 'running'"
             )
@@ -240,10 +260,12 @@ class JobStore:
             return cur.rowcount
 
     def pause_all(self, reason: str = "Stopped all jobs") -> int:
-        """Pause all running jobs when killswitch is triggered."""
+        """Pause all running jobs when killswitch is triggered. Service loops keep running (they check the kill
+        switch themselves), so they are never shown as paused."""
         with self._lock:
             cur = self._db.execute(
-                "UPDATE jobs SET state = 'paused', error = ? WHERE state = 'running'",
+                "UPDATE jobs SET state = 'paused', error = ? WHERE state = 'running' "
+                "AND COALESCE(json_extract(payload, '$.service'), 0) != 1",
                 (reason,),
             )
             self._db.commit()

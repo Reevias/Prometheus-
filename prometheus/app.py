@@ -268,6 +268,13 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
     home = Path(home or Path.home())
     store = Store(data / "memory.db")
     store.mark_interrupted()
+    from prometheus.jobs.runner import JobRunner, set_default_runner
+    from prometheus.jobs.store import JobStore
+
+    job_store = JobStore(store)
+    job_store.recover_after_restart()       # before anything of this run starts a job (M5 review R1)
+    job_runner = JobRunner(job_store)
+    set_default_runner(job_runner)
     if providers is None and settings.embed_model:
         try:
             from prometheus.models.ollama import OllamaEmbedder
@@ -403,14 +410,7 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
     services.atomic_files = AtomicFiles(policy=policy, backup_dir=data / "backups")
     services.terminal = AsyncTerminal(policy=policy)
     services.archive = archive
-    from prometheus.jobs.store import JobStore
-    from prometheus.jobs.runner import JobRunner, set_default_runner
-
-    job_store = JobStore(store)
-    job_store.recover_after_restart()
     killswitch.on_stop(lambda reason: job_store.pause_all(f"Stopped by user: {reason}" if reason else "Stopped by user"))
-    job_runner = JobRunner(job_store)
-    set_default_runner(job_runner)
     services.jobs = job_store
     services.job_runner = job_runner
 

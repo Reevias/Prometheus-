@@ -457,7 +457,7 @@ class BriefingClock:
     def start(self) -> None:
         from prometheus.jobs.runner import start_job
 
-        start_job("briefing", "Briefing loop", self.loop, name="prometheus-briefing")
+        start_job("briefing", "Briefing loop", self.loop, name="prometheus-briefing", service=True)
 
     def stop(self) -> None:
         self._stop.set()

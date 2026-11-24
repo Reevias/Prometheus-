@@ -6,6 +6,8 @@ import contextvars
 import inspect
 import logging
 import threading
+import weakref
+from collections import deque
 from typing import Any, Callable
 
 from prometheus.jobs.states import CANCELLED, DONE, FAILED, PAUSED, PENDING, RUNNING
@@ -36,7 +38,8 @@ class JobRunner:
     def __init__(self, store: JobStore | None = None):
         self.store = store if store is not None else JobStore()
         self._threads: dict[int, threading.Thread] = {}
-        self._all_threads: dict[int, threading.Thread] = {}
+        self._all_threads: weakref.WeakValueDictionary[int, threading.Thread] = weakref.WeakValueDictionary()
+        self._recent: deque[threading.Thread] = deque(maxlen=64)   # callers fetch a fast job's thread just after start
         self._tasks: dict[int, asyncio.Task] = {}
         self._lock = threading.RLock()
 
@@ -51,9 +54,12 @@ class JobRunner:
     def start_job(self, kind: str, title: str, func: Callable,
                   args: tuple = (), kwargs: dict | None = None,
                   parent_id: int | None = None, payload: dict | None = None,
-                  name: str | None = None) -> Job:
-        """Create a job record and launch it in a tracked thread or asyncio task."""
+                  name: str | None = None, service: bool = False) -> Job:
+        """Create a job record and launch it in a tracked thread or asyncio task. `service` marks a loop that
+        Prometheus itself starts at every launch (reminders, sync, ...): Stop all and restarts don't pause it."""
         kwargs = kwargs or {}
+        if service:
+            payload = {**(payload or {}), "service": True}
         job = self.store.create_job(kind=kind, title=title, parent_id=parent_id, payload=payload, state=PENDING)
         job_id = job.id
 
@@ -94,6 +100,7 @@ class JobRunner:
         with self._lock:
             self._threads[job_id] = thread
             self._all_threads[job_id] = thread
+            self._recent.append(thread)
         thread.start()
 
     def _start_async_job(self, job_id: int, func: Callable, args: tuple, kwargs: dict) -> None:
@@ -129,6 +136,7 @@ class JobRunner:
             finally:
                 with self._lock:
                     self._tasks.pop(job_id, None)
+                    self._threads.pop(job_id, None)     # when it ran in its own thread (no loop was running)
 
         try:
             loop = asyncio.get_running_loop()
@@ -143,6 +151,7 @@ class JobRunner:
             with self._lock:
                 self._threads[job_id] = thread
                 self._all_threads[job_id] = thread
+                self._recent.append(thread)
             thread.start()
 
     def cancel_job(self, job_id: int, reason: str = "Cancelled by user") -> bool:
@@ -203,7 +212,7 @@ def set_default_runner(runner: JobRunner | None) -> None:
 def start_job(kind: str, title: str, func: Callable,
               args: tuple = (), kwargs: dict | None = None,
               parent_id: int | None = None, payload: dict | None = None,
-              name: str | None = None, store: JobStore | None = None) -> Job:
+              name: str | None = None, store: JobStore | None = None, service: bool = False) -> Job:
     """Convenience function to start a job using the default or provided store."""
     if store is not None:
         runner = JobRunner(store)
@@ -211,4 +220,4 @@ def start_job(kind: str, title: str, func: Callable,
         runner = get_default_runner()
     return runner.start_job(kind=kind, title=title, func=func, args=args,
                             kwargs=kwargs, parent_id=parent_id,
-                            payload=payload, name=name)
+                            payload=payload, name=name, service=service)

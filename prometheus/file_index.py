@@ -183,7 +183,7 @@ class FileIndex:
     def start(self) -> None:
         from prometheus.jobs.runner import start_job
 
-        start_job("file_index", "File indexer loop", self.loop, name="prometheus-file-index")
+        start_job("file_index", "File indexer loop", self.loop, name="prometheus-file-index", service=True)
 
     def read_now(self) -> None:
         from prometheus.jobs.runner import start_job

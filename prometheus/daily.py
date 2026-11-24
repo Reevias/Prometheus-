@@ -106,7 +106,7 @@ class DailyJobs:
     def start(self, background: bool = False) -> None:
         from prometheus.jobs.runner import start_job
 
-        start_job("daily", "Daily background jobs loop", self.loop, args=(background,), name="prometheus-daily")
+        start_job("daily", "Daily background jobs loop", self.loop, args=(background,), name="prometheus-daily", service=True)
 
     def stop(self) -> None:
         self._stop.set()

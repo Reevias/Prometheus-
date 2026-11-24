@@ -212,7 +212,7 @@ class ReminderClock:
     def start(self) -> None:
         from prometheus.jobs.runner import start_job
 
-        start_job("reminders", "Reminders loop", self.loop, name="prometheus-reminders")
+        start_job("reminders", "Reminders loop", self.loop, name="prometheus-reminders", service=True)
 
     def stop(self) -> None:
         self._stop.set()
