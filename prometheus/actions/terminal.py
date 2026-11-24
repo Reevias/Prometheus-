@@ -6,12 +6,14 @@ import codecs
 import os
 import signal
 import subprocess
+import threading
 import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
+from prometheus.jobs import limits as _limits
 from prometheus.safety.paths import PathBlocked, PathPolicy
 from prometheus.safety.secrets import PATTERNS, KEY_NAMES, get_secret, known_secret_values
 
@@ -146,8 +148,10 @@ class WinJobManager:
     processes are immediately and unconditionally terminated by the Windows kernel.
     """
 
-    def __init__(self):
+    def __init__(self, memory_limit: int | None = None):
         self.job_handle = None
+        self.memory_limit = memory_limit            # bytes all its processes may use together (M5 5.3), or None
+        self._close_lock = threading.Lock()
         if sys.platform == "win32":
             import ctypes
             from ctypes import wintypes
@@ -183,6 +187,10 @@ class WinJobManager:
                     ]
                 info = JOBOBJECT_EXTENDED_LIMIT_INFORMATION()
                 info.BasicLimitInformation.LimitFlags = 0x00002000  # JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+                if memory_limit:
+                    info.BasicLimitInformation.LimitFlags |= 0x00000200  # JOB_OBJECT_LIMIT_JOB_MEMORY
+                    info.JobMemoryLimit = int(memory_limit)
+                self._info_type = JOBOBJECT_EXTENDED_LIMIT_INFORMATION
                 JobObjectExtendedLimitInformation = 9
                 res = k32.SetInformationJobObject(
                     job,
@@ -215,11 +223,30 @@ class WinJobManager:
         finally:
             k32.CloseHandle(h_proc)
 
+    def limits_set(self) -> bool:
+        """Read the limits back from Windows: kill-on-close, and the memory cap when one was asked for."""
+        if not self.job_handle or sys.platform != "win32":
+            return False
+        import ctypes
+        from ctypes import wintypes
+        k32 = ctypes.windll.kernel32
+        k32.QueryInformationJobObject.argtypes = [wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p, wintypes.DWORD,
+                                                  ctypes.c_void_p]
+        info = self._info_type()
+        if not k32.QueryInformationJobObject(self.job_handle, 9, ctypes.byref(info), ctypes.sizeof(info), None):
+            return False
+        flags = info.BasicLimitInformation.LimitFlags
+        if not flags & 0x00002000:
+            return False
+        return not self.memory_limit or (bool(flags & 0x00000200) and info.JobMemoryLimit == self.memory_limit)
+
     def close(self):
-        """Close job object handle, triggering kernel cleanup of all descendant processes."""
-        if self.job_handle and sys.platform == "win32":
-            import ctypes
-            ctypes.windll.kernel32.CloseHandle(self.job_handle)
+        """Close job object handle, triggering kernel cleanup of all descendant processes. Safe to call twice and
+        from two threads at once (Stop all and the command's own clean-up): the handle is closed exactly once."""
+        with self._close_lock:
+            if self.job_handle and sys.platform == "win32":
+                import ctypes
+                ctypes.windll.kernel32.CloseHandle(self.job_handle)
             self.job_handle = None
 
 
@@ -350,7 +377,8 @@ class AsyncTerminal:
             creationflags = subprocess.CREATE_NO_WINDOW | CREATE_SUSPENDED
 
         start_time = time.time()
-        job = WinJobManager()
+        cap = _limits.cap_for_current()
+        job = WinJobManager(memory_limit=cap) if cap else WinJobManager()   # capped inside a child agent (M5 5.3)
 
         spawn_kwargs: dict = {"creationflags": creationflags} if sys.platform == "win32" else {"start_new_session": True}
         try:
@@ -527,6 +555,7 @@ class AsyncTerminal:
         if cancel_event is not None:
             tasks.append(asyncio.create_task(wait_cancel()))
 
+        program = _limits.track(proc.pid, pgid, job)   # a child agent's program: Stop all / cancel can end it
         try:
             done, pending = await asyncio.wait(
                 tasks,
@@ -568,6 +597,7 @@ class AsyncTerminal:
                 except (ProcessLookupError, PermissionError):
                     pass
             job.close()
+            _limits.untrack(program)
             reader_task_out.cancel()
             reader_task_err.cancel()
 

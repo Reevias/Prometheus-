@@ -277,6 +277,14 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
     from prometheus.jobs.graph import GraphRunner, recover_graphs
 
     recover_graphs(job_store)               # graphs that can't carry on in a new run are closed with a reason
+    from prometheus.jobs import limits as job_limits
+
+    try:
+        job_limits.end_leftovers(job_store)     # programs of child agents left by a crash (same program only)
+    except Exception:                           # noqa: BLE001 - starting Prometheus matters more
+        import logging
+
+        logging.getLogger(__name__).exception("Couldn't end programs left over from the last run")
     job_runner = JobRunner(job_store)
     set_default_runner(job_runner)
     if providers is None and settings.embed_model:
@@ -415,6 +423,7 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
     services.atomic_files = AtomicFiles(policy=policy, backup_dir=data / "backups")
     services.terminal = AsyncTerminal(policy=policy)
     services.archive = archive
+    job_limits.connect_killswitch(killswitch)   # Stop all ends every child agent's programs (M5 5.3)
     killswitch.on_stop(lambda reason: job_store.pause_all(f"Stopped by user: {reason}" if reason else "Stopped by user"))
     services.jobs = job_store
     services.graphs = orchestrator.graphs
