@@ -3,11 +3,18 @@
 Updated 11 November 2026. Version 2.3. Built and tested here: 883 tests pass.
 Not yet run end to end on the owner's real laptop.
 
+## M5 5.1 job tracker, 24 November 2026 (Opus review, bugs 172-179)
+Still open, from the review in `docs/m5/M5_PLAN.md`:
+- Cancel and pause only change the job's record; a thread that is already running is not stopped (Python can't stop a thread from outside). Jobs need a "should I stop?" check: 5.2/5.3.
+- Resume only moves a job to "pending"; nothing runs pending jobs yet. That is the scheduler of 5.2/5.3; the Resume button is 5.5.
+- Finished job rows are never tidied away (small, but they grow: one per message for the intent check).
+- Not run on the owner's laptop. Windows: not checked by the reviewer; NOT VERIFIED until GitHub's windows-latest run is green for this work.
+
 ## M5 5.6 conversation branching, 24 November 2026
 Branching creates a new chat copying history up to the selected message. The branch shows where it came from with a link back to the parent chat. If the parent is deleted later, the branch retains its provenance label ("From: <title>") without a broken link. Not yet tested with live PyWebView window click (tested through full client test suite).
 
 ## M5 5.7 browser snapshot, 24 November 2026
-Not run on the owner's laptop (Microsoft Edge instead of the Chromium used in tests): NOT VERIFIED on Windows until the owner tries it. Snapshots need a recent Playwright (the `mode="ai"` snapshot); `pyproject.toml` still says `>=1.45`, which is older, so the agent says "pip install -U playwright" if it is too old (tested with 1.65.2). Page elements inside iframes are not in the snapshot yet. Error messages that Playwright itself writes can quote page text and are not wrapped.
+Not run on the owner's laptop (Microsoft Edge instead of the Chromium used in tests): NOT VERIFIED on Windows until the owner tries it. Snapshots need a recent Playwright (the `mode="ai"` snapshot); `pyproject.toml` still says `>=1.45`, which is older, so the agent says "pip install -U playwright" if it is too old (tested with 1.65.2). Page elements inside iframes are not in the snapshot yet. A page can still lie about its own buttons: the click rules read what the page reports about them. (Error text and button names written by a page are now wrapped as untrusted: bugs 178-179.)
 
 ## M3 audit, 19 November 2026
 
