@@ -14,6 +14,11 @@ Not yet run end to end on the owner's real laptop.
 - No graph kinds of Prometheus's own are saved yet (only the engine and test kinds); the view comes in 5.5.
 - NOT VERIFIED on the owner's laptop.
 
+## M5 5.5 multi-agent view, 24 November 2026
+- A plain job that is running as a thread has no Stop or Pause button: Python can't stop it, and a button that only changed the record would lie. Graph steps use "should I stop?" checks, so graphs have all three buttons. A paused plain job has Stop only: Resume would just mark it waiting, because nothing runs waiting jobs yet.
+- The agent column of a task step is read from its title ("research: ..."); jobs started elsewhere show their kind.
+- Browser tests were written after the page (not before): a quick sabotage check made 3 of the 5 fail. Not run on the owner's laptop: NOT VERIFIED on Windows.
+
 ## M5 5.1 job tracker, 24 November 2026 (Opus review, bugs 172-179)
 Still open, from the review in `docs/m5/M5_PLAN.md`:
 - Cancel and pause of a plain job (not a graph step) only change its record; graph steps can be told to stop (5.2).
