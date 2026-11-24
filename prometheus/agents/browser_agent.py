@@ -90,13 +90,17 @@ class BrowserAgent(Agent):
         label = info.get("name") or ref
         kind = kind_of_click(label, info)
         payload = {"label": label, "ref": ref}
+        # the name comes from the page, not the plan: the owner sees it (shortened), the model only gets it wrapped
+        shown = label if len(label) <= 120 else label[:117] + "..."
+        wrapped = untrusted(shown, "button name on the page")
         if kind == "pay":
-            ctx.approvals.request("browser_click", f"In the browser, press '{label}' (this can spend money)", payload)
-            return StepResult("waiting_approval", f"Pressing '{label}' can spend money: approve it on the "
-                                                  "Approvals page.")
+            ctx.approvals.request("browser_click", f"In the browser, press '{shown}' (this can spend money)", payload)
+            return StepResult("waiting_approval", f"Pressing element {ref} can spend money: approve it on the "
+                                                  f"Approvals page. Its name: {wrapped}")
         if kind == "send":
-            return ctx.ask("browser_click", f"In the browser, press '{label}'", payload,
-                           exact=f"click:{label.lower()}", waiting=f"Press '{label}'? Answer below in the chat.")
+            return ctx.ask("browser_click", f"In the browser, press '{shown}'", payload,
+                           exact=f"click:{label.lower()}",
+                           waiting=f"Pressing element {ref} needs a yes, asked below in the chat. Its name: {wrapped}")
         return StepResult("done", SESSION.click_ref(ref, expect_name=info.get("name", "")))
 
 

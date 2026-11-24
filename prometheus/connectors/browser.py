@@ -92,7 +92,9 @@ class BrowserSession:
                         reply.put(BrowserError("I couldn't open my browser window: Microsoft Edge isn't installed (or "
                                                "Playwright isn't set up). Run the installer again to fix it."))
                     else:
-                        reply.put(BrowserError(f"The web page had a problem: {first[:200]}"))
+                        from prometheus.agents.base import untrusted     # a page can choose its own error text
+
+                        reply.put(BrowserError(f"The web page had a problem: {untrusted(first[:200], 'browser error')}"))
             if self._ctx is not None:
                 self._ctx.close()
 
