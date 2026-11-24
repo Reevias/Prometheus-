@@ -15,7 +15,7 @@ The owner can make their own agents and see everything running on one screen.
 |---|---|---|---|
 | [x] 5.1 | **Job tracker** [F4] | One SQLite table of jobs: pending, running, paused, done, failed, cancelled. Every background task goes through it (the 30 files with raw `threading.Thread` / `asyncio.create_task` are moved over or listed as allowed). After a restart, "running" jobs become "paused" with a Resume button; nothing runs again by itself (owner, 22 Nov). `resume.py`'s queue becomes a user of the tracker. Stop all pauses every job. | Kill the process mid-job → on restart the job is paused, not lost. A lint test fails if a new untracked thread appears. |
 | [x] 5.2 | **Task graph (DAG)** | Steps with dependencies, run side by side or one after another; retries with waits; cancelling a parent cancels its children; a failed step stops the steps that need it. Cycles are refused. Saved in the tracker, so a graph survives a restart. | Cycle refused; cancel spreads; retry count kept after restart; failed parent → children "cancelled". |
-| 5.3 | **Child agents at once** | A limit sized for 8 GB: default 2 at once (3 if free RAM > 3 GB, read with psutil, never faked). On Windows each child that runs a program goes in a Job Object with a memory cap. Start, status, clean-up; no orphans left after Stop all. | Start 5 jobs → only 2 run; RAM guard stops a 3rd when memory is low; Stop all leaves no child processes (checked on Windows CI). |
+| [x] 5.3 | **Child agents at once** | A limit sized for 8 GB: default 2 at once (3 if free RAM > 3 GB, read with psutil, never faked). On Windows each child that runs a program goes in a Job Object with a memory cap. Start, status, clean-up; no orphans left after Stop all. | Start 5 jobs → only 2 run; RAM guard stops a 3rd when memory is low; Stop all leaves no child processes (checked on Windows CI). |
 | 5.5 | **Multi-agent view** | Replaces M2's "running now" list: each job, its graph, live status, Stop / Pause / Resume buttons, real times only. Uses the existing Jinja2/HTMX/Canvas look and colours. Built before 5.4 so the owner can see agents. | Browser tests: buttons work, a cancelled job shows cancelled; no dead buttons. |
 | 5.4 | **Your own agents** | Create, edit, remove agents: name, instructions, which tools, which model card (M3.4). Least privilege: a new agent gets no tools until ticked; dangerous tools still need approval. One switch in Features. | An own agent can't use an unticked tool; deleting an agent cancels its jobs. |
 | [x] 5.6 | **Conversation branching** | "Branch from here" on any message: a new chat copying history up to that point; the original stays unchanged. | Branch keeps the original intact; branching a branch works. |
@@ -56,7 +56,7 @@ Files named are where the work starts; the builder may add files next to them.
 7. After a restart the graph is paused as a whole; Resume carries on from the finished steps.
 8. The M3 orchestrator can hand a multi-part plan to the graph instead of running it all in one loop.
 
-### 5.3 Child agents at once (builder: Opus)
+### 5.3 Child agents at once [x] (builder: Opus) — built 24 Nov, awaiting review
 1. `prometheus/jobs/limits.py`: at most 2 child agents at once, 3 when psutil shows more than 3 GB of free RAM.
    Extra jobs wait as "pending (waiting for a free slot)".
 2. Checks RAM again before each start; under 1 GB free, nothing new starts and the reason is shown.

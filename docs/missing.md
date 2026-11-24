@@ -3,6 +3,11 @@
 Updated 11 November 2026. Version 2.3. Built and tested here: 883 tests pass.
 Not yet run end to end on the owner's real laptop.
 
+## M5 5.3 child agents at once, 24 November 2026
+- Only graph steps count as child agents for now (own agents join in 5.4). Memory is measured only for the programs a child starts; its own Python work shares Prometheus's memory and shows as "none" rather than a made-up number.
+- The memory cap (1.5 GB per child's programs) is a Windows Job Object limit; on Linux programs only get their own process group (no cap).
+- Windows: checked on GitHub's windows-latest machines only (the cap test runs only there); NOT VERIFIED on the owner's laptop.
+
 ## M5 5.2 task graph, 24 November 2026
 - A step that is running is told to stop (cancel, pause, Stop all) and stops at its next check; a step that never checks finishes its current try and the result is thrown away (Python can't stop a thread from outside).
 - Orchestrator plans run as a graph only with "Run a task's independent steps at the same time" switched on (Features; off until the laptop check). Such a graph can't carry on after a restart (its steps live in memory): it is closed with "run it again", like the task itself.
