@@ -160,9 +160,13 @@ class GraphRunner:
     """Makes, runs, pauses, resumes and cancels graphs. One per Prometheus run (tests make their own)."""
 
     def __init__(self, store: JobStore, runner: JobRunner | None = None, slots: Slots | None = None,
-                 waits: tuple = RETRY_WAITS, max_parallel: int = 2, killswitch=None):
+                 waits: tuple = RETRY_WAITS, max_parallel: int | None = None, killswitch=None):
         self.store = store
         self.runner = runner or JobRunner(store)
+        if slots is None and max_parallel is None:
+            from prometheus.jobs.limits import child_slots
+
+            slots = child_slots()                    # M5 5.3: 2 at once, 3 with > 3 GB free, none under 1 GB
         self.slots = slots or Slots(max_parallel)
         self.waits = tuple(waits) or RETRY_WAITS
         self.killswitch = killswitch
@@ -197,11 +201,12 @@ class GraphRunner:
             parent = self.store.get_job(graph_id)
             if parent is None or parent.state in TERMINAL_STATES:
                 return False
-            for j in self.store.list_jobs(parent_id=graph_id):
-                if j.state not in TERMINAL_STATES:
-                    self.store.set_state(j.id, CANCELLED, error=reason)
+            ended = [j.id for j in self.store.list_jobs(parent_id=graph_id) if j.state not in TERMINAL_STATES]
+            for jid in ended:
+                self.store.set_state(jid, CANCELLED, error=reason)
             self.store.set_state(graph_id, CANCELLED, error=reason)
         self._wake[graph_id].set()
+        self._end_programs(ended)
         return True
 
     def pause(self, graph_id: int, reason: str = "Paused by you") -> bool:
@@ -209,11 +214,12 @@ class GraphRunner:
             parent = self.store.get_job(graph_id)
             if parent is None or parent.state != RUNNING:
                 return False
-            for j in self.store.list_jobs(parent_id=graph_id):
-                if j.state == RUNNING:
-                    self.store.set_state(j.id, PAUSED, error=reason)
+            paused = [j.id for j in self.store.list_jobs(parent_id=graph_id) if j.state == RUNNING]
+            for jid in paused:
+                self.store.set_state(jid, PAUSED, error=reason)
             self.store.set_state(graph_id, PAUSED, error=reason)
         self._wake[graph_id].set()
+        self._end_programs(paused)
         return True
 
     def resume(self, graph_id: int) -> bool:
@@ -231,6 +237,17 @@ class GraphRunner:
         self._wake[graph_id].clear()
         self.start(graph_id)
         return True
+
+    @staticmethod
+    def _end_programs(job_ids: list[int]) -> None:
+        """Programs the stopped steps started are ended now (M5 5.3), not when the step next checks."""
+        from prometheus.jobs.limits import end_job
+
+        for jid in job_ids:
+            try:
+                end_job(jid)
+            except Exception:                        # noqa: BLE001
+                log.exception("Couldn't end the programs of step job %s", jid)
 
     def wait(self, graph_id: int, timeout: float) -> str:
         """Wait until the graph is finished or paused; returns its state then (or now, after `timeout`)."""
@@ -318,6 +335,10 @@ class GraphRunner:
 
     def _run_step(self, ctx: StepContext, func: Callable | None) -> None:
         """One step's tries. Holds a slot while trying, gives it back while waiting to retry. Never raises."""
+        from prometheus.jobs import runner as runner_mod
+
+        runner_mod._CURRENT_JOB_ID.set(ctx.job_id)      # this step is the job its programs belong to (M5 5.3)
+        runner_mod._CURRENT_JOB_RUNNER.set(self.runner)
         has_slot = True
         try:
             while True:
@@ -357,6 +378,7 @@ class GraphRunner:
         except Exception:
             log.exception("Graph step %s failed unexpectedly", ctx.step)
         finally:
+            self._end_programs([ctx.job_id])              # nothing it started outlives its step
             if has_slot:
                 self.slots.release()
             self._wake[ctx.graph_id].set()
