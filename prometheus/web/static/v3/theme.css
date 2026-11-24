@@ -914,7 +914,39 @@ html[data-motion="reduced"] *, html[data-motion="reduced"] *::before { animation
 
 /* ---- phones (M2.4): one column, the menu slides out, no right panel ---------------------------------------- */
 .menu-btn, .drawer-shade { display: none; }
+/* the multi-agent view (M5 5.5) */
+.jobs-panel { margin-bottom: 18px; max-width: 900px; }
+.job-row { display: flex; flex-direction: column; gap: 6px; padding: 13px 16px; margin-bottom: 8px; border-radius: var(--r-md);
+           background: var(--surface); border: 1px solid rgb(var(--text-rgb) / 0.08); }
+.job-row.st-running { border-color: rgb(var(--orange-rgb) / 0.5); }
+.job-row.st-failed { border-color: rgb(var(--bad-rgb) / 0.5); }
+.job-head { display: flex; align-items: center; gap: 10px; justify-content: space-between; min-width: 0; }
+.job-title { overflow-wrap: anywhere; }
+.job-facts { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 13px; }
+.job-progress, .job-error, .job-note { margin: 0; font-size: 13.5px; }
+.job-note { color: var(--amber); margin-bottom: 8px; }
+.pill.job-state.st-running { color: var(--orange); border-color: var(--orange); }
+.pill.job-state.st-paused, .pill.job-state.st-pending { color: var(--amber); border-color: var(--amber); }
+.pill.job-state.st-done { color: var(--ok); border-color: rgb(var(--ok-rgb) / 0.5); }
+.pill.job-state.st-failed { color: var(--bad); border-color: rgb(var(--bad-rgb) / 0.6); }
+.job-graph-wrap { overflow-x: auto; max-width: 100%; padding: 4px 0; }
+.job-graph { display: block; }
+.job-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+.job-steps li { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.job-steps li .step-dot { align-self: center; }
+.job-steps li.st-done .step-dot { background: var(--ok); }
+.job-steps li.st-running .step-dot { background: var(--orange); }
+.job-steps li.st-failed .step-dot { background: var(--bad); }
+.job-buttons { display: flex; gap: 8px; flex-wrap: wrap; }
+.job-btn { cursor: pointer; background: transparent; color: var(--text); font: inherit; font-size: 13px; padding: 5px 14px; }
+.job-btn:hover { border-color: var(--orange); }
+.job-btn.job-stop:hover { border-color: var(--bad); color: var(--bad); }
+
 @media (max-width: 700px) {
+  .job-row { padding: 11px 12px; }
+  .job-head { flex-wrap: wrap; }
+  .job-buttons .job-btn { flex: 1 1 40%; padding: 9px 12px; }
+  .jobs-panel { max-width: 100%; }
   .app { grid-template-columns: 0 minmax(0, 1fr) 0; height: 100dvh; }
   .app .sidebar { position: fixed; z-index: 60; top: 0; bottom: 0; left: 0; width: min(300px, 86vw); grid-row: auto;
                   transform: translateX(-105%); transition: transform .2s ease; box-shadow: 0 0 60px rgb(var(--shadow-rgb) / 0.6);

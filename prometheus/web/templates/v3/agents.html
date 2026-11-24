@@ -2,6 +2,7 @@
 {% extends "v3/layout.html" %}
 {% from "v3/icons.html" import icon %}
 {% block title %}Agents · Prometheus{% endblock %}
+{% block scripts %}<script src="/static/v3/jobs.js" defer></script>{% endblock %}
 {% block topbar %}<b>Abilities</b>{% endblock %}
 {% macro since(ts) -%}
 {%- if ts %}{{ ts | day }} {{ ts | clock }}{% else %}never{% endif -%}
@@ -13,12 +14,7 @@
   <h1 class="sr">Agents</h1>
     <p class="muted lead">Prometheus picks the right agent for each request by itself. To choose one yourself, start a
       message with <code>@</code> and its name, for example <code>@research solar panels</code>.</p>
-    {% if running %}
-    <h2 class="section">Running now</h2>
-    <div class="rows">
-      {% for a in running %}<a href="/c/{{ a.now.chat_id }}"><b>{{ a.title }}</b> {{ a.now.goal }}<span>Open chat</span></a>{% endfor %}
-    </div>
-    {% endif %}
+    {% include "v3/jobs_panel.html" %}
     <input class="search" type="search" id="agent-filter" placeholder="Filter agents" aria-label="Filter agents">
     {% for group in agents | groupby("group") %}
     <h2 class="section">{{ group.grouper }}</h2>

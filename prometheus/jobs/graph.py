@@ -238,6 +238,11 @@ class GraphRunner:
         self.start(graph_id)
         return True
 
+    def can_resume(self, graph_id: int) -> bool:
+        """Resume would carry on: its steps are saved by kind, or their functions are still in this run."""
+        parent = self.store.get_job(graph_id)
+        return bool(parent and (parent.payload.get("resumable", True) or any(k[0] == graph_id for k in self._funcs)))
+
     @staticmethod
     def _end_programs(job_ids: list[int]) -> None:
         """Programs the stopped steps started are ended now (M5 5.3), not when the step next checks."""

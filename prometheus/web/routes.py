@@ -295,7 +295,31 @@ def register_routes(app: FastAPI, services: Services) -> None:
         history = store.agent_steps(chosen["name"], 8) if chosen else []
         titles = dict(store.chats())
         return shell(request, "v3/agents.html", "agents", agents=agents, chosen=chosen, history=history,
-                     titles=titles, running=[a for a in agents if a["now"]])
+                     titles=titles, **jobs_context())
+
+    # ---- the multi-agent view (M5 5.5): read from the job tracker, buttons go through jobs_view.act -----------------
+    def jobs_context(note: str = "") -> dict:
+        from prometheus.web import jobs_view
+
+        runner = getattr(services.graphs, "runner", None)
+        view = jobs_view.build(services.jobs, runner, services.graphs, agents=set(services.orchestrator.registry))
+        return {"jobs": view["jobs"], "jobs_empty": view["empty"], "jobs_note": note}
+
+    @app.get("/v3/jobs/panel", response_class=HTMLResponse)
+    def v3_jobs_panel(request: Request):
+        return page(request, "v3/jobs_panel.html", **jobs_context())
+
+    @app.post("/api/v3/jobs/{job_id}/{action}")
+    def api_v3_job_action(request: Request, job_id: int, action: str):
+        from prometheus.web import jobs_view
+
+        runner = getattr(services.graphs, "runner", None)
+        code, message = jobs_view.act(services.jobs, runner, services.graphs, job_id, action)
+        if code == 404:
+            return JSONResponse({"error": message}, status_code=404)
+        if code == 200:
+            store.audit("user", f"job_{action}", {"job": job_id})
+        return page(request, "v3/jobs_panel.html", status_code=code, **jobs_context("" if code == 200 else message))
 
     @app.post("/api/v3/agents/{name}/switch")
     def api_v3_agent_switch(name: str, on: str = Form("")):
