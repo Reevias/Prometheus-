@@ -202,6 +202,13 @@ class Store:
                 self._db.execute("ALTER TABLE messages ADD COLUMN topic TEXT NOT NULL DEFAULT ''")
             if "chat_id" not in {r["name"] for r in self._db.execute("PRAGMA table_info(costs)")}:
                 self._db.execute("ALTER TABLE costs ADD COLUMN chat_id INTEGER NOT NULL DEFAULT 0")
+            chat_cols = {r["name"] for r in self._db.execute("PRAGMA table_info(chats)")}
+            if "parent_chat_id" not in chat_cols:
+                self._db.execute("ALTER TABLE chats ADD COLUMN parent_chat_id INTEGER NOT NULL DEFAULT 0")
+            if "parent_message_id" not in chat_cols:
+                self._db.execute("ALTER TABLE chats ADD COLUMN parent_message_id INTEGER NOT NULL DEFAULT 0")
+            if "parent_title" not in chat_cols:
+                self._db.execute("ALTER TABLE chats ADD COLUMN parent_title TEXT NOT NULL DEFAULT ''")
             columns = {r["name"] for r in self._db.execute("PRAGMA table_info(memories)")}
             if "source" not in columns:  # databases made before v1.2
                 self._db.execute("ALTER TABLE memories ADD COLUMN source TEXT NOT NULL DEFAULT ''")
@@ -242,11 +249,77 @@ class Store:
             self._write("DELETE FROM search_index WHERE kind = ? AND ref_id = ?", (kind, ref_id))
 
     # -- chats -----------------------------------------------------------
-    def create_chat(self, title: str) -> int:
+    def create_chat(self, title: str, parent_chat_id: int = 0, parent_message_id: int = 0,
+                    parent_title: str = "") -> int:
         import uuid
 
-        return self._write("INSERT INTO chats (title, created, uid) VALUES (?, ?, ?)",
-                           (title, time.time(), uuid.uuid4().hex))
+        return self._write(
+            "INSERT INTO chats (title, created, uid, parent_chat_id, parent_message_id, parent_title) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (title, time.time(), uuid.uuid4().hex, parent_chat_id, parent_message_id, parent_title),
+        )
+
+    def branch_chat(self, chat_id: int, message_id: int, title: str | None = None) -> int | None:
+        """Create a new chat branching from `chat_id` up to and including `message_id`.
+        The original chat and its messages remain completely intact."""
+        with self._lock:
+            c_row = self._db.execute("SELECT id, title FROM chats WHERE id = ?", (chat_id,)).fetchone()
+            if not c_row:
+                return None
+            orig_title = c_row["title"]
+
+            m_row = self._db.execute(
+                "SELECT id FROM messages WHERE id = ? AND chat_id = ?", (message_id, chat_id)
+            ).fetchone()
+            if not m_row:
+                return None
+
+            new_title = title if title is not None else f"{orig_title} (branch)"
+            import uuid
+            cur = self._db.execute(
+                "INSERT INTO chats (title, created, uid, parent_chat_id, parent_message_id, parent_title) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (new_title, time.time(), uuid.uuid4().hex, chat_id, message_id, orig_title),
+            )
+            new_chat_id = cur.lastrowid
+
+            rows = self._db.execute(
+                "SELECT role, text, created, model, private, topic FROM messages "
+                "WHERE chat_id = ? AND id <= ? ORDER BY id ASC",
+                (chat_id, message_id),
+            ).fetchall()
+
+            for r in rows:
+                m_cur = self._db.execute(
+                    "INSERT INTO messages (chat_id, role, text, created, model, private, topic) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    (new_chat_id, r["role"], r["text"], r["created"], r["model"], r["private"], r["topic"]),
+                )
+                new_mid = m_cur.lastrowid
+                self._db.execute("INSERT INTO search_index (kind, ref_id, body) VALUES ('message', ?, ?)",
+                                 (new_mid, r["text"]))
+
+            self._db.commit()
+            return new_chat_id
+
+    def chat_parent(self, chat_id: int) -> dict | None:
+        """Return provenance of a branched chat, or None if it is a root chat."""
+        rows = self._rows("SELECT parent_chat_id, parent_message_id, parent_title FROM chats WHERE id = ?", (chat_id,))
+        if not rows or not rows[0]["parent_chat_id"]:
+            return None
+        pid = int(rows[0]["parent_chat_id"])
+        pmid = int(rows[0]["parent_message_id"])
+        ptitle = rows[0]["parent_title"]
+        p_row = self._rows("SELECT id, title FROM chats WHERE id = ?", (pid,))
+        exists = bool(p_row)
+        current_title = p_row[0]["title"] if exists else ptitle
+        return {
+            "id": pid,
+            "message_id": pmid,
+            "title": current_title,
+            "original_title": ptitle,
+            "exists": exists,
+        }
 
     def get_summary(self, chat_id: int) -> tuple[str, int]:
         rows = self._rows("SELECT summary, summary_upto FROM chats WHERE id = ?", (chat_id,))

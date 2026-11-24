@@ -102,8 +102,10 @@ class BrowserSession:
         if self.paused:
             raise BrowserError("You've taken over the browser. Press 'Hand back' when you're done.")
         if self._thread is None or not self._thread.is_alive():
-            self._thread = threading.Thread(target=self._worker, name="prometheus-browser", daemon=True)
-            self._thread.start()
+            from prometheus.jobs.runner import get_default_runner, start_job
+
+            job = start_job("browser", "Browser controller loop", self._worker, name="prometheus-browser", service=True)
+            self._thread = get_default_runner().get_thread(job.id)
         self.last_used = time.monotonic()
         reply: queue.Queue = queue.Queue()
         self._q.put((fn, reply))

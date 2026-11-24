@@ -906,6 +906,8 @@ html[data-motion="reduced"] *, html[data-motion="reduced"] *::before { animation
 /* ---- Projects -------------------------------------------------------------------------------------------- */
 .project-card .cost-meter { margin: 2px 0; }
 .project-chip { margin-left: 8px; text-decoration: none; }
+.branch-chip { margin-left: 8px; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; }
+.branch-chip svg { width: 14px; height: 14px; }
 .project-files { border-top: 1px solid rgb(var(--text-rgb) / 0.08); margin-top: 4px; padding-top: 6px; max-height: 240px; overflow: auto; }
 .project-files small { display: block; padding: 2px 12px 4px; }
 #import-label { cursor: pointer; }

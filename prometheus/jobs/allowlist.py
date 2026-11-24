@@ -46,9 +46,6 @@ ALLOWED_RAW_THREADS_AND_TASKS: dict[str, list[str]] = {
     "prometheus/app.py": [
         "Sends one phone notification without holding up the caller (a few seconds, no state)",
     ],
-    "prometheus/connectors/browser.py": [
-        "moves in round 2"
-    ],
     "prometheus/web/routes.py": [
         "App quit process termination delay (allows HTTP 200 response to flush before exit)",
         "Sends the 'notifications are on' test push without holding up the page",

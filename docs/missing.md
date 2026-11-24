@@ -3,6 +3,9 @@
 Updated 11 November 2026. Version 2.3. Built and tested here: 883 tests pass.
 Not yet run end to end on the owner's real laptop.
 
+## M5 5.6 conversation branching, 24 November 2026
+Branching creates a new chat copying history up to the selected message. The branch shows where it came from with a link back to the parent chat. If the parent is deleted later, the branch retains its provenance label ("From: <title>") without a broken link. Not yet tested with live PyWebView window click (tested through full client test suite).
+
 ## M5 5.7 browser snapshot, 24 November 2026
 Not run on the owner's laptop (Microsoft Edge instead of the Chromium used in tests): NOT VERIFIED on Windows until the owner tries it. Snapshots need a recent Playwright (the `mode="ai"` snapshot); `pyproject.toml` still says `>=1.45`, which is older, so the agent says "pip install -U playwright" if it is too old (tested with 1.65.2). Page elements inside iframes are not in the snapshot yet. Error messages that Playwright itself writes can quote page text and are not wrapped.
 

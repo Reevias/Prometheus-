@@ -125,6 +125,16 @@
       if (!prev) { toast("There's no question before this answer.", true); return; }
       input.value = raw(prev); input.dispatchEvent(new Event("input"));
       document.getElementById("command").requestSubmit();
+    } else if (act === "branch") {
+      fetch("/api/v3/chats/" + chatId + "/messages/" + msg.dataset.id + "/branch", { method: "POST", headers: { "X-CSRF-Token": csrf }, credentials: "same-origin" })
+        .then(function (r) { return r.json().then(function (j) { return [r, j]; }); })
+        .then(function (rj) {
+          if (rj[0].ok && rj[1].url) {
+            window.location.href = rj[1].url;
+          } else {
+            toast(rj[1].error || "Couldn't branch conversation.", true);
+          }
+        });
     } else if (act === "delete") {
       if (!confirm("Delete this message?")) return;
       fetch("/api/v3/chats/" + chatId + "/messages/" + msg.dataset.id + "/delete", { method: "POST", headers: { "X-CSRF-Token": csrf }, credentials: "same-origin" })
