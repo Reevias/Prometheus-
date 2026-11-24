@@ -3,10 +3,16 @@
 Updated 11 November 2026. Version 2.3. Built and tested here: 883 tests pass.
 Not yet run end to end on the owner's real laptop.
 
+## M5 5.2 task graph, 24 November 2026
+- A step that is running is told to stop (cancel, pause, Stop all) and stops at its next check; a step that never checks finishes its current try and the result is thrown away (Python can't stop a thread from outside).
+- Orchestrator plans run as a graph only with "Run a task's independent steps at the same time" switched on (Features; off until the laptop check). Such a graph can't carry on after a restart (its steps live in memory): it is closed with "run it again", like the task itself.
+- No graph kinds of Prometheus's own are saved yet (only the engine and test kinds); the view comes in 5.5.
+- NOT VERIFIED on the owner's laptop.
+
 ## M5 5.1 job tracker, 24 November 2026 (Opus review, bugs 172-179)
 Still open, from the review in `docs/m5/M5_PLAN.md`:
-- Cancel and pause only change the job's record; a thread that is already running is not stopped (Python can't stop a thread from outside). Jobs need a "should I stop?" check: 5.2/5.3.
-- Resume only moves a job to "pending"; nothing runs pending jobs yet. That is the scheduler of 5.2/5.3; the Resume button is 5.5.
+- Cancel and pause of a plain job (not a graph step) only change its record; graph steps can be told to stop (5.2).
+- Resume of a plain job only moves it to "pending"; graphs resume for real (5.2). The Resume button is 5.5.
 - Finished job rows are never tidied away (small, but they grow: one per message for the intent check).
 - Not run on the owner's laptop. Windows: not checked by the reviewer; NOT VERIFIED until GitHub's windows-latest run is green for this work.
 

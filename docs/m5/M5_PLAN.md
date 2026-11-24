@@ -14,7 +14,7 @@ The owner can make their own agents and see everything running on one screen.
 | # | Step | What "done" means | Tests that must fail first |
 |---|---|---|---|
 | [x] 5.1 | **Job tracker** [F4] | One SQLite table of jobs: pending, running, paused, done, failed, cancelled. Every background task goes through it (the 30 files with raw `threading.Thread` / `asyncio.create_task` are moved over or listed as allowed). After a restart, "running" jobs become "paused" with a Resume button; nothing runs again by itself (owner, 22 Nov). `resume.py`'s queue becomes a user of the tracker. Stop all pauses every job. | Kill the process mid-job → on restart the job is paused, not lost. A lint test fails if a new untracked thread appears. |
-| 5.2 | **Task graph (DAG)** | Steps with dependencies, run side by side or one after another; retries with waits; cancelling a parent cancels its children; a failed step stops the steps that need it. Cycles are refused. Saved in the tracker, so a graph survives a restart. | Cycle refused; cancel spreads; retry count kept after restart; failed parent → children "cancelled". |
+| [x] 5.2 | **Task graph (DAG)** | Steps with dependencies, run side by side or one after another; retries with waits; cancelling a parent cancels its children; a failed step stops the steps that need it. Cycles are refused. Saved in the tracker, so a graph survives a restart. | Cycle refused; cancel spreads; retry count kept after restart; failed parent → children "cancelled". |
 | 5.3 | **Child agents at once** | A limit sized for 8 GB: default 2 at once (3 if free RAM > 3 GB, read with psutil, never faked). On Windows each child that runs a program goes in a Job Object with a memory cap. Start, status, clean-up; no orphans left after Stop all. | Start 5 jobs → only 2 run; RAM guard stops a 3rd when memory is low; Stop all leaves no child processes (checked on Windows CI). |
 | 5.5 | **Multi-agent view** | Replaces M2's "running now" list: each job, its graph, live status, Stop / Pause / Resume buttons, real times only. Uses the existing Jinja2/HTMX/Canvas look and colours. Built before 5.4 so the owner can see agents. | Browser tests: buttons work, a cancelled job shows cancelled; no dead buttons. |
 | 5.4 | **Your own agents** | Create, edit, remove agents: name, instructions, which tools, which model card (M3.4). Least privilege: a new agent gets no tools until ticked; dangerous tools still need approval. One switch in Features. | An own agent can't use an unticked tool; deleting an agent cancels its jobs. |
@@ -46,7 +46,7 @@ Files named are where the work starts; the builder may add files next to them.
    (the web server, the hotkey listener and similar) go in a short allow-list with the reason written next to each.
 8. Lint test: a new raw thread or task outside the allow-list fails the suite.
 
-### 5.2 Task graph (builder: Opus · extra edge-case tests: Antigravity)
+### 5.2 Task graph [x] (builder: Opus · extra edge-case tests: Antigravity) — built 24 Nov, awaiting review
 1. `prometheus/jobs/graph.py`: a graph is a parent job; its steps are child jobs with a "needs" list.
 2. Checks when a graph is made: no loops, no missing steps, at most 50 steps.
 3. Runs every step whose needs are done; independent steps run side by side (within 5.3's limit).
