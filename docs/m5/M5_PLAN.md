@@ -109,6 +109,48 @@ Files named are where the work starts; the builder may add files next to them.
 4. `docs/reports/M5_REPORT.md`, CHANGELOG, `docs/missing.md`, `docs/bugs.md` updated; laptop check listed as NOT
    VERIFIED until the owner runs it.
 
+## Review of 5.1 and 5.7 (Opus, 24 Nov)
+Checked against the work lists, item by item. Tests: see the report line at the end.
+
+**5.1 Job tracker**
+1. Store: done (the `jobs` table sits in `memory.db`, sharing its connection and lock).
+2. Allowed moves: done.
+3. Runner: done. *Partly:* cancel and pause only change the record; a thread that is already running isn't
+   stopped (Python threads can't be stopped from outside). Needs a "should I stop?" check jobs call: 5.2/5.3.
+4. Restart → paused: done after fixes R1 and R2. *Partly:* Resume only moves a job to "pending"; nothing runs
+   pending jobs yet. That is the scheduler of 5.2/5.3 (Opus builds it next); the button itself is 5.5.
+5. Stop all pauses jobs, Resume all keeps them paused: done after fix R2.
+6. `resume.py` on the tracker: done after fix R3.
+7. Threads moved: done, except `connectors/browser.py` (round 2, as planned) and 5 that slipped through (fix R4).
+8. Lint test: done after fix R4.
+
+**5.7 Browser tool**: items 1, 2, 4 and 5 done; item 3 done after fixes R6 and R7.
+
+**Findings, all fixed with a test that failed first** (bugs 172–179 in `docs/bugs.md`):
+- R1. The start-up check ran after the chat-archive job of the same start had begun, so it was marked
+  "paused: Prometheus restarted". The tracker now opens straight after the database, before any job starts.
+- R2. The 13 always-on loops (reminders, sync, watchers ...) were jobs like any other: Stop all showed them
+  "paused" while they kept running, and every restart left 13 more "paused" jobs whose Resume could do nothing.
+  They now start with `service=True`: Stop all leaves them, a restart closes the old record as cancelled.
+- R3. Waiting requests (AI limit) stayed "paused" for ever: when answered, and when given up (paused → failed
+  isn't allowed and the error was hidden). New `JobStore.finish()` ends a job through the allowed moves only.
+- R4. The thread check missed `threading.Timer`, thread pools, `loop.create_task`, `ensure_future`, Thread
+  subclasses and `import threading as _th`, and allowed any number of threads in a listed file. It slipped
+  through: backup, safety check, voice button (now tracked) and 2 push sends (listed with reasons). The check
+  (`prometheus/jobs/lint.py`) now counts every call: one reason per allowed call.
+- R5. The runner kept every finished thread while Prometheus ran; now only the last 64.
+- R6. Clicking by id put the page's button name in the AI's message as plain text. The AI now gets the id and
+  the name wrapped as untrusted; the owner's question shows the name shortened to 120 characters.
+- R7. Error text written by the page ("The web page had a problem: ...") reached the AI as plain text; now wrapped.
+
+**Left open (honest list)**
+- Cancel/pause don't stop running threads yet, and Resume has nothing that runs pending jobs (5.2/5.3).
+- Finished job rows are never tidied away (small, but they grow: one per message for the intent check).
+- 5.7: elements inside iframes aren't in the snapshot; `pyproject.toml` still says `playwright>=1.45` although
+  snapshots need a newer one (an older one gives a plain "run pip install -U playwright" message); a page can
+  still lie about its own buttons (the click rules read what the page reports).
+- Not run on the owner's laptop or on Windows by me: NOT VERIFIED until GitHub's windows-latest run is green.
+
 ## Who does what
 
 The rule of thumb: **Opus decides and checks, Antigravity builds the well-defined pieces, Sonnet builds the UI and the

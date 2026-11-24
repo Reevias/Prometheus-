@@ -2,7 +2,20 @@
 
 Every bug found and fixed, newest first, so the count is always exact. Add a line for each new one.
 
-**Total fixed: 171** (as of 24 November 2026)
+**Total fixed: 179** (as of 24 November 2026)
+
+## 24 November 2026, Opus review of M5 5.1 and 5.7 (8)
+
+| # | Bug | Fixed by |
+|---|---|---|
+| 179 | An error message written by the web page reached the AI as plain text | The page's error text is wrapped as untrusted |
+| 178 | Clicking by id put the button's name (chosen by the page) in the AI's message as plain text | The AI gets the id and the name wrapped as untrusted; the owner sees the name, shortened |
+| 177 | The job runner kept every finished thread for as long as Prometheus ran (memory slowly grows) | Only the last 64 are kept |
+| 176 | The no-untracked-threads check missed timers, thread pools, loop tasks, `import threading as _th` and extra threads in allowed files: backup, safety check, voice button and 2 push sends slipped through | The check counts every call; backup, safety check and voice button now go through the tracker; the push sends are listed with reasons |
+| 175 | A waiting request that was given up stayed "paused" in the tracker (paused → failed isn't an allowed move and the error was hidden) | Ended through the allowed moves |
+| 174 | A waiting request that was answered stayed "paused" in the tracker for ever | Marked done when it leaves the queue |
+| 173 | Stop all and every restart marked the 13 always-on loops (reminders, sync, ...) "paused" although they kept running or start again by themselves | Loops are marked as services: Stop all leaves them, a restart closes the old record |
+| 172 | A job started while Prometheus was starting (chat archive sync) was marked "paused: Prometheus restarted" by the start-up check | The start-up check runs before anything starts a job |
 
 ## 24 November 2026, M5 5.7 browser snapshot (1)
 
