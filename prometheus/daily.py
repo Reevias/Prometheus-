@@ -104,7 +104,9 @@ class DailyJobs:
                 return
 
     def start(self, background: bool = False) -> None:
-        threading.Thread(target=self.loop, args=(background,), name="prometheus-daily", daemon=True).start()
+        from prometheus.jobs.runner import start_job
+
+        start_job("daily", "Daily background jobs loop", self.loop, args=(background,), name="prometheus-daily")
 
     def stop(self) -> None:
         self._stop.set()

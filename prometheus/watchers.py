@@ -249,7 +249,9 @@ class Watchers:
                 pass
 
     def start(self) -> None:
-        threading.Thread(target=self.loop, name="prometheus-watchers", daemon=True).start()
+        from prometheus.jobs.runner import start_job
+
+        start_job("watchers", "Watchers clock loop", self.loop, name="prometheus-watchers")
 
     def stop(self) -> None:
         self._stop.set()

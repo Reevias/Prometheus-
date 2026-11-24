@@ -79,7 +79,10 @@ class VoiceService:
 
     def start_if_enabled(self) -> None:
         if self.services.settings.voice_enabled:
-            threading.Thread(target=self.start, kwargs={"only_if_enabled": True}, daemon=True).start()
+            from prometheus.jobs.runner import start_job
+
+            start_job("voice_start", "Voice service start", self.start, kwargs={"only_if_enabled": True},
+                      name="prometheus-voice-start")
 
     def start(self, only_if_enabled: bool = False) -> bool:
         with self._lock:
@@ -185,7 +188,9 @@ class VoiceService:
         if wait:
             again()
         else:
-            threading.Thread(target=again, name="prometheus-voice-restart", daemon=True).start()
+            from prometheus.jobs.runner import start_job
+
+            start_job("voice_restart", "Voice service restart", again, name="prometheus-voice-restart")
 
     def stop(self) -> None:
         with self._lock:
@@ -215,7 +220,9 @@ class VoiceService:
             if not self.error and self.services.settings.voice_enabled:
                 self.start()
 
-        threading.Thread(target=work, daemon=True).start()
+        from prometheus.jobs.runner import start_job
+
+        start_job("voice_download", "Download voice models", work, name="prometheus-voice-download")
 
     # -- a spoken command -----------------------------------------------------------------------
     def quiz_running(self) -> bool:

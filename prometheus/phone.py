@@ -238,7 +238,9 @@ class LaptopJobs:
                 pass
 
     def start(self) -> None:
-        threading.Thread(target=self.loop, name="prometheus-laptop-jobs", daemon=True).start()
+        from prometheus.jobs.runner import start_job
+
+        start_job("phone_jobs", "Phone laptop jobs loop", self.loop, name="prometheus-laptop-jobs")
 
     def stop(self) -> None:
         self._stop.set()

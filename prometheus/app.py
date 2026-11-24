@@ -76,6 +76,8 @@ class Services:
     notifier: object = None          # shows a Windows notification (None when not on Windows)
     atomic_files: AtomicFiles | None = None
     terminal: AsyncTerminal | None = None
+    jobs: object = None
+    job_runner: object = None
 
     def notify(self, kind: str, text: str) -> bool:
         """A Windows notification, if the owner wants this kind (Settings → Notifications). Every notification is
@@ -115,8 +117,10 @@ class Services:
             finally:
                 self.running.pop(chat_id, None)
 
-        thread = threading.Thread(target=work, daemon=True)
-        thread.start()
+        from prometheus.jobs.runner import get_default_runner, start_job
+
+        job = start_job("rewrite", f"Rewrite message {message_id}", work, name="prometheus-rewrite")
+        thread = get_default_runner().get_thread(job.id)
         return thread
 
     def start_task(self, chat_id: int, text: str, read_only: bool = False) -> threading.Thread:
@@ -132,8 +136,10 @@ class Services:
             if outcome is not None:
                 self.after_task(outcome, text, time.monotonic() - started)
 
-        thread = threading.Thread(target=work, daemon=True)
-        thread.start()
+        from prometheus.jobs.runner import get_default_runner, start_job
+
+        job = start_job("task", f"Task in chat {chat_id}: {text[:50]}", work, name=f"prometheus-task-{chat_id}")
+        thread = get_default_runner().get_thread(job.id)
         return thread
 
     def resume_task(self, task_id: int) -> threading.Thread:
@@ -153,8 +159,10 @@ class Services:
             if outcome is not None:
                 self.after_task(outcome, t.get("text") or "", time.monotonic() - started)
 
-        thread = threading.Thread(target=work, daemon=True)
-        thread.start()
+        from prometheus.jobs.runner import get_default_runner, start_job
+
+        job = start_job("task_resume", f"Resume task {task_id}", work, name=f"prometheus-resume-{task_id}")
+        thread = get_default_runner().get_thread(job.id)
         return thread
 
 
@@ -277,7 +285,9 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
     archive.allowed = lambda chat_id: memory_collects(settings, chat_id)      # replaced below by the live settings
     archive.left_out = lambda chat_id: chat_id in (settings.memory_off_chats or [])
     store.listeners.append(archive.sync)
-    threading.Thread(target=archive.sync_all, daemon=True).start()   # file away chats from older versions
+    from prometheus.jobs.runner import start_job
+
+    start_job("archive_sync", "Sync chat archives", archive.sync_all, name="prometheus-archive-sync")   # file away chats from older versions
     policy = PathPolicy(home=home, data_dir=data, code_dir=CODE_DIR, protected=(memory_folder,),
                         extra_roots=usable_extra_folders(settings, home))
     journal = Journal(data / "journals")
@@ -393,6 +403,16 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
     services.atomic_files = AtomicFiles(policy=policy, backup_dir=data / "backups")
     services.terminal = AsyncTerminal(policy=policy)
     services.archive = archive
+    from prometheus.jobs.store import JobStore
+    from prometheus.jobs.runner import JobRunner, set_default_runner
+
+    job_store = JobStore(store)
+    job_store.recover_after_restart()
+    killswitch.on_stop(lambda reason: job_store.pause_all(f"Stopped by user: {reason}" if reason else "Stopped by user"))
+    job_runner = JobRunner(job_store)
+    set_default_runner(job_runner)
+    services.jobs = job_store
+    services.job_runner = job_runner
 
     def _carry_on_after_answer(approval_id: int, status: str, result: str) -> None:
         """A loop task that waited for this yes carries on by itself once everything it waited for is answered."""

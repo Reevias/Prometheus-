@@ -141,11 +141,13 @@ def by_ai(router, text: str, history: list[dict] | None = None, seconds: float =
             box["error"] = e
 
     import contextvars
+    from prometheus.jobs.runner import get_default_runner, start_job
 
-    worker = threading.Thread(target=contextvars.copy_context().run, args=(ask,), name="prometheus-front-door",
-                              daemon=True)
-    worker.start()
-    worker.join(seconds)
+    job = start_job("front_door", "Intent classification", contextvars.copy_context().run, args=(ask,),
+                    name="prometheus-front-door")
+    worker = get_default_runner().get_thread(job.id)
+    if worker is not None:
+        worker.join(seconds)
     raw = box.get("reply")
     if not raw:
         return None

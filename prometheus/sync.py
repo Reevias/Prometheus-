@@ -277,7 +277,9 @@ class SyncClock:
                 pass
 
     def start(self) -> None:
-        threading.Thread(target=self.loop, name="prometheus-sync", daemon=True).start()
+        from prometheus.jobs.runner import start_job
+
+        start_job("sync", "SyncEngine loop", self.loop, name="prometheus-sync")
 
     def stop(self) -> None:
         self._stop.set()

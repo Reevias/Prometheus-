@@ -12,10 +12,20 @@ class KillSwitch:
     def __init__(self):
         self._event = threading.Event()
         self.reason = ""
+        self._on_stop: list = []
+
+    def on_stop(self, handler) -> None:
+        if callable(handler):
+            self._on_stop.append(handler)
 
     def trigger(self, reason: str) -> None:
         self.reason = reason
         self._event.set()
+        for h in list(self._on_stop):
+            try:
+                h(reason)
+            except Exception:
+                pass
 
     def reset(self) -> None:
         self.reason = ""
