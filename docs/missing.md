@@ -14,6 +14,12 @@ Not yet run end to end on the owner's real laptop.
 - No graph kinds of Prometheus's own are saved yet (only the engine and test kinds); the view comes in 5.5.
 - NOT VERIFIED on the owner's laptop.
 
+## M5 5.4 own agents, 24 November 2026
+- Own agents can use four tools only (web search, read a web page, read a text file, open a file); more tools need their own checked code first. An own agent has no way to write or change files, run programs or use the browser.
+- Removing an agent cancels its jobs in the job tracker (task steps titled "name: ..."). A step that is running inside a chat right now, outside the tracker, finishes by itself.
+- Own agents live in the saved settings file; a hand-edited file can only lose power (unknown tools and copied names are dropped when it loads).
+- The tool check is one function (`OwnAgent._call`) that Opus should review; the browser tests for the form were written after the page. Not run on the owner's laptop: NOT VERIFIED on Windows.
+
 ## M5 5.5 multi-agent view, 24 November 2026
 - A plain job that is running as a thread has no Stop or Pause button: Python can't stop it, and a button that only changed the record would lie. Graph steps use "should I stop?" checks, so graphs have all three buttons. A paused plain job has Stop only: Resume would just mark it waiting, because nothing runs waiting jobs yet.
 - The agent column of a task step is read from its title ("research: ..."); jobs started elsewhere show their kind.

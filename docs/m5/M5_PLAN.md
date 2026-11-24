@@ -17,7 +17,7 @@ The owner can make their own agents and see everything running on one screen.
 | [x] 5.2 | **Task graph (DAG)** | Steps with dependencies, run side by side or one after another; retries with waits; cancelling a parent cancels its children; a failed step stops the steps that need it. Cycles are refused. Saved in the tracker, so a graph survives a restart. | Cycle refused; cancel spreads; retry count kept after restart; failed parent → children "cancelled". |
 | [x] 5.3 | **Child agents at once** | A limit sized for 8 GB: default 2 at once (3 if free RAM > 3 GB, read with psutil, never faked). On Windows each child that runs a program goes in a Job Object with a memory cap. Start, status, clean-up; no orphans left after Stop all. | Start 5 jobs → only 2 run; RAM guard stops a 3rd when memory is low; Stop all leaves no child processes (checked on Windows CI). |
 | 5.5 | ✅ **Multi-agent view** | Replaces M2's "running now" list: each job, its graph, live status, Stop / Pause / Resume buttons, real times only. Uses the existing Jinja2/HTMX/Canvas look and colours. Built before 5.4 so the owner can see agents. | Browser tests: buttons work, a cancelled job shows cancelled; no dead buttons. |
-| 5.4 | **Your own agents** | Create, edit, remove agents: name, instructions, which tools, which model card (M3.4). Least privilege: a new agent gets no tools until ticked; dangerous tools still need approval. One switch in Features. | An own agent can't use an unticked tool; deleting an agent cancels its jobs. |
+| 5.4 | ✅ **Your own agents** | Create, edit, remove agents: name, instructions, which tools, which model card (M3.4). Least privilege: a new agent gets no tools until ticked; dangerous tools still need approval. One switch in Features. | An own agent can't use an unticked tool; deleting an agent cancels its jobs. |
 | [x] 5.6 | **Conversation branching** | "Branch from here" on any message: a new chat copying history up to that point; the original stays unchanged. | Branch keeps the original intact; branching a branch works. |
 | 5.7 | ✅ **Accessibility-tree browser tool** (moved from M3) | The browser agent can take a snapshot of the page's accessibility tree and act on its elements. Page text is wrapped as untrusted (M3's `has_untrusted`). | Snapshot of a test page; a page saying "ignore your rules" is treated as data. |
 | 5.8 | **Audit + report** | Independent review, fixes, `docs/reports/M5_REPORT.md`, CHANGELOG, missing.md, bugs.md. | — |
@@ -77,7 +77,7 @@ Files named are where the work starts; the builder may add files next to them.
 6. Works on the phone layout too.
 7. Browser tests for every button and for a cancelled and a failed job.
 
-### 5.4 Your own agents (builder: Sonnet · tool-permission check: Opus)
+### 5.4 [x] Your own agents (builder: Sonnet · tool-permission check: Opus) — built 24 Nov, awaiting review
 1. Storage for own agents: name, short description, instructions, ticked tools, model card (from M3.4's table).
 2. Create, edit and remove from the Agents page; one switch "Own agents" in the Features list.
 3. A new agent has no tools until ticked; tools that need approval still ask every time.
