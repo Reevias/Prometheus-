@@ -10,9 +10,11 @@ SESSION = None          # the app's BrowserSession
 @register
 class BrowserAgent(Agent):
     name = "browser"
-    description = ("Uses websites in Prometheus's own browser window, step by step: open (url), read (what's on the "
-                   "page, with its buttons and fields), type (field = its label or placeholder, text), click (label = "
-                   "the button or link text), login (when the page asks for a password: the owner types it). "
+    description = ("Uses websites in Prometheus's own browser window on the laptop, step by step: open (url), read (what's "
+                   "on the page, with its buttons and fields), snapshot (the page's accessibility tree: every element's "
+                   "role, name and state with a short id like e12), type (field = its label or placeholder, text), click "
+                   "(label = the button or link text), type, click or select (ref = an id from the last snapshot; "
+                   "select also takes text = the option), login (when the page asks for a password: the owner types it). "
                    "Read the page before typing or clicking. Paying or ordering waits on the Approvals page; "
                    "signing in, submitting, sending or posting is asked in the chat.")
     tools = {"web_fetch"}
@@ -42,6 +44,13 @@ class BrowserAgent(Agent):
                         f"{', '.join(page['buttons'][:40])}\nFields: "
                         f"{', '.join(f['label'] + ' (' + f['type'] + ')' for f in page['fields'])}")
                 return StepResult("done", untrusted(body, page["url"]), {"url": page["url"]})
+            if action == "snapshot":
+                snap = SESSION.snapshot()
+                body = f"{snap['title']} ({snap['url']})\n{snap['tree']}"
+                return StepResult("done", untrusted(body, snap["url"]),
+                                  {"url": snap["url"], "truncated": snap["truncated"]})
+            if action in ("type", "click", "select") and "ref" in inputs:
+                return self._by_ref(action, str(inputs.get("ref") or ""), str(inputs.get("text") or ""), ctx)
             if action == "type":
                 return StepResult("done", SESSION.type(str(inputs.get("field") or ""), str(inputs.get("text") or "")))
             if action == "click":
@@ -70,8 +79,31 @@ class BrowserAgent(Agent):
         return StepResult("failed", "I can: open, read, type, click, login.")
 
 
+    @staticmethod
+    def _by_ref(action: str, ref: str, text: str, ctx: AgentContext) -> StepResult:
+        """Acts on an element by its snapshot id. The click rules are decided on what the element really is."""
+        if action == "type":
+            return StepResult("done", SESSION.type_ref(ref, text))
+        if action == "select":
+            return StepResult("done", SESSION.select_ref(ref, text))
+        info = SESSION.inspect_ref(ref)
+        label = info.get("name") or ref
+        kind = kind_of_click(label, info)
+        payload = {"label": label, "ref": ref}
+        if kind == "pay":
+            ctx.approvals.request("browser_click", f"In the browser, press '{label}' (this can spend money)", payload)
+            return StepResult("waiting_approval", f"Pressing '{label}' can spend money: approve it on the "
+                                                  "Approvals page.")
+        if kind == "send":
+            return ctx.ask("browser_click", f"In the browser, press '{label}'", payload,
+                           exact=f"click:{label.lower()}", waiting=f"Press '{label}'? Answer below in the chat.")
+        return StepResult("done", SESSION.click_ref(ref, expect_name=info.get("name", "")))
+
+
 def click_handler(payload: dict) -> str:
     try:
+        if payload.get("ref"):          # an id from a snapshot: only if it is still the same element
+            return SESSION.click_ref(str(payload["ref"]), expect_name=str(payload.get("label", "")))
         return SESSION.click(str(payload.get("label", "")), exact=True)
     except BrowserError as e:
         raise RuntimeError(str(e)) from e

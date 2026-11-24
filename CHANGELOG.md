@@ -1,5 +1,8 @@
 # Changelog
 
+## Prometheus 3.0, M5 (on the prometheus-v3 branch, not released yet)
+- **Browser: page snapshot and ids (M5 5.7):** the browser agent can now take a "snapshot" of the page: every button, field, link and heading with its role, name, state and a short id like `e12`. It can then click, type into or choose from a drop-down by that id; it checks the element is still there first (a stale id does nothing and says to take a new snapshot), and the same rules as before apply (paying waits on Approvals, sending is asked in the chat, passwords are never typed by Prometheus). Big pages are cut at 20 000 characters with a note. The snapshot never shows a typed password. Everything a page says, including its title after opening or clicking, goes to the AI wrapped as untrusted data. Not checked on your laptop (NOT VERIFIED on Windows).
+
 ## Prometheus 3.0, M4 (on the prometheus-v3 branch, not released yet)
 - **Settings, redesigned:** categories on the left (General, AI and models, Voice, Connections, Daily life, Privacy and safety, plus Memory and System), each with a short description and the list of its sections; one category at a time; technical options folded under "Show advanced settings"; search finds settings by the start of words, best matches first, Enter jumps to the first one and Esc clears; the chats list no longer sits beside Settings; the old General form is split into Spending limits, Updates, GitHub, Access from other devices and Choose models yourself. Old links to any setting still work.
 - **Window:** the minimise, maximise and close buttons are no longer swallowed by the title bar's drag; drag the window to the top of the screen to fill it, double-click the title bar to maximise or restore (not yet checked on your laptop).

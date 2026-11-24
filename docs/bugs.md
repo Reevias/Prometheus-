@@ -2,7 +2,13 @@
 
 Every bug found and fixed, newest first, so the count is always exact. Add a line for each new one.
 
-**Total fixed: 170** (as of 21 November 2026)
+**Total fixed: 171** (as of 24 November 2026)
+
+## 24 November 2026, M5 5.7 browser snapshot (1)
+
+| # | Bug | Fixed by |
+|---|---|---|
+| 171 | After "open" and "click", the browser agent gave the page's title to the AI as plain text, so a page could put instructions in its title | The title is wrapped as untrusted data (also after sign-in and the new click-by-id) |
 
 ## 21 November 2026, Settings redesign and the owner's second set of screenshots (7)
 

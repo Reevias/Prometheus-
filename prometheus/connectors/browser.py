@@ -11,6 +11,14 @@ import time
 from pathlib import Path
 
 PAGE_CHARS = 8000
+SNAPSHOT_CHARS = 20000          # the most of the page's accessibility tree that goes to the model (about 5k tokens)
+REF = re.compile(r"e\d{1,6}")    # the short element ids Playwright's snapshot hands out; nothing else is ever used
+# what an element really is, for the click rules (same for a label or an id)
+ELEMENT_INFO = ("e => ({name: (e.innerText || e.value || e.getAttribute('aria-label') || '').trim(), "
+                "tag: e.tagName.toLowerCase(), type: (e.getAttribute('type') || '').toLowerCase(), "
+                "form: !!e.closest('form'), href: e.getAttribute('href') || '', "
+                "extra: [e.id, e.className, e.getAttribute('name'), e.getAttribute('data-testid'), "
+                "e.getAttribute('title')].filter(Boolean).join(' ')})")
 RISKY = re.compile(r"\b(pay|buy|purchase|order|checkout|check out|place order|subscribe|donate|confirm payment|"
                    r"add card|transfer)\b", re.I)
 SENDS = re.compile(r"\b(submit|send|post|publish|sign in|log in|login|sign up|register|delete|remove|confirm|"
@@ -19,6 +27,13 @@ SENDS = re.compile(r"\b(submit|send|post|publish|sign in|log in|login|sign up|re
 
 class BrowserError(Exception):
     pass
+
+
+def _now_on(page) -> str:
+    """'Now on: <title>', with the title wrapped as untrusted: a page chooses its own title."""
+    from prometheus.agents.base import untrusted
+
+    return f"Now on: {untrusted(page.title() or '', page.url)}"
 
 
 def kind_of_click(label: str, info: dict | None = None) -> str:
@@ -106,7 +121,7 @@ class BrowserSession:
     def open(self, url: str) -> str:
         def go(page):
             page.goto(url, wait_until="domcontentloaded", timeout=30000)
-            return f"Opened {page.title() or url}"
+            return f"Opened the page. {_now_on(page)}"
         return self.run(go)
 
     def read(self) -> dict:
@@ -160,11 +175,7 @@ class BrowserSession:
                 loc, role = self._locate(page, label, exact=False)
             if loc is None:
                 raise BrowserError(f"There's nothing called '{label}' to click on this page.")
-            info = loc.evaluate("e => ({name: (e.innerText || e.value || e.getAttribute('aria-label') || '').trim(), "
-                                "tag: e.tagName.toLowerCase(), type: (e.getAttribute('type') || '').toLowerCase(), "
-                                "form: !!e.closest('form'), href: e.getAttribute('href') || '', "
-                                "extra: [e.id, e.className, e.getAttribute('name'), e.getAttribute('data-testid'), "
-                                "e.getAttribute('title')].filter(Boolean).join(' ')})")
+            info = loc.evaluate(ELEMENT_INFO)
             info["role"] = role
             return info
         return self.run(look)
@@ -178,8 +189,81 @@ class BrowserSession:
                 raise BrowserError(f"There's nothing called '{label}' to click on this page.")
             loc.click(timeout=10000)
             page.wait_for_load_state("domcontentloaded", timeout=15000)
-            return f"Clicked '{label}'. Now on: {page.title()}"
+            return f"Clicked '{label}'. {_now_on(page)}"
         return self.run(press)
+
+    # -- the accessibility tree and its short element ids (M5 5.7) -------------------------------------------
+    def snapshot(self) -> dict:
+        """Playwright's own accessibility snapshot (role, name, state, and a short id [ref=eN] per element), cut to
+        SNAPSHOT_CHARS at a line end so a huge page can't fill the model's memory."""
+        def look(page):
+            try:
+                tree = page.locator("body").aria_snapshot(mode="ai", timeout=15000)
+            except TypeError as e:
+                raise BrowserError("Page snapshots need a newer Playwright. Run:  pip install -U playwright") from e
+            tree = self._hide_passwords(page, tree)
+            cut = len(tree) > SNAPSHOT_CHARS
+            if cut:
+                tree = tree[:SNAPSHOT_CHARS].rsplit("\n", 1)[0]
+                tree += f"\n[Snapshot cut at {SNAPSHOT_CHARS} characters: the page has more. Scroll or open a part of it.]"
+            return {"url": page.url, "title": page.title(), "tree": tree, "truncated": cut}
+        return self.run(look)
+
+    @staticmethod
+    def _hide_passwords(page, tree: str) -> str:
+        """A field's typed value is shown after its line ("textbox ... [ref=e4]: value"). Password fields never show
+        it, and when it can't be checked what the field is, the value is hidden too."""
+        def hide(m):
+            try:
+                is_password = (page.locator(f"aria-ref={m.group(2)}").first.get_attribute("type") or "").lower() == "password"
+            except Exception:
+                is_password = True
+            return f"{m.group(1)}: [hidden]" if is_password else m.group(0)
+        return re.sub(r"^(\s*- \w+ [^\n]*\[ref=(e\d+)\][^\n:]*): [^\n]+$", hide, tree, flags=re.M)
+
+    @staticmethod
+    def _by_ref(page, ref: str):
+        """The one element with this id right now. Nothing is touched when the id is odd, gone or ambiguous."""
+        if not isinstance(ref, str) or not REF.fullmatch(ref):
+            raise BrowserError("That isn't an element id from a snapshot (they look like e12).")
+        loc = page.locator(f"aria-ref={ref}")
+        if loc.count() != 1:
+            raise BrowserError(f"Element {ref} isn't on the page any more. Take a new snapshot and use its ids.")
+        return loc
+
+    def inspect_ref(self, ref: str) -> dict:
+        """What the element with this id really is (same facts as inspect(), for the click rules)."""
+        def look(page):
+            return self._by_ref(page, ref).evaluate(ELEMENT_INFO)
+        return self.run(look)
+
+    def click_ref(self, ref: str, expect_name: str | None = None) -> str:
+        def press(page):
+            loc = self._by_ref(page, ref)
+            if expect_name is not None and loc.evaluate(ELEMENT_INFO)["name"] != expect_name:
+                raise BrowserError(f"Element {ref} changed since you were asked, so I pressed nothing. Take a new snapshot.")
+            loc.click(timeout=10000)
+            page.wait_for_load_state("domcontentloaded", timeout=15000)
+            return f"Clicked {ref}. {_now_on(page)}"
+        return self.run(press)
+
+    def type_ref(self, ref: str, text: str) -> str:
+        def fill(page):
+            loc = self._by_ref(page, ref)
+            if (loc.get_attribute("type") or "").lower() == "password":
+                raise BrowserError("Passwords are never typed by Prometheus. Use 'login' and type it yourself.")
+            loc.fill(text, timeout=10000)
+            return f"Typed into {ref}."
+        return self.run(fill)
+
+    def select_ref(self, ref: str, option: str) -> str:
+        def choose(page):
+            loc = self._by_ref(page, ref)
+            if loc.evaluate("e => e.tagName.toLowerCase()") != "select":
+                raise BrowserError(f"Element {ref} isn't a drop-down list.")
+            loc.select_option(label=option, timeout=10000)
+            return f"Chose '{option}' in {ref}."
+        return self.run(choose)
 
     def current_host(self) -> str:
         """The site of the page that is open now (the password would go there)."""
@@ -201,5 +285,5 @@ class BrowserSession:
             field.first.fill(secret)
             field.first.press("Enter")
             page.wait_for_load_state("domcontentloaded", timeout=15000)
-            return f"Signed in. Now on: {page.title()}"
+            return f"Signed in. {_now_on(page)}"
         return self.run(fill)

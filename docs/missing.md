@@ -3,6 +3,9 @@
 Updated 11 November 2026. Version 2.3. Built and tested here: 883 tests pass.
 Not yet run end to end on the owner's real laptop.
 
+## M5 5.7 browser snapshot, 24 November 2026
+Not run on the owner's laptop (Microsoft Edge instead of the Chromium used in tests): NOT VERIFIED on Windows until the owner tries it. Snapshots need a recent Playwright (the `mode="ai"` snapshot); `pyproject.toml` still says `>=1.45`, which is older, so the agent says "pip install -U playwright" if it is too old (tested with 1.65.2). Page elements inside iframes are not in the snapshot yet. Error messages that Playwright itself writes can quote page text and are not wrapped.
+
 ## M3 audit, 19 November 2026
 
 Phases A to D are done (D6 exit check 20 Nov: 3 more bugs fixed, bug log 123-125). Still to do: run it on the owner's laptop and the owner's licence sign-off in `THIRD_PARTY_LICENSES.md`. Billed catalog models need rates on their model cards. Local cost estimates can differ from the provider's invoice.
