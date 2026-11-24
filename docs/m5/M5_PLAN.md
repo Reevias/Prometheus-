@@ -31,7 +31,7 @@ audit passed; open-source check for any new dependency (none planned: SQLite, as
 Each list is the whole job for that step. The builder does the items in order, a failing test first each time.
 Files named are where the work starts; the builder may add files next to them.
 
-### 5.1 Job tracker (builder: Codex · spec + review: Opus)
+### 5.1 Job tracker (builder: Antigravity · spec + review: Opus)
 1. New `prometheus/jobs/` package: `store.py` (SQLite table `jobs`: id, kind, title, state, parent_id, created,
    started, finished, progress text, error, retries, payload JSON) using the existing database and M1's atomic writes.
 2. `states.py`: the allowed moves only (pending→running→done/failed/cancelled/paused; paused→pending on Resume).
@@ -46,7 +46,7 @@ Files named are where the work starts; the builder may add files next to them.
    (the web server, the hotkey listener and similar) go in a short allow-list with the reason written next to each.
 8. Lint test: a new raw thread or task outside the allow-list fails the suite.
 
-### 5.2 Task graph (builder: Opus · extra edge-case tests: Codex)
+### 5.2 Task graph (builder: Opus · extra edge-case tests: Antigravity)
 1. `prometheus/jobs/graph.py`: a graph is a parent job; its steps are child jobs with a "needs" list.
 2. Checks when a graph is made: no loops, no missing steps, at most 50 steps.
 3. Runs every step whose needs are done; independent steps run side by side (within 5.3's limit).
@@ -86,7 +86,7 @@ Files named are where the work starts; the builder may add files next to them.
 6. Removing an agent cancels its running jobs first (asks before doing it).
 7. Names can't copy a built-in agent's name.
 
-### 5.6 Conversation branching (builder: Codex · review: Opus)
+### 5.6 Conversation branching (builder: Antigravity · review: Opus)
 1. "Branch from here" on any message in a chat.
 2. Makes a new chat with the history up to that message (in `memory/store.py`); the original is not changed.
 3. The new chat shows where it came from, with a link back.
@@ -111,29 +111,43 @@ Files named are where the work starts; the builder may add files next to them.
 
 ## Who does what
 
-The rule of thumb: **Opus decides and checks, Codex builds the well-defined pieces, Sonnet builds the UI and the
+The rule of thumb: **Opus decides and checks, Antigravity builds the well-defined pieces, Sonnet builds the UI and the
 glue.** Opus never reviews its own code; whoever built a step doesn't audit it.
 
 | Work | Model | Why |
 |---|---|---|
 | Write each step's exact spec and its fail-first test list before building | **Opus** | Design mistakes here are the costly ones. |
-| 5.1 job table, states, restart recovery | **Codex** | Clear spec, mostly code + tests. |
-| 5.2 DAG engine (cancel spread, retries, recovery) | **Opus** builds, **Codex** writes extra edge-case tests | The hardest logic in M5. |
+| 5.1 job table, states, restart recovery | **Antigravity** | Clear spec, mostly code + tests. |
+| 5.2 DAG engine (cancel spread, retries, recovery) | **Opus** builds, **Antigravity** writes extra edge-case tests | The hardest logic in M5. |
 | 5.3 concurrency limit, RAM guard, Windows Job Objects | **Opus** | Windows process handling + safety. |
-| Moving the 30 untracked threads onto the tracker | **Codex** | Repetitive and mechanical, with tests. |
+| Moving the 30 untracked threads onto the tracker | **Antigravity** | Repetitive and mechanical, with tests. |
 | 5.5 multi-agent view (HTML/HTMX/Canvas, browser tests) | **Sonnet** | UI work in the existing style. |
 | 5.4 own agents (forms, storage, Features switch) | **Sonnet** | Mostly UI + plain storage. Opus checks the tool-permission part. |
-| 5.6 conversation branching | **Codex** | Small, self-contained. |
+| 5.6 conversation branching | **Antigravity** | Small, self-contained. |
 | 5.7 accessibility browser tool | **Sonnet** builds, **Opus** reviews the untrusted-text handling | Security-sensitive input. |
 | CHANGELOG, missing.md, bugs.md, report text | **Sonnet** | Writing in plain words. |
 | Security review and final M5 audit | **Opus** (a fresh session) | Independent check. |
+
+## Order and who works when (24 Nov)
+Two builders can work at the same time because their files don't overlap.
+
+| Round | Antigravity | Sonnet | Opus |
+|---|---|---|---|
+| 1 | 5.1 Job tracker (all items; **leave `connectors/browser.py` alone** until Sonnet's 5.7 is pushed) | 5.7 Browser tool (`agents/browser_agent.py`, `connectors/browser.py`) | — |
+| 2 | 5.6 Branching; then move `connectors/browser.py` onto the tracker | Docs for round 1 | Reviews 5.1 and 5.7 |
+| 3 | Edge-case tests for 5.2 | — | Builds 5.2, then 5.3 |
+| 4 | Fixes from reviews | 5.5 view, then 5.4 own agents | Reviews 5.5 / 5.4 permission check |
+| 5 | — | Report text | Fresh-session audit (5.8) |
+
+Shared files (`CHANGELOG.md`, `docs/bugs.md`, `docs/missing.md`): `git pull` first, add your own lines only, keep
+the other builder's lines if git shows a clash.
 
 ## Workflow for every step
 1. **Opus** writes the step's spec and test list in this file (small section per step).
 2. The builder (table above) does `git pull`, writes the failing tests, then the code, until they pass.
 3. Full suite: `/home/user/venv314/bin/python -m pytest -q`, plus browser tests for UI steps.
 4. Push to `prometheus-v3`; GitHub `windows-latest` run must be green.
-5. A different model reviews the diff (Opus for Codex/Sonnet work; Sonnet + a fresh Opus session for Opus work).
+5. A different model reviews the diff (Opus for Antigravity/Sonnet work; Sonnet + a fresh Opus session for Opus work).
 6. Fix review findings with a failing test first; tick the step here; one-line short report to the owner.
 
 Two builders never edit the same file at once; always `git pull` before starting and before pushing; never force-push.
@@ -141,4 +155,6 @@ Two builders never edit the same file at once; always `git pull` before starting
 ## Owner's answers (22 Nov 2026)
 - Jobs at once: 2, or 3 when more than 3 GB of RAM is free.
 - After a restart or crash: running jobs wait as "paused"; the owner presses Resume.
-- Codex is set up. No ready-made prompts: each builder works from the step's work list below.
+- Codex is used up (24 Nov): **Antigravity takes every Codex job.** It runs on the owner's Windows laptop, so its
+  test runs there count as a real laptop run (say so in its report; GitHub's Windows run is still needed).
+- Each builder works from the step's work list below; the owner pastes a short start message.
