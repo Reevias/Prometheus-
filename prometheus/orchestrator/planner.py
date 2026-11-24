@@ -4,6 +4,7 @@ from __future__ import annotations
 import contextlib
 import json
 import re
+import threading
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Callable
@@ -343,6 +344,8 @@ class Orchestrator:
         self.killswitch = killswitch
         self.prompts_dir = Path(prompts_dir) if prompts_dir else PACKAGE_PROMPTS
         self.step_tries, self.task_budget, self.max_steps = STEP_TRIES, TASK_BUDGET, MAX_TASK_STEPS
+        self._count_lock = threading.Lock()   # steps of a task graph count towards max_steps together
+        self.graphs = None                    # the task-graph runner (M5 5.2), set by the app
         self.extra_catalog = None          # callable: tools of connected apps, for the planner
         self.extra_sections: list = []     # (heading, callable returning text) added to the planner's system
         self.interceptors: list = []       # callables (chat_id, text) -> answer or None: e.g. a quiz in progress
@@ -960,8 +963,15 @@ class Orchestrator:
         pos = 0                                   # the step about to run; what a pause keeps
         try:
             spent_at_start = self._spent()
-            executed = 0
-            for pos, st in enumerate(plan.steps):
+            count = {"executed": 0}
+            one_by_one = plan.steps
+            if self._fans_out(plan, fast):
+                outcome = self._execute_graph(chat_id, task_id, text, plan, read_only, only, results, bad,
+                                              private, count, spent_at_start, topic)
+                if outcome is not None:
+                    return outcome
+                one_by_one = []
+            for pos, st in enumerate(one_by_one):
                 self.killswitch.check()
                 if chat_id in self.stopping:
                     raise Stopped("Stopped. Ask again whenever you like.")
@@ -972,40 +982,9 @@ class Orchestrator:
                     self.store.finish_step(sid, "skipped", "Skipped because an earlier step failed.")
                     bad.add(st["id"])
                     continue
-                attempt, tries = st, []
-                while True:
-                    if executed >= self.max_steps:
-                        res = StepResult("failed", f"Stopped: this task reached the limit of {self.max_steps} steps.")
-                        break
-                    if self._spent() - spent_at_start >= self.task_budget:
-                        res = StepResult("failed", f"Stopped: this task reached its ${self.task_budget:.2f} spending "
-                                                   "limit. Ask again if you want me to keep going.")
-                        break
-                    executed += 1
-                    if read_only and not read_only_ok(attempt):
-                        sid = self.store.add_step(task_id, attempt["agent"], attempt["goal"], attempt["inputs"])
-                        res = StepResult("failed", "Not allowed: another app asked, and this would change something.")
-                        self.store.finish_step(sid, "failed", res.summary)
-                        break
-                    res, agent_cls = self._run_step(task_id, attempt, results, private,
-                                                    label=f"Try {len(tries) + 1}: " if tries else "")
-                    if res.status == "done":
-                        check = self._verify(attempt, res, agent_cls, task_id)
-                        if check:                          # it said done, but the goal isn't there
-                            res = StepResult("failed", check, res.data)
-                    if res.status != "failed" or len(tries) + 1 >= self.step_tries:
-                        break
-                    tries.append((attempt, res))
-                    nxt = self._repair(text, st, tries, agent_cls, only=only)
-                    if nxt is None:
-                        break
-                    attempt = {**nxt, "id": st["id"], "depends_on": st["depends_on"]}
+                res = self._step_with_repairs(task_id, text, st, results, private, read_only, only, count,
+                                              spent_at_start)
                 results[st["id"]] = res
-                if tries:
-                    self._learn_from(st, tries, attempt, res)
-                    note = "; ".join(f"{a['agent']} ({a['goal'][:60]}): failed" for a, _ in tries)
-                    self.store.add_agent_note(task_id, "planner", f"Retried step {st['id']}: {note}. "
-                                                                  f"Final: {res.status}.")
                 if res.status == "failed":
                     bad.add(st["id"])
         except (ProviderUnavailable, BudgetExceeded) as e:
@@ -1047,6 +1026,127 @@ class Orchestrator:
         status = "failed" if bad and len(bad) == len(plan.steps) else "done"
         return self._finish(chat_id, task_id, status, answer or "Done.", written_by, private=bool(private),
                             topic=topic)
+
+    def _step_with_repairs(self, task_id: int, text: str, st: dict, results: dict, private: set, read_only: bool,
+                           only: str, count: dict, spent_at_start: float) -> StepResult:
+        """One plan step with its limits, check and repairs (the same rules one by one and in a task graph)."""
+        attempt, tries = st, []
+        while True:
+            with self._count_lock:
+                if count["executed"] >= self.max_steps:
+                    res = StepResult("failed", f"Stopped: this task reached the limit of {self.max_steps} steps.")
+                    break
+                if self._spent() - spent_at_start >= self.task_budget:
+                    res = StepResult("failed", f"Stopped: this task reached its ${self.task_budget:.2f} spending "
+                                               "limit. Ask again if you want me to keep going.")
+                    break
+                count["executed"] += 1
+            if read_only and not read_only_ok(attempt):
+                sid = self.store.add_step(task_id, attempt["agent"], attempt["goal"], attempt["inputs"])
+                res = StepResult("failed", "Not allowed: another app asked, and this would change something.")
+                self.store.finish_step(sid, "failed", res.summary)
+                break
+            res, agent_cls = self._run_step(task_id, attempt, results, private,
+                                            label=f"Try {len(tries) + 1}: " if tries else "")
+            if res.status == "done":
+                check = self._verify(attempt, res, agent_cls, task_id)
+                if check:                          # it said done, but the goal isn't there
+                    res = StepResult("failed", check, res.data)
+            if res.status != "failed" or len(tries) + 1 >= self.step_tries:
+                break
+            tries.append((attempt, res))
+            nxt = self._repair(text, st, tries, agent_cls, only=only)
+            if nxt is None:
+                break
+            attempt = {**nxt, "id": st["id"], "depends_on": st["depends_on"]}
+        if tries:
+            self._learn_from(st, tries, attempt, res)
+            note = "; ".join(f"{a['agent']} ({a['goal'][:60]}): failed" for a, _ in tries)
+            self.store.add_agent_note(task_id, "planner", f"Retried step {st['id']}: {note}. "
+                                                          f"Final: {res.status}.")
+        return res
+
+    def _fans_out(self, plan: Plan, fast) -> bool:
+        """Hand the plan to the task graph (M5 5.2): the switch is on, a graph runner is there, and at least two
+        steps could run at the same time (neither needs the other, directly or through others)."""
+        from prometheus.features import on
+
+        if fast is not None or getattr(self, "graphs", None) is None or len(plan.steps) < 2:
+            return False
+        if not on(getattr(self, "settings", None), "parallel_steps") or getattr(self, "settings", None) is None:
+            return False
+        before: dict[int, set[int]] = {}
+        for st in plan.steps:                                  # every step it needs, also through other steps
+            before[st["id"]] = set(st["depends_on"]).union(*(before.get(d, set()) for d in st["depends_on"]))
+        ids = [st["id"] for st in plan.steps]
+        return any(b not in before[a] and a not in before[b] for i, a in enumerate(ids) for b in ids[i + 1:])
+
+    def _execute_graph(self, chat_id: int, task_id: int, text: str, plan: Plan, read_only: bool, only: str,
+                       results: dict, bad: set, private: set, count: dict, spent_at_start: float,
+                       topic: str) -> TaskOutcome | None:
+        """Run the steps as a task graph: independent steps at once (within the slots), each with the usual rules.
+        A limit, Stop or Pause in any step ends the graph and is handled exactly like in the one-by-one loop.
+        Returns a finished outcome for a pause (else None: the answer is written as usual)."""
+        from prometheus.jobs.graph import GraphFailed  # noqa: F401  (the graph's own error, for readers)
+
+        problems: list[BaseException] = []
+        lock = threading.Lock()
+        graphs = self.graphs
+
+        def make(st: dict):
+            def work(ctx, inputs):
+                if problems:
+                    raise Stopped("Another step ended the task.")
+                try:
+                    self.killswitch.check()
+                    if chat_id in self.stopping:
+                        raise Stopped("Stopped. Ask again whenever you like.")
+                    if chat_id in self.pausing:
+                        raise Paused("Paused by you.")
+                    res = self._step_with_repairs(task_id, text, st, results, private, read_only, only, count,
+                                                  spent_at_start)
+                except (ProviderUnavailable, BudgetExceeded, Stopped, Paused) as e:
+                    with lock:
+                        problems.append(e)
+                    graphs.cancel(gid, f"Task ended: {type(e).__name__}")
+                    return None
+                with lock:
+                    results[st["id"]] = res
+                    if res.status == "failed":
+                        bad.add(st["id"])
+                if res.status == "failed":
+                    raise RuntimeError(res.summary[:300])         # the graph cancels the steps that need it
+                return res.status
+            return work
+
+        steps = [{"id": st["id"], "func": make(st), "needs": st["depends_on"], "retries": 0,     # repairs happen
+                  "title": f"{st['agent']}: {st['goal']}"[:200]} for st in plan.steps]       # inside each step
+        gid = graphs.create(f"Task {task_id}: {text[:60]}", steps, kind="task_graph",
+                            payload={"task_id": task_id, "chat_id": chat_id})
+        graphs.start(gid)
+        while True:
+            state = graphs.wait(gid, 0.2)
+            if state in ("done", "failed", "cancelled", "paused") and graphs.idle(gid):
+                break
+            if not problems and (chat_id in self.stopping or chat_id in self.pausing or self.killswitch.is_set):
+                with lock:
+                    problems.append(Paused("Paused by you.") if chat_id in self.pausing and chat_id not in
+                                    self.stopping else Stopped("Stopped. Ask again whenever you like."))
+                graphs.cancel(gid, "Task ended by you")
+        for st in plan.steps:                                    # steps a failed step's children never ran
+            if st["id"] not in results and any(d in bad for d in st["depends_on"]) and not problems:
+                sid = self.store.add_step(task_id, st["agent"], st["goal"], st["inputs"])
+                self.store.finish_step(sid, "skipped", "Skipped because an earlier step failed.")
+                bad.add(st["id"])
+        if problems:
+            first = problems[0]
+            if isinstance(first, Paused):
+                left = Plan([st for st in plan.steps if st["id"] not in results])
+                self._keep_for_carry_on(task_id, text, left, 0, results, bad, private, read_only, only, topic)
+                return self._finish(chat_id, task_id, "paused",
+                                    "Paused. Everything it needed is done; press Carry on and I'll write the answer.")
+            raise first
+        return None
 
     def _keep_for_carry_on(self, task_id: int, text: str, plan: Plan, pos: int, results: dict[int, StepResult],
                            bad: set[int], private: set[int], read_only: bool, only: str, topic: str) -> None:

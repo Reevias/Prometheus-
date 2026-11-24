@@ -67,6 +67,8 @@ FEATURES: tuple[Feature, ...] = (
     Feature("email", "Email (reading and drafting)", "Online", agents=("email",)),
     Feature("google", "Google Calendar and Drive", "Online", agents=("google", "calendar")),
     Feature("research", "Web research", "Online", agents=("research", "wikipedia")),
+    Feature("parallel_steps", "Run a task's independent steps at the same time (at most 2 or 3 at once)", "Online",
+            attr="parallel_steps"),
     Feature("resume", "Try again by itself after an AI limit", "Online"),
     Feature("paid_heavy", "Cheap paid AI for heavy jobs without asking (at most $1/$4 per million tokens, $0.10 a "
             "task, inside your monthly cap)", "Online"),

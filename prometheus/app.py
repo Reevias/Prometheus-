@@ -78,6 +78,7 @@ class Services:
     terminal: AsyncTerminal | None = None
     jobs: object = None
     job_runner: object = None
+    graphs: object = None            # task graphs (M5 5.2)
 
     def notify(self, kind: str, text: str) -> bool:
         """A Windows notification, if the owner wants this kind (Settings → Notifications). Every notification is
@@ -273,6 +274,9 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
 
     job_store = JobStore(store)
     job_store.recover_after_restart()       # before anything of this run starts a job (M5 review R1)
+    from prometheus.jobs.graph import GraphRunner, recover_graphs
+
+    recover_graphs(job_store)               # graphs that can't carry on in a new run are closed with a reason
     job_runner = JobRunner(job_store)
     set_default_runner(job_runner)
     if providers is None and settings.embed_model:
@@ -386,6 +390,7 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
     orchestrator.live_context = lambda: _live_line(services)   # M3.6 (services is filled in below)
     orchestrator.extra_catalog = apps_agent.MANAGER.catalog_text
     orchestrator.settings = settings          # Features switches and Stop everything
+    orchestrator.graphs = GraphRunner(job_store, job_runner, killswitch=killswitch)   # M5 5.2 task graphs
     from prometheus import features as _features
 
     _features.CURRENT = settings
@@ -412,6 +417,7 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
     services.archive = archive
     killswitch.on_stop(lambda reason: job_store.pause_all(f"Stopped by user: {reason}" if reason else "Stopped by user"))
     services.jobs = job_store
+    services.graphs = orchestrator.graphs
     services.job_runner = job_runner
 
     def _carry_on_after_answer(approval_id: int, status: str, result: str) -> None:
