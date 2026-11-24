@@ -72,15 +72,24 @@ class JobRunner:
 
         return self.store.get_job(job_id) or job
 
-    def _start_sync_job(self, job_id: int, func: Callable, args: tuple, kwargs: dict, name: str) -> None:
+    def run_existing(self, job_id: int, func: Callable, args: tuple = (), kwargs: dict | None = None,
+                     name: str | None = None, mark_running: bool = True) -> threading.Thread | None:
+        """Run work for a job that is already in the tracker (a graph step, a resumed job). With
+        mark_running=False the caller has already moved it to running (and records its end itself)."""
+        self._start_sync_job(job_id, func, args, kwargs or {}, name=name or f"job-{job_id}", mark_running=mark_running)
+        return self.get_thread(job_id)
+
+    def _start_sync_job(self, job_id: int, func: Callable, args: tuple, kwargs: dict, name: str,
+                        mark_running: bool = True) -> None:
         def _wrapper():
             _CURRENT_JOB_ID.set(job_id)
             _CURRENT_JOB_RUNNER.set(self)
-            try:
-                self.store.set_state(job_id, RUNNING)
-            except Exception as err:
-                log.exception("Failed to transition job %d to RUNNING: %s", job_id, err)
-                return
+            if mark_running:
+                try:
+                    self.store.set_state(job_id, RUNNING)
+                except Exception as err:
+                    log.exception("Failed to transition job %d to RUNNING: %s", job_id, err)
+                    return
 
             try:
                 func(*args, **kwargs)

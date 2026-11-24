@@ -207,6 +207,14 @@ class JobStore:
             self._db.commit()
             return self.get_job(job_id)
 
+    def merge_payload(self, job_id: int, **fields) -> Job | None:
+        """Change some payload fields in one locked read-modify-write (never loses another field)."""
+        with self._lock:
+            job = self.get_job(job_id)
+            if job is None:
+                return None
+            return self.update_job(job_id, payload={**job.payload, **fields})
+
     def set_state(self, job_id: int, new_state: str,
                   error: str | None = None, progress: str | None = None) -> Job:
         """Transition a job to a new state enforcing states.py validation."""
