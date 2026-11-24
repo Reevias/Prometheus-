@@ -15,6 +15,38 @@
     <p class="muted lead">Prometheus picks the right agent for each request by itself. To choose one yourself, start a
       message with <code>@</code> and its name, for example <code>@research solar panels</code>.</p>
     {% include "v3/jobs_panel.html" %}
+    <section class="own-agents" id="own-agents" aria-label="Your own agents">
+      <h2 class="section">Your own agents</h2>
+      {% if not own_on %}
+      <p class="muted">Own agents is switched off. Switch it on in <a href="/settings#features">Settings → Features</a> to make your own.</p>
+      {% else %}
+      <p class="muted">An agent you describe yourself. It starts with no tools; tick only what it needs. Tools that need
+        your yes still ask every time.</p>
+      <p><a class="pill own-new" href="/v3/agents?own=new">New agent</a></p>
+      {% for o in own_list %}
+      <div class="own-row" data-own="{{ o.name }}"><b>{{ o.name }}</b><span class="muted">{{ o.about }}</span>
+        <a class="pill" href="/v3/agents?own={{ o.name }}">Edit</a>
+        <button type="button" class="pill danger own-remove" data-own-remove="{{ o.name }}">Remove</button></div>
+      {% endfor %}
+      {% if own_form %}
+      <form class="own-form" id="own-form" data-mode="{{ own_form.mode }}" data-name="{{ own_form.spec.name }}">
+        <label>Name<input name="name" value="{{ own_form.spec.name }}" maxlength="30" required
+          {{ "readonly" if own_form.mode == "edit" }} placeholder="for example notes_helper"></label>
+        <label>What it does (one line)<input name="about" value="{{ own_form.spec.about }}" maxlength="140"></label>
+        <label>Instructions<textarea name="instructions" rows="6" maxlength="4000" required>{{ own_form.spec.instructions }}</textarea></label>
+        <fieldset class="own-tools"><legend>Tools</legend>
+          {% for t in own_tools %}<label class="own-tool"><input type="checkbox" name="tools" value="{{ t.tool }}"{{ " checked" if t.tool in own_form.spec.tools }}>
+            <span>{{ t.what }} <span class="muted">({{ t.rule }})</span></span></label>{% endfor %}
+        </fieldset>
+        <label>Model<select name="card"><option value="">Automatic</option>
+          {% for c in model_cards %}<option value="{{ c.entry }}"{{ " selected" if c.entry == own_form.spec.card }}>{{ c.name }}</option>{% endfor %}</select></label>
+        <p class="job-note" id="own-error" role="alert" hidden></p>
+        <button type="submit" class="pill job-btn">{{ "Save" if own_form.mode == "edit" else "Create agent" }}</button>
+        <a class="pill" href="/v3/agents">Cancel</a>
+      </form>
+      {% endif %}
+      {% endif %}
+    </section>
     <input class="search" type="search" id="agent-filter" placeholder="Filter agents" aria-label="Filter agents">
     {% for group in agents | groupby("group") %}
     <h2 class="section">{{ group.grouper }}</h2>
@@ -79,6 +111,36 @@
       g.hidden = !any; g.previousElementSibling.hidden = !any;
     });
   });
+  {% if own_on %}
+  var form = document.getElementById("own-form");
+  function ownError(text) { var e = document.getElementById("own-error"); if (e) { e.textContent = text; e.hidden = !text; } }
+  function post(url, body, h) {
+    return fetch(url, { method: "POST", credentials: "same-origin", body: body, headers: { "X-CSRF-Token": document.body.dataset.csrf } });
+  }
+  if (form) form.addEventListener("submit", function (ev) {
+    ev.preventDefault(); ownError("");
+    var body = new FormData(form), edit = form.dataset.mode === "edit";
+    post("/api/v3/own-agents" + (edit ? "/" + form.dataset.name : ""), body).then(function (r) {
+      return r.json().then(function (j) {
+        if (r.ok) location.href = "/v3/agents?show=" + (j.name || form.dataset.name); else ownError(j.error || "Couldn't save.");
+      });
+    });
+  });
+  document.querySelectorAll("[data-own-remove]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      var name = b.dataset.ownRemove, url = "/api/v3/own-agents/" + name + "/delete";
+      post(url, new FormData()).then(function (r) { return r.json().then(function (j) { return [r, j]; }); }).then(function (rj) {
+        var r = rj[0], j = rj[1];
+        if (r.status === 409 && j.ask) {
+          if (!confirm(j.ask)) return;
+          var f = new FormData(); f.append("confirm", "1");
+          return post(url, f).then(function () { location.href = "/v3/agents"; });
+        }
+        if (r.ok) location.href = "/v3/agents"; else alert(j.error || "Couldn't remove it.");
+      });
+    });
+  });
+  {% endif %}
   var sw = document.getElementById("agent-switch");
   if (sw) sw.addEventListener("change", function () {
     var body = new FormData(); if (sw.checked) body.append("on", "1");

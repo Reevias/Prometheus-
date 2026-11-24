@@ -287,15 +287,101 @@ def register_routes(app: FastAPI, services: Services) -> None:
 
     # ---- Agents (M2.2) -----------------------------------------------------------------------------------------
     @app.get("/v3/agents", response_class=HTMLResponse)
-    def v3_agents(request: Request, show: str = ""):
+    def v3_agents(request: Request, show: str = "", own: str = ""):
         from prometheus.web.agents_view import all_agents
 
         agents = all_agents(services, services.orchestrator.registry)
         chosen = next((a for a in agents if a["name"] == show), None)
         history = store.agent_steps(chosen["name"], 8) if chosen else []
         titles = dict(store.chats())
+        from prometheus import own_agents
+        from prometheus.features import on as feature_on
+
+        own_on = feature_on(services.settings, "own_agents")
+        own_form = None
+        if own_on and own != "":
+            found = next((x for x in own_agents.valid_specs(services.settings, builtin_names()) if x["name"] == own), None)
+            if own == "new":
+                own_form = {"mode": "new", "spec": {"name": "", "about": "", "instructions": "", "tools": [], "card": ""}}
+            elif found:
+                own_form = {"mode": "edit", "spec": found}
+        from prometheus.web.agents_view import TOOL_WORDS, permission
+
+        own_tools = [{"tool": t, "what": TOOL_WORDS.get(t, t), "rule": permission(t)} for t in own_agents.OWN_TOOLS]
         return shell(request, "v3/agents.html", "agents", agents=agents, chosen=chosen, history=history,
-                     titles=titles, **jobs_context())
+                     titles=titles, own_on=own_on, own_form=own_form, own_tools=own_tools,
+                     own_list=own_agents.valid_specs(services.settings, builtin_names()),
+                     model_cards=[{"entry": c.entry, "name": c.name} for c in services.router.cards],
+                     **jobs_context())
+
+    # ---- the owner's own agents (M5 5.4) ------------------------------------------------------------------------
+    def builtin_names() -> set[str]:
+        from prometheus.agents import REGISTRY as built_in
+
+        return set(built_in)
+
+    def own_apply() -> None:
+        from prometheus import own_agents
+
+        own_agents.install(services.orchestrator.registry, services.permissions, services.settings, builtin_names())
+        save_settings(services.settings)
+
+    def own_card_entries() -> set[str]:
+        return {c.entry for c in services.router.cards}
+
+    @app.post("/api/v3/own-agents")
+    def api_v3_own_agent_create(name: str = Form(""), about: str = Form(""), instructions: str = Form(""),
+                                tools: list[str] = Form(default=[]), card: str = Form("")):
+        from prometheus import own_agents
+        from prometheus.features import on as feature_on
+
+        if not feature_on(services.settings, "own_agents"):
+            return JSONResponse({"error": "Own agents is switched off. Switch it on in Settings → Features."},
+                                status_code=409)
+        try:
+            made = own_agents.add(services.settings, {"name": name, "about": about, "instructions": instructions,
+                                                      "tools": tools, "card": card}, builtin_names(), own_card_entries())
+        except own_agents.OwnAgentError as e:
+            return JSONResponse({"error": str(e)}, status_code=422)
+        own_apply()
+        store.audit("user", "own_agent_add", {"agent": made["name"], "tools": made["tools"]})
+        return {"name": made["name"]}
+
+    @app.post("/api/v3/own-agents/{name}")
+    def api_v3_own_agent_edit(name: str, about: str = Form(""), instructions: str = Form(""),
+                              tools: list[str] = Form(default=[]), card: str = Form("")):
+        from prometheus import own_agents
+        from prometheus.features import on as feature_on
+
+        if not feature_on(services.settings, "own_agents"):
+            return JSONResponse({"error": "Own agents is switched off. Switch it on in Settings → Features."},
+                                status_code=409)
+        try:
+            made = own_agents.change(services.settings, name, {"about": about, "instructions": instructions,
+                                                               "tools": tools, "card": card}, builtin_names(),
+                                     own_card_entries())
+        except own_agents.OwnAgentError as e:
+            return JSONResponse({"error": str(e)}, status_code=404 if str(e).startswith("No own agent") else 422)
+        own_apply()
+        store.audit("user", "own_agent_edit", {"agent": name, "tools": made["tools"]})
+        return {"name": name}
+
+    @app.post("/api/v3/own-agents/{name}/delete")
+    def api_v3_own_agent_remove(name: str, confirm: str = Form("")):
+        from prometheus import own_agents
+
+        if name not in {x["name"] for x in own_agents.specs(services.settings)}:
+            return JSONResponse({"error": "No such own agent."}, status_code=404)
+        running = own_agents.jobs_of(services.jobs, name)
+        if running and not confirm:                       # asks first: its jobs would be cancelled
+            return JSONResponse({"running": len(running), "ask": f"{name} has {len(running)} job"
+                                 f"{'s' if len(running) != 1 else ''} running. Remove it and cancel "
+                                 f"{'them' if len(running) != 1 else 'it'}?"}, status_code=409)
+        stopped = own_agents.stop_jobs(services.jobs, getattr(services.graphs, "runner", None), services.graphs, running)
+        own_agents.delete(services.settings, name)
+        own_apply()
+        store.audit("user", "own_agent_remove", {"agent": name, "cancelled": stopped})
+        return {"removed": name, "cancelled": stopped}
 
     # ---- the multi-agent view (M5 5.5): read from the job tracker, buttons go through jobs_view.act -----------------
     def jobs_context(note: str = "") -> dict:

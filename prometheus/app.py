@@ -389,7 +389,7 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
                             permissions=permissions, approvals=approvals, killswitch=killswitch, home=home,
                             skills=skills)
 
-    orchestrator = Orchestrator(store, router, REGISTRY, make_context, killswitch, prompts.folder, skills=skills)
+    orchestrator = Orchestrator(store, router, dict(REGISTRY), make_context, killswitch, prompts.folder, skills=skills)
     orchestrator.front_door = providers is None        # M3.1 (tests with stand-in AIs switch it on themselves)
 
     orchestrator.loop = make_loop(orchestrator, settings)    # M3.3: complex jobs, up to 12 rounds
@@ -408,6 +408,10 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
     orchestrator.task_budget = max(0.01, min(float(settings.task_budget_usd), 10.0))
     services = Services(settings, home, store, policy, journal, files, permissions, approvals, budget, killswitch,
                         router, orchestrator, patcher, prompts, skills)
+    from prometheus import own_agents as _own
+
+    _own.install(orchestrator.registry, permissions, settings, set(REGISTRY))     # the owner's own agents (M5 5.4)
+    approvals.register(_own.APPROVAL_KIND, lambda payload: _own.open_handler(payload, policy))
     from prometheus.features import skill_on
     skills.is_off = lambda name: not skill_on(services.settings, name)   # the Skills page's switches
     from prometheus.repos import library as _library

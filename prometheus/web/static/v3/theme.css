@@ -942,6 +942,20 @@ html[data-motion="reduced"] *, html[data-motion="reduced"] *::before { animation
 .job-btn:hover { border-color: var(--orange); }
 .job-btn.job-stop:hover { border-color: var(--bad); color: var(--bad); }
 
+/* own agents (M5 5.4) */
+.own-agents { max-width: 900px; margin-bottom: 18px; }
+.own-row { display: flex; align-items: center; gap: 12px; padding: 9px 14px; margin-bottom: 6px; border-radius: var(--r-md);
+           background: var(--surface); border: 1px solid rgb(var(--text-rgb) / 0.08); flex-wrap: wrap; }
+.own-row .muted { flex: 1 1 200px; min-width: 0; overflow-wrap: anywhere; }
+.own-new, .own-row a.pill, .own-remove { cursor: pointer; text-decoration: none; background: transparent; color: var(--text); font: inherit; font-size: 13px; }
+.own-form { display: flex; flex-direction: column; gap: 12px; padding: 16px; margin: 10px 0; border-radius: var(--r-md);
+            background: var(--surface); border: 1px solid rgb(var(--orange-rgb) / 0.35); }
+.own-form label { display: flex; flex-direction: column; gap: 5px; font-size: 13px; color: var(--muted); }
+.own-form input[type=text], .own-form input:not([type]), .own-form textarea, .own-form select { background: var(--base); color: var(--text);
+  border: 1px solid rgb(var(--text-rgb) / 0.15); border-radius: 8px; padding: 8px 10px; font: inherit; }
+.own-tools { border: 1px solid rgb(var(--text-rgb) / 0.12); border-radius: 8px; padding: 8px 12px; display: flex; flex-direction: column; gap: 6px; }
+.own-tool { flex-direction: row !important; align-items: center; color: var(--text) !important; font-size: 14px !important; }
+
 @media (max-width: 700px) {
   .job-row { padding: 11px 12px; }
   .job-head { flex-wrap: wrap; }

@@ -37,6 +37,7 @@ def split_entry(entry: str) -> tuple[str, str | None]:
 _PAID_OK: contextvars.ContextVar[bool] = contextvars.ContextVar("prometheus_paid_ok", default=False)
 # the kind of job the current step is (the planner tags steps; "" = use the purpose's own kind)
 _KIND: contextvars.ContextVar[str] = contextvars.ContextVar("prometheus_job_kind", default="")
+_CARD: contextvars.ContextVar[str] = contextvars.ContextVar("_CARD", default="")      # an own agent's chosen model (M5 5.4)
 # what paid AI this task has spent so far (None = not inside a task: no paid AI without asking)
 _TASK_SPEND: contextvars.ContextVar[list | None] = contextvars.ContextVar("prometheus_task_spend", default=None)
 # inside this, only free or local AI is used (the front door's quick check never costs money)
@@ -140,6 +141,16 @@ class ModelRouter:
             _FREE_ONLY.reset(token)
 
     @contextlib.contextmanager
+    def use_card(self, entry: str):
+        """Inside this block the chosen model card answers first (an own agent's choice). Private jobs still only
+        use local models, and the usual order is the fallback if it is unavailable."""
+        token = _CARD.set(entry or "")
+        try:
+            yield
+        finally:
+            _CARD.reset(token)
+
+    @contextlib.contextmanager
     def step_kind(self, kind: str):
         token = _KIND.set(kind if kind in _cards.STEP_KINDS else "")     # never "private" or "images" from a tag
         try:
@@ -174,7 +185,7 @@ class ModelRouter:
             # light jobs: free cards, then the owner's route, then paid cards (the "free first" rule)
             free_cards = [e for e in cards if self.is_free(e)]
             cards = free_cards + [e for e in route if e not in free_cards] + [e for e in cards if e not in free_cards]
-        pin = self.pinned.get(purpose)
+        pin = _CARD.get() or self.pinned.get(purpose)
         fitted = list(dict.fromkeys(([pin] if pin else []) + cards + route))
         if kind != "images":                     # a picture-making AI never gets anything else, routes included
             fitted = [e for e in fitted if not getattr(self.card_for(e), "makes_images", False)]

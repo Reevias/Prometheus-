@@ -60,6 +60,7 @@ FEATURES: tuple[Feature, ...] = (
     Feature("apps", "Opening apps and changing laptop settings", "Computer and phone",
             agents=("apps", "system", "settings", "opener")),
     Feature("browser", "Browser control", "Computer and phone", agents=("browser",)),
+    Feature("own_agents", "Own agents", "Computer and phone", attr="own_agents"),
     Feature("code", "Running code (sandbox)", "Computer and phone", agents=("code",)),
     Feature("phone", "Phone control", "Computer and phone", agents=("phone",)),
     Feature("laptop_jobs", "Jobs sent from the phone to the laptop", "Computer and phone"),
@@ -165,6 +166,9 @@ def agent_blocked(settings, agent: str) -> str:
     for f in FEATURES:
         if agent in f.agents and not on(settings, f.key):
             return f"{f.label} is switched off (Settings → Features)."
+    if not on(settings, "own_agents") and any(isinstance(s, dict) and s.get("name") == agent
+                                              for s in (getattr(settings, "own_agent_specs", None) or [])):
+        return "Own agents is switched off (Settings → Features)."
     return ""
 
 
