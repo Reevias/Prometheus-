@@ -138,17 +138,21 @@ Each builder does the items in order, a failing test first each time.
 3. Every place that starts M5 jobs goes through the runtime; a lint test stops new direct calls.
 4. A runtime choice per job, default local; Cloudroom only after an approval (6.2).
 
-### 6.2 Cloudroom (builder: Opus · Render setup files: Sonnet)
+### 6.2 Cloudroom (builder: Opus · Render setup files: Sonnet) — items 1–5 [x] built 25 Nov (Opus), awaiting review; item 6 Sonnet
 1. `runtime/cloudroom.py`: talks to the owner's Render service over HTTPS with a signed token (every request without it is refused) (stored in
    `KEY_NAMES`), never Prometheus's other keys.
 2. Moving a task asks first, showing what goes up (files, text) and what it may do there.
 3. Each request has an id and a receipt; events are numbered and put in order; a repeat request isn't run twice.
 4. Lost link: retries, then resume from the last receipt or mark failed; nothing runs twice.
 5. The Render service runs tasks in a sandbox (no access to the token store; time and memory limits).
-   Free Render machines are small (about 512 MB RAM and a fraction of a CPU: to be confirmed from Render's docs when
-   6.2 starts). Before a move, check the task fits; if it doesn't, say so plainly and keep it on the laptop.
+   Free Render machines are small: **512 MB RAM** (confirmed on render.com/pricing, 25 Nov 2026; the CPU share isn't
+   stated, the smallest paid one has 0.5 CPU). So a task gets at most 256 MB and 300 seconds, no internet, 5 MB of files. Before a move, check the task fits; if it doesn't, say so plainly and keep it on the laptop.
    Render can restart at any time and wipe files, so a moved task keeps its progress through receipts, never only on
    Render's disk.
+   **Built (items 1–5):** `prometheus/runtime/cloudroom.py` (laptop side), `cloudroom_server.py` (runs on Render:
+   `prometheus.runtime.cloudroom_server:app_from_env`, token from Render's secret file `/etc/secrets/CLOUDROOM_TOKEN`
+   or the `CLOUDROOM_TOKEN` variable; files under `/tmp/cloudroom`; `GET /v1/health` for the pinger, needs no key),
+   `cloudroom_protocol.py` (signing). New key `CLOUDROOM_TOKEN` in `KEY_NAMES`.
 6. Sonnet: `cloud/render/` files (render.yaml or Dockerfile) and a plain-words setup guide replacing the Oracle steps in
    `docs/cloud-setup.md`, including the free uptime pinger every 10 minutes; the cloud copy's jobs (reminders, alerts,
    sync) run there; Render's limits written down honestly (sleeps after 15 min without the pinger, 750 h a month, files

@@ -11,6 +11,14 @@ Not yet run end to end on the owner's real laptop.
 - The Google sign-in used by backups decides what Drive lets the app see; a file you made by hand in that folder is not seen.
 - The old "Prometheus Backups" folder is left alone (not moved or deleted) when you switch this on.
 
+## M6 6.2 Cloudroom (items 1–5), 25 November 2026
+- Not run on a real Render service yet: tested against the same server code in-process (NOT VERIFIED on Render and on the laptop). The Render files and the setup guide are item 6 (Sonnet).
+- Only Python tasks with no internet can move (the free machine has 512 MB; at most 256 MB, 300 s, 5 MB of files per task). Nothing in Prometheus asks to move a task yet; that needs a button or a plan step (later step).
+- Cancelling a task that is already running on Render marks it cancelled and drops its result, but the sandboxed program runs to its own time limit there.
+- Render keeps everything in memory: after a Render restart its running and finished tasks are gone (the laptop marks them failed, never resends). The one-time signatures are remembered only until a restart; their 5-minute time limit still applies.
+- A sandbox is a guard, not a wall: the Cloudroom server adds the key's folder and /proc to the sandbox's closed places, but the task runs as the same user as the server.
+- If the laptop restarts before Cloudroom confirmed a task that had files, the task is marked failed (the files aren't kept for a resend).
+
 ## M6 6.1 ExecutionRuntime, 25 November 2026
 - Only the laptop runtime exists; a move to Cloudroom is refused until 6.2 adds it and wires your yes (the approval check refuses everything for now).
 - Cancelling and pausing from the jobs view still go to M5's runner and graphs directly; only starting goes through the runtime (the plan's item 3).
