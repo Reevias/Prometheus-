@@ -23,6 +23,7 @@ from prometheus.agents.base import UNTRUSTED_RULE, Agent, AgentContext, StepResu
 from prometheus.jobs.states import TERMINAL_STATES
 
 OWN_TOOLS = ("web_search", "web_fetch", "read_files", "open_local")
+WEB_TOOLS = frozenset({"web_search", "web_fetch"})          # refused once a run has read the owner's files
 TOOL_HELP = {
     "web_search": "web_search(query): search the web; you get titles and links.",
     "web_fetch": "web_fetch(url): read one web page.",
@@ -213,7 +214,7 @@ class OwnAgent(Agent):
             tool = str(data.get("tool") or "")
             if data.get("done") or not tool:
                 return StepResult("done", str(data.get("answer") or data.get("thought") or "").strip())
-            outcome = self._call(tool, _args(data.get("args")), ctx)
+            outcome = self._call(tool, _args(data.get("args")), ctx, read_a_file=private)
             if isinstance(outcome, StepResult):
                 return outcome                                  # waiting for the owner's yes
             text, read_a_file = outcome
@@ -228,12 +229,17 @@ class OwnAgent(Agent):
         use_card = getattr(ctx.router, "use_card", None)
         return use_card(self.card) if (self.card and use_card) else contextlib.nullcontext()
 
-    def _call(self, tool: str, args: dict, ctx: AgentContext):
-        """The one door to every tool. Returns (text for the model, read_a_file) or a StepResult when waiting."""
+    def _call(self, tool: str, args: dict, ctx: AgentContext, read_a_file: bool = False):
+        """The one door to every tool. Returns (text for the model, read_a_file) or a StepResult when waiting.
+        Once this run has read one of the owner's files, nothing more goes to the web (a page could otherwise ask
+        for a file and then for a link with its words in it): M5 review R8."""
         from prometheus.safety.permissions import Decision
 
         if tool not in OWN_TOOLS or tool not in self.tools or ctx.permissions.check(self.name, tool) is Decision.DENY:
             return f"The tool '{tool}' is not allowed for this agent. Nothing was done.", False
+        if read_a_file and tool in WEB_TOOLS:
+            return (f"The tool '{tool}' is not allowed after reading the owner's files in the same task (their words "
+                    "never go to the web). Nothing was done.", False)
         try:
             if tool == "web_search":
                 rows = SEARCH(args.get("query", ""), 5) or []
