@@ -1,6 +1,6 @@
 # M6 plan: Runtime, Cloudroom, PC and phone control (25 Nov 2026)
 
-Status: **plan written 25 Nov 2026.** M6 starts after M5's audit is accepted by the owner (PLAN.md rule 3).
+Status: **plan written 25 Nov 2026; 6.0 findings added the same day (Hugging Face needs a paid plan: owner decides).** M6 starts after M5's audit is accepted by the owner (PLAN.md rule 3).
 Nothing here adds scope: these are the 5 steps of M6 in `docs/PLAN.md`, filled in with the owner's answers.
 Work happens on `prometheus-v3`.
 
@@ -35,6 +35,80 @@ phone (through mobile-mcp), always asking first, and the phone can control the l
 **Exit gate** (from PLAN.md): disconnect/reconnect tests; works offline; encryption tests; phone control works on the
 owner's phone through mobile-mcp with approvals; GitHub Windows CI green (not the owner's laptop); audit passed;
 open-source check of every new dependency.
+
+## 6.0 findings (Opus, 25 Nov 2026)
+Checked on 25 Nov 2026 from the official pages linked below. Plan only: no code.
+
+### Hugging Face Spaces: **not free any more for what we need. Stopped here (owner decides).**
+Source: [Spaces overview](https://huggingface.co/docs/hub/spaces-overview), [pricing](https://huggingface.co/pricing),
+[ZeroGPU](https://huggingface.co/docs/hub/spaces-zerogpu).
+- **The blocker:** "Static Spaces are free for everyone. **Gradio and Docker Spaces run on compute and require a paid
+  plan to create: PRO** for personal accounts." PRO is $9/month, paid by card. So the free private Docker Space the plan
+  chose can't be made on a free account.
+- CPU Basic itself: 2 vCPU, 16 GB RAM, 50 GB disk that is **not kept** (wiped on restart); "no hourly cost", but only
+  inside a paid plan now.
+- Sleep: on free hardware a Space "goes to sleep and stops executing after a period of time if unused" (no exact time
+  given on these pages).
+- Private Spaces: yes (code and app visible only to the owner). Networking: outbound only on ports 80, 443, 8080.
+- Free accounts can only host up to 2 **ZeroGPU Gradio** Spaces (verified email, account older than 30 days, 5 GPU
+  minutes a day). These are for AI demos with Gradio, not a server that runs Prometheus's tasks and reminders: not
+  usable for Cloudroom.
+- Static Spaces are free but run no server code: not usable.
+
+### Next-best free option with **no card**: Render (free web service)
+Source: [Render: Deploy for Free](https://render.com/docs/free) (official docs, read 25 Nov 2026); "no credit card"
+also stated in [Render's own comparison](https://render.com/articles/platforms-with-a-real-free-tier-for-developers-in-2026).
+- Free web service (Python works; Docker too), no card needed to sign up and run it.
+- Spins down after **15 minutes** without an incoming request; waking takes about **1 minute**.
+- **750 free hours a month** per account (one service kept awake all month uses 744 h, so only one always-on service).
+- **Files are wiped** on every restart, redeploy or spin-down; no persistent disk on free. The free Postgres database
+  **expires after 30 days** (then deleted 14 days later). So storage must stay on **Google Drive** (already the plan for
+  6.3) and the laptop.
+- No SSH, single instance, may be restarted at any time; outbound mail ports 25/465/587 blocked; very heavy outbound
+  traffic can get a free service suspended. Render itself says "do not use for production" (it is fine for a personal
+  hobby project).
+- Public URL (HTTPS): every request must carry Prometheus's signed token (6.2 already plans this).
+- What this means for M6: Cloudroom tasks and the cloud copy can run on Render, but **reminders while the laptop is off
+  only fire if something keeps the service awake** (for example the phone app or a free uptime pinger every 10 min,
+  which uses the month's 750 hours on that one service). This needs the owner's OK.
+- Not chosen: Fly.io (card needed, no free tier for new users, per the same comparison), Railway (one-time $5 credit,
+  then paid), Oracle (card, already tried), Hugging Face PRO (card).
+
+### mobile-mcp (for 6.5)
+Source: npm registry `@mobilenext/mobile-mcp` and the repo's README/LICENSE (github.com/mobile-next/mobile-mcp), read
+25 Nov 2026.
+- Licence: **Apache-2.0** (LICENSE file and npm agree). Latest version **1.0.20**, published 24 Nov 2026.
+- Needs **Node.js 20 or newer** (`engines: node >=20`) and, for an Android phone, **Android Platform Tools (`adb`)** with
+  USB debugging switched on and allowed. (Xcode only for iPhone simulators; not needed.)
+- Its own dependencies checked for licence: `mobilewright` 0.0.72 (Apache-2.0), `add-mcp` 2.6.1 (Apache-2.0); the rest
+  are well-known MIT/ISC packages (express, zod, ajv, commander, qs, fast-xml-parser, the MCP SDK).
+- 7-step check (AGENTS.md): 1 Apache-2.0; 2 allows use, change, sharing, commercial use; 3 compatible with MIT and it
+  runs as a **separate program** through "Other apps" (not copied into Prometheus); 4 no field-of-use limits, includes a
+  patent grant; 5 actively released (new version the day before this check); 6 to be written in Credits and
+  `docs/m0/DEPENDENCY_MATRIX.md` with version 1.0.20; 7 it is the open-source choice. **Passes.** Still to check on the
+  laptop (Antigravity): whether Node.js 20+ and adb are installed (install nothing without asking).
+
+### Screen, mouse and keyboard on Windows (for 6.4a): **no new package**
+- `prometheus/laptop.py` already takes screenshots and types/presses keys through PowerShell scripts (with the
+  foreground-window check). 6.4a builds on that.
+- **Reading the screen's controls:** Windows' own UI Automation through .NET's `UIAutomationClient`, which ships with
+  Windows (loaded in the existing PowerShell scripts with `Add-Type -AssemblyName UIAutomationClient`). No download.
+- **Clicking and moving the mouse:** `ctypes` calls to Windows' `user32` (`SendInput`, `SetCursorPos`), so a click is
+  instant and Stop all can stop it within a second (no new process per click).
+- **Switching apps:** `ctypes` (`EnumWindows`, `SetForegroundWindow`) or the existing PowerShell way.
+- **Screenshots:** Pillow (already a dependency) `ImageGrab` or the existing PowerShell script.
+- So the 7-step check isn't needed. Fallback only if UI Automation through PowerShell is too slow on the laptop:
+  `comtypes` 1.5.0 (MIT, Enthought, released 9 Nov 2026), which would get its own 7-step check first. Not chosen:
+  `pywinauto` 0.6.9 (BSD-3, but pulls in pywin32 too), `uiautomation` 2.0.29 (Apache-2.0, but a larger wrapper over
+  comtypes).
+- NOT VERIFIED on Windows: whether `UIAutomationClient` loads in the laptop's PowerShell (Windows PowerShell 5.1 should
+  have it); Antigravity checks this along with Node.js and adb.
+
+### Waiting for the owner
+1. Hugging Face needs a paid plan now. Use **Render's free web service** instead (no card; sleeps after 15 minutes;
+   storage on Google Drive), or something else?
+2. If Render: may a free uptime pinger keep it awake so reminders fire while the laptop is off (it uses the month's
+   750 free hours on that one service)?
 
 ## Work for each step
 Each builder does the items in order, a failing test first each time.
