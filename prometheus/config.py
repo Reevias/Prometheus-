@@ -200,6 +200,7 @@ KEY_NAMES = {
     "GOOGLE_TOKEN": "Google sign-in",
     "BACKUP_KEY": "Backup key (made from your recovery code)",
     "SYNC_TOKEN": "Cloud copy sync key",
+    "CLOUDROOM_TOKEN": "Cloudroom key (your Render service)",
     "VAPID_PRIVATE": "Phone notifications key",
     "ELEVENLABS_API_KEY": "ElevenLabs (voice)",
     "OLLAMA_CLOUD_API_KEY": "Ollama cloud",
