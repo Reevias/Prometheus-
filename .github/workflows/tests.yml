@@ -36,7 +36,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           .\.ci-venv\Scripts\python.exe -m pytest -q tests/test_v3_audit_sandbox.py tests/test_v3_m3_audit_a.py -k "ctypes or windows_venv"
       - name: Run tests
-        run: python -m pytest -q -rs
+        # a test stuck for over 2 minutes prints every thread's stack (so a hang names itself), and the step gives up
+        # after 40 minutes instead of GitHub's 6 hours (M5 audit: an intermittent hang on Windows)
+        timeout-minutes: 40
+        run: python -m pytest -q -rs -o faulthandler_timeout=120
 
   extras:
     # every add-on really installs on Windows with Python 3.14 (voice, photos, browser, desktop window)

@@ -388,7 +388,9 @@ class KokoroSpeaker:
                 ready.put(self._make(p, speed))
             ready.put(None)
 
-        threading.Thread(target=make_all, daemon=True).start()
+        from prometheus.jobs.runner import start_job
+
+        start_job("voice_synthesis", "TTS audio chunk synthesis", make_all, name="prometheus-voice-make-all")
         while (clip := ready.get()) is not None:
             if stop is not None and stop.is_set():
                 return False

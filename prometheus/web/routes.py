@@ -119,6 +119,7 @@ def register_routes(app: FastAPI, services: Services) -> None:
         from prometheus.projects import chat_project
 
         return shell(request, "v3/chat.html", "chats", chat_id=chat_id, chat_title=store.chat_title(chat_id),
+                     parent_chat=store.chat_parent(chat_id),
                      project=chat_project(store, chat_id), notes=store.chat_notes(chat_id), messages=msgs, ratings=store.ratings_for(chat_id), asks=store.asks_for_chat(chat_id),
                      busy=busy, doing=current_step(chat_id) if busy else "", steps_by=steps_for(chat_id, msgs), images_by=images_for(chat_id, msgs),
                      live_steps=running_steps(chat_id) if busy else [])
@@ -286,15 +287,153 @@ def register_routes(app: FastAPI, services: Services) -> None:
 
     # ---- Agents (M2.2) -----------------------------------------------------------------------------------------
     @app.get("/v3/agents", response_class=HTMLResponse)
-    def v3_agents(request: Request, show: str = ""):
+    def v3_agents(request: Request, show: str = "", own: str = ""):
         from prometheus.web.agents_view import all_agents
 
         agents = all_agents(services, services.orchestrator.registry)
         chosen = next((a for a in agents if a["name"] == show), None)
         history = store.agent_steps(chosen["name"], 8) if chosen else []
         titles = dict(store.chats())
+        from prometheus import own_agents
+        from prometheus.features import on as feature_on
+
+        own_on = feature_on(services.settings, "own_agents")
+        own_form = None
+        if own_on and own != "":
+            found = next((x for x in own_agents.valid_specs(services.settings, builtin_names()) if x["name"] == own), None)
+            if own == "new":
+                own_form = {"mode": "new", "spec": {"name": "", "about": "", "instructions": "", "tools": [], "card": ""}}
+            elif found:
+                own_form = {"mode": "edit", "spec": found}
+        from prometheus.web.agents_view import TOOL_WORDS, permission
+
+        own_tools = [{"tool": t, "what": TOOL_WORDS.get(t, t), "rule": permission(t)} for t in own_agents.OWN_TOOLS]
         return shell(request, "v3/agents.html", "agents", agents=agents, chosen=chosen, history=history,
-                     titles=titles, running=[a for a in agents if a["now"]])
+                     titles=titles, own_on=own_on, own_form=own_form, own_tools=own_tools,
+                     own_list=own_agents.valid_specs(services.settings, builtin_names()),
+                     model_cards=[{"entry": c.entry, "name": c.name} for c in services.router.cards],
+                     **jobs_context())
+
+    # ---- the owner's own agents (M5 5.4) ------------------------------------------------------------------------
+    def builtin_names() -> set[str]:
+        from prometheus.agents import REGISTRY as built_in
+
+        return set(built_in)
+
+    def own_apply() -> None:
+        from prometheus import own_agents
+
+        own_agents.install(services.orchestrator.registry, services.permissions, services.settings, builtin_names())
+        save_settings(services.settings)
+
+    def own_card_entries() -> set[str]:
+        return {c.entry for c in services.router.cards}
+
+    @app.post("/api/v3/own-agents")
+    def api_v3_own_agent_create(name: str = Form(""), about: str = Form(""), instructions: str = Form(""),
+                                tools: list[str] = Form(default=[]), card: str = Form("")):
+        from prometheus import own_agents
+        from prometheus.features import on as feature_on
+
+        if not feature_on(services.settings, "own_agents"):
+            return JSONResponse({"error": "Own agents is switched off. Switch it on in Settings → Features."},
+                                status_code=409)
+        try:
+            made = own_agents.add(services.settings, {"name": name, "about": about, "instructions": instructions,
+                                                      "tools": tools, "card": card}, builtin_names(), own_card_entries())
+        except own_agents.OwnAgentError as e:
+            return JSONResponse({"error": str(e)}, status_code=422)
+        own_apply()
+        store.audit("user", "own_agent_add", {"agent": made["name"], "tools": made["tools"]})
+        return {"name": made["name"]}
+
+    @app.post("/api/v3/own-agents/{name}")
+    def api_v3_own_agent_edit(name: str, about: str = Form(""), instructions: str = Form(""),
+                              tools: list[str] = Form(default=[]), card: str = Form("")):
+        from prometheus import own_agents
+        from prometheus.features import on as feature_on
+
+        if not feature_on(services.settings, "own_agents"):
+            return JSONResponse({"error": "Own agents is switched off. Switch it on in Settings → Features."},
+                                status_code=409)
+        try:
+            made = own_agents.change(services.settings, name, {"about": about, "instructions": instructions,
+                                                               "tools": tools, "card": card}, builtin_names(),
+                                     own_card_entries())
+        except own_agents.OwnAgentError as e:
+            return JSONResponse({"error": str(e)}, status_code=404 if str(e).startswith("No own agent") else 422)
+        own_apply()
+        store.audit("user", "own_agent_edit", {"agent": name, "tools": made["tools"]})
+        return {"name": name}
+
+    @app.post("/api/v3/own-agents/{name}/delete")
+    def api_v3_own_agent_remove(name: str, confirm: str = Form("")):
+        from prometheus import own_agents
+
+        if name not in {x["name"] for x in own_agents.specs(services.settings)}:
+            return JSONResponse({"error": "No such own agent."}, status_code=404)
+        running = own_agents.jobs_of(services.jobs, name)
+        if running and not confirm:                       # asks first: its jobs would be cancelled
+            return JSONResponse({"running": len(running), "ask": f"{name} has {len(running)} job"
+                                 f"{'s' if len(running) != 1 else ''} running. Remove it and cancel "
+                                 f"{'them' if len(running) != 1 else 'it'}?"}, status_code=409)
+        stopped = own_agents.stop_jobs(services.jobs, getattr(services.graphs, "runner", None), services.graphs, running)
+        own_agents.delete(services.settings, name)
+        own_agents.mark_removed(name)                     # a run still going in a chat stops at its next round
+        own_apply()
+        store.audit("user", "own_agent_remove", {"agent": name, "cancelled": stopped})
+        return {"removed": name, "cancelled": stopped}
+
+    # ---- the multi-agent view (M5 5.5): read from the job tracker, buttons go through jobs_view.act -----------------
+    def jobs_context(note: str = "") -> dict:
+        from prometheus.web import jobs_view
+
+        runner = getattr(services.graphs, "runner", None)
+        view = jobs_view.build(services.jobs, runner, services.graphs, agents=set(services.orchestrator.registry))
+        return {"jobs": view["jobs"], "jobs_empty": view["empty"], "jobs_note": note}
+
+    @app.get("/v3/jobs/panel", response_class=HTMLResponse)
+    def v3_jobs_panel(request: Request):
+        return page(request, "v3/jobs_panel.html", **jobs_context())
+
+    @app.post("/api/v3/jobs/{job_id}/{action}")
+    def api_v3_job_action(request: Request, job_id: int, action: str):
+        from prometheus.web import jobs_view
+
+        runner = getattr(services.graphs, "runner", None)
+        job = services.jobs.get_job(job_id)
+        if job is not None and job.kind == "resume" and action == "stop" and job.payload.get("id") \
+                and action in jobs_view.controls_for(job, runner, services.graphs):
+            from prometheus import resume as _resume       # a waiting request: take it out of the retry queue too
+
+            _resume.drop(store, str(job.payload["id"]))
+            store.audit("user", "job_stop", {"job": job_id})
+            return page(request, "v3/jobs_panel.html", **jobs_context())
+        if job is not None and job.kind == "task_graph" and action == "stop" and job.payload.get("chat_id") is not None:
+            services.orchestrator.request_stop(job.payload["chat_id"])     # the task itself ends as "stopped"
+        if job is not None and action == "rerun" and action in jobs_view.controls_for(job, runner, services.graphs):
+            if services.killswitch.is_set:
+                return page(request, "v3/jobs_panel.html", status_code=409,
+                            **jobs_context("Everything is stopped. Press Resume first."))
+            chat_id, text = job.payload["chat_id"], str(job.payload["text"])
+            if chat_id not in dict(store.chats()):
+                return page(request, "v3/jobs_panel.html", status_code=409,
+                            **jobs_context("Its chat was deleted, so it can't run there again."))
+            if chat_id in services.running:
+                return page(request, "v3/jobs_panel.html", status_code=409,
+                            **jobs_context("Prometheus is still answering in that chat. Wait, or stop it."))
+            from prometheus.jobs.states import CANCELLED as _CANCELLED
+
+            services.jobs.finish(job_id, _CANCELLED, error="Ran again as a new job")
+            services.start_task(chat_id, text, read_only=bool(job.payload.get("read_only")))
+            store.audit("user", "job_rerun", {"job": job_id})
+            return page(request, "v3/jobs_panel.html", **jobs_context())
+        code, message = jobs_view.act(services.jobs, runner, services.graphs, job_id, action)
+        if code == 404:
+            return JSONResponse({"error": message}, status_code=404)
+        if code == 200:
+            store.audit("user", f"job_{action}", {"job": job_id})
+        return page(request, "v3/jobs_panel.html", status_code=code, **jobs_context("" if code == 200 else message))
 
     @app.post("/api/v3/agents/{name}/switch")
     def api_v3_agent_switch(name: str, on: str = Form("")):
@@ -352,7 +491,9 @@ def register_routes(app: FastAPI, services: Services) -> None:
             if v.start() and v.loop is not None:
                 v.loop.listen_now()
 
-        threading.Thread(target=start_then_listen, name="prometheus-voice-button", daemon=True).start()
+        from prometheus.jobs.runner import start_job
+
+        start_job("voice_button", "Start voice and listen", start_then_listen, name="prometheus-voice-button")
         return {"starting": True}
 
     @app.post("/api/v3/voice/toggle")
@@ -447,6 +588,41 @@ def register_routes(app: FastAPI, services: Services) -> None:
             return JSONResponse({"error": "That message is already gone."}, status_code=404)
         store.audit("user", "delete_message", {"chat": chat_id, "message": message_id})
         return {"deleted": message_id}
+
+    def keep_branch_private(source: int, new: int) -> None:
+        """A branch of a chat left out of memory is left out too (M5 audit F3): otherwise its copied words become
+        searchable and remembered."""
+        off = list(services.settings.memory_off_chats or [])
+        if source in off and new not in off:
+            services.settings.memory_off_chats = off + [new]
+            save_settings(services.settings)
+            if getattr(services, "archive", None) is not None:
+                try:
+                    services.archive.sync(new)
+                except Exception:                   # noqa: BLE001 - the list above already hides it
+                    pass
+
+    @app.post("/api/v3/chats/{chat_id}/messages/{message_id}/branch")
+    def api_v3_branch_chat(chat_id: int, message_id: int):
+        if chat_id not in dict(store.chats()):
+            return JSONResponse({"error": "No such chat."}, status_code=404)
+        new_chat_id = store.branch_chat(chat_id, message_id)
+        if new_chat_id is None:
+            return JSONResponse({"error": "Message not found in chat."}, status_code=404)
+        keep_branch_private(chat_id, new_chat_id)
+        store.audit("user", "branch_chat", {"source_chat": chat_id, "message_id": message_id, "new_chat": new_chat_id})
+        return {"ok": True, "chat_id": new_chat_id, "url": f"/c/{new_chat_id}"}
+
+    @app.post("/chats/{chat_id}/branch/{message_id}")
+    def branch_chat_action(chat_id: int, message_id: int):
+        if chat_id not in dict(store.chats()):
+            return Response(status_code=404)
+        new_chat_id = store.branch_chat(chat_id, message_id)
+        if new_chat_id is None:
+            return Response(status_code=404)
+        keep_branch_private(chat_id, new_chat_id)
+        store.audit("user", "branch_chat", {"source_chat": chat_id, "message_id": message_id, "new_chat": new_chat_id})
+        return Response(status_code=204, headers={"HX-Redirect": f"/c/{new_chat_id}"})
 
     @app.get("/api/v3/chats/{chat_id}/export")
     def api_v3_export(chat_id: int, fmt: str = "md"):
@@ -1641,7 +1817,9 @@ def register_routes(app: FastAPI, services: Services) -> None:
             except Exception as e:
                 store.kv_set("backup_error", f"{type(e).__name__}: {str(e)[:200]}")
 
-        _th.Thread(target=work, name="prometheus-backup", daemon=True).start()
+        from prometheus.jobs.runner import start_job
+
+        start_job("backup", "Backup now", work, name="prometheus-backup")
         return settings_page(request, notice="Backing up in the background. Refresh in a minute to see it.")
 
     @app.post("/settings/research-brain", response_class=HTMLResponse)
@@ -1691,7 +1869,9 @@ def register_routes(app: FastAPI, services: Services) -> None:
                 finally:
                     services._redteam_running = False
 
-            _th.Thread(target=work, name="prometheus-safety-check", daemon=True).start()
+            from prometheus.jobs.runner import start_job
+
+            start_job("safety_check", "Safety check", work, name="prometheus-safety-check")
         store.audit("user", "safety_check", {})
         return settings_page(request, notice="Safety check started. Refresh this page in a minute for the results.")
 

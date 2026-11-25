@@ -1,6 +1,14 @@
 {% extends "v3/layout.html" %}
+{% from "v3/icons.html" import icon %}
 {% block title %}{{ chat_title }} · Prometheus{% endblock %}
 {% block topbar %}<canvas data-sphere="mini" aria-hidden="true"></canvas><b>{{ chat_title }}</b>
+{% if parent_chat %}
+  {% if parent_chat.exists %}
+    <a class="chip small branch-chip" href="/c/{{ parent_chat.id }}" title="Branched from: {{ parent_chat.title }}">{{ icon("branch") }} From: {{ parent_chat.title }}</a>
+  {% else %}
+    <span class="chip small branch-chip" title="Branched from: {{ parent_chat.title }} (deleted)">{{ icon("branch") }} From: {{ parent_chat.title }}</span>
+  {% endif %}
+{% endif %}
 {% if project %}<a class="chip small project-chip" href="/v3/projects/{{ project.id }}" title="This chat is in the project {{ project.name }}">{{ project.name }}</a>{% endif %}
 <button type="button" class="chip small" id="export" aria-haspopup="menu" aria-expanded="false" title="Download this chat">Export</button>
 <button type="button" class="chip small" id="notes-btn" aria-haspopup="true" aria-expanded="false" title="Notes for this chat">Notes{% if notes %} {{ notes|length }}{% endif %}</button>

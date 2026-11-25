@@ -5,7 +5,7 @@ M2's detailed steps: [`docs/m2/M2_PLAN.md`](m2/M2_PLAN.md). Friday Mark 2 compar
 [`docs/reports/FRIDAY_MARK2_RESEARCH.md`](reports/FRIDAY_MARK2_RESEARCH.md).
 
 **11 milestones, 60 steps.** Done: M0, M1, M2 (15 steps; M2 merged into main 15 Nov, waiting for the owner's laptop check).
-Done: M3 (6 steps, 16 Nov; audit fixes A-D and exit check 20 Nov; merged into main 20 Nov; laptop check to come; report `docs/reports/M3_REPORT.md`). M4 (8 steps, reviews A and B, final audit, own-repos fix, Settings redesign) merged into main 21 Nov on the owner's instruction; a separate checker and the laptop check come next; report `docs/reports/M4_REPORT.md`. Not started: M5 to M10.
+Done: M3 (6 steps, 16 Nov; audit fixes A-D and exit check 20 Nov; merged into main 20 Nov; laptop check to come; report `docs/reports/M3_REPORT.md`). M4 (8 steps, reviews A and B, final audit, own-repos fix, Settings redesign) merged into main 21 Nov on the owner's instruction; a separate checker and the laptop check come next; report `docs/reports/M4_REPORT.md`. M5 (6 steps plus the browser tool, reviews, audit and the laptop-check fixes) merged into main 25 Nov on the owner's instruction; the laptop check is to be run again; report `docs/reports/M5_REPORT.md`. Not started: M6 to M10.
 
 Status words: **Done** = built, tested, audited and accepted · **Built** = code and tests are in, waiting for the
 owner's laptop check and the audit · **In progress** · **Not started**.
@@ -20,7 +20,7 @@ already written down elsewhere in the repo, missing from the old roadmap.
 | M2 Desktop interface | 5 | Done, merged into main; sidebar reworked after the laptop check (20 Nov: projects and recents first; four pages, the rest in tab bars and Settings tabs) |
 | M3 Orchestration and model routing | 6 | Done, merged into main 20 Nov (laptop check to come) |
 | M4 Repository-to-skill | 8 | Done, merged into main 21 Nov (owner's instruction; separate checker and laptop check to come) |
-| M5 Many agents | 6 | Not started |
+| M5 Many agents | 6 | Done, merged into main 25 Nov (owner's instruction; laptop re-check to come) |
 | M6 Runtime / Cloudroom | 5 | Not started |
 | M7 Security hardening | 5 | Not started |
 | M8 Memory engine | 7 | Not started |
@@ -136,7 +136,7 @@ needed**; public and own repos equally; candidates wait in Abilities → Candida
 Study: `memory/project_chronicle/`.
 Exit gate: skills made from repos validate and run in the sandbox; repo-map tests; Windows CI; audit.
 
-## M5 Many agents — Not started · 6 steps
+## M5 Many agents — Done, merged 25 Nov · 6 steps (detailed plan: `docs/m5/M5_PLAN.md`)
 - **M5.1** Every job tracked: saved state (pending, running, paused, done, failed, cancelled), cancel, recovery after
   a restart or crash; no untracked background tasks **[F4]**.
 - **M5.2** Task graph (DAG): dependencies, parallel and step-by-step tasks, retries, cancel spreads to children.

@@ -60,6 +60,7 @@ FEATURES: tuple[Feature, ...] = (
     Feature("apps", "Opening apps and changing laptop settings", "Computer and phone",
             agents=("apps", "system", "settings", "opener")),
     Feature("browser", "Browser control", "Computer and phone", agents=("browser",)),
+    Feature("own_agents", "Own agents", "Computer and phone", attr="own_agents"),
     Feature("code", "Running code (sandbox)", "Computer and phone", agents=("code",)),
     Feature("phone", "Phone control", "Computer and phone", agents=("phone",)),
     Feature("laptop_jobs", "Jobs sent from the phone to the laptop", "Computer and phone"),
@@ -67,6 +68,8 @@ FEATURES: tuple[Feature, ...] = (
     Feature("email", "Email (reading and drafting)", "Online", agents=("email",)),
     Feature("google", "Google Calendar and Drive", "Online", agents=("google", "calendar")),
     Feature("research", "Web research", "Online", agents=("research", "wikipedia")),
+    Feature("parallel_steps", "Run a task's independent steps at the same time (at most 2 or 3 at once)", "Online",
+            attr="parallel_steps"),
     Feature("resume", "Try again by itself after an AI limit", "Online"),
     Feature("paid_heavy", "Cheap paid AI for heavy jobs without asking (at most $1/$4 per million tokens, $0.10 a "
             "task, inside your monthly cap)", "Online"),
@@ -163,6 +166,9 @@ def agent_blocked(settings, agent: str) -> str:
     for f in FEATURES:
         if agent in f.agents and not on(settings, f.key):
             return f"{f.label} is switched off (Settings → Features)."
+    if not on(settings, "own_agents") and any(isinstance(s, dict) and s.get("name") == agent
+                                              for s in (getattr(settings, "own_agent_specs", None) or [])):
+        return "Own agents is switched off (Settings → Features)."
     return ""
 
 

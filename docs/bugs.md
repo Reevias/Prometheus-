@@ -2,7 +2,60 @@
 
 Every bug found and fixed, newest first, so the count is always exact. Add a line for each new one.
 
-**Total fixed: 170** (as of 21 November 2026)
+**Total fixed: 198** (as of 25 November 2026). M5 accounts for 28 of them (171–198); see `docs/reports/M5_REPORT.md`.
+
+## 25 November 2026, M5 open items finished (3)
+
+| # | Bug | Fixed by |
+|---|---|---|
+| 198 | A removed own agent kept working in a chat until it finished | It stops at its next round |
+| 197 | A cancelled or paused graph step that never checked "should I stop?" kept making AI calls and starting programs | It is stopped at its next AI call, sandbox program or terminal command |
+| 196 | Steps running side by side could go over the task's spending limits together (each checked before any had spent) | Each paid call reserves its most possible cost first, and the task's limit is checked before every paid call |
+
+## 25 November 2026, M5 audit and laptop-check risks (14)
+
+| # | Bug | Fixed by |
+|---|---|---|
+| 195 | The job runner's Stop, Pause and Resume held its own lock while waiting for the database, while a graph starting a step does the opposite: the two could freeze each other | The runner's buttons use the database lock only |
+| 194 | The graph runner's idle check (added earlier in this audit) could freeze with the graph's driver in the same way; GitHub's Windows run hung on it | The check never asks the database while holding the runner's lock |
+| 193 | A request that ran again after an AI limit was recorded "done" in the tracker even when it failed or was stopped | Its real result is recorded |
+| 192 | The jobs table only grew, and the jobs panel read all of it every 4 seconds | Finished jobs older than 30 days are tidied away at start; the panel reads only what it shows |
+| 191 | When one try of a step finished, it could end the programs of the step's next try | Programs are ended per try; on Windows the Job Object is closed instead of looking up a process number |
+| 190 | The code sandbox a child agent ran wasn't known to the clean-up: cancel, pause and Stop all left it running until its own time limit | The sandbox program is recorded with its child and ended with it |
+| 189 | Branching a chat that is left out of memory made the copy searchable and remembered | The branch is left out too |
+| 188 | After Stop all, jobs that then finished (a backup, a chat task) stayed "paused" for ever | They are recorded as they really ended (cancelled "Stopped by user"; a chat task gets Run again) |
+| 187 | Pausing or stopping a chat task's step graph from the jobs panel ended the task as "done" with half the steps, and Resume could run the steps a second time | A chat task's graph has Stop only, which stops the task; a graph that ends paused or cancelled ends the task as stopped |
+| 186 | The task-graph runner kept every finished graph's functions (with the task's results) in memory | They are let go when the graph ends |
+| 185 | Chats sent at the same time all ran at once, outside the 2-or-3 limit (laptop check) | Chat tasks have their own limit of the same size, and wait as "Waiting for a free slot" |
+| 184 | A stopped or restarted chat task had no way to run again from the jobs view (laptop check) | "Run again" button (asks first; refused while everything is stopped) |
+| 183 | Stop all could leave a program running and mark a stopped step "done": programs were ended before jobs were paused, and the graph started the next step (laptop check) | Jobs are paused first, then programs ended; a graph starts nothing while everything is stopped; a program started then is ended at once |
+| 182 | With under 1 GB free (normal on the 8 GB laptop), no step ever started and the task waited for ever; tests read the machine's real RAM and hung (laptop check) | Under 1 GB free steps run one at a time; tests use a fixed memory reading |
+
+## 25 November 2026, Opus review of M5 5.4 and 5.5 (2)
+
+| # | Bug | Fixed by |
+|---|---|---|
+| 181 | "Stop" on a waiting request (AI limit) in the jobs view only changed its record; it stayed in the retry queue and ran again by itself | Stop takes it out of the queue and it is never started again |
+| 180 | An own agent with "read a file" and a web tool could read one of the owner's files and then send its words to the web (a page could ask it to) | After a file is read, the web tools are refused for the rest of that task |
+
+## 24 November 2026, Opus review of M5 5.1 and 5.7 (8)
+
+| # | Bug | Fixed by |
+|---|---|---|
+| 179 | An error message written by the web page reached the AI as plain text | The page's error text is wrapped as untrusted |
+| 178 | Clicking by id put the button's name (chosen by the page) in the AI's message as plain text | The AI gets the id and the name wrapped as untrusted; the owner sees the name, shortened |
+| 177 | The job runner kept every finished thread for as long as Prometheus ran (memory slowly grows) | Only the last 64 are kept |
+| 176 | The no-untracked-threads check missed timers, thread pools, loop tasks, `import threading as _th` and extra threads in allowed files: backup, safety check, voice button and 2 push sends slipped through | The check counts every call; backup, safety check and voice button now go through the tracker; the push sends are listed with reasons |
+| 175 | A waiting request that was given up stayed "paused" in the tracker (paused → failed isn't an allowed move and the error was hidden) | Ended through the allowed moves |
+| 174 | A waiting request that was answered stayed "paused" in the tracker for ever | Marked done when it leaves the queue |
+| 173 | Stop all and every restart marked the 13 always-on loops (reminders, sync, ...) "paused" although they kept running or start again by themselves | Loops are marked as services: Stop all leaves them, a restart closes the old record |
+| 172 | A job started while Prometheus was starting (chat archive sync) was marked "paused: Prometheus restarted" by the start-up check | The start-up check runs before anything starts a job |
+
+## 24 November 2026, M5 5.7 browser snapshot (1)
+
+| # | Bug | Fixed by |
+|---|---|---|
+| 171 | After "open" and "click", the browser agent gave the page's title to the AI as plain text, so a page could put instructions in its title | The title is wrapped as untrusted data (also after sign-in and the new click-by-id) |
 
 ## 21 November 2026, Settings redesign and the owner's second set of screenshots (7)
 

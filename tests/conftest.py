@@ -16,6 +16,19 @@ def tmp_home(tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def fixed_free_memory(monkeypatch):
+    """M5 audit: the job limits read the machine's real free RAM, so on the 8 GB laptop (0.3 GB free) tests behaved
+    differently and one hung. Every test gets its own limits with a fixed, roomy 4 GB reading; tests about the
+    limit itself pass their own reading."""
+    from prometheus.jobs import limits
+
+    gb = 1024 ** 3
+    monkeypatch.setattr(limits, "_SLOTS", limits.RamSlots(free_bytes=lambda: 4 * gb))
+    monkeypatch.setattr(limits, "_TASK_SLOTS", limits.RamSlots(free_bytes=lambda: 4 * gb))
+    monkeypatch.setattr(limits, "_KILLSWITCH", None)
+
+
+@pytest.fixture(autouse=True)
 def isolate_quick_weather(monkeypatch):
     """Ensure prometheus.quick.WEATHER starts at None for each test and resets on teardown."""
     from prometheus import quick

@@ -1,0 +1,40 @@
+<section id="jobs-panel" class="jobs-panel" aria-label="Jobs"
+         hx-get="/v3/jobs/panel" hx-trigger="every 4s [document.visibilityState === 'visible']" hx-swap="outerHTML">
+  <h2 class="section">Jobs</h2>
+  {% if jobs_note %}<p class="job-note" role="status">{{ jobs_note }}</p>{% endif %}
+  {% if jobs_empty %}<p class="muted">Nothing is running.</p>{% endif %}
+  {% for j in jobs %}
+  <article class="job-row st-{{ j.state }}" data-job="{{ j.id }}">
+    <div class="job-head">
+      <b class="job-title">{{ j.title }}</b>
+      <span class="pill job-state st-{{ j.state }}">{{ j.state }}</span>
+    </div>
+    <div class="job-facts muted">
+      <span>{{ j.agent }}</span>
+      {% if j.started %}<span>started {{ j.started | clock }}</span>{% endif %}
+      {% if j.run_text %}<span>{{ "ran" if j.state in ("done", "failed", "cancelled") else "running" }} {{ j.run_text }}</span>{% endif %}
+      {% if j.memory_text %}<span>{{ j.memory_text }} memory</span>{% endif %}
+    </div>
+    {% if j.progress %}<p class="job-progress">{{ j.progress }}</p>{% endif %}
+    {% if j.error and j.state in ("failed", "cancelled", "paused") %}<p class="job-error muted">{{ j.error }}</p>{% endif %}
+    {% if j.diagram %}
+    <div class="job-graph-wrap"><canvas class="job-graph" data-graph='{{ j.diagram | tojson }}'
+         role="img" aria-label="Steps of {{ j.title }}: {% for n in j.diagram.nodes %}{{ n.label }} ({{ n.state }}){{ ', ' if not loop.last }}{% endfor %}"></canvas></div>
+    <ul class="job-steps">
+      {% for s in j.steps %}
+      <li class="st-{{ s.state }}"><span class="step-dot"></span>
+        <span class="job-step-title">{{ s.title }}</span>
+        <span class="muted">{{ s.state }}{% if s.progress %} · {{ s.progress }}{% endif %}{% if s.memory_text %} · {{ s.memory_text }}{% endif %}</span></li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+    {% if j.controls %}
+    <div class="job-buttons">
+      {% for c in j.controls %}<button type="button" class="pill job-btn job-{{ c }}"
+        hx-post="/api/v3/jobs/{{ j.id }}/{{ c }}" hx-target="#jobs-panel" hx-swap="outerHTML"
+        {% if c == "stop" %}hx-confirm="Stop this job? What it already did stays as it is."{% endif %}{% if c == "rerun" %}hx-confirm="Run this request again from the start?"{% endif %}>{{ "Run again" if c == "rerun" else c | capitalize }}</button>{% endfor %}
+    </div>
+    {% endif %}
+  </article>
+  {% endfor %}
+</section>

@@ -3,6 +3,52 @@
 Updated 11 November 2026. Version 2.3. Built and tested here: 883 tests pass.
 Not yet run end to end on the owner's real laptop.
 
+## M5 done on the branch, 25 November 2026 (report: `docs/reports/M5_REPORT.md`)
+Waiting for the owner to merge. NOT VERIFIED on the owner's laptop after the audit fixes: run the laptop check of
+`docs/m5/M5_LAPTOP_CHECK.md` again (5 jobs at once, Stop all, restart and Run again, branching, an own agent, the full
+`python -m pytest -q` that hung at `f075968`, Prometheus's own memory, a snapshot in Microsoft Edge). The audit was
+written by the session that built 5.2 and 5.3, so it is not the independent fresh-session audit the plan asks for.
+The Windows CI hang found in the audit can't be proved gone (CI now dumps every thread's stack after 2 minutes and
+stops after 40). A running Python thread still can't be stopped from outside, and nothing runs a Resumed plain job.
+
+## M5 5.3 child agents at once, 24 November 2026
+- Only graph steps count as child agents for now (own agents join in 5.4). Memory is measured only for the programs a child starts; its own Python work shares Prometheus's memory and shows as "none" rather than a made-up number.
+- The memory cap (1.5 GB per child's programs) applies to commands run through the M1 terminal, which no agent uses yet; the code agent's sandbox keeps its own Job Object and memory limit. Since the audit both are ended by cancel, pause and Stop all. On Linux there is no cap, only a process group.
+- Under 1 GB free memory, child agents and chat tasks run one at a time (changed by the audit after the laptop check; the plan said none).
+- Steps running side by side reserve each paid call's most possible cost first, so they can't go over the task's limits together (fixed 25 Nov); an AI without a model card can't be estimated and counts only once it has spent.
+- Windows: checked on GitHub's windows-latest machines only (the cap test runs only there); NOT VERIFIED on the owner's laptop.
+
+## M5 5.2 task graph, 24 November 2026
+- A step that is running is told to stop (cancel, pause, Stop all) and stops at its next check, or at its next AI call, sandbox program or terminal command if it never checks; plain Python work in between can't be interrupted (Python can't stop a thread from outside).
+- Orchestrator plans run as a graph only with "Run a task's independent steps at the same time" switched on (Features; off until the laptop check). Such a graph can't carry on after a restart (its steps live in memory): it is closed with "run it again", like the task itself.
+- No graph kinds of Prometheus's own are saved yet (only the engine and test kinds); the view comes in 5.5.
+- NOT VERIFIED on the owner's laptop.
+
+## M5 5.4 own agents, 24 November 2026
+- Own agents can use four tools only (web search, read a web page, read a text file, open a file); more tools need their own checked code first. An own agent has no way to write or change files, run programs or use the browser.
+- Removing an agent cancels its jobs in the job tracker (task steps titled "name: ..."). A run that is going inside a chat right now, outside the tracker, stops at its next round (fixed 25 Nov).
+- Own agents live in the saved settings file; a hand-edited file can only lose power (unknown tools and copied names are dropped when it loads).
+- The tool check (`OwnAgent._call`) was reviewed by Opus on 25 Nov: one hole fixed (bug 180: no web after reading a file). The browser tests for the form were written after the page. Not run on the owner's laptop: NOT VERIFIED on Windows.
+
+## M5 5.5 multi-agent view, 24 November 2026
+- A plain job that is running as a thread has no Stop or Pause button: Python can't stop it, and a button that only changed the record would lie. Graph steps use "should I stop?" checks, so graphs have all three buttons. A paused plain job has Stop only: Resume would just mark it waiting, because nothing runs waiting jobs yet.
+- The agent column of a task step is read from its title ("research: ..."); jobs started elsewhere show their kind.
+- The view reads only what it shows every 4 seconds while it is open, and finished jobs older than 30 days are tidied away (bug 192, 25 Nov).
+- Browser tests were written after the page (not before): a quick sabotage check made 3 of the 5 fail. Not run on the owner's laptop: NOT VERIFIED on Windows.
+
+## M5 5.1 job tracker, 24 November 2026 (Opus review, bugs 172-179)
+Still open, from the review in `docs/m5/M5_PLAN.md`:
+- Cancel and pause of a plain job (not a graph step) only change its record; graph steps can be told to stop (5.2).
+- Resume of a plain job only moves it to "pending"; graphs resume for real (5.2). The Resume button is 5.5.
+- Finished job rows are tidied away after 30 days (bug 192, 25 Nov); until then they stay.
+- Not run on the owner's laptop. Windows: not checked by the reviewer; NOT VERIFIED until GitHub's windows-latest run is green for this work.
+
+## M5 5.6 conversation branching, 24 November 2026
+Branching creates a new chat copying history up to the selected message. The branch shows where it came from with a link back to the parent chat. If the parent is deleted later, the branch retains its provenance label ("From: <title>") without a broken link. Not yet tested with live PyWebView window click (tested through full client test suite).
+
+## M5 5.7 browser snapshot, 24 November 2026
+Not run on the owner's laptop (Microsoft Edge instead of the Chromium used in tests): NOT VERIFIED on Windows until the owner tries it. Snapshots need a recent Playwright (the `mode="ai"` snapshot); `pyproject.toml` still says `>=1.45`, which is older, so the agent says "pip install -U playwright" if it is too old (tested with 1.65.2). Page elements inside iframes are not in the snapshot yet. A page can still lie about its own buttons: the click rules read what the page reports about them. (Error text and button names written by a page are now wrapped as untrusted: bugs 178-179.)
+
 ## M3 audit, 19 November 2026
 
 Phases A to D are done (D6 exit check 20 Nov: 3 more bugs fixed, bug log 123-125). Still to do: run it on the owner's laptop and the owner's licence sign-off in `THIRD_PARTY_LICENSES.md`. Billed catalog models need rates on their model cards. Local cost estimates can differ from the provider's invoice.

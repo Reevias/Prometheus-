@@ -40,6 +40,7 @@
             hx-post="/messages/{{ m.id }}/rate" hx-vals='{"rating": "-1"}' hx-prompt="What should be better? (optional)" hx-swap="none">{{ icon("down") }}</button>
     {% endif %}
     {% endif %}
+    <button type="button" data-act="branch" title="Branch from here">{{ icon("branch") }}Branch</button>
     <button type="button" data-act="delete" title="Delete this message">{{ icon("close") }}</button>
   </div>
 </div>

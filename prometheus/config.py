@@ -115,6 +115,9 @@ class Settings:
     study_reminder: str = "18:00"          # daily "cards are due" reminder; "" for none
     tray: bool = True                      # icon by the clock; closing the window keeps Prometheus running      # run scripts in Windows Sandbox when this laptop has it
     repo_of_day: bool = True
+    own_agents: bool = False                    # M5 5.4: the owner's own agents (Features switch, off)
+    own_agent_specs: list = field(default_factory=list)   # their saved definitions (prometheus/own_agents.py)
+    parallel_steps: bool = False                # M5 5.2: run a plan's independent steps at once (Features)
     step_tries: int = 3                         # tries per task step, counting the first (planning loop)
     task_budget_usd: float = 0.20               # paid AI one task may use                    # suggest one trending GitHub repository a day for the skill library
     obsidian_vault: str = ""

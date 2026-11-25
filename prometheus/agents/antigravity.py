@@ -117,8 +117,8 @@ class AntigravityRunner:
 
     @staticmethod
     def _thread(fn) -> None:
-        import threading
-        threading.Thread(target=fn, daemon=True).start()
+        from prometheus.jobs.runner import start_job
+        start_job(kind="antigravity_agent", title="Antigravity agent task", func=fn)
 
     def submit(self, payload: dict) -> str:
         self.budget.ensure_can_spend()

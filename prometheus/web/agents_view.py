@@ -81,10 +81,16 @@ def agent_card(services, name: str, cls, activity: dict, running: dict, waiting:
     status = status_of(services, name, activity, running, waiting)
     last = activity.get(name) or {}
     tools = sorted(getattr(cls, "tools", set()) or set())
-    return {"name": name, "title": name.replace("_", " ").title(), "about": short(cls.description),
+    is_own = bool(getattr(cls, "own", False))
+    if is_own and status not in ("off", "stopped") and not on(services.settings, "own_agents"):
+        status = "feature_off"
+    return {"name": name, "title": name.replace("_", " ").title(), "about": short(cls.description), "own": is_own,
+            "card": getattr(cls, "card", ""),
             "description": " ".join((cls.description or "").split()), "status": status,
-            "status_label": STATUS_LABELS[status], "group": f.group if f else "Core",
-            "feature": f.label if f else "", "feature_key": f.key if f else "",
+            "status_label": STATUS_LABELS[status],
+            "group": "Your own agents" if is_own else (f.group if f else "Core"),
+            "feature": "Own agents" if is_own else (f.label if f else ""),
+            "feature_key": "own_agents" if is_own else (f.key if f else ""),
             "tags": [TOOL_WORDS.get(t, t.replace("_", " ")) for t in tools],
             "permissions": [{"tool": t, "what": TOOL_WORDS.get(t, t.replace("_", " ")), "rule": permission(t)}
                             for t in tools],

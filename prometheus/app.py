@@ -76,6 +76,9 @@ class Services:
     notifier: object = None          # shows a Windows notification (None when not on Windows)
     atomic_files: AtomicFiles | None = None
     terminal: AsyncTerminal | None = None
+    jobs: object = None
+    job_runner: object = None
+    graphs: object = None            # task graphs (M5 5.2)
 
     def notify(self, kind: str, text: str) -> bool:
         """A Windows notification, if the owner wants this kind (Settings → Notifications). Every notification is
@@ -115,25 +118,50 @@ class Services:
             finally:
                 self.running.pop(chat_id, None)
 
-        thread = threading.Thread(target=work, daemon=True)
-        thread.start()
+        from prometheus.jobs.runner import get_default_runner, start_job
+
+        job = start_job("rewrite", f"Rewrite message {message_id}", work, name="prometheus-rewrite")
+        thread = get_default_runner().get_thread(job.id)
         return thread
+
+    def _task_slot(self, chat_id: int | None) -> bool:
+        """Wait for a free chat-task slot (2, 3 with roomy RAM, 1 when low; laptop check, 25 Nov). False when the
+        owner stopped this chat or everything while it waited."""
+        from prometheus.jobs import limits
+        from prometheus.jobs.runner import current_job_id, report_progress
+
+        def give_up() -> bool:
+            return self.killswitch.is_set or (chat_id is not None and chat_id in self.orchestrator.stopping)
+
+        ok = limits.wait_for_slot(limits.task_slots(), give_up, lambda: report_progress("Waiting for a free slot"))
+        if ok and current_job_id() is not None:
+            report_progress("")
+        return ok
 
     def start_task(self, chat_id: int, text: str, read_only: bool = False) -> threading.Thread:
         """Run a task in the background so the browser can keep polling. read_only: only reading steps run."""
         def work():
+            from prometheus.jobs import limits
+
             started, outcome = time.monotonic(), None
+            self.running[chat_id] = True
+            if not self._task_slot(chat_id):
+                self.running.pop(chat_id, None)
+                return
             try:
-                self.running[chat_id] = True
                 outcome = (self.orchestrator.run(chat_id, text, read_only=True) if read_only
                            else self.orchestrator.run(chat_id, text))
             finally:
+                limits.task_slots().release()
                 self.running.pop(chat_id, None)
             if outcome is not None:
                 self.after_task(outcome, text, time.monotonic() - started)
 
-        thread = threading.Thread(target=work, daemon=True)
-        thread.start()
+        from prometheus.jobs.runner import get_default_runner, start_job
+
+        job = start_job("task", f"Task in chat {chat_id}: {text[:50]}", work, name=f"prometheus-task-{chat_id}",
+                        payload={"chat_id": chat_id, "text": text, "read_only": bool(read_only)})
+        thread = get_default_runner().get_thread(job.id)
         return thread
 
     def resume_task(self, task_id: int) -> threading.Thread:
@@ -144,17 +172,26 @@ class Services:
             self.running[chat_id] = True      # taken now, so a second Carry on can't run the same steps twice
 
         def work():
+            from prometheus.jobs import limits
+
             started, outcome = time.monotonic(), None
+            if not self._task_slot(chat_id):
+                if chat_id is not None:
+                    self.running.pop(chat_id, None)
+                return
             try:
                 outcome = self.orchestrator.resume_paused(task_id)
             finally:
+                limits.task_slots().release()
                 if chat_id is not None:
                     self.running.pop(chat_id, None)
             if outcome is not None:
                 self.after_task(outcome, t.get("text") or "", time.monotonic() - started)
 
-        thread = threading.Thread(target=work, daemon=True)
-        thread.start()
+        from prometheus.jobs.runner import get_default_runner, start_job
+
+        job = start_job("task_resume", f"Resume task {task_id}", work, name=f"prometheus-resume-{task_id}")
+        thread = get_default_runner().get_thread(job.id)
         return thread
 
 
@@ -260,6 +297,25 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
     home = Path(home or Path.home())
     store = Store(data / "memory.db")
     store.mark_interrupted()
+    from prometheus.jobs.runner import JobRunner, set_default_runner
+    from prometheus.jobs.store import JobStore
+
+    job_store = JobStore(store)
+    job_store.recover_after_restart()       # before anything of this run starts a job (M5 review R1)
+    from prometheus.jobs.graph import GraphRunner, recover_graphs
+
+    recover_graphs(job_store)               # graphs that can't carry on in a new run are closed with a reason
+    job_store.prune_finished(days=30)       # finished jobs older than a month are tidied away (M5 audit F6)
+    from prometheus.jobs import limits as job_limits
+
+    try:
+        job_limits.end_leftovers(job_store)     # programs of child agents left by a crash (same program only)
+    except Exception:                           # noqa: BLE001 - starting Prometheus matters more
+        import logging
+
+        logging.getLogger(__name__).exception("Couldn't end programs left over from the last run")
+    job_runner = JobRunner(job_store)
+    set_default_runner(job_runner)
     if providers is None and settings.embed_model:
         try:
             from prometheus.models.ollama import OllamaEmbedder
@@ -277,7 +333,9 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
     archive.allowed = lambda chat_id: memory_collects(settings, chat_id)      # replaced below by the live settings
     archive.left_out = lambda chat_id: chat_id in (settings.memory_off_chats or [])
     store.listeners.append(archive.sync)
-    threading.Thread(target=archive.sync_all, daemon=True).start()   # file away chats from older versions
+    from prometheus.jobs.runner import start_job
+
+    start_job("archive_sync", "Sync chat archives", archive.sync_all, name="prometheus-archive-sync")   # file away chats from older versions
     policy = PathPolicy(home=home, data_dir=data, code_dir=CODE_DIR, protected=(memory_folder,),
                         extra_roots=usable_extra_folders(settings, home))
     journal = Journal(data / "journals")
@@ -360,7 +418,7 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
                             permissions=permissions, approvals=approvals, killswitch=killswitch, home=home,
                             skills=skills)
 
-    orchestrator = Orchestrator(store, router, REGISTRY, make_context, killswitch, prompts.folder, skills=skills)
+    orchestrator = Orchestrator(store, router, dict(REGISTRY), make_context, killswitch, prompts.folder, skills=skills)
     orchestrator.front_door = providers is None        # M3.1 (tests with stand-in AIs switch it on themselves)
 
     orchestrator.loop = make_loop(orchestrator, settings)    # M3.3: complex jobs, up to 12 rounds
@@ -369,6 +427,7 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
     orchestrator.live_context = lambda: _live_line(services)   # M3.6 (services is filled in below)
     orchestrator.extra_catalog = apps_agent.MANAGER.catalog_text
     orchestrator.settings = settings          # Features switches and Stop everything
+    orchestrator.graphs = GraphRunner(job_store, job_runner, killswitch=killswitch)   # M5 5.2 task graphs
     from prometheus import features as _features
 
     _features.CURRENT = settings
@@ -378,6 +437,10 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
     orchestrator.task_budget = max(0.01, min(float(settings.task_budget_usd), 10.0))
     services = Services(settings, home, store, policy, journal, files, permissions, approvals, budget, killswitch,
                         router, orchestrator, patcher, prompts, skills)
+    from prometheus import own_agents as _own
+
+    _own.install(orchestrator.registry, permissions, settings, set(REGISTRY))     # the owner's own agents (M5 5.4)
+    approvals.register(_own.APPROVAL_KIND, lambda payload: _own.open_handler(payload, policy))
     from prometheus.features import skill_on
     skills.is_off = lambda name: not skill_on(services.settings, name)   # the Skills page's switches
     from prometheus.repos import library as _library
@@ -393,6 +456,10 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
     services.atomic_files = AtomicFiles(policy=policy, backup_dir=data / "backups")
     services.terminal = AsyncTerminal(policy=policy)
     services.archive = archive
+    job_limits.connect_stop_all(killswitch, job_store)   # pause every job first, then end children's programs
+    services.jobs = job_store
+    services.graphs = orchestrator.graphs
+    services.job_runner = job_runner
 
     def _carry_on_after_answer(approval_id: int, status: str, result: str) -> None:
         """A loop task that waited for this yes carries on by itself once everything it waited for is answered."""

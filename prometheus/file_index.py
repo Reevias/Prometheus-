@@ -181,11 +181,15 @@ class FileIndex:
                 pass
 
     def start(self) -> None:
-        threading.Thread(target=self.loop, name="prometheus-file-index", daemon=True).start()
+        from prometheus.jobs.runner import start_job
+
+        start_job("file_index", "File indexer loop", self.loop, name="prometheus-file-index", service=True)
 
     def read_now(self) -> None:
-        threading.Thread(target=self.run, kwargs={"budget_seconds": 4 * 3600}, name="prometheus-file-index-now",
-                         daemon=True).start()
+        from prometheus.jobs.runner import start_job
+
+        start_job("file_index_now", "File indexer scan now", self.run, kwargs={"budget_seconds": 4 * 3600},
+                  name="prometheus-file-index-now")
 
     def stop(self) -> None:
         self._stop.set()

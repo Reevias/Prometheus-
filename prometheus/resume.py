@@ -15,6 +15,9 @@ import threading
 import time
 import uuid
 
+from prometheus.jobs.states import CANCELLED, DONE, FAILED, PAUSED, PENDING, RUNNING
+from prometheus.jobs.store import JobStore
+
 log = logging.getLogger(__name__)
 
 KV = "resume_queue"
@@ -33,6 +36,22 @@ def worth_retrying(error: str) -> bool:
 _LOCK = threading.RLock()
 _IN_FLIGHT: set[str] = set()          # ids of waiting requests being started right now (never started twice)
 _FINISHED: set[str] = set()           # ids already answered in this run of Prometheus (never started again)
+
+
+def _get_job_store(store) -> JobStore | None:
+    if hasattr(store, "jobs") and isinstance(getattr(store, "jobs"), JobStore):
+        return store.jobs
+    if hasattr(store, "_job_store_cached"):
+        return store._job_store_cached
+    try:
+        js = JobStore(store)
+        try:
+            store._job_store_cached = js
+        except Exception:
+            pass
+        return js
+    except Exception:
+        return None
 
 
 def _valid(item) -> bool:
@@ -56,10 +75,26 @@ def _save(store, queue: list[dict]) -> None:
         store.kv_set(KV, queue)
 
 
-def _without(store, item_id: str) -> None:
-    """Remove one waiting request by its id (never another request with the same text)."""
+def _finish_jobs(store, item_id: str, final: str, why: str = "") -> None:
+    """Close the tracker record of one waiting request (M5 review R3); never stops the queue itself."""
+    job_store = _get_job_store(store)
+    if job_store is None:
+        return
+    for j in job_store.list_jobs(kind="resume"):
+        if j.payload.get("id") == item_id:
+            try:
+                job_store.finish(j.id, final, error=why or None)
+            except Exception:
+                log.exception("Couldn't close the tracker record of a waiting request")
+
+
+def _without(store, item_id: str, status: str = "done") -> None:
+    """Remove one waiting request by its id (never another request with the same text). `status` is how the task
+    it became ended, so the tracker records the real result (M5 audit F7)."""
+    final = {"done": DONE, "failed": FAILED}.get(status, CANCELLED)
     with _LOCK:
         _save(store, [q for q in _queue(store) if q.get("id") != item_id])
+        _finish_jobs(store, item_id, final, "" if final == DONE else f"The request ended: {status}")
 
 
 def note_limit(store, chat_id: int, text: str, error: str, now: float | None = None) -> str:
@@ -68,28 +103,76 @@ def note_limit(store, chat_id: int, text: str, error: str, now: float | None = N
         return ""
     now = time.time() if now is None else now
     with _LOCK:
+        job_store = _get_job_store(store)
+        existing_jobs = []
+        if job_store is not None:
+            existing_jobs = [j for j in job_store.list_jobs(kind="resume")
+                             if j.payload.get("chat_id") == chat_id and j.payload.get("text") == text
+                             and j.state not in (DONE, CANCELLED, FAILED)]
+        item_id = existing_jobs[0].payload.get("id") if existing_jobs else uuid.uuid4().hex
+
         queue = [q for q in _queue(store) if q["id"] not in _FINISHED]
         item = next((q for q in queue if q["chat_id"] == chat_id and q["text"] == text), None)
         if item is None:
             if len(queue) >= MAX_WAITING:
                 return ""
-            item = {"id": uuid.uuid4().hex, "chat_id": chat_id, "text": text, "tries": 0, "first": now}
+            item = {"id": item_id, "chat_id": chat_id, "text": text, "tries": 0, "first": now}
             queue.append(item)
+            if not existing_jobs and job_store is not None:
+                j = job_store.create_job(
+                    kind="resume",
+                    title=f"Retry: {text[:30]}",
+                    payload=item,
+                    state=PAUSED,
+                )
+                existing_jobs = [j]
+
         if item["tries"] >= len(WAITS):
             queue.remove(item)
             _save(store, queue)
+            _finish_jobs(store, item["id"], FAILED, "Exceeded maximum retries (tried for a day)")
             return ("I've tried for a day and the AIs are still not answering, so I've stopped. "
                     "Ask me again when you like.")
         wait = WAITS[item["tries"]]
         item["tries"] += 1
         item["due"] = now + wait * 60
         _save(store, queue)
+        if existing_jobs and job_store is not None:
+            try:
+                job_store.update_job(
+                    existing_jobs[0].id,
+                    retries=item["tries"],
+                    error=error,
+                    payload=item,
+                )
+            except Exception:
+                pass
     when = f"{wait} minutes" if wait < 60 else "an hour"
     return f"I'll try this again by myself in {when}; the answer will appear here. (Say “stop trying” to cancel.)"
 
 
+def drop(store, item_id: str, why: str = "Stopped by you") -> bool:
+    """Stop one waiting request for good (the Stop button in the jobs view): out of the queue, never started again,
+    and its tracker record cancelled. M5 review R9."""
+    with _LOCK:
+        queue = _queue(store)
+        keep = [q for q in queue if q.get("id") != item_id]
+        _FINISHED.add(item_id)
+        _save(store, keep)
+        _finish_jobs(store, item_id, CANCELLED, why)
+        return len(keep) != len(queue)
+
+
 def cancel(store, chat_id: int) -> int:
     with _LOCK:
+        job_store = _get_job_store(store)
+        if job_store is not None:
+            for j in job_store.list_jobs(kind="resume"):
+                if j.payload.get("chat_id") == chat_id and j.state not in (DONE, CANCELLED, FAILED):
+                    try:
+                        job_store.set_state(j.id, CANCELLED, error="Cancelled by user")
+                    except Exception:
+                        pass
         queue = _queue(store)
         keep = [q for q in queue if q["chat_id"] != chat_id]
         _save(store, keep)
@@ -176,6 +259,7 @@ class Resumer:
                     if q["tries"] >= len(WAITS):      # the same limit as note_limit
                         queue.remove(q)
                         gave_up = True
+                        _finish_jobs(s.store, item["id"], FAILED, why[:200])
                     else:
                         q["due"] = self.clock() + WAITS[min(q["tries"], len(WAITS)) - 1] * 60
                     _save(s.store, queue)
@@ -215,7 +299,7 @@ class Resumer:
                         _FINISHED.add(item["id"])            # never started again, even if removing it fails
                     for attempt in range(3):
                         try:
-                            _without(s.store, item["id"])
+                            _without(s.store, item["id"], status=str(task["status"]))
                             break
                         except Exception:
                             if attempt == 2:
@@ -229,7 +313,9 @@ class Resumer:
                 with _LOCK:
                     _IN_FLIGHT.discard(item["id"])
 
-        threading.Thread(target=work, name="prometheus-resume", daemon=True).start()
+        from prometheus.jobs.runner import start_job
+
+        start_job("resume_task", f"Resuming waiting request {item.get('id')}", work, name="prometheus-resume")
 
     def loop(self) -> None:
         while not self._stop.wait(CHECK_EVERY):
@@ -239,7 +325,9 @@ class Resumer:
                 log.exception("Checking waiting requests failed")
 
     def start(self) -> None:
-        threading.Thread(target=self.loop, name="prometheus-resumer", daemon=True).start()
+        from prometheus.jobs.runner import start_job
+
+        start_job("resumer", "Resumer loop", self.loop, name="prometheus-resumer", service=True)
 
     def stop(self) -> None:
         self._stop.set()
