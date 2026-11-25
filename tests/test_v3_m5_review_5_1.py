@@ -30,7 +30,7 @@ def test_jobs_started_while_prometheus_starts_are_not_marked_restarted(app_clien
     from prometheus.memory.archive import ChatArchive
 
     release = threading.Event()
-    monkeypatch.setattr(ChatArchive, "sync_all", lambda self: release.wait(5))
+    monkeypatch.setattr(ChatArchive, "sync_all", lambda self: release.wait(60))     # slow Windows machines: 5 s was too short
     _, services = app_client()
     try:
         jobs = services.jobs.list_jobs(kind="archive_sync")
