@@ -71,7 +71,7 @@ minimal; LocalRuntime default, Cloudroom optional).
 | M2 | Desktop UI from the owner's orange-orbital screenshot (sidebar: Home, Agents, Skills, Tasks, Projects, Memory, Automations, Research, Integrations, System; orbital core; command bar; slash palette; right panel with real health/CPU/RAM/GPU; bottom wave; native window controls) | Done, merged into main 15 Nov (bug review: 14 fixes; laptop check to come) |
 | M3 | ReAct orchestrator and model routing | Done, merged into main 20 Nov (audit fixes A-D, exit check: 3 more fixes); report docs/reports/M3_REPORT.md; laptop check to come |
 | M4 | Repository-to-skill intelligence (separate repo hub for candidates) | Done, merged into main 21 Nov on the owner's instruction (reviews A and B, final audit, own-repos fix, Settings redesign and the owner's screenshot fixes); a separate checker and the laptop check come next; report docs/reports/M4_REPORT.md |
-| M5 | DAG orchestration, concurrent child agents | Planned |
+| M5 | DAG orchestration, concurrent child agents | Done on the branch, waiting for the owner to merge (5.1–5.7 built, reviews, audit and laptop-check fixes: 28 bugs, 171–198; GitHub Windows run green; the laptop check is to be run again, NOT VERIFIED); report docs/reports/M5_REPORT.md |
 | M6 | ExecutionRuntime / Cloudroom | Planned |
 | M7 | Security hardening, safe-stop system | Planned |
 | M8 | Multi-layer memory/context engine | Planned |

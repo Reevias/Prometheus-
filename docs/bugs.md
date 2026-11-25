@@ -2,7 +2,7 @@
 
 Every bug found and fixed, newest first, so the count is always exact. Add a line for each new one.
 
-**Total fixed: 198** (as of 25 November 2026)
+**Total fixed: 198** (as of 25 November 2026). M5 accounts for 28 of them (171–198); see `docs/reports/M5_REPORT.md`.
 
 ## 25 November 2026, M5 open items finished (3)
 

@@ -3,6 +3,14 @@
 Updated 11 November 2026. Version 2.3. Built and tested here: 883 tests pass.
 Not yet run end to end on the owner's real laptop.
 
+## M5 done on the branch, 25 November 2026 (report: `docs/reports/M5_REPORT.md`)
+Waiting for the owner to merge. NOT VERIFIED on the owner's laptop after the audit fixes: run the laptop check of
+`docs/m5/M5_LAPTOP_CHECK.md` again (5 jobs at once, Stop all, restart and Run again, branching, an own agent, the full
+`python -m pytest -q` that hung at `f075968`, Prometheus's own memory, a snapshot in Microsoft Edge). The audit was
+written by the session that built 5.2 and 5.3, so it is not the independent fresh-session audit the plan asks for.
+The Windows CI hang found in the audit can't be proved gone (CI now dumps every thread's stack after 2 minutes and
+stops after 40). A running Python thread still can't be stopped from outside, and nothing runs a Resumed plain job.
+
 ## M5 5.3 child agents at once, 24 November 2026
 - Only graph steps count as child agents for now (own agents join in 5.4). Memory is measured only for the programs a child starts; its own Python work shares Prometheus's memory and shows as "none" rather than a made-up number.
 - The memory cap (1.5 GB per child's programs) applies to commands run through the M1 terminal, which no agent uses yet; the code agent's sandbox keeps its own Job Object and memory limit. Since the audit both are ended by cancel, pause and Stop all. On Linux there is no cap, only a process group.
@@ -25,14 +33,14 @@ Not yet run end to end on the owner's real laptop.
 ## M5 5.5 multi-agent view, 24 November 2026
 - A plain job that is running as a thread has no Stop or Pause button: Python can't stop it, and a button that only changed the record would lie. Graph steps use "should I stop?" checks, so graphs have all three buttons. A paused plain job has Stop only: Resume would just mark it waiting, because nothing runs waiting jobs yet.
 - The agent column of a task step is read from its title ("research: ..."); jobs started elsewhere show their kind.
-- The view reads every job in the tracker every 4 seconds while it is open; finished jobs are never tidied away, so it slowly gets heavier (see 5.1).
+- The view reads only what it shows every 4 seconds while it is open, and finished jobs older than 30 days are tidied away (bug 192, 25 Nov).
 - Browser tests were written after the page (not before): a quick sabotage check made 3 of the 5 fail. Not run on the owner's laptop: NOT VERIFIED on Windows.
 
 ## M5 5.1 job tracker, 24 November 2026 (Opus review, bugs 172-179)
 Still open, from the review in `docs/m5/M5_PLAN.md`:
 - Cancel and pause of a plain job (not a graph step) only change its record; graph steps can be told to stop (5.2).
 - Resume of a plain job only moves it to "pending"; graphs resume for real (5.2). The Resume button is 5.5.
-- Finished job rows are never tidied away (small, but they grow: one per message for the intent check).
+- Finished job rows are tidied away after 30 days (bug 192, 25 Nov); until then they stay.
 - Not run on the owner's laptop. Windows: not checked by the reviewer; NOT VERIFIED until GitHub's windows-latest run is green for this work.
 
 ## M5 5.6 conversation branching, 24 November 2026
