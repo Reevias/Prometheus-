@@ -145,6 +145,10 @@ Each builder does the items in order, a failing test first each time.
 3. Each request has an id and a receipt; events are numbered and put in order; a repeat request isn't run twice.
 4. Lost link: retries, then resume from the last receipt or mark failed; nothing runs twice.
 5. The Render service runs tasks in a sandbox (no access to the token store; time and memory limits).
+   Free Render machines are small (about 512 MB RAM and a fraction of a CPU: to be confirmed from Render's docs when
+   6.2 starts). Before a move, check the task fits; if it doesn't, say so plainly and keep it on the laptop.
+   Render can restart at any time and wipe files, so a moved task keeps its progress through receipts, never only on
+   Render's disk.
 6. Sonnet: `cloud/render/` files (render.yaml or Dockerfile) and a plain-words setup guide replacing the Oracle steps in
    `docs/cloud-setup.md`, including the free uptime pinger every 10 minutes; the cloud copy's jobs (reminders, alerts,
    sync) run there; Render's limits written down honestly (sleeps after 15 min without the pinger, 750 h a month, files
