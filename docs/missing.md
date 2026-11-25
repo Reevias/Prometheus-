@@ -3,6 +3,11 @@
 Updated 11 November 2026. Version 2.3. Built and tested here: 883 tests pass.
 Not yet run end to end on the owner's real laptop.
 
+## M6 6.4a Control PC: screen, mouse, keyboard, 25 November 2026
+- On the owner's Windows 11 laptop, `EnumWindows` (`list_windows`), `GetSystemMetrics` virtual screen bounds (`(0, 0, 3840, 1080)`), terminal window blocking (`powershell.exe`), `UIAutomationClient` control listing against a test WinForms window (`PromCheckWin.exe`), and `< 1s` Stop all termination of an active PowerShell subprocess ran and passed.
+- NOT VERIFIED live on an unlocked interactive desktop: `ImageGrab` screen capture (`OSError: screen grab failed`), `SetForegroundWindow` focus switching (`GetForegroundWindow() == 0`), typing into a live non-password box, and live UIA `IsPassword` refusal (Windows saw only HWND `Pane` wrappers while the screen was locked/asleep during the test session); covered with unit tests using fake Win32/UIA responses.
+- `prometheus/app.py` and `prometheus/agents/__init__.py` were left untouched per build boundaries, so registering `pc_control` at startup (before `prometheus.orchestrator.registry` is imported or before `PCControlAgent.run` runs after a restart with pending approvals) still waits on final wiring.
+
 ## M6 6.1 ExecutionRuntime, 25 November 2026
 - Only the laptop runtime exists; a move to Cloudroom is refused until 6.2 adds it and wires your yes (the approval check refuses everything for now).
 - Cancelling and pausing from the jobs view still go to M5's runner and graphs directly; only starting goes through the runtime (the plan's item 3).
