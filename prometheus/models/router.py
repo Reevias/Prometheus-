@@ -8,6 +8,7 @@ from __future__ import annotations
 import re
 import contextlib
 import contextvars
+import threading
 import time
 from typing import Callable
 
@@ -40,8 +41,17 @@ _KIND: contextvars.ContextVar[str] = contextvars.ContextVar("prometheus_job_kind
 _CARD: contextvars.ContextVar[str] = contextvars.ContextVar("_CARD", default="")      # an own agent's chosen model (M5 5.4)
 # what paid AI this task has spent so far (None = not inside a task: no paid AI without asking)
 _TASK_SPEND: contextvars.ContextVar[list | None] = contextvars.ContextVar("prometheus_task_spend", default=None)
+# one task's own spending limit, checked before every paid call (M5): {"start", "limit", "reserved", "lock"}
+_TASK_LIMIT: contextvars.ContextVar[dict | None] = contextvars.ContextVar("prometheus_task_limit", default=None)
+# the cost each paid call might reach is reserved before it runs, so calls made at the same time (steps of one
+# task running side by side) can't all pass the same check and then all spend (M5 audit F8)
+_RESERVE_LOCK = threading.Lock()
 # inside this, only free or local AI is used (the front door's quick check never costs money)
 _FREE_ONLY: contextvars.ContextVar[bool] = contextvars.ContextVar("prometheus_free_only", default=False)
+
+
+class TaskBudgetReached(BudgetExceeded):
+    """The task's own spending limit is reached: no more paid AI for it (free and local AI still answer)."""
 
 
 class ModelRouter:
@@ -130,7 +140,7 @@ class ModelRouter:
             return False
         spent = _TASK_SPEND.get()
         card = self.card_for(entry)
-        return spent is not None and card is not None and card.cheap and spent[0] < _cards.TASK_CAP
+        return spent is not None and card is not None and card.cheap and spent[0] + _reserved(spent) < _cards.TASK_CAP
 
     @contextlib.contextmanager
     def free_only(self):
@@ -159,20 +169,54 @@ class ModelRouter:
             _KIND.reset(token)
 
     def _fits_task_cap(self, entry: str, messages, system, max_tokens) -> bool:
-        """This call's most possible cost still fits in the task's limit (so one big call can't jump past it)."""
+        """This call's most possible cost still fits in the task's limit (so one big call can't jump past it).
+        Calls already running count with their most possible cost (reserved)."""
         spent, card = _TASK_SPEND.get(), self.card_for(entry)
         if spent is None or card is None:
             return False
-        return spent[0] + _cards.estimate_usd(card, messages, system, max_tokens) <= _cards.TASK_CAP
+        return spent[0] + _reserved(spent) + _cards.estimate_usd(card, messages, system, max_tokens) <= _cards.TASK_CAP
+
+    def _estimate(self, entry: str, messages, system, max_tokens) -> float:
+        card = self.card_for(entry)
+        return _cards.estimate_usd(card, messages, system, max_tokens) if card is not None else 0.0
 
     @contextlib.contextmanager
     def task_spending(self):
         """One task: paid AI it uses without asking is counted against the per-task limit."""
-        token = _TASK_SPEND.set([0.0])
+        token = _TASK_SPEND.set([0.0, 0.0])          # [spent, reserved by calls still running]
         try:
             yield
         finally:
             _TASK_SPEND.reset(token)
+
+    @contextlib.contextmanager
+    def task_limit(self, usd: float):
+        """One task's own spending limit (Settings), checked before every paid call, including steps running at the
+        same time; free and local AI still answer once it is reached."""
+        try:
+            start = float(self.budget.state().spent)
+        except Exception:                        # noqa: BLE001
+            start = 0.0
+        token = _TASK_LIMIT.set({"start": start, "limit": float(usd), "reserved": 0.0})
+        try:
+            yield
+        finally:
+            _TASK_LIMIT.reset(token)
+
+    def _reserve_task_limit(self, est: float) -> bool:
+        """Reserve this call's most possible cost against the task's limit; False when it would go over."""
+        lim = _TASK_LIMIT.get()
+        if lim is None:
+            return True
+        try:
+            used = float(self.budget.state().spent) - lim["start"]
+        except Exception:                        # noqa: BLE001
+            used = 0.0
+        with _RESERVE_LOCK:
+            if used >= lim["limit"] or used + lim["reserved"] + est > lim["limit"] + 1e-12:
+                return False
+            lim["reserved"] += est
+            return True
 
     def entries_for(self, purpose: str) -> list[str]:
         """The order to try: the cards that fit the job first (best first, free before paid when equal), then the
@@ -221,10 +265,15 @@ class ModelRouter:
     def complete(self, purpose: str, messages: list[dict], system: str, json_schema: dict | None = None,
                  max_tokens: int = 4096, skip: frozenset[str] = frozenset(), on_text=None) -> Reply:
         self.killswitch.check()
+        from prometheus.jobs.runner import raise_if_step_stopped
+
+        raise_if_step_stopped()                 # a cancelled or paused graph step makes no more AI calls
         errors: list[str] = []
         empty: list[str] = []
         waiting_yes: list[str] = []
         over_budget = False
+        task_over = False
+        cap_spend, est, limit_est = None, 0.0, 0.0
         for entry in self._order(purpose):
             name, model = split_entry(entry)
             provider = self.providers.get(name)
@@ -245,12 +294,23 @@ class ModelRouter:
             if not free and self.budget.state().stopped:
                 over_budget = True   # cap reached: skip paid models, keep looking for a free or local one
                 continue
-            heavy = (not free and self.heavy_ok(entry, self.kind_for(purpose))
-                     and self._fits_task_cap(entry, messages, system, max_tokens))
+            est = 0.0 if free else self._estimate(entry, messages, system, max_tokens)
+            with _RESERVE_LOCK:                   # check and reserve at once (steps side by side share the cap)
+                heavy = (not free and self.heavy_ok(entry, self.kind_for(purpose))
+                         and self._fits_task_cap(entry, messages, system, max_tokens))
+                cap_spend = _TASK_SPEND.get() if heavy and not _PAID_OK.get() else None
+                if cap_spend is not None:
+                    _reserve(cap_spend, est)
             billed = getattr(provider, "billing_enabled", False)
             if not free and not _PAID_OK.get() and (billed or (self.paid_needs_yes and entry != self.head and not heavy)):
+                _release(cap_spend, est)
                 waiting_yes.append(f"{name} · {used_model}" if used_model else name)
                 continue             # paid: only after the owner's yes
+            if not free and not self._reserve_task_limit(est):
+                _release(cap_spend, est)
+                task_over = True
+                continue             # this task's own limit is reached: only free or local AI from here
+            limit_est = 0.0 if free else est
             keyless = bool(getattr(provider, "keyless", False) or getattr(getattr(provider, "info", None), "keyless", False))
             card = self.card_for(f"{name}:{used_model}") if billed else None
             if billed and (card is None or not card.cheap):
@@ -265,6 +325,8 @@ class ModelRouter:
                     reply = provider.complete(sent, system, json_schema=json_schema, max_tokens=max_tokens,
                                               model=model)
             except ProviderUnavailable as e:
+                _release(cap_spend, est)
+                _release_limit(limit_est)
                 # a wrong model name rests only that model; the provider's other models keep working
                 key = f"{name}/{used_model}" if BAD_MODEL.search(str(e)) else name
                 self._resting[key] = (self.clock() + REST_SECONDS, str(e))
@@ -284,7 +346,10 @@ class ModelRouter:
                 self.budget.record(reply.provider, reply.model, reply.usd, reply.tokens_in, reply.tokens_out)
                 spent = _TASK_SPEND.get()
                 if spent is not None and not free:
-                    spent[0] += float(reply.usd or 0.0)
+                    with _RESERVE_LOCK:
+                        spent[0] += float(reply.usd or 0.0)
+            _release(cap_spend, est)               # the real cost is counted now instead of the reservation
+            _release_limit(limit_est)
             if not (reply.text or "").strip():
                 # an empty answer (a thinking model that used all its room, a free model that timed out) is a
                 # failure: try the next AI rather than hand back nothing
@@ -303,6 +368,10 @@ class ModelRouter:
                 f"The AI ({', '.join(empty)}) sent back an empty answer. Try again in a moment, or pick another Brain "
                 "in Settings → AI." + (f" Others: {'; '.join(e for e in errors if 'empty answer' not in e)}."
                                        if len(errors) > len(empty) else ""))
+        if task_over:
+            lim = _TASK_LIMIT.get() or {"limit": 0.0}
+            raise TaskBudgetReached(f"This task reached its ${lim['limit']:.2f} spending limit, and no free AI could "
+                                    "answer. Ask again if you want me to keep going.")
         if over_budget:
             self.budget.ensure_can_spend()
             raise BudgetExceeded("Spending cap reached and no free model is available.")
@@ -310,6 +379,31 @@ class ModelRouter:
         if errors:
             message += " (" + "; ".join(errors) + ")"
         raise ProviderUnavailable(message)
+
+
+def _reserved(spent: list) -> float:
+    return spent[1] if len(spent) > 1 else 0.0
+
+
+def _reserve(spent: list | None, est: float) -> None:
+    """Called with _RESERVE_LOCK held."""
+    if spent is not None:
+        if len(spent) < 2:
+            spent.append(0.0)
+        spent[1] += est
+
+
+def _release(spent: list | None, est: float) -> None:
+    if spent is not None and len(spent) > 1:
+        with _RESERVE_LOCK:
+            spent[1] = max(0.0, spent[1] - est)
+
+
+def _release_limit(est: float) -> None:
+    lim = _TASK_LIMIT.get()
+    if lim is not None and est:
+        with _RESERVE_LOCK:
+            lim["reserved"] = max(0.0, lim["reserved"] - est)
 
 
 CLOUD_PURPOSES = ("plan", "combine", "research")

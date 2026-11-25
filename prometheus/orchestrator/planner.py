@@ -839,8 +839,15 @@ class Orchestrator:
 
     def run(self, chat_id: int, text: str, read_only: bool = False) -> TaskOutcome:
         """One request. Paid AI used without asking (cheap models, heavy jobs) is counted for this task only."""
-        with self.router.task_spending() if hasattr(self.router, "task_spending") else contextlib.nullcontext():
+        with self.router.task_spending() if hasattr(self.router, "task_spending") else contextlib.nullcontext(), \
+                self._task_limit():
             return self._run(chat_id, text, read_only)
+
+    def _task_limit(self):
+        """The task's own spending limit, checked by the router before every paid call, so steps running side by
+        side can't go over it together (M5: the audit's open item F8). The per-step check stays as well."""
+        limit = getattr(self.router, "task_limit", None)
+        return limit(self.task_budget) if limit is not None else contextlib.nullcontext()
 
     def _run(self, chat_id: int, text: str, read_only: bool = False) -> TaskOutcome:
         """read_only: another app asked; only reading steps run, nothing is remembered or changed."""
