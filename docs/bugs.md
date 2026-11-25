@@ -2,12 +2,14 @@
 
 Every bug found and fixed, newest first, so the count is always exact. Add a line for each new one.
 
-**Total fixed: 193** (as of 25 November 2026)
+**Total fixed: 195** (as of 25 November 2026)
 
-## 25 November 2026, M5 audit and laptop-check risks (12)
+## 25 November 2026, M5 audit and laptop-check risks (14)
 
 | # | Bug | Fixed by |
 |---|---|---|
+| 195 | The job runner's Stop, Pause and Resume held its own lock while waiting for the database, while a graph starting a step does the opposite: the two could freeze each other | The runner's buttons use the database lock only |
+| 194 | The graph runner's idle check (added earlier in this audit) could freeze with the graph's driver in the same way; GitHub's Windows run hung on it | The check never asks the database while holding the runner's lock |
 | 193 | A request that ran again after an AI limit was recorded "done" in the tracker even when it failed or was stopped | Its real result is recorded |
 | 192 | The jobs table only grew, and the jobs panel read all of it every 4 seconds | Finished jobs older than 30 days are tidied away at start; the panel reads only what it shows |
 | 191 | When one try of a step finished, it could end the programs of the step's next try | Programs are ended per try; on Windows the Job Object is closed instead of looking up a process number |
