@@ -2,7 +2,14 @@
 
 Every bug found and fixed, newest first, so the count is always exact. Add a line for each new one.
 
-**Total fixed: 179** (as of 24 November 2026)
+**Total fixed: 181** (as of 25 November 2026)
+
+## 25 November 2026, Opus review of M5 5.4 and 5.5 (2)
+
+| # | Bug | Fixed by |
+|---|---|---|
+| 181 | "Stop" on a waiting request (AI limit) in the jobs view only changed its record; it stayed in the retry queue and ran again by itself | Stop takes it out of the queue and it is never started again |
+| 180 | An own agent with "read a file" and a web tool could read one of the owner's files and then send its words to the web (a page could ask it to) | After a file is read, the web tools are refused for the rest of that task |
 
 ## 24 November 2026, Opus review of M5 5.1 and 5.7 (8)
 

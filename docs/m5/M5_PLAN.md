@@ -151,6 +151,25 @@ Checked against the work lists, item by item. Tests: see the report line at the 
   still lie about its own buttons (the click rules read what the page reports).
 - Not run on the owner's laptop or on Windows by me: NOT VERIFIED until GitHub's windows-latest run is green.
 
+## Review of 5.4 and 5.5 (Opus, 25 Nov)
+**5.4 Own agents, tool-permission check (`OwnAgent._call`):** an unticked tool, an odd tool name or a tool the
+permission table denies is refused before anything runs; only the four tools with real code can be ticked; "open a
+file" asks on Approvals every time and the file is checked again after the yes; tool results come back wrapped as
+untrusted; after a file is read the model is local only; a model card can't pull private work to a cloud model (the
+router drops non-local models for private work). Names, the Features switch and the hand-edited-file rule hold.
+**5.5 Multi-agent view:** every button is a CSRF-checked POST, allowed only when the move is real; page and job text is
+escaped (the diagram's data is `tojson` in a quoted attribute and drawn as Canvas text, never HTML).
+
+**Findings, fixed with a test that failed first** (bugs 180–181):
+- R8. An own agent with "read a file" and a web tool could read a file, then put its words in a web address or
+  search (a page it read could ask for exactly that). Once a run has read a file, the web tools are refused.
+- R9. "Stop" on a request waiting after an AI limit marked it cancelled but left it in the retry queue, so it ran
+  again by itself. Stop now takes it out of the queue (`resume.drop`).
+
+**Left open:** a chat step running outside the tracker isn't cancelled when its agent is removed (it finishes); the
+view reads every job every 4 s (grows with the untidied job table); plain running jobs still have no Stop (honest:
+Python can't stop them). NOT VERIFIED on the owner's laptop.
+
 ## Who does what
 
 The rule of thumb: **Opus decides and checks, Antigravity builds the well-defined pieces, Sonnet builds the UI and the
