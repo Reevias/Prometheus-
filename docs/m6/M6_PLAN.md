@@ -1,6 +1,6 @@
 # M6 plan: Runtime, Cloudroom, PC and phone control (25 Nov 2026)
 
-Status: **plan written 25 Nov 2026; 6.0 findings added the same day (Hugging Face needs a paid plan: owner decides).** M6 starts after M5's audit is accepted by the owner (PLAN.md rule 3).
+Status: **plan written 25 Nov 2026; 6.0 findings added the same day; owner chose Render (free, no card) with an uptime pinger instead of Hugging Face.** M6 starts after M5's audit is accepted by the owner (PLAN.md rule 3).
 Nothing here adds scope: these are the 5 steps of M6 in `docs/PLAN.md`, filled in with the owner's answers.
 Work happens on `prometheus-v3`.
 
@@ -25,7 +25,7 @@ phone (through mobile-mcp), always asking first, and the phone can control the l
 |---|---|---|---|
 | 6.0 | **Checks before building** | Hugging Face free-tier terms, mobile-mcp licence and version, any new package's licence (7-step check in AGENTS.md) written down with the date. Laptop checked for Node.js and adb. | — |
 | 6.1 | **ExecutionRuntime** | One way to run tasks: `LocalRuntime` (default) runs every M5 job; `CloudroomRuntime` plugs in behind the same calls. | Every M5 job kind runs through `LocalRuntime` with the same results; nothing calls the old paths directly. |
-| 6.2 | **Cloudroom** | A private free Space runs moved tasks in a sandbox. Moving asks first; each move has a request id and a receipt; events arrive in order; a lost link resumes or fails cleanly. The Space also takes over the old Oracle cloud copy's job. | Unplug mid-task → task resumes or is marked failed, never doubled; events out of order are put right; a move without a yes is refused. |
+| 6.2 | **Cloudroom** | The owner's free Render web service runs moved tasks in a sandbox. Moving asks first; each move has a request id and a receipt; events arrive in order; a lost link resumes or fails cleanly. It also takes over the old Oracle cloud copy's job. | Unplug mid-task → task resumes or is marked failed, never doubled; events out of order are put right; a move without a yes is refused. |
 | 6.3 | **Cloudroom storage** | Repo knowledge, backups and sync data encrypted on the laptop before upload; the laptop copy is the main one; works offline. Includes the private notes of chats left out in Memory → Privacy. | Upload holds only scrambled bytes; offline use works; wrong key can't read; laptop copy wins on a clash. |
 | 6.4a | **Control PC: screen, mouse, keyboard** | See the screen, click, type, switch apps on Windows. Every click, typed text or app change asks first. | Without a yes nothing is clicked; Stop all stops it at once. |
 | 6.4b | **Control the laptop from the phone** | The phone app runs laptop actions remotely over the private link; each one asks on the phone first. | A request without the device key is refused; dangerous actions still ask. |
@@ -104,11 +104,13 @@ Source: npm registry `@mobilenext/mobile-mcp` and the repo's README/LICENSE (git
 - NOT VERIFIED on Windows: whether `UIAutomationClient` loads in the laptop's PowerShell (Windows PowerShell 5.1 should
   have it); Antigravity checks this along with Node.js and adb.
 
-### Waiting for the owner
-1. Hugging Face needs a paid plan now. Use **Render's free web service** instead (no card; sleeps after 15 minutes;
-   storage on Google Drive), or something else?
-2. If Render: may a free uptime pinger keep it awake so reminders fire while the laptop is off (it uses the month's
-   750 free hours on that one service)?
+### Owner's decision (25 Nov 2026)
+- **Cloudroom runs on Render's free web service** instead of Hugging Face (no card). Storage stays on the laptop and,
+  encrypted, on Google Drive (Render forgets its files on every restart).
+- **A free uptime pinger** visits the Render copy every 10 minutes so reminders and alerts fire while the laptop is
+  off (it uses that month's 750 free hours on this one service; the pinger gets no access to any data). The setup
+  guide shows each step; nothing is set up without asking.
+- Still open for the laptop (Antigravity): Node.js 20+, adb and `UIAutomationClient` in PowerShell; install nothing.
 
 ## Work for each step
 Each builder does the items in order, a failing test first each time.
@@ -128,15 +130,16 @@ Each builder does the items in order, a failing test first each time.
 4. A runtime choice per job, default local; Cloudroom only after an approval (6.2).
 
 ### 6.2 Cloudroom (builder: Opus · Space setup files: Sonnet)
-1. `runtime/cloudroom.py`: talks to the owner's private Space over HTTPS with a signed token (stored in
+1. `runtime/cloudroom.py`: talks to the owner's Render service over HTTPS with a signed token (every request without it is refused) (stored in
    `KEY_NAMES`), never Prometheus's other keys.
 2. Moving a task asks first, showing what goes up (files, text) and what it may do there.
 3. Each request has an id and a receipt; events are numbered and put in order; a repeat request isn't run twice.
 4. Lost link: retries, then resume from the last receipt or mark failed; nothing runs twice.
-5. The Space runs tasks in a sandbox (no access to the token store; time and memory limits).
-6. Sonnet: `cloud/space/` Dockerfile and a plain-words setup guide replacing the Oracle steps in
-   `docs/cloud-setup.md`; the cloud copy's jobs (reminders, alerts, sync) run there; the Space's sleep rule written
-   down honestly.
+5. The Render service runs tasks in a sandbox (no access to the token store; time and memory limits).
+6. Sonnet: `cloud/render/` files (render.yaml or Dockerfile) and a plain-words setup guide replacing the Oracle steps in
+   `docs/cloud-setup.md`, including the free uptime pinger every 10 minutes; the cloud copy's jobs (reminders, alerts,
+   sync) run there; Render's limits written down honestly (sleeps after 15 min without the pinger, 750 h a month, files
+   wiped on restart, so nothing is kept only there).
 
 ### 6.3 Cloudroom storage (builder: Sonnet · encryption review: Opus)
 1. Reuse `backup.py`'s AES-256-GCM: everything encrypted on the laptop before upload.
@@ -186,7 +189,7 @@ Sonnet builds storage, the phone screen and the glue.** Nobody audits their own 
 | 6.0 laptop tool check | **Antigravity** | It's on the laptop. |
 | 6.1 ExecutionRuntime | **Opus** | Core that everything else uses. |
 | 6.2 Cloudroom runtime (receipts, order, recovery) | **Opus** | Hardest logic + security. |
-| 6.2 Space Dockerfile and setup guide | **Sonnet** | Glue and plain-words writing. |
+| 6.2 Render files, pinger and setup guide | **Sonnet** | Glue and plain-words writing. |
 | 6.3 encrypted storage | **Sonnet** builds, **Opus** reviews encryption | Reuses existing backup code. |
 | 6.4a screen/mouse/keyboard | **Antigravity** | Must be tried on real Windows. |
 | 6.4b phone → laptop | **Sonnet** builds, **Opus** reviews security | UI + plain routes. |
@@ -200,7 +203,7 @@ Sonnet builds storage, the phone screen and the glue.** Nobody audits their own 
 |---|---|---|---|---|
 | 1 | 6.0 laptop tool check | — | 6.0 terms and licence checks | M5 accepted |
 | 2 | 6.4a PC control | 6.3 storage | 6.1 ExecutionRuntime | Owner OK on 6.0's findings |
-| 3 | 6.5 mobile-mcp (phone plugged in) | 6.4b phone → laptop; Space files | 6.2 Cloudroom | Round 2 pushed |
+| 3 | 6.5 mobile-mcp (phone plugged in) | 6.4b phone → laptop; Render files | 6.2 Cloudroom | Round 2 pushed |
 | 4 | Laptop + phone check | Docs | Reviews 6.3, 6.4a, 6.4b, 6.5 | Round 3 pushed |
 | 5 | — | Report | Fresh-session audit; a second fresh session reviews 6.1/6.2 | Round 4 fixed |
 
