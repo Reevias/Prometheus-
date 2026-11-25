@@ -183,37 +183,37 @@ class JobRunner:
                 self._recent.append(thread)
             thread.start()
 
+    # The buttons below check and change a job under the database's lock only, and touch the runner's own lock
+    # separately: a graph driver holds the database lock while it starts a step (which needs the runner's lock), so
+    # holding both here in the other order could deadlock (M5 audit A3).
     def cancel_job(self, job_id: int, reason: str = "Cancelled by user") -> bool:
         """Cancel a running or pending job."""
-        with self._lock:
+        with self.store._lock:
             job = self.store.get_job(job_id)
             if not job or job.state in (DONE, FAILED, CANCELLED):
                 return False
-
-            task = self._tasks.get(job_id)
-            if task and not task.done():
-                task.cancel()
-
             self.store.set_state(job_id, CANCELLED, error=reason)
-            return True
+        with self._lock:
+            task = self._tasks.get(job_id)
+        if task and not task.done():
+            task.cancel()
+        return True
 
     def pause_job(self, job_id: int, reason: str = "Paused by user") -> bool:
         """Pause a running job."""
-        with self._lock:
+        with self.store._lock:
             job = self.store.get_job(job_id)
             if not job or job.state != RUNNING:
                 return False
-
             self.store.set_state(job_id, PAUSED, error=reason)
             return True
 
     def resume_job(self, job_id: int) -> bool:
         """Resume a paused job by transitioning to pending."""
-        with self._lock:
+        with self.store._lock:
             job = self.store.get_job(job_id)
             if not job or job.state != PAUSED:
                 return False
-
             self.store.set_state(job_id, PENDING)
             return True
 

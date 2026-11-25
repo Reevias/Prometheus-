@@ -443,3 +443,31 @@ def test_a_retried_request_that_failed_is_not_recorded_as_done(tmp_path):
     job = js.list_jobs(kind="resume")[0]
     resume._without(s, job.payload["id"], status="failed")
     assert js.get_job(job.id).state == FAILED
+
+
+# -- audit A2: idle() never holds the runner's lock while it waits for the database (deadlock with the graph driver) --
+def test_idle_never_waits_for_the_database_while_holding_the_runners_lock(store):
+    graphs = g.GraphRunner(store, JobRunner(store), max_parallel=2)
+    gid = graphs.create("x", [{"id": "a", "func": lambda ctx, inputs: "ok"}])
+    with store._lock:                                   # the graph driver holds this while it starts steps
+        t = threading.Thread(target=graphs.idle, args=(gid,), daemon=True)
+        t.start()
+        time.sleep(0.2)
+        got = graphs._lock.acquire(timeout=1)           # what the driver needs next (in _launch)
+        assert got, "idle() holds the runner's lock while waiting for the database: the two can deadlock"
+        graphs._lock.release()
+    t.join(5)
+
+
+@pytest.mark.parametrize("move", ["cancel_job", "pause_job", "resume_job"])
+def test_runner_buttons_never_wait_for_the_database_while_holding_the_runners_lock(store, move):
+    runner = JobRunner(store)
+    job = store.create_job("x", "x", state=RUNNING if move != "resume_job" else PAUSED)
+    with store._lock:                                   # a graph driver starting a step holds this, then needs runner._lock
+        t = threading.Thread(target=getattr(runner, move), args=(job.id,), daemon=True)
+        t.start()
+        time.sleep(0.2)
+        got = runner._lock.acquire(timeout=1)
+        assert got, f"{move} holds the runner's lock while waiting for the database: it can deadlock"
+        runner._lock.release()
+    t.join(5)

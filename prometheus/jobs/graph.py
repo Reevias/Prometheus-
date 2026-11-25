@@ -267,14 +267,15 @@ class GraphRunner:
 
     def idle(self, graph_id: int) -> bool:
         """No step of this graph is still running a try in this process."""
-        with self._lock:
-            if any(t.is_alive() for t in self._live.get(graph_id, ())):
+        with self._lock:                 # never ask the database while holding this lock: the graph driver takes them
+            if any(t.is_alive() for t in self._live.get(graph_id, ())):     # in the other order (M5 audit A2)
                 return False
             self._live.pop(graph_id, None)
-            job = self.store.get_job(graph_id)
-            if job is None or job.state in TERMINAL_STATES:
+        job = self.store.get_job(graph_id)
+        if job is None or job.state in TERMINAL_STATES:
+            with self._lock:
                 self._wake.pop(graph_id, None)
-            return True
+        return True
 
     # -- inside ----------------------------------------------------------------------------------------------
     def _forget(self, graph_id: int) -> None:
