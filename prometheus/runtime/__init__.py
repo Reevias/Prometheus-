@@ -43,7 +43,8 @@ class Runtimes:
         runtime = self._all.get(where)
         if runtime is None:
             raise RuntimeRefused(f"'{where}' isn't set up, so the task stays on the laptop.")
-        if not spec.approval or not self.approval_check(spec.approval, spec):
+        check = getattr(runtime, "check_yes", None) or self.approval_check    # the runtime's own approvals first
+        if not spec.approval or not check(spec.approval, spec):
             raise RuntimeRefused(f"Moving '{spec.title}' to {where} needs your yes first.")
         return runtime.start(spec)
 
