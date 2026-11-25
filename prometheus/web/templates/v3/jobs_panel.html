@@ -32,7 +32,7 @@
     <div class="job-buttons">
       {% for c in j.controls %}<button type="button" class="pill job-btn job-{{ c }}"
         hx-post="/api/v3/jobs/{{ j.id }}/{{ c }}" hx-target="#jobs-panel" hx-swap="outerHTML"
-        {% if c == "stop" %}hx-confirm="Stop this job? What it already did stays as it is."{% endif %}>{{ c | capitalize }}</button>{% endfor %}
+        {% if c == "stop" %}hx-confirm="Stop this job? What it already did stays as it is."{% endif %}{% if c == "rerun" %}hx-confirm="Run this request again from the start?"{% endif %}>{{ "Run again" if c == "rerun" else c | capitalize }}</button>{% endfor %}
     </div>
     {% endif %}
   </article>

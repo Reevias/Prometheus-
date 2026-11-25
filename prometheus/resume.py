@@ -88,11 +88,13 @@ def _finish_jobs(store, item_id: str, final: str, why: str = "") -> None:
                 log.exception("Couldn't close the tracker record of a waiting request")
 
 
-def _without(store, item_id: str) -> None:
-    """Remove one waiting request by its id (never another request with the same text)."""
+def _without(store, item_id: str, status: str = "done") -> None:
+    """Remove one waiting request by its id (never another request with the same text). `status` is how the task
+    it became ended, so the tracker records the real result (M5 audit F7)."""
+    final = {"done": DONE, "failed": FAILED}.get(status, CANCELLED)
     with _LOCK:
         _save(store, [q for q in _queue(store) if q.get("id") != item_id])
-        _finish_jobs(store, item_id, DONE)
+        _finish_jobs(store, item_id, final, "" if final == DONE else f"The request ended: {status}")
 
 
 def note_limit(store, chat_id: int, text: str, error: str, now: float | None = None) -> str:
@@ -297,7 +299,7 @@ class Resumer:
                         _FINISHED.add(item["id"])            # never started again, even if removing it fails
                     for attempt in range(3):
                         try:
-                            _without(s.store, item["id"])
+                            _without(s.store, item["id"], status=str(task["status"]))
                             break
                         except Exception:
                             if attempt == 2:

@@ -305,7 +305,7 @@ def install(registry: dict, permissions, settings, builtin: set[str]) -> None:
 def jobs_of(store, name: str) -> list:
     """Unfinished jobs that belong to this agent (steps titled "name: ...", or marked with its name)."""
     found = []
-    for j in store.list_jobs():
+    for j in store.list_unfinished():
         if j.state in TERMINAL_STATES or j.payload.get("service"):
             continue
         if j.payload.get("agent") == name or j.title.startswith(f"{name}: "):

@@ -1133,6 +1133,11 @@ class Orchestrator:
                     problems.append(Paused("Paused by you.") if chat_id in self.pausing and chat_id not in
                                     self.stopping else Stopped("Stopped. Ask again whenever you like."))
                 graphs.cancel(gid, "Task ended by you")
+        final = graphs.wait(gid, 0)
+        if final not in ("done", "failed", "cancelled"):
+            graphs.cancel(gid, "The task ended")                 # never left paused: nothing could Resume it twice
+        if not problems and final in ("paused", "cancelled"):
+            problems.append(Stopped("Stopped. Ask again whenever you like."))   # never a false "done" (M5 audit F1)
         for st in plan.steps:                                    # steps a failed step's children never ran
             if st["id"] not in results and any(d in bad for d in st["depends_on"]) and not problems:
                 sid = self.store.add_step(task_id, st["agent"], st["goal"], st["inputs"])

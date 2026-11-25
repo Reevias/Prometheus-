@@ -124,22 +124,43 @@ class Services:
         thread = get_default_runner().get_thread(job.id)
         return thread
 
+    def _task_slot(self, chat_id: int | None) -> bool:
+        """Wait for a free chat-task slot (2, 3 with roomy RAM, 1 when low; laptop check, 25 Nov). False when the
+        owner stopped this chat or everything while it waited."""
+        from prometheus.jobs import limits
+        from prometheus.jobs.runner import current_job_id, report_progress
+
+        def give_up() -> bool:
+            return self.killswitch.is_set or (chat_id is not None and chat_id in self.orchestrator.stopping)
+
+        ok = limits.wait_for_slot(limits.task_slots(), give_up, lambda: report_progress("Waiting for a free slot"))
+        if ok and current_job_id() is not None:
+            report_progress("")
+        return ok
+
     def start_task(self, chat_id: int, text: str, read_only: bool = False) -> threading.Thread:
         """Run a task in the background so the browser can keep polling. read_only: only reading steps run."""
         def work():
+            from prometheus.jobs import limits
+
             started, outcome = time.monotonic(), None
+            self.running[chat_id] = True
+            if not self._task_slot(chat_id):
+                self.running.pop(chat_id, None)
+                return
             try:
-                self.running[chat_id] = True
                 outcome = (self.orchestrator.run(chat_id, text, read_only=True) if read_only
                            else self.orchestrator.run(chat_id, text))
             finally:
+                limits.task_slots().release()
                 self.running.pop(chat_id, None)
             if outcome is not None:
                 self.after_task(outcome, text, time.monotonic() - started)
 
         from prometheus.jobs.runner import get_default_runner, start_job
 
-        job = start_job("task", f"Task in chat {chat_id}: {text[:50]}", work, name=f"prometheus-task-{chat_id}")
+        job = start_job("task", f"Task in chat {chat_id}: {text[:50]}", work, name=f"prometheus-task-{chat_id}",
+                        payload={"chat_id": chat_id, "text": text, "read_only": bool(read_only)})
         thread = get_default_runner().get_thread(job.id)
         return thread
 
@@ -151,10 +172,17 @@ class Services:
             self.running[chat_id] = True      # taken now, so a second Carry on can't run the same steps twice
 
         def work():
+            from prometheus.jobs import limits
+
             started, outcome = time.monotonic(), None
+            if not self._task_slot(chat_id):
+                if chat_id is not None:
+                    self.running.pop(chat_id, None)
+                return
             try:
                 outcome = self.orchestrator.resume_paused(task_id)
             finally:
+                limits.task_slots().release()
                 if chat_id is not None:
                     self.running.pop(chat_id, None)
             if outcome is not None:
@@ -277,6 +305,7 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
     from prometheus.jobs.graph import GraphRunner, recover_graphs
 
     recover_graphs(job_store)               # graphs that can't carry on in a new run are closed with a reason
+    job_store.prune_finished(days=30)       # finished jobs older than a month are tidied away (M5 audit F6)
     from prometheus.jobs import limits as job_limits
 
     try:
@@ -427,8 +456,7 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
     services.atomic_files = AtomicFiles(policy=policy, backup_dir=data / "backups")
     services.terminal = AsyncTerminal(policy=policy)
     services.archive = archive
-    job_limits.connect_killswitch(killswitch)   # Stop all ends every child agent's programs (M5 5.3)
-    killswitch.on_stop(lambda reason: job_store.pause_all(f"Stopped by user: {reason}" if reason else "Stopped by user"))
+    job_limits.connect_stop_all(killswitch, job_store)   # pause every job first, then end children's programs
     services.jobs = job_store
     services.graphs = orchestrator.graphs
     services.job_runner = job_runner

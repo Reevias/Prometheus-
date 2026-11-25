@@ -408,6 +408,25 @@ def register_routes(app: FastAPI, services: Services) -> None:
             _resume.drop(store, str(job.payload["id"]))
             store.audit("user", "job_stop", {"job": job_id})
             return page(request, "v3/jobs_panel.html", **jobs_context())
+        if job is not None and job.kind == "task_graph" and action == "stop" and job.payload.get("chat_id") is not None:
+            services.orchestrator.request_stop(job.payload["chat_id"])     # the task itself ends as "stopped"
+        if job is not None and action == "rerun" and action in jobs_view.controls_for(job, runner, services.graphs):
+            if services.killswitch.is_set:
+                return page(request, "v3/jobs_panel.html", status_code=409,
+                            **jobs_context("Everything is stopped. Press Resume first."))
+            chat_id, text = job.payload["chat_id"], str(job.payload["text"])
+            if chat_id not in dict(store.chats()):
+                return page(request, "v3/jobs_panel.html", status_code=409,
+                            **jobs_context("Its chat was deleted, so it can't run there again."))
+            if chat_id in services.running:
+                return page(request, "v3/jobs_panel.html", status_code=409,
+                            **jobs_context("Prometheus is still answering in that chat. Wait, or stop it."))
+            from prometheus.jobs.states import CANCELLED as _CANCELLED
+
+            services.jobs.finish(job_id, _CANCELLED, error="Ran again as a new job")
+            services.start_task(chat_id, text, read_only=bool(job.payload.get("read_only")))
+            store.audit("user", "job_rerun", {"job": job_id})
+            return page(request, "v3/jobs_panel.html", **jobs_context())
         code, message = jobs_view.act(services.jobs, runner, services.graphs, job_id, action)
         if code == 404:
             return JSONResponse({"error": message}, status_code=404)
@@ -569,6 +588,19 @@ def register_routes(app: FastAPI, services: Services) -> None:
         store.audit("user", "delete_message", {"chat": chat_id, "message": message_id})
         return {"deleted": message_id}
 
+    def keep_branch_private(source: int, new: int) -> None:
+        """A branch of a chat left out of memory is left out too (M5 audit F3): otherwise its copied words become
+        searchable and remembered."""
+        off = list(services.settings.memory_off_chats or [])
+        if source in off and new not in off:
+            services.settings.memory_off_chats = off + [new]
+            save_settings(services.settings)
+            if getattr(services, "archive", None) is not None:
+                try:
+                    services.archive.sync(new)
+                except Exception:                   # noqa: BLE001 - the list above already hides it
+                    pass
+
     @app.post("/api/v3/chats/{chat_id}/messages/{message_id}/branch")
     def api_v3_branch_chat(chat_id: int, message_id: int):
         if chat_id not in dict(store.chats()):
@@ -576,6 +608,7 @@ def register_routes(app: FastAPI, services: Services) -> None:
         new_chat_id = store.branch_chat(chat_id, message_id)
         if new_chat_id is None:
             return JSONResponse({"error": "Message not found in chat."}, status_code=404)
+        keep_branch_private(chat_id, new_chat_id)
         store.audit("user", "branch_chat", {"source_chat": chat_id, "message_id": message_id, "new_chat": new_chat_id})
         return {"ok": True, "chat_id": new_chat_id, "url": f"/c/{new_chat_id}"}
 
@@ -586,6 +619,7 @@ def register_routes(app: FastAPI, services: Services) -> None:
         new_chat_id = store.branch_chat(chat_id, message_id)
         if new_chat_id is None:
             return Response(status_code=404)
+        keep_branch_private(chat_id, new_chat_id)
         store.audit("user", "branch_chat", {"source_chat": chat_id, "message_id": message_id, "new_chat": new_chat_id})
         return Response(status_code=204, headers={"HX-Redirect": f"/c/{new_chat_id}"})
 

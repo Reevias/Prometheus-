@@ -17,7 +17,8 @@ import time
 from prometheus.jobs import limits
 from prometheus.jobs.states import CANCELLED, DONE, FAILED, PAUSED, PENDING, RUNNING, TERMINAL_STATES
 
-ACTIONS = ("pause", "resume", "stop")
+ACTIONS = ("pause", "resume", "stop", "rerun")
+RERUN_KINDS = {"task"}            # chat tasks: "Run again" starts the request again (as on the Tasks page)
 FINISHED_SHOWN = 8
 AGENT_PREFIX = re.compile(r"^([a-z_]{2,30}): ")
 DIAGRAM_STATE = {PENDING: "waiting", PAUSED: "waiting", RUNNING: "running", DONE: "done", FAILED: "failed",
@@ -48,8 +49,16 @@ def memory_text(nbytes) -> str:
 
 def controls_for(job, runner, graphs=None) -> list[str]:
     """The buttons that are allowed for this job right now (in the order they are shown)."""
-    if job.state in TERMINAL_STATES or job.parent_id is not None:
+    if job.parent_id is not None:
         return []
+    if job.state in TERMINAL_STATES:
+        # a chat task Stop all ended: its request can run again (M5 audit F2)
+        if job.state == CANCELLED and job.kind in RERUN_KINDS and (job.error or "").startswith("Stopped by user") \
+                and job.payload.get("chat_id") is not None and job.payload.get("text"):
+            return ["rerun"]
+        return []
+    if is_graph(job) and job.kind == "task_graph":
+        return ["stop"]                   # a chat task's graph: Stop ends the task (pause would fake a "done")
     if is_graph(job):
         if job.state == RUNNING:
             return ["pause", "stop"]
@@ -57,6 +66,9 @@ def controls_for(job, runner, graphs=None) -> list[str]:
             can = job.payload.get("resumable", True) or (graphs is not None and graphs.can_resume(job.id))
             return (["resume"] if can else []) + ["stop"]
         return ["stop"]
+    if job.state == PAUSED and job.kind in RERUN_KINDS and job.payload.get("chat_id") is not None \
+            and job.payload.get("text"):
+        return ["rerun", "stop"]          # a stopped or restarted chat task: its request can run again
     if job.state in (PENDING, PAUSED):
         return ["stop"]
     if job.state == RUNNING and runner is not None and runner.get_task(job.id) is not None:
@@ -120,10 +132,7 @@ def _step_rows(store, steps: list, agents) -> tuple[list[dict], dict]:
 
 def build(store, runner, graphs=None, now: float | None = None, agents=None) -> dict:
     now = time.time() if now is None else now
-    top = [j for j in store.list_jobs() if j.parent_id is None and not j.payload.get("service")]
-    active = [j for j in top if j.state not in TERMINAL_STATES]
-    finished = [j for j in top if j.state in TERMINAL_STATES and (is_graph(j) or j.state != DONE)]
-    finished.sort(key=lambda j: j.finished or j.created, reverse=True)
+    active, finished = store.list_for_view(FINISHED_SHOWN)       # never the whole table (M5 audit F6)
     rows = []
     for job in active + finished[:FINISHED_SHOWN]:
         steps, diagram, memory = [], None, 0
@@ -151,6 +160,8 @@ def act(store, runner, graphs, job_id: int, action: str) -> tuple[int, str]:
         return 404, "No such job."
     if action not in controls_for(job, runner, graphs):
         return 409, f"That can't be done while it is {job.state}."
+    if action == "rerun":
+        return 409, "Run again needs the app (it starts the chat's request again)."     # handled in routes
     if is_graph(job):
         done = {"pause": graphs.pause, "resume": graphs.resume, "stop": graphs.cancel}[action](job_id)
     elif action == "stop":
