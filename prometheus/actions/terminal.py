@@ -361,6 +361,9 @@ class AsyncTerminal:
         """Execute argv with shell=False, streaming output, timeout, and Job Object cleanup."""
         if not argv:
             raise ValueError("argv cannot be empty")
+        from prometheus.jobs.runner import raise_if_step_stopped
+
+        raise_if_step_stopped()             # a cancelled or paused graph step starts no program
 
         # Validate cwd via PathPolicy
         canonical_cwd = self.policy.check_read(cwd)

@@ -248,6 +248,9 @@ def _new_files(folder: Path) -> list[Path]:
 
 def run_locked(code: str, folder: Path, network: bool = False, timeout: int = TIME_LIMIT,
                memory_mb: int = MEMORY_MB, python: str = "") -> RunResult:
+    from prometheus.jobs.runner import raise_if_step_stopped
+
+    raise_if_step_stopped()                 # a cancelled or paused graph step starts no program
     folder = Path(folder).resolve()
     (folder / SCRIPT_NAME).write_text(code, encoding="utf-8")
     (folder / GUARD_NAME).write_text(GUARD, encoding="utf-8")

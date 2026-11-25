@@ -19,6 +19,21 @@ _CURRENT_JOB_ID: contextvars.ContextVar[int | None] = contextvars.ContextVar("_C
 _CURRENT_JOB_RUNNER: contextvars.ContextVar[Any | None] = contextvars.ContextVar("_CURRENT_JOB_RUNNER", default=None)
 
 
+# Inside a graph step: a function telling whether the step was cancelled, paused or stopped. The AI router, the
+# sandbox and the terminal ask it before each call or program, so a step that never checks for itself still stops
+# at its next AI call or program (M5: the audit's open item).
+STEP_STOP: contextvars.ContextVar[Callable[[], bool] | None] = contextvars.ContextVar("prometheus_step_stop",
+                                                                                         default=None)
+
+
+def raise_if_step_stopped() -> None:
+    check = STEP_STOP.get()
+    if check is not None and check():
+        from prometheus.safety.killswitch import Stopped
+
+        raise Stopped("This step was stopped (cancelled, paused or Stop all).")
+
+
 def current_job_id() -> int | None:
     """Return the ID of the currently executing job in this context, if any."""
     return _CURRENT_JOB_ID.get()

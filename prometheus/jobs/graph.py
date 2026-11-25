@@ -378,6 +378,7 @@ class GraphRunner:
 
         runner_mod._CURRENT_JOB_ID.set(ctx.job_id)      # this step is the job its programs belong to (M5 5.3)
         runner_mod._CURRENT_JOB_RUNNER.set(self.runner)
+        runner_mod.STEP_STOP.set(ctx.should_stop)        # AI calls and programs stop once the step is stopped
         from prometheus.jobs.limits import CURRENT_ATTEMPT
 
         CURRENT_ATTEMPT.set(ctx.attempt)
