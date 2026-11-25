@@ -7,18 +7,18 @@ Not yet run end to end on the owner's real laptop.
 - Only graph steps count as child agents for now (own agents join in 5.4). Memory is measured only for the programs a child starts; its own Python work shares Prometheus's memory and shows as "none" rather than a made-up number.
 - The memory cap (1.5 GB per child's programs) applies to commands run through the M1 terminal, which no agent uses yet; the code agent's sandbox keeps its own Job Object and memory limit. Since the audit both are ended by cancel, pause and Stop all. On Linux there is no cap, only a process group.
 - Under 1 GB free memory, child agents and chat tasks run one at a time (changed by the audit after the laptop check; the plan said none).
-- Steps running side by side check the task's spending limit before they spend, so a task can go over it by about one step per extra step running at once.
+- Steps running side by side reserve each paid call's most possible cost first, so they can't go over the task's limits together (fixed 25 Nov); an AI without a model card can't be estimated and counts only once it has spent.
 - Windows: checked on GitHub's windows-latest machines only (the cap test runs only there); NOT VERIFIED on the owner's laptop.
 
 ## M5 5.2 task graph, 24 November 2026
-- A step that is running is told to stop (cancel, pause, Stop all) and stops at its next check; a step that never checks finishes its current try and the result is thrown away (Python can't stop a thread from outside).
+- A step that is running is told to stop (cancel, pause, Stop all) and stops at its next check, or at its next AI call, sandbox program or terminal command if it never checks; plain Python work in between can't be interrupted (Python can't stop a thread from outside).
 - Orchestrator plans run as a graph only with "Run a task's independent steps at the same time" switched on (Features; off until the laptop check). Such a graph can't carry on after a restart (its steps live in memory): it is closed with "run it again", like the task itself.
 - No graph kinds of Prometheus's own are saved yet (only the engine and test kinds); the view comes in 5.5.
 - NOT VERIFIED on the owner's laptop.
 
 ## M5 5.4 own agents, 24 November 2026
 - Own agents can use four tools only (web search, read a web page, read a text file, open a file); more tools need their own checked code first. An own agent has no way to write or change files, run programs or use the browser.
-- Removing an agent cancels its jobs in the job tracker (task steps titled "name: ..."). A step that is running inside a chat right now, outside the tracker, finishes by itself.
+- Removing an agent cancels its jobs in the job tracker (task steps titled "name: ..."). A run that is going inside a chat right now, outside the tracker, stops at its next round (fixed 25 Nov).
 - Own agents live in the saved settings file; a hand-edited file can only lose power (unknown tools and copied names are dropped when it loads).
 - The tool check (`OwnAgent._call`) was reviewed by Opus on 25 Nov: one hole fixed (bug 180: no web after reading a file). The browser tests for the form were written after the page. Not run on the owner's laptop: NOT VERIFIED on Windows.
 

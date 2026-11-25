@@ -44,9 +44,14 @@ may still want a fresh session to check this work.
 - A4. The hang came back once after A2 and A3. The likely cause was my F5 change, which made Windows end a child's programs by closing the Job Object only; it is back to the way that passed in 5.3 (taskkill, then close the Job Object). Two green runs since, but an intermittent hang can't be proved gone: the CI now prints every thread's stack if one test runs over 2 minutes, and stops the test step after 40 minutes.
 - A3. The same lock-order problem in the job runner's Stop/Pause/Resume (from 5.1): the panel's Stop on a plain job could freeze with a running graph. Fixed with the same kind of test.
 
-## Written down, not fixed
-- F8. Steps running side by side check the task's spending limit before they spend, so a task can go over it by
-  about one step per extra step running at once (the switch for side-by-side steps is off by default).
-- A Python step that never checks "should I stop?" finishes its current try (its result is thrown away).
-- A chat step running outside the tracker isn't cancelled when its agent is removed.
+## Open items, finished afterwards (25 Nov, bugs 196–198, each with a test failing first)
+- F8. Paid AI calls now reserve their most possible cost before they run, under one lock, for both the cap on paid
+  AI used without asking and the task's own spending limit, which is now checked before every paid call (not only
+  between steps). Steps running at the same time can no longer pass the same check and all spend. Calls to an AI
+  without a model card can't be estimated, so they count only once they have spent.
+- A graph step that never checks "should I stop?" now stops at its next AI call, sandbox program or terminal
+  command after it is cancelled, paused or stopped. Python work between those still can't be interrupted.
+- A removed own agent stops at its next round, also when it runs as a chat step outside the job tracker.
+
+## Still open
 - Everything here is NOT VERIFIED on the owner's laptop until the laptop check is run again.

@@ -2,7 +2,15 @@
 
 Every bug found and fixed, newest first, so the count is always exact. Add a line for each new one.
 
-**Total fixed: 195** (as of 25 November 2026)
+**Total fixed: 198** (as of 25 November 2026)
+
+## 25 November 2026, M5 open items finished (3)
+
+| # | Bug | Fixed by |
+|---|---|---|
+| 198 | A removed own agent kept working in a chat until it finished | It stops at its next round |
+| 197 | A cancelled or paused graph step that never checked "should I stop?" kept making AI calls and starting programs | It is stopped at its next AI call, sandbox program or terminal command |
+| 196 | Steps running side by side could go over the task's spending limits together (each checked before any had spent) | Each paid call reserves its most possible cost first, and the task's limit is checked before every paid call |
 
 ## 25 November 2026, M5 audit and laptop-check risks (14)
 
