@@ -5,7 +5,9 @@ Not yet run end to end on the owner's real laptop.
 
 ## M5 5.3 child agents at once, 24 November 2026
 - Only graph steps count as child agents for now (own agents join in 5.4). Memory is measured only for the programs a child starts; its own Python work shares Prometheus's memory and shows as "none" rather than a made-up number.
-- The memory cap (1.5 GB per child's programs) is a Windows Job Object limit; on Linux programs only get their own process group (no cap).
+- The memory cap (1.5 GB per child's programs) applies to commands run through the M1 terminal, which no agent uses yet; the code agent's sandbox keeps its own Job Object and memory limit. Since the audit both are ended by cancel, pause and Stop all. On Linux there is no cap, only a process group.
+- Under 1 GB free memory, child agents and chat tasks run one at a time (changed by the audit after the laptop check; the plan said none).
+- Steps running side by side check the task's spending limit before they spend, so a task can go over it by about one step per extra step running at once.
 - Windows: checked on GitHub's windows-latest machines only (the cap test runs only there); NOT VERIFIED on the owner's laptop.
 
 ## M5 5.2 task graph, 24 November 2026

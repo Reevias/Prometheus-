@@ -2,7 +2,24 @@
 
 Every bug found and fixed, newest first, so the count is always exact. Add a line for each new one.
 
-**Total fixed: 181** (as of 25 November 2026)
+**Total fixed: 193** (as of 25 November 2026)
+
+## 25 November 2026, M5 audit and laptop-check risks (12)
+
+| # | Bug | Fixed by |
+|---|---|---|
+| 193 | A request that ran again after an AI limit was recorded "done" in the tracker even when it failed or was stopped | Its real result is recorded |
+| 192 | The jobs table only grew, and the jobs panel read all of it every 4 seconds | Finished jobs older than 30 days are tidied away at start; the panel reads only what it shows |
+| 191 | When one try of a step finished, it could end the programs of the step's next try | Programs are ended per try; on Windows the Job Object is closed instead of looking up a process number |
+| 190 | The code sandbox a child agent ran wasn't known to the clean-up: cancel, pause and Stop all left it running until its own time limit | The sandbox program is recorded with its child and ended with it |
+| 189 | Branching a chat that is left out of memory made the copy searchable and remembered | The branch is left out too |
+| 188 | After Stop all, jobs that then finished (a backup, a chat task) stayed "paused" for ever | They are recorded as they really ended (cancelled "Stopped by user"; a chat task gets Run again) |
+| 187 | Pausing or stopping a chat task's step graph from the jobs panel ended the task as "done" with half the steps, and Resume could run the steps a second time | A chat task's graph has Stop only, which stops the task; a graph that ends paused or cancelled ends the task as stopped |
+| 186 | The task-graph runner kept every finished graph's functions (with the task's results) in memory | They are let go when the graph ends |
+| 185 | Chats sent at the same time all ran at once, outside the 2-or-3 limit (laptop check) | Chat tasks have their own limit of the same size, and wait as "Waiting for a free slot" |
+| 184 | A stopped or restarted chat task had no way to run again from the jobs view (laptop check) | "Run again" button (asks first; refused while everything is stopped) |
+| 183 | Stop all could leave a program running and mark a stopped step "done": programs were ended before jobs were paused, and the graph started the next step (laptop check) | Jobs are paused first, then programs ended; a graph starts nothing while everything is stopped; a program started then is ended at once |
+| 182 | With under 1 GB free (normal on the 8 GB laptop), no step ever started and the task waited for ever; tests read the machine's real RAM and hung (laptop check) | Under 1 GB free steps run one at a time; tests use a fixed memory reading |
 
 ## 25 November 2026, Opus review of M5 5.4 and 5.5 (2)
 
