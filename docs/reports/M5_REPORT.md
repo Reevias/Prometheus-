@@ -1,7 +1,7 @@
 # Prometheus 3.0 — M5 report (many agents at once)
 
-25 November 2026, branch `prometheus-v3`. **Done on the branch, waiting for the owner to merge.** Not merged into
-main. Everything here is **NOT VERIFIED on the owner's laptop** after the last fixes (see "Your laptop").
+25 November 2026, branch `prometheus-v3`. **Merged into main on 25 Nov on the owner's instruction**, after a final check
+(full suite 1949 passed, GitHub run for `fd26e87` green on all 6 jobs). Everything here is **NOT VERIFIED on the owner's laptop** after the last fixes (see "Your laptop").
 
 ## What M5 does, in plain words
 - **Job tracker (5.1).** Every background job is saved in one SQLite table (`jobs`: pending, running, paused, done,
@@ -146,4 +146,7 @@ the laptop. Run the same checks again:
 - The audit was not an independent fresh session (see the exit gate).
 
 ## Merge
-Not merged. Waiting for the owner to merge `prometheus-v3` after the laptop check above.
+Merged into main on 25 Nov 2026 on the owner's instruction ("check if everything is alright and only if yes then push
+it to main"). Checked first: full suite on the merged code 1949 passed, 0 failed, 67 skipped; GitHub run 45625920128 for
+`fd26e87` green on all 6 jobs (windows-latest 3.14 and 3.15 included); main had no changes the branch lacked. The
+laptop check above is still to be run again: until then M5 is NOT VERIFIED on the owner's laptop.
