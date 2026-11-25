@@ -25,7 +25,7 @@ phone (through mobile-mcp), always asking first, and the phone can control the l
 
 | # | Step | What "done" means | Tests that must fail first |
 |---|---|---|---|
-| 6.0 | **Checks before building** | Hugging Face free-tier terms, mobile-mcp licence and version, any new package's licence (7-step check in AGENTS.md) written down with the date. Laptop checked for Node.js and adb. | — |
+| [x] 6.0 | **Checks before building** | Hugging Face free-tier terms, mobile-mcp licence and version, any new package's licence (7-step check in AGENTS.md) written down with the date. Laptop checked for Node.js and adb. | — |
 | 6.1 | **ExecutionRuntime** | One way to run tasks: `LocalRuntime` (default) runs every M5 job; `CloudroomRuntime` plugs in behind the same calls. | Every M5 job kind runs through `LocalRuntime` with the same results; nothing calls the old paths directly. |
 | 6.2 | **Cloudroom** | The owner's free Render web service runs moved tasks in a sandbox. Moving asks first; each move has a request id and a receipt; events arrive in order; a lost link resumes or fails cleanly. It also takes over the old Oracle cloud copy's job. | Unplug mid-task → task resumes or is marked failed, never doubled; events out of order are put right; a move without a yes is refused. |
 | 6.3 | **Cloudroom storage** | Repo knowledge, backups and sync data encrypted on the laptop before upload; the laptop copy is the main one; works offline. Includes the private notes of chats left out in Memory → Privacy. | Upload holds only scrambled bytes; offline use works; wrong key can't read; laptop copy wins on a clash. |
@@ -124,7 +124,7 @@ Checked on the owner's Windows laptop (nothing installed):
 ## Work for each step
 Each builder does the items in order, a failing test first each time.
 
-### 6.0 Checks before building (Opus; laptop check: Antigravity)
+### 6.0 Checks before building [x] (Opus; laptop check: Antigravity) — done 25 Nov
 1. Read Hugging Face's current pricing and terms: free CPU Space size, sleep rules, private Spaces, storage, whether a
    card is needed. Write the facts with links and the date. If a card is needed, stop and ask the owner.
 2. Re-check mobile-mcp: licence (Apache-2.0?), latest version, what it needs (Node.js version).
