@@ -184,10 +184,52 @@ class Win32Backend:
             self._user32 = None
             return
         self._user32 = ctypes.WinDLL("user32", use_last_error=True)
+        self._kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        self._configure_win32_sigs()
         try:
             self._dwmapi = ctypes.WinDLL("dwmapi", use_last_error=True)
+            self._dwmapi.DwmGetWindowAttribute.argtypes = [
+                wintypes.HWND, wintypes.DWORD, ctypes.c_void_p, wintypes.DWORD
+            ]
+            self._dwmapi.DwmGetWindowAttribute.restype = ctypes.c_long
         except Exception:
             self._dwmapi = None
+
+    def _configure_win32_sigs(self) -> None:
+        u32 = self._user32
+        k32 = self._kernel32
+        u32.GetSystemMetrics.argtypes = [ctypes.c_int]
+        u32.GetSystemMetrics.restype = ctypes.c_int
+        u32.GetWindowTextLengthW.argtypes = [wintypes.HWND]
+        u32.GetWindowTextLengthW.restype = ctypes.c_int
+        u32.GetWindowTextW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
+        u32.GetWindowTextW.restype = ctypes.c_int
+        u32.GetWindowThreadProcessId.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.DWORD)]
+        u32.GetWindowThreadProcessId.restype = wintypes.DWORD
+        u32.GetWindowRect.argtypes = [wintypes.HWND, ctypes.POINTER(_RECT)]
+        u32.GetWindowRect.restype = wintypes.BOOL
+        u32.GetForegroundWindow.argtypes = []
+        u32.GetForegroundWindow.restype = wintypes.HWND
+        u32.IsWindow.argtypes = [wintypes.HWND]
+        u32.IsWindow.restype = wintypes.BOOL
+        u32.IsWindowVisible.argtypes = [wintypes.HWND]
+        u32.IsWindowVisible.restype = wintypes.BOOL
+        u32.IsIconic.argtypes = [wintypes.HWND]
+        u32.IsIconic.restype = wintypes.BOOL
+        u32.ShowWindow.argtypes = [wintypes.HWND, ctypes.c_int]
+        u32.ShowWindow.restype = wintypes.BOOL
+        u32.SetForegroundWindow.argtypes = [wintypes.HWND]
+        u32.SetForegroundWindow.restype = wintypes.BOOL
+        u32.BringWindowToTop.argtypes = [wintypes.HWND]
+        u32.BringWindowToTop.restype = wintypes.BOOL
+        u32.AttachThreadInput.argtypes = [wintypes.DWORD, wintypes.DWORD, wintypes.BOOL]
+        u32.AttachThreadInput.restype = wintypes.BOOL
+        u32.SetCursorPos.argtypes = [ctypes.c_int, ctypes.c_int]
+        u32.SetCursorPos.restype = wintypes.BOOL
+        u32.SendInput.argtypes = [wintypes.UINT, ctypes.POINTER(_INPUT), ctypes.c_int]
+        u32.SendInput.restype = wintypes.UINT
+        k32.GetCurrentThreadId.argtypes = []
+        k32.GetCurrentThreadId.restype = wintypes.DWORD
 
     def _require_win32(self):
         if self._user32 is None:
@@ -258,24 +300,42 @@ class Win32Backend:
         u32 = self._require_win32()
         if not u32.IsWindow(hwnd):
             return False
+        if int(u32.GetForegroundWindow() or 0) == int(hwnd):
+            return True
         if u32.IsIconic(hwnd):
             u32.ShowWindow(hwnd, 9)  # SW_RESTORE
         if u32.SetForegroundWindow(hwnd):
             return True
+        # Windows blocks SetForegroundWindow when another process owns the foreground lock;
+        # attach thread inputs and synthesize an inert Alt press/release to permit the switch.
         fg = u32.GetForegroundWindow()
-        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-        cur_tid = kernel32.GetCurrentThreadId()
+        cur_tid = self._kernel32.GetCurrentThreadId()
         fg_tid = u32.GetWindowThreadProcessId(fg, None) if fg else 0
-        attached = False
+        target_tid = u32.GetWindowThreadProcessId(hwnd, None)
+        attached_fg = False
+        attached_target = False
         try:
             if fg_tid and fg_tid != cur_tid:
-                attached = bool(u32.AttachThreadInput(cur_tid, fg_tid, True))
+                attached_fg = bool(u32.AttachThreadInput(cur_tid, fg_tid, True))
+            if target_tid and target_tid not in (cur_tid, fg_tid):
+                attached_target = bool(u32.AttachThreadInput(cur_tid, target_tid, True))
+            self._tap_alt()
+            u32.ShowWindow(hwnd, 5)  # SW_SHOW
             u32.BringWindowToTop(hwnd)
             ok = bool(u32.SetForegroundWindow(hwnd))
-            return ok or int(u32.GetForegroundWindow()) == int(hwnd)
+            return ok or int(u32.GetForegroundWindow() or 0) == int(hwnd)
         finally:
-            if attached:
+            if attached_target:
+                u32.AttachThreadInput(cur_tid, target_tid, False)
+            if attached_fg:
                 u32.AttachThreadInput(cur_tid, fg_tid, False)
+
+    def _tap_alt(self) -> None:
+        vk_alt = VK_CODES["alt"]
+        down = _INPUT(type=self._INPUT_KEYBOARD, ki=_KEYBDINPUT(wVk=vk_alt, dwFlags=0))
+        up = _INPUT(type=self._INPUT_KEYBOARD, ki=_KEYBDINPUT(wVk=vk_alt, dwFlags=self._KEYEVENTF_KEYUP))
+        arr = (_INPUT * 2)(down, up)
+        self._user32.SendInput(2, arr, ctypes.sizeof(_INPUT))
 
     def _send(self, inputs: list[_INPUT]) -> None:
         u32 = self._require_win32()
@@ -285,9 +345,15 @@ class Win32Backend:
             err = ctypes.get_last_error()
             raise PCControlError(f"SendInput sent {sent}/{len(inputs)} events (winerr={err}).")
 
+    def _ensure_desktop_ready(self) -> None:
+        u32 = self._require_win32()
+        if not u32.GetForegroundWindow():
+            raise PCControlError("Desktop has no active foreground window (screen may be locked).")
+
     def click(self, x: int, y: int, button: str = "left", clicks: int = 1,
               stop_check: Callable[[], bool] | None = None) -> None:
         u32 = self._require_win32()
+        self._ensure_desktop_ready()
         flags = self._MOUSE_FLAGS.get(button)
         if not flags:
             raise PCControlError(f"Unsupported mouse button: {button!r}")
@@ -304,6 +370,7 @@ class Win32Backend:
                 time.sleep(0.05)
 
     def type_text(self, text: str, stop_check: Callable[[], bool] | None = None) -> None:
+        self._ensure_desktop_ready()
         units = text.encode("utf-16-le")
         for idx in range(0, len(units), 2):
             if stop_check and stop_check():
@@ -325,6 +392,7 @@ class Win32Backend:
             time.sleep(0.002)
 
     def press_keys(self, vks: tuple[int, ...], stop_check: Callable[[], bool] | None = None) -> None:
+        self._ensure_desktop_ready()
         if stop_check and stop_check():
             raise StoppedError("Stopped before key press.")
         events: list[_INPUT] = []

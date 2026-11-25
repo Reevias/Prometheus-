@@ -178,11 +178,14 @@ if ($focusedEl) {{
         }}
     }} catch {{}}
 }}
-[pscustomobject]@{{
-    window = [string]$root.Current.Name
+$winName = ''
+try {{ $winName = [string]$root.Current.Name }} catch {{ $winName = '' }}
+$outObj = [pscustomobject]@{{
+    window = $winName
     focused = $focusedInfo
-    controls = @($items)
-}} | ConvertTo-Json -Depth 4 -Compress
+    controls = $items.ToArray()
+}}
+ConvertTo-Json -InputObject $outObj -Depth 4 -Compress
 """
 
 
@@ -192,8 +195,8 @@ $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName UIAutomationClient
 $el = $null
 try { $el = [System.Windows.Automation.AutomationElement]::FocusedElement } catch { $el = $null }
-if ($null -eq $el) {
-    [pscustomobject]@{ name=''; control_type=''; automation_id=''; is_password=$false } | ConvertTo-Json -Compress
+$res = if ($null -eq $el) {
+    [pscustomobject]@{ name=''; control_type=''; automation_id=''; is_password=$false }
 } else {
     $c = $el.Current
     $ct = if ($c.ControlType) { ($c.ControlType.ProgrammaticName -replace '^ControlType\\.', '') } else { '' }
@@ -202,8 +205,9 @@ if ($null -eq $el) {
         control_type = $ct
         automation_id = [string]$c.AutomationId
         is_password = [bool]$c.IsPassword
-    } | ConvertTo-Json -Compress
+    }
 }
+ConvertTo-Json -InputObject $res -Compress
 """
 
 
