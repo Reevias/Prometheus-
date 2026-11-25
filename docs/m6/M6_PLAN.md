@@ -6,9 +6,11 @@ Work happens on `prometheus-v3`.
 
 ## Owner's answers (25 Nov 2026)
 - **Cloudroom:** Oracle Cloud didn't work (it needs a credit card; the owner has a debit card). Replace it with a free
-  service that needs **no card**. Chosen: **Hugging Face Spaces** (free "CPU basic" Space, private, Docker) for
+  service that needs **no card**. Chosen at first: **Hugging Face Spaces** (free "CPU basic" Space, private, Docker) for
   running moved tasks and as the new always-on cloud copy, and **Google Drive** (already used for backups) for
   storage. Step 6.0 checks the free-tier terms first; if they don't hold, Opus proposes the next option and asks.
+  **Changed 25 Nov after the 6.0 check:** Hugging Face now needs a paid plan, so Cloudroom runs on **Render's free web
+  service** (no card) with a free uptime pinger; see "6.0 findings".
 - **Control PC:** both: (a) Prometheus sees the screen and clicks/types on the laptop, and (b) the phone app controls
   the laptop remotely.
 - **What may move to Cloudroom:** any task, but **every move asks the owner first**.
@@ -129,7 +131,7 @@ Each builder does the items in order, a failing test first each time.
 3. Every place that starts M5 jobs goes through the runtime; a lint test stops new direct calls.
 4. A runtime choice per job, default local; Cloudroom only after an approval (6.2).
 
-### 6.2 Cloudroom (builder: Opus · Space setup files: Sonnet)
+### 6.2 Cloudroom (builder: Opus · Render setup files: Sonnet)
 1. `runtime/cloudroom.py`: talks to the owner's Render service over HTTPS with a signed token (every request without it is refused) (stored in
    `KEY_NAMES`), never Prometheus's other keys.
 2. Moving a task asks first, showing what goes up (files, text) and what it may do there.
