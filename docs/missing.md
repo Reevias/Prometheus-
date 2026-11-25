@@ -3,6 +3,12 @@
 Updated 11 November 2026. Version 2.3. Built and tested here: 883 tests pass.
 Not yet run end to end on the owner's real laptop.
 
+## M6 6.1 ExecutionRuntime, 25 November 2026
+- Only the laptop runtime exists; a move to Cloudroom is refused until 6.2 adds it and wires your yes (the approval check refuses everything for now).
+- Cancelling and pausing from the jobs view still go to M5's runner and graphs directly; only starting goes through the runtime (the plan's item 3).
+- A job's result is kept in memory for the latest 256 jobs (graph steps keep theirs in their record), so after a restart only graph-step results are known.
+- NOT VERIFIED on the owner's laptop.
+
 ## M5 done on the branch, 25 November 2026 (report: `docs/reports/M5_REPORT.md`)
 Waiting for the owner to merge. NOT VERIFIED on the owner's laptop after the audit fixes: run the laptop check of
 `docs/m5/M5_LAPTOP_CHECK.md` again (5 jobs at once, Stop all, restart and Run again, branching, an own agent, the full

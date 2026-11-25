@@ -26,7 +26,7 @@ phone (through mobile-mcp), always asking first, and the phone can control the l
 | # | Step | What "done" means | Tests that must fail first |
 |---|---|---|---|
 | [x] 6.0 | **Checks before building** | Hugging Face free-tier terms, mobile-mcp licence and version, any new package's licence (7-step check in AGENTS.md) written down with the date. Laptop checked for Node.js and adb. | — |
-| 6.1 | **ExecutionRuntime** | One way to run tasks: `LocalRuntime` (default) runs every M5 job; `CloudroomRuntime` plugs in behind the same calls. | Every M5 job kind runs through `LocalRuntime` with the same results; nothing calls the old paths directly. |
+| [x] 6.1 | **ExecutionRuntime** | One way to run tasks: `LocalRuntime` (default) runs every M5 job; `CloudroomRuntime` plugs in behind the same calls. | Every M5 job kind runs through `LocalRuntime` with the same results; nothing calls the old paths directly. |
 | 6.2 | **Cloudroom** | The owner's free Render web service runs moved tasks in a sandbox. Moving asks first; each move has a request id and a receipt; events arrive in order; a lost link resumes or fails cleanly. It also takes over the old Oracle cloud copy's job. | Unplug mid-task → task resumes or is marked failed, never doubled; events out of order are put right; a move without a yes is refused. |
 | 6.3 | **Cloudroom storage** | Repo knowledge, backups and sync data encrypted on the laptop before upload; the laptop copy is the main one; works offline. Includes the private notes of chats left out in Memory → Privacy. | Upload holds only scrambled bytes; offline use works; wrong key can't read; laptop copy wins on a clash. |
 | 6.4a | **Control PC: screen, mouse, keyboard** | See the screen, click, type, switch apps on Windows. Every click, typed text or app change asks first. | Without a yes nothing is clicked; Stop all stops it at once. |
@@ -132,7 +132,7 @@ Each builder does the items in order, a failing test first each time.
    existing one is enough) and run the 7-step licence check on anything new.
 4. Antigravity, on the laptop: report whether Node.js, npm and adb are installed and their versions. Install nothing.
 
-### 6.1 ExecutionRuntime (builder: Opus)
+### 6.1 ExecutionRuntime [x] (builder: Opus) — built 25 Nov, awaiting review
 1. `prometheus/runtime/base.py`: `ExecutionRuntime` with start, status, cancel, events, result.
 2. `local.py`: `LocalRuntime` wraps M5's job runner, graph and limits; no behaviour change.
 3. Every place that starts M5 jobs goes through the runtime; a lint test stops new direct calls.

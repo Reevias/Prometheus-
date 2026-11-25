@@ -1,5 +1,8 @@
 # Changelog
 
+## Prometheus 3.0, M6 (on the prometheus-v3 branch, not released yet)
+- **One way to run tasks (M6 6.1):** every job now starts through `prometheus.runtime` (`ExecutionRuntime`: start, status, cancel, events, result). `LocalRuntime`, the laptop, is the default and runs M5's job runner, task graphs and limits exactly as before. Each job's state changes are kept as numbered events in order. A job can only go to another runtime (Cloudroom, step 6.2) when that runtime is set up and your yes checks out; always-on loops never move. A test stops any new code from starting jobs another way. Nothing changes for you yet. Not checked on your laptop (NOT VERIFIED).
+
 ## Prometheus 3.0, M5 (on the prometheus-v3 branch, not released yet)
 - **M5 report (25 Nov):** `docs/reports/M5_REPORT.md` says what M5 built, the exit gate, the tests and GitHub's Windows runs, the 28 bugs fixed along the way (171–198) and what is still not checked on your laptop. M5 is finished on the branch and waits for you to merge it; run the laptop check again first (`docs/m5/M5_LAPTOP_CHECK.md`).
 - **M5 open items finished (25 Nov):** a task's spending limits now hold when its steps run side by side (each paid AI call reserves its cost first, and the task's limit is checked before every paid call); a cancelled or paused step stops at its next AI call or program even if it never checks; removing an own agent stops it in a chat too.
