@@ -114,6 +114,13 @@ Source: npm registry `@mobilenext/mobile-mcp` and the repo's README/LICENSE (git
   guide shows each step; nothing is set up without asking.
 - Still open for the laptop (Antigravity): Node.js 20+, adb and `UIAutomationClient` in PowerShell; install nothing.
 
+### 6.0 laptop check (Antigravity, 25 Nov 2026)
+Checked on the owner's Windows laptop (nothing installed):
+- `node -v`: **`v24.21.0`** (installed; meets `mobile-mcp`'s `node >= 20` requirement).
+- `npm -v`: **`12.2.2`** (installed).
+- `adb version`: **installed** — `Android Debug Bridge version 1.0.41`, `Version 37.0.3-16887417`, at `C:\Users\saive\AppData\Local\Microsoft\WinGet\Packages\Google.PlatformTools_Microsoft.Winget.Source_8wekyb3d8bbwe\platform-tools\adb.exe` (`Running on Windows 10.0.26100`).
+- `UIAutomationClient` in Windows PowerShell 5.1: **loads cleanly** (`Add-Type -AssemblyName UIAutomationClient` succeeded, `RootElement` available, `ClassName=#32769`).
+
 ## Work for each step
 Each builder does the items in order, a failing test first each time.
 
