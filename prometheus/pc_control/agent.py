@@ -6,6 +6,7 @@ from pathlib import Path
 from prometheus.agents.base import Agent, AgentContext, StepResult, register, untrusted
 from prometheus.pc_control.controller import PCController, check_safe_text
 from prometheus.pc_control.errors import PCControlError
+from prometheus.pc_control.uia import abort_active_ps
 from prometheus.pc_control.win32 import normalize_combo
 
 READ_ACTIONS = frozenset({"screenshot", "read_controls", "list_windows"})
@@ -78,10 +79,16 @@ def _execute_input(payload: dict, killswitch=None) -> str:
     raise PCControlError(f"Unsupported input action: {action!r}")
 
 
-def register_approvals(approvals) -> None:
+def register_approvals(approvals, killswitch=None) -> None:
     """Register pc_control approval handlers on an Approvals instance if missing."""
     handlers = getattr(approvals, "_handlers", None)
-    ks = getattr(approvals, "killswitch", None)
+    ks = killswitch if killswitch is not None else getattr(approvals, "killswitch", None)
+    if ks is not None and hasattr(ks, "on_stop") and not getattr(approvals, "_pc_stop_hooked", False):
+        ks.on_stop(lambda _reason="": abort_active_ps())
+        try:
+            setattr(approvals, "_pc_stop_hooked", True)
+        except Exception:
+            pass
     if handlers is None or "pc_control_read" not in handlers:
         approvals.register("pc_control_read", lambda payload: _execute_read(payload, killswitch=ks))
     if handlers is None or "pc_control_input" not in handlers:
@@ -134,6 +141,9 @@ class PCControlAgent(Agent):
     accepts_private = False
 
     def run(self, goal: str, inputs: dict, ctx: AgentContext) -> StepResult:
+        if ctx.killswitch and ctx.killswitch.is_set:
+            return StepResult("failed", "Stopped by Stop all.")
+
         action = str(inputs.get("action") or "").strip().lower()
         if action not in READ_ACTIONS and action not in INPUT_ACTIONS:
             return StepResult(
@@ -141,7 +151,7 @@ class PCControlAgent(Agent):
                 f"Unknown pc_control action {action!r}; choose screenshot, read_controls, list_windows, click, type, press_keys, or switch_app.",
             )
 
-        register_approvals(ctx.approvals)
+        register_approvals(ctx.approvals, killswitch=ctx.killswitch)
         data_dir = str(ctx.home)
 
         if action in READ_ACTIONS:

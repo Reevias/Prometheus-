@@ -5,6 +5,7 @@ from pathlib import Path
 import re
 import threading
 from typing import Any, Callable
+import weakref
 
 from prometheus.pc_control.errors import PCControlError, PasswordFieldError, SecretTextError, StoppedError
 from prometheus.pc_control.screen import ScreenshotResult, capture_screenshot
@@ -60,9 +61,18 @@ class PCController:
         self._password_checker = password_checker
         self._abort_flag = threading.Event()
         if killswitch is not None and hasattr(killswitch, "on_stop"):
-            killswitch.on_stop(self.abort)
+            ref = weakref.ref(self)
 
-    def abort(self) -> None:
+            def _on_stop(_reason: str = "") -> None:
+                obj = ref()
+                if obj is not None:
+                    obj.abort()
+                else:
+                    abort_active_ps()
+
+            killswitch.on_stop(_on_stop)
+
+    def abort(self, _reason: str = "") -> None:
         self._abort_flag.set()
         abort_active_ps()
 
