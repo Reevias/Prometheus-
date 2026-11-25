@@ -170,6 +170,49 @@ class JobStore:
             cur = self._db.execute(query, params)
             return [_row_to_job(r) for r in cur.fetchall()]
 
+    def _select(self, where: str, params: tuple = (), tail: str = "") -> list[Job]:
+        with self._lock:
+            cur = self._db.execute(
+                "SELECT id, kind, title, state, parent_id, created, started, finished, progress, error, retries, payload "
+                f"FROM jobs WHERE {where} {tail}", params)
+            return [_row_to_job(r) for r in cur.fetchall()]
+
+    def list_for_view(self, finished: int = 8) -> tuple[list[Job], list[Job]]:
+        """For the jobs view (M5 audit F6): unfinished top-level jobs, and the latest `finished` that are worth
+        showing (graphs, or ones that didn't end done). Always-on loops are left out. Never reads the whole table."""
+        not_service = "COALESCE(json_extract(payload, '$.service'), 0) != 1"
+        active = self._select(f"parent_id IS NULL AND state IN ('pending', 'running', 'paused') AND {not_service}",
+                              tail="ORDER BY id ASC")
+        ended = self._select(f"parent_id IS NULL AND state IN ('done', 'failed', 'cancelled') AND {not_service} "
+                             "AND (json_extract(payload, '$.graph') = 1 OR state != 'done')", (),
+                             f"ORDER BY COALESCE(NULLIF(finished, 0), created) DESC LIMIT {int(finished)}")
+        return active, ended
+
+    def list_unfinished(self) -> list[Job]:
+        return self._select("state IN ('pending', 'running', 'paused')", tail="ORDER BY id ASC")
+
+    def list_with_programs(self) -> list[Job]:
+        """Jobs whose record lists programs (written by limits.track), for the start-up clean-up."""
+        return self._select("json_array_length(json_extract(payload, '$.programs')) > 0", tail="ORDER BY id ASC")
+
+    def prune_finished(self, days: int = 30) -> int:
+        """Delete finished jobs that ended more than `days` ago (a graph with its steps), so the table doesn't grow
+        for ever on the laptop (M5 audit F6). Unfinished jobs are never deleted. Returns how many rows went."""
+        cutoff = time.time() - days * 86400
+        with self._lock:
+            old = "state IN ('done', 'failed', 'cancelled') AND COALESCE(NULLIF(finished, 0), created) < ?"
+            parents = [r[0] for r in self._db.execute(f"SELECT id FROM jobs WHERE parent_id IS NULL AND {old}",
+                                                      (cutoff,)).fetchall()]
+            gone = 0
+            for i in range(0, len(parents), 500):
+                part = parents[i:i + 500]
+                marks = ",".join("?" * len(part))
+                gone += self._db.execute(f"DELETE FROM jobs WHERE parent_id IN ({marks}) AND {old}",
+                                         (*part, cutoff)).rowcount
+                gone += self._db.execute(f"DELETE FROM jobs WHERE id IN ({marks})", part).rowcount
+            self._db.commit()
+            return gone
+
     def update_job(self, job_id: int, state: str | None = None,
                    started: float | None = None, finished: float | None = None,
                    progress: str | None = None, error: str | None = None,

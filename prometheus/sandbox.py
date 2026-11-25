@@ -268,6 +268,9 @@ def run_locked(code: str, folder: Path, network: bool = False, timeout: int = TI
         kw["preexec_fn"] = _posix_limits(memory_mb)
     proc = subprocess.Popen(cmd, **kw)
     job = _windows_job(proc, memory_mb) if os.name == "nt" else None
+    from prometheus.jobs import limits
+
+    program = limits.track(proc.pid)        # run by a child agent: cancel, pause and Stop all end it (M5 audit F4)
     timed_out = False
     try:
         out, _ = proc.communicate(timeout=timeout)
@@ -276,6 +279,7 @@ def run_locked(code: str, folder: Path, network: bool = False, timeout: int = TI
         out, _ = proc.communicate()
         timed_out = True
     finally:
+        limits.untrack(program)
         del job
     text = out.decode("utf-8", "replace")
     needs = NEEDS_NET in text

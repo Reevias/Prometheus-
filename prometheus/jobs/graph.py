@@ -207,6 +207,7 @@ class GraphRunner:
             self.store.set_state(graph_id, CANCELLED, error=reason)
         self._wake[graph_id].set()
         self._end_programs(ended)
+        self._forget(graph_id)
         return True
 
     def pause(self, graph_id: int, reason: str = "Paused by you") -> bool:
@@ -244,13 +245,13 @@ class GraphRunner:
         return bool(parent and (parent.payload.get("resumable", True) or any(k[0] == graph_id for k in self._funcs)))
 
     @staticmethod
-    def _end_programs(job_ids: list[int]) -> None:
+    def _end_programs(job_ids: list[int], attempt: int | None = None) -> None:
         """Programs the stopped steps started are ended now (M5 5.3), not when the step next checks."""
         from prometheus.jobs.limits import end_job
 
         for jid in job_ids:
             try:
-                end_job(jid)
+                end_job(jid, attempt=attempt)
             except Exception:                        # noqa: BLE001
                 log.exception("Couldn't end the programs of step job %s", jid)
 
@@ -267,9 +268,35 @@ class GraphRunner:
     def idle(self, graph_id: int) -> bool:
         """No step of this graph is still running a try in this process."""
         with self._lock:
-            return not any(t.is_alive() for t in self._live[graph_id])
+            if any(t.is_alive() for t in self._live.get(graph_id, ())):
+                return False
+            self._live.pop(graph_id, None)
+            job = self.store.get_job(graph_id)
+            if job is None or job.state in TERMINAL_STATES:
+                self._wake.pop(graph_id, None)
+            return True
 
     # -- inside ----------------------------------------------------------------------------------------------
+    def _forget(self, graph_id: int) -> None:
+        """A finished or cancelled graph can't run again: drop its in-memory functions and context (they can hold a
+        whole task's results; M5 audit A1). Running step threads keep their own references until they end."""
+        with self._lock:
+            for key in [k for k in self._funcs if k[0] == graph_id]:
+                del self._funcs[key]
+            self._contexts.pop(graph_id, None)
+
+    def _stopped_all(self) -> bool:
+        return self.killswitch is not None and bool(getattr(self.killswitch, "is_set", False))
+
+    def _record_stop(self, job_id: int, attempt: int) -> None:
+        """A step that stopped because of Stop all is paused, never left running (and never called done)."""
+        if not self._stopped_all():
+            return
+        with self.store._lock:
+            job = self.store.get_job(job_id)
+            if job is not None and job.state == RUNNING and job.payload.get("attempt") == attempt:
+                self.store.set_state(job_id, PAUSED, error="Stopped by user")
+
     def _stale(self, job_id: int, attempt: int) -> bool:
         if self.killswitch is not None and getattr(self.killswitch, "is_set", False):
             return True
@@ -284,9 +311,13 @@ class GraphRunner:
                 parent = self.store.get_job(graph_id)
                 if parent is None or parent.state != RUNNING:
                     return                                       # paused or cancelled: the buttons did the rest
+                if self._stopped_all():
+                    self.pause(graph_id, "Stopped by user")     # Stop all: nothing new starts (laptop check, 25 Nov)
+                    return
                 steps = {j.payload.get("step"): j for j in self.store.list_jobs(parent_id=graph_id)}
                 self._spread_failures(steps)
                 if all(j.state in TERMINAL_STATES for j in steps.values()):
+                    self._forget(graph_id)                       # finished: its functions are let go
                     failed = [s for s, j in steps.items() if j.state == FAILED]
                     if failed:
                         raise GraphFailed(f"Step {', '.join(failed)} failed; the steps that needed it were cancelled.")
@@ -295,6 +326,8 @@ class GraphRunner:
                     return
                 waiting_for_slot = False
                 for sid, j in steps.items():
+                    if self._stopped_all():
+                        break
                     if j.state != PENDING or not all(steps[n].state == DONE for n in j.payload.get("needs", [])):
                         continue
                     if not self.slots.try_acquire():
@@ -344,6 +377,9 @@ class GraphRunner:
 
         runner_mod._CURRENT_JOB_ID.set(ctx.job_id)      # this step is the job its programs belong to (M5 5.3)
         runner_mod._CURRENT_JOB_RUNNER.set(self.runner)
+        from prometheus.jobs.limits import CURRENT_ATTEMPT
+
+        CURRENT_ATTEMPT.set(ctx.attempt)
         has_slot = True
         try:
             while True:
@@ -383,7 +419,8 @@ class GraphRunner:
         except Exception:
             log.exception("Graph step %s failed unexpectedly", ctx.step)
         finally:
-            self._end_programs([ctx.job_id])              # nothing it started outlives its step
+            self._record_stop(ctx.job_id, ctx.attempt)
+            self._end_programs([ctx.job_id], attempt=ctx.attempt)   # nothing this try started outlives it
             if has_slot:
                 self.slots.release()
             self._wake[ctx.graph_id].set()

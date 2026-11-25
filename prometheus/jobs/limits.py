@@ -12,6 +12,7 @@
 """
 from __future__ import annotations
 
+import contextvars
 import itertools
 import logging
 import os
@@ -54,13 +55,18 @@ class RamSlots(Slots):
         with self._lock:
             self.free_gb = None if free is None else round(free / GB, 1)
             if free is not None and free < LOW_MEMORY:
-                self.reason = (f"not enough free memory ({free / GB:.1f} GB free; a new one starts when "
-                               f"{LOW_MEMORY // GB} GB is free)")
-                return False
-            self.size = 3 if free is not None and free > ROOMY_MEMORY else 2
-            if self._used >= self.size:
-                self.reason = "waiting for a free slot"
-                return False
+                # the 8 GB laptop often sits under 1 GB free with normal apps open: one at a time then, never none
+                # (laptop check, 25 Nov: "none" made every graph wait for ever)
+                self.size = 1
+                if self._used >= 1:
+                    self.reason = (f"only one at a time while memory is low ({free / GB:.1f} GB free; more start when "
+                                   f"{LOW_MEMORY // GB} GB is free)")
+                    return False
+            else:
+                self.size = 3 if free is not None and free > ROOMY_MEMORY else 2
+                if self._used >= self.size:
+                    self.reason = "waiting for a free slot"
+                    return False
             self._used += 1
             self.reason = ""
             return True
@@ -79,7 +85,34 @@ def child_slots() -> RamSlots:
         return _SLOTS
 
 
+_TASK_SLOTS: RamSlots | None = None
+
+
+def task_slots() -> RamSlots:
+    """A separate limit, of the same size, for chat tasks (laptop check: 5 chats at once all ran). Separate so a task
+    holding its slot never waits for a slot its own graph steps need."""
+    global _TASK_SLOTS
+    with _SLOTS_LOCK:
+        if _TASK_SLOTS is None:
+            _TASK_SLOTS = RamSlots()
+        return _TASK_SLOTS
+
+
+def wait_for_slot(slots: Slots, give_up: Callable[[], bool], waiting: Callable[[], None] | None = None) -> bool:
+    """Block until a slot is free (True) or give_up() says stop (False). `waiting` runs once if it has to wait."""
+    told = False
+    while not slots.try_acquire():
+        if give_up():
+            return False
+        if not told and waiting is not None:
+            waiting()
+            told = True
+        time.sleep(0.1)
+    return True
+
+
 # -- programs started by child agents --------------------------------------------------------------------------
+CURRENT_ATTEMPT: contextvars.ContextVar[int] = contextvars.ContextVar("prometheus_step_attempt", default=0)
 _PROGRAMS: dict[int, dict] = {}
 _PROGRAMS_LOCK = threading.RLock()
 _TOKENS = itertools.count(1)
@@ -120,10 +153,13 @@ def track(pid: int, pgid: int | None = None, win_job=None) -> int | None:
     if jid is None:
         return None
     token = next(_TOKENS)
-    entry = {"job_id": jid, "pid": pid, "pgid": pgid, "win_job": win_job, "created": _created(pid), "store": store}
+    entry = {"job_id": jid, "pid": pid, "pgid": pgid, "win_job": win_job, "created": _created(pid), "store": store,
+             "attempt": CURRENT_ATTEMPT.get()}
     with _PROGRAMS_LOCK:
         _PROGRAMS[token] = entry
         _save(store, jid)
+    if _KILLSWITCH is not None and getattr(_KILLSWITCH, "is_set", False):
+        _end(entry)                          # started while everything is stopped: it doesn't get to run
     return token
 
 
@@ -150,9 +186,10 @@ def _end(entry: dict) -> None:
 
     pid, pgid, job = entry["pid"], entry.get("pgid"), entry.get("win_job")
     if sys.platform == "win32":
-        kill_process_tree(pid)
         if job is not None:
-            job.close()                  # kill-on-close ends whatever is left of the tree
+            job.close()                  # kill-on-close ends the whole tree at once, with no pid lookup at all
+        else:
+            kill_process_tree(pid)       # the caller still holds the process handle, so this pid can't be reused yet
         return
     if pgid is not None and pgid != os.getpgrp():
         try:
@@ -163,10 +200,12 @@ def _end(entry: dict) -> None:
     kill_process_tree(pid)
 
 
-def end_job(job_id: int) -> int:
-    """End every program this child started. Returns how many were ended."""
+def end_job(job_id: int, attempt: int | None = None) -> int:
+    """End every program this child started (only those of one try, when `attempt` is given: a finished try never
+    ends the next try's programs; M5 audit F5). Returns how many were ended."""
     with _PROGRAMS_LOCK:
-        entries = [e for e in _PROGRAMS.values() if e["job_id"] == job_id]
+        entries = [e for e in _PROGRAMS.values()
+                   if e["job_id"] == job_id and (attempt is None or e.get("attempt") == attempt)]
     for e in entries:
         _end(e)
     return len(entries)
@@ -186,8 +225,21 @@ def running_programs() -> dict[int, dict]:
         return {k: {kk: vv for kk, vv in v.items() if kk not in ("win_job", "store")} for k, v in _PROGRAMS.items()}
 
 
+_KILLSWITCH = None
+
+
 def connect_killswitch(killswitch) -> None:
+    global _KILLSWITCH
+    _KILLSWITCH = killswitch
     killswitch.on_stop(end_all)
+
+
+def connect_stop_all(killswitch, job_store) -> None:
+    """Stop all, in this order (laptop check, 25 Nov): first every running job is paused, so a step that ends
+    because its program was killed is never recorded as done and its graph starts nothing new; then every child's
+    programs are ended. A program a child starts while everything is stopped is ended at once (track)."""
+    killswitch.on_stop(lambda reason: job_store.pause_all(f"Stopped by user: {reason}" if reason else "Stopped by user"))
+    connect_killswitch(killswitch)
 
 
 def end_leftovers(store) -> int:
@@ -195,7 +247,7 @@ def end_leftovers(store) -> int:
     import psutil
 
     ended = 0
-    for job in store.list_jobs():
+    for job in store.list_with_programs():
         progs = job.payload.get("programs") if isinstance(job.payload, dict) else None
         if not progs:
             continue

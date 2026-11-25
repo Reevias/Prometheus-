@@ -93,14 +93,12 @@ class JobRunner:
 
             try:
                 func(*args, **kwargs)
-                job = self.store.get_job(job_id)
-                if job and job.state == RUNNING:
-                    self.store.set_state(job_id, DONE)
+                if mark_running:                                       # else the caller records how it ended
+                    self._record_end(job_id, None)
             except Exception as exc:
                 log.exception("Job %d failed: %s", job_id, exc)
-                job = self.store.get_job(job_id)
-                if job and job.state == RUNNING:
-                    self.store.set_state(job_id, FAILED, error=str(exc))
+                if mark_running:
+                    self._record_end(job_id, exc)
             finally:
                 with self._lock:
                     self._threads.pop(job_id, None)
@@ -111,6 +109,28 @@ class JobRunner:
             self._all_threads[job_id] = thread
             self._recent.append(thread)
         thread.start()
+
+    def _record_end(self, job_id: int, exc: BaseException | None) -> None:
+        """How the work really ended. A job paused while it ran (Stop all, or by hand) that then finishes is not left
+        "paused" for ever (M5 audit F2): after Stop all it is cancelled ("Stopped by user"), otherwise done or
+        failed. A graph's own job stays paused: its steps carry on with Resume."""
+        with self.store._lock:
+            job = self.store.get_job(job_id)
+            if job is None or job.state in (DONE, FAILED, CANCELLED):
+                return
+            if job.state == RUNNING:
+                if exc is None:
+                    self.store.set_state(job_id, DONE)
+                else:
+                    self.store.set_state(job_id, FAILED, error=str(exc))
+                return
+            if job.payload.get("graph"):
+                return
+            if (job.error or "").startswith("Stopped by user"):
+                self.store.finish(job_id, CANCELLED, error=job.error)
+            else:
+                self.store.finish(job_id, FAILED if exc is not None else DONE,
+                                  error=str(exc) if exc is not None else None)
 
     def _start_async_job(self, job_id: int, func: Callable, args: tuple, kwargs: dict) -> None:
         async def _async_wrapper():

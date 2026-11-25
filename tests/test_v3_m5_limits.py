@@ -52,10 +52,11 @@ def test_two_at_once_or_three_with_more_than_3_gb_free(free_gb, size):
     assert got.count(True) == size
 
 
-def test_nothing_new_starts_under_1_gb_free_and_the_reason_is_shown():
+def test_under_1_gb_free_only_one_runs_and_the_reason_is_shown():
+    # changed by the M5 audit (laptop check, 25 Nov): "none" made every graph wait for ever on the 8 GB laptop
     free = [0.8 * GB]
     slots = limits.RamSlots(free_bytes=lambda: free[0])
-    assert slots.try_acquire() is False
+    assert slots.try_acquire() is True and slots.try_acquire() is False
     assert "memory" in slots.reason.lower() and "0.8 GB" in slots.reason
     free[0] = 2 * GB                                    # memory came back: checked again before each start
     assert slots.try_acquire() is True
@@ -64,7 +65,8 @@ def test_nothing_new_starts_under_1_gb_free_and_the_reason_is_shown():
 def test_the_reading_is_the_real_psutil_one(monkeypatch):
     monkeypatch.setattr(psutil, "virtual_memory", lambda: SimpleNamespace(available=int(0.5 * GB)))
     slots = limits.RamSlots()
-    assert slots.try_acquire() is False and "0.5 GB" in slots.reason
+    assert slots.try_acquire() is True and slots.try_acquire() is False and "0.5 GB" in slots.reason
+    slots.release()
     monkeypatch.setattr(psutil, "virtual_memory", lambda: SimpleNamespace(available=int(5 * GB)))
     assert [slots.try_acquire() for _ in range(4)].count(True) == 3
 
@@ -119,7 +121,7 @@ def test_low_memory_stops_a_third_step_and_says_why(store):
     graphs.start(gid)
     assert _until(lambda: "memory" in store.get_job(gid).progress.lower())
     time.sleep(0.3)
-    assert len(started) == 2 and "0.5 GB free" in store.get_job(gid).progress
+    assert len(started) == 2 and "0.5 GB free" in store.get_job(gid).progress     # 2 already running: no 3rd
     graphs.cancel(gid)
 
 
