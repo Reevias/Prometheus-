@@ -3,6 +3,14 @@
 Updated 11 November 2026. Version 2.3. Built and tested here: 883 tests pass.
 Not yet run end to end on the owner's real laptop.
 
+## M6 6.3 Cloudroom storage, 25 November 2026
+- Run against a pretend Drive and a pretend Google web server in tests only; never with your real Google Drive, on your laptop or on a Windows machine other than GitHub's. NOT VERIFIED.
+- It uses the recovery code you already made for backups (no new key). If backups were never set up, it stops and says so.
+- The private notes are the title and messages of each chat left out in Memory → Privacy, stored as they are (sealed). A chat taken out of "left out" later, or deleted, keeps its old stored copy until you remove it on Drive. There is no screen to read them yet: `Storage.lookup_private(chat_id)` does it in code.
+- Needs a connection to read the cloud copy back; while an upload is still waiting, it is read from the laptop's queue. Files in the Drive folder are only readable with your recovery code: if you lose it, they can't be opened.
+- The Google sign-in used by backups decides what Drive lets the app see; a file you made by hand in that folder is not seen.
+- The old "Prometheus Backups" folder is left alone (not moved or deleted) when you switch this on.
+
 ## M6 6.1 ExecutionRuntime, 25 November 2026
 - Only the laptop runtime exists; a move to Cloudroom is refused until 6.2 adds it and wires your yes (the approval check refuses everything for now).
 - Cancelling and pausing from the jobs view still go to M5's runner and graphs directly; only starting goes through the runtime (the plan's item 3).

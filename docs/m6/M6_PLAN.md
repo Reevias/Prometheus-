@@ -28,7 +28,7 @@ phone (through mobile-mcp), always asking first, and the phone can control the l
 | [x] 6.0 | **Checks before building** | Hugging Face free-tier terms, mobile-mcp licence and version, any new package's licence (7-step check in AGENTS.md) written down with the date. Laptop checked for Node.js and adb. | — |
 | [x] 6.1 | **ExecutionRuntime** | One way to run tasks: `LocalRuntime` (default) runs every M5 job; `CloudroomRuntime` plugs in behind the same calls. | Every M5 job kind runs through `LocalRuntime` with the same results; nothing calls the old paths directly. |
 | 6.2 | **Cloudroom** | The owner's free Render web service runs moved tasks in a sandbox. Moving asks first; each move has a request id and a receipt; events arrive in order; a lost link resumes or fails cleanly. It also takes over the old Oracle cloud copy's job. | Unplug mid-task → task resumes or is marked failed, never doubled; events out of order are put right; a move without a yes is refused. |
-| 6.3 | **Cloudroom storage** | Repo knowledge, backups and sync data encrypted on the laptop before upload; the laptop copy is the main one; works offline. Includes the private notes of chats left out in Memory → Privacy. | Upload holds only scrambled bytes; offline use works; wrong key can't read; laptop copy wins on a clash. |
+| [x] 6.3 | **Cloudroom storage** | Repo knowledge, backups and sync data encrypted on the laptop before upload; the laptop copy is the main one; works offline. Includes the private notes of chats left out in Memory → Privacy. | Upload holds only scrambled bytes; offline use works; wrong key can't read; laptop copy wins on a clash. |
 | 6.4a | **Control PC: screen, mouse, keyboard** | See the screen, click, type, switch apps on Windows. Every click, typed text or app change asks first. | Without a yes nothing is clicked; Stop all stops it at once. |
 | 6.4b | **Control the laptop from the phone** | The phone app runs laptop actions remotely over the private link; each one asks on the phone first. | A request without the device key is refused; dangerous actions still ask. |
 | 6.5 | **Phone control through mobile-mcp** | mobile-mcp runs as a separate MCP server through "Other apps"; old adb phone-control code removed once mobile-mcp does everything it did. Taps/typing/app changes ask first; reading the screen after a one-time yes. | Each old adb action has a mobile-mcp test; an unapproved tap is refused. |
@@ -154,7 +154,7 @@ Each builder does the items in order, a failing test first each time.
    sync) run there; Render's limits written down honestly (sleeps after 15 min without the pinger, 750 h a month, files
    wiped on restart, so nothing is kept only there).
 
-### 6.3 Cloudroom storage (builder: Sonnet · encryption review: Opus)
+### 6.3 [x] Cloudroom storage (builder: Sonnet · encryption review: Opus) — built 25 Nov, awaiting review
 1. Reuse `backup.py`'s AES-256-GCM: everything encrypted on the laptop before upload.
 2. Store repo knowledge (M4), backups and sync data on Google Drive in a "Prometheus Cloudroom" folder.
 3. Laptop copy is the main one; on a clash the laptop wins and the other copy is kept as a backup.
