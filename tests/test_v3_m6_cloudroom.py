@@ -146,7 +146,7 @@ def test_moving_asks_on_the_approvals_page_and_shows_what_goes_up(setup, make_ct
     runtimes, cloud, http, runs, app = setup
     ctx = make_ctx()
     data = tmp_path / "numbers.csv"
-    data.write_text("1,2,3\n")
+    data.write_bytes(b"1,2,3\n")                                  # exact bytes on Windows too
     spec = move(code="print(open('numbers.csv').read())", files={"numbers.csv": str(data)})
     approval_id = cloud.request_move(ctx.approvals, spec)
     item = ctx.store.approval(approval_id)
