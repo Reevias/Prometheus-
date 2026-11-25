@@ -11,7 +11,7 @@ may still want a fresh session to check this work.
 |---|---|---|
 | Parallel, cancel and restart tests pass | **PASS (Linux, GitHub Windows)** · laptop NOT VERIFIED | Full suite on Linux: 1941 passed, 0 failed, 67 skipped. GitHub windows-latest: see the CI line below. The laptop run of 25 Nov (before these fixes) had 1 failed and 1 hang, both caused by risk 1; not re-run on the laptop since. |
 | Memory stays inside the 8 GB laptop's limit | **PASS on Linux measurement** · laptop NOT VERIFIED | At most 2 children at once (3 above 3 GB free, 1 under 1 GB), and the same for chat tasks. Prometheus with 200 graph steps (3 at once, 20 MB each): 165–246 MB peak RSS on Linux, of which 22.7 MB of Python objects were still held after the work (the rest is the C allocator keeping freed memory). Programs run through the M1 terminal get a 1.5 GB Job Object cap; the code sandbox keeps its own limit. The laptop had 0.23–0.84 GB free with the owner's apps open; Prometheus's own memory on the laptop was not measured. |
-| Windows CI green | **PASS** | All 6 jobs of the GitHub run for `9f82fa7` (windows-latest on Python 3.14 and 3.15, Windows add-ons, click-through, ubuntu on 3.14 and 3.15). GitHub's Windows machines are not the owner's laptop. |
+| Windows CI green | **PASS** (after a hang was found and fixed) | GitHub run 45594385450 for `68ab218`, run twice: all 6 jobs green both times. windows-latest 3.14: 1906 passed, 48 skipped (9 min 45 s and 13 min 44 s), and no test was stuck for more than 2 minutes (stack dumps now switched on). Before that, windows-latest 3.14 hung at 88% twice (runs for `9f82fa7` and `75dde82`, cancelled after 30 min to read the logs), and failed once on a too-short test wait. GitHub's Windows machines are not the owner's laptop. |
 | Open-source check of new dependencies | **PASS** | No dependency added in M5 (`pyproject.toml` unchanged since the M5 plan, d284517). |
 
 ## The four risks from the laptop check (all fixed, a test failing first)
@@ -41,6 +41,7 @@ may still want a fresh session to check this work.
   the panel, own-agent removal and the start-up clean-up read only what they need.
 - F7. A request retried after an AI limit was recorded "done" even when it failed.
 - A2. My A1 fix added an idle check that took two locks in the opposite order to the graph driver: GitHub's Windows 3.14 run hung at 88% (cancelled after 30 minutes to read its log). Fixed; a test now catches the wrong order.
+- A4. The hang came back once after A2 and A3. The likely cause was my F5 change, which made Windows end a child's programs by closing the Job Object only; it is back to the way that passed in 5.3 (taskkill, then close the Job Object). Two green runs since, but an intermittent hang can't be proved gone: the CI now prints every thread's stack if one test runs over 2 minutes, and stops the test step after 40 minutes.
 - A3. The same lock-order problem in the job runner's Stop/Pause/Resume (from 5.1): the panel's Stop on a plain job could freeze with a running graph. Fixed with the same kind of test.
 
 ## Written down, not fixed
