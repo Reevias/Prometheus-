@@ -149,6 +149,18 @@ def note_limit(store, chat_id: int, text: str, error: str, now: float | None = N
     return f"I'll try this again by myself in {when}; the answer will appear here. (Say “stop trying” to cancel.)"
 
 
+def drop(store, item_id: str, why: str = "Stopped by you") -> bool:
+    """Stop one waiting request for good (the Stop button in the jobs view): out of the queue, never started again,
+    and its tracker record cancelled. M5 review R9."""
+    with _LOCK:
+        queue = _queue(store)
+        keep = [q for q in queue if q.get("id") != item_id]
+        _FINISHED.add(item_id)
+        _save(store, keep)
+        _finish_jobs(store, item_id, CANCELLED, why)
+        return len(keep) != len(queue)
+
+
 def cancel(store, chat_id: int) -> int:
     with _LOCK:
         job_store = _get_job_store(store)

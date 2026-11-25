@@ -400,6 +400,14 @@ def register_routes(app: FastAPI, services: Services) -> None:
         from prometheus.web import jobs_view
 
         runner = getattr(services.graphs, "runner", None)
+        job = services.jobs.get_job(job_id)
+        if job is not None and job.kind == "resume" and action == "stop" and job.payload.get("id") \
+                and action in jobs_view.controls_for(job, runner, services.graphs):
+            from prometheus import resume as _resume       # a waiting request: take it out of the retry queue too
+
+            _resume.drop(store, str(job.payload["id"]))
+            store.audit("user", "job_stop", {"job": job_id})
+            return page(request, "v3/jobs_panel.html", **jobs_context())
         code, message = jobs_view.act(services.jobs, runner, services.graphs, job_id, action)
         if code == 404:
             return JSONResponse({"error": message}, status_code=404)
