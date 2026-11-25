@@ -2249,7 +2249,7 @@ def register_switchover_pages(app: FastAPI, services, shell) -> None:
         r = _reader.CURRENT
         if r is None or not getattr(r, "active", lambda: True)():
             return bad("Nothing is being read now.", 409)
-        from prometheus.jobs.runner import start_job
+        from prometheus.runtime import start_job
 
         act = {"pause": lambda: r.pause(), "continue": lambda: r.resume(), "back": lambda: r.move(-1),
                "skip": lambda: r.move(1), "slower": lambda: r.set_speed(False), "faster": lambda: r.set_speed(True),

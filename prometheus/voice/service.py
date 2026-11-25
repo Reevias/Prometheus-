@@ -79,7 +79,7 @@ class VoiceService:
 
     def start_if_enabled(self) -> None:
         if self.services.settings.voice_enabled:
-            from prometheus.jobs.runner import start_job
+            from prometheus.runtime import start_job
 
             start_job("voice_start", "Voice service start", self.start, kwargs={"only_if_enabled": True},
                       name="prometheus-voice-start")
@@ -188,7 +188,7 @@ class VoiceService:
         if wait:
             again()
         else:
-            from prometheus.jobs.runner import start_job
+            from prometheus.runtime import start_job
 
             start_job("voice_restart", "Voice service restart", again, name="prometheus-voice-restart")
 
@@ -220,7 +220,7 @@ class VoiceService:
             if not self.error and self.services.settings.voice_enabled:
                 self.start()
 
-        from prometheus.jobs.runner import start_job
+        from prometheus.runtime import start_job
 
         start_job("voice_download", "Download voice models", work, name="prometheus-voice-download")
 

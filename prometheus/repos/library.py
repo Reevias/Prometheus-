@@ -460,7 +460,7 @@ def start_daily_refresh(library: Library, stop: threading.Event | None = None) -
                 pass
             stop.wait(REFRESH_SECONDS)
 
-    from prometheus.jobs.runner import get_default_runner, start_job
+    from prometheus.runtime import start_job, thread_of
 
     job = start_job("library_refresh", "Daily skills library refresh", loop, name="skills-library", service=True)
-    return get_default_runner().get_thread(job.id)
+    return thread_of(job)

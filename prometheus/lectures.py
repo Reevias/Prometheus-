@@ -163,7 +163,7 @@ class LectureJob:
         return made
 
     def start(self) -> threading.Thread:
-        from prometheus.jobs.runner import get_default_runner, start_job
+        from prometheus.runtime import start_job, thread_of
 
         job = start_job("lecture", f"Process lecture {self.path.name}", self.run, name="prometheus-lecture")
-        return get_default_runner().get_thread(job.id)
+        return thread_of(job)

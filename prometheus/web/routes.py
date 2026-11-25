@@ -491,7 +491,7 @@ def register_routes(app: FastAPI, services: Services) -> None:
             if v.start() and v.loop is not None:
                 v.loop.listen_now()
 
-        from prometheus.jobs.runner import start_job
+        from prometheus.runtime import start_job
 
         start_job("voice_button", "Start voice and listen", start_then_listen, name="prometheus-voice-button")
         return {"starting": True}
@@ -1817,7 +1817,7 @@ def register_routes(app: FastAPI, services: Services) -> None:
             except Exception as e:
                 store.kv_set("backup_error", f"{type(e).__name__}: {str(e)[:200]}")
 
-        from prometheus.jobs.runner import start_job
+        from prometheus.runtime import start_job
 
         start_job("backup", "Backup now", work, name="prometheus-backup")
         return settings_page(request, notice="Backing up in the background. Refresh in a minute to see it.")
@@ -1869,7 +1869,7 @@ def register_routes(app: FastAPI, services: Services) -> None:
                 finally:
                     services._redteam_running = False
 
-            from prometheus.jobs.runner import start_job
+            from prometheus.runtime import start_job
 
             start_job("safety_check", "Safety check", work, name="prometheus-safety-check")
         store.audit("user", "safety_check", {})

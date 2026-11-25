@@ -238,7 +238,7 @@ class LaptopJobs:
                 pass
 
     def start(self) -> None:
-        from prometheus.jobs.runner import start_job
+        from prometheus.runtime import start_job
 
         start_job("phone_jobs", "Phone laptop jobs loop", self.loop, name="prometheus-laptop-jobs", service=True)
 

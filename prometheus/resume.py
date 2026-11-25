@@ -313,7 +313,7 @@ class Resumer:
                 with _LOCK:
                     _IN_FLIGHT.discard(item["id"])
 
-        from prometheus.jobs.runner import start_job
+        from prometheus.runtime import start_job
 
         start_job("resume_task", f"Resuming waiting request {item.get('id')}", work, name="prometheus-resume")
 
@@ -325,7 +325,7 @@ class Resumer:
                 log.exception("Checking waiting requests failed")
 
     def start(self) -> None:
-        from prometheus.jobs.runner import start_job
+        from prometheus.runtime import start_job
 
         start_job("resumer", "Resumer loop", self.loop, name="prometheus-resumer", service=True)
 

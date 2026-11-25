@@ -249,7 +249,7 @@ class Watchers:
                 pass
 
     def start(self) -> None:
-        from prometheus.jobs.runner import start_job
+        from prometheus.runtime import start_job
 
         start_job("watchers", "Watchers clock loop", self.loop, name="prometheus-watchers", service=True)
 

@@ -129,7 +129,7 @@ class Trainer:
             self.progress = "Turn voice on first (and wait until it says it's listening)."
             return False
         self.running, self.result = True, None
-        from prometheus.jobs.runner import start_job
+        from prometheus.runtime import start_job
 
         start_job("voice_train", "Voice training loop", self._run, args=(loop,), name="prometheus-voice-train")
         return True

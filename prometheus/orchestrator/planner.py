@@ -346,6 +346,7 @@ class Orchestrator:
         self.step_tries, self.task_budget, self.max_steps = STEP_TRIES, TASK_BUDGET, MAX_TASK_STEPS
         self._count_lock = threading.Lock()   # steps of a task graph count towards max_steps together
         self.graphs = None                    # the task-graph runner (M5 5.2), set by the app
+        self.runtime = None                   # the laptop runtime that starts graphs (M6 6.1), set by the app
         self.extra_catalog = None          # callable: tools of connected apps, for the planner
         self.extra_sections: list = []     # (heading, callable returning text) added to the planner's system
         self.interceptors: list = []       # callables (chat_id, text) -> answer or None: e.g. a quiz in progress
@@ -1128,9 +1129,8 @@ class Orchestrator:
 
         steps = [{"id": st["id"], "func": make(st), "needs": st["depends_on"], "retries": 0,     # repairs happen
                   "title": f"{st['agent']}: {st['goal']}"[:200]} for st in plan.steps]       # inside each step
-        gid = graphs.create(f"Task {task_id}: {text[:60]}", steps, kind="task_graph",
-                            payload={"task_id": task_id, "chat_id": chat_id})
-        graphs.start(gid)
+        gid = self._graph_runtime(graphs).start_graph(f"Task {task_id}: {text[:60]}", steps, kind="task_graph",
+                                                      payload={"task_id": task_id, "chat_id": chat_id})
         while True:
             state = graphs.wait(gid, 0.2)
             if state in ("done", "failed", "cancelled", "paused") and graphs.idle(gid):
@@ -1159,6 +1159,14 @@ class Orchestrator:
                                     "Paused. Everything it needed is done; press Carry on and I'll write the answer.")
             raise first
         return None
+
+    def _graph_runtime(self, graphs):
+        """The runtime that starts this task's graph (M6 6.1): the app's laptop runtime, or one around the graph
+        runner a test handed in."""
+        from prometheus.runtime import LocalRuntime
+
+        rt = getattr(self, "runtime", None)
+        return rt if rt is not None and rt.graphs is graphs else LocalRuntime(graphs=graphs)
 
     def _keep_for_carry_on(self, task_id: int, text: str, plan: Plan, pos: int, results: dict[int, StepResult],
                            bad: set[int], private: set[int], read_only: bool, only: str, topic: str) -> None:
