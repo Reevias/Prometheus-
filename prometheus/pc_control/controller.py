@@ -2,10 +2,11 @@
 from __future__ import annotations
 
 from pathlib import Path
+import re
 import threading
 from typing import Any, Callable
 
-from prometheus.pc_control.errors import PCControlError, PasswordFieldError, StoppedError
+from prometheus.pc_control.errors import PCControlError, PasswordFieldError, SecretTextError, StoppedError
 from prometheus.pc_control.screen import ScreenshotResult, capture_screenshot
 from prometheus.pc_control.uia import abort_active_ps, focused_is_password, read_controls
 from prometheus.pc_control.win32 import (
@@ -15,6 +16,27 @@ from prometheus.pc_control.win32 import (
     is_blocked_window,
     normalize_combo,
 )
+from prometheus.safety.secrets import secret_problem
+
+_EXTRA_SECRET_RE = re.compile(
+    r"(?:\bBearer\s+[A-Za-z0-9._\-]{20,}|\beyJ[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}(?:\.[A-Za-z0-9_\-]+)?)",
+    re.IGNORECASE,
+)
+
+
+def check_safe_text(text: str) -> None:
+    """Validate text length/characters and refuse anything that looks like an API key, token, or saved secret."""
+    if not isinstance(text, str) or not text:
+        raise PCControlError("Text to type cannot be empty.")
+    if len(text) > MAX_TYPE_CHARS:
+        raise PCControlError(f"Text is too long ({len(text)} > {MAX_TYPE_CHARS} chars).")
+    if any(ord(ch) < 32 for ch in text):
+        raise PCControlError("Text contains control characters; use press_keys for Enter/Tab.")
+    problem = secret_problem(text)
+    if problem:
+        raise SecretTextError(problem)
+    if _EXTRA_SECRET_RE.search(text):
+        raise SecretTextError("Blocked: this contains what looks like a secret token. Remove it and try again.")
 
 
 class PCController:
@@ -108,12 +130,7 @@ class PCController:
 
     def type_text(self, text: str) -> dict[str, Any]:
         self._check_stop()
-        if not isinstance(text, str) or not text:
-            raise PCControlError("Text to type cannot be empty.")
-        if len(text) > MAX_TYPE_CHARS:
-            raise PCControlError(f"Text is too long ({len(text)} > {MAX_TYPE_CHARS} chars).")
-        if any(ord(ch) < 32 for ch in text):
-            raise PCControlError("Text contains control characters; use press_keys for Enter/Tab.")
+        check_safe_text(text)
         fg = self._check_foreground_allowed()
         checker = self._password_checker or (
             lambda stop_check=None: focused_is_password(stop_check=stop_check, ps_runner=self._ps_runner)

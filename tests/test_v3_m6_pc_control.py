@@ -153,3 +153,129 @@ def test_item1_switch_app_switches_to_allowed_window_and_refuses_terminals(tmp_p
 
     with pytest.raises(PCControlError, match="terminal|blocked"):
         ctrl.switch_app("Windows PowerShell")
+
+
+# -- Item 2: Approvals & tool-list registration --------------------------------------------------------------------
+def test_item2_pc_control_is_registered_in_tool_list_as_laptop_only():
+    from prometheus.agents.base import REGISTRY
+    from prometheus.orchestrator.registry import planner_line, runs_on, specs
+
+    assert "pc_control" in REGISTRY
+    assert runs_on("pc_control") == "laptop"
+    spec_names = {s.name for s in specs(REGISTRY)}
+    assert "pc_control" in spec_names
+    assert "laptop only" in planner_line("pc_control", REGISTRY["pc_control"])
+
+
+def test_item2_every_input_action_asks_first_and_reading_asks_once(make_ctx, monkeypatch):
+    from prometheus.pc_control.agent import PCControlAgent
+    from prometheus.pc_control.controller import PCController
+
+    backend, state = _make_fake_backend()
+    raw = Image.new("RGB", (640, 480), color=(0, 0, 0))
+    uia_payload = json.dumps({"window": "Notes - Notepad", "focused": None, "controls": []})
+
+    def factory(data_dir, killswitch=None):
+        return PCController(
+            data_dir,
+            killswitch=killswitch,
+            backend=backend,
+            grabber=lambda: raw,
+            ps_runner=lambda script, stop_check=None: uia_payload,
+            password_checker=lambda stop_check=None: (False, ""),
+        )
+
+    monkeypatch.setattr("prometheus.pc_control.agent.make_controller", factory)
+    ctx = make_ctx()
+    store, approvals = ctx.store, ctx.approvals
+    agent = PCControlAgent()
+
+    # 1) Read asks once, and after approval + remember="exact", second read runs immediately without asking
+    r1 = agent.run("read screen", {"action": "read_controls"}, ctx)
+    assert r1.status == "waiting_approval"
+    pending = store.approvals(status="pending")
+    assert len(pending) == 1
+    out1 = approvals.resolve(pending[0].id, True, remember="exact")
+    assert "Notes - Notepad" in out1
+
+    r2 = agent.run("take screenshot", {"action": "screenshot"}, ctx)
+    assert r2.status == "done"
+    assert store.approvals(status="pending") == []
+
+    # 2) Every click, type, press_keys, switch_app MUST ask every time (never remembered, describes action)
+    actions = [
+        ({"action": "click", "x": 120, "y": 240, "button": "left"}, "120, 240", "click"),
+        ({"action": "type", "text": "hello"}, "hello", "char"),
+        ({"action": "press_keys", "keys": "ctrl+c"}, "ctrl+c", "keys"),
+        ({"action": "switch_app", "app": "Calculator"}, "Calculator", "switch"),
+    ]
+    for inputs, desc_snippet, ev_kind in actions:
+        before_events = len(state["events"])
+        res = agent.run("act", inputs, ctx)
+        assert res.status == "waiting_approval"
+        assert desc_snippet.lower() in res.summary.lower()
+        assert len(state["events"]) == before_events  # nothing executed before approval!
+        pending = store.approvals(status="pending")
+        assert len(pending) == 1
+        assert desc_snippet.lower() in pending[0].summary.lower()
+        approvals.resolve(pending[0].id, True, remember="exact")
+        assert len(state["events"]) > before_events
+        assert any(e[0] == ev_kind for e in state["events"][before_events:])
+
+    # Repeating the exact same click still asks again, and rejecting executes nothing
+    again = agent.run("click again", {"action": "click", "x": 120, "y": 240}, ctx)
+    assert again.status == "waiting_approval"
+    before_reject = len(state["events"])
+    approvals.resolve(again.data["approval_id"], False)
+    assert len(state["events"]) == before_reject
+
+
+# -- Item 3: Never type into password fields, and never send secret-looking text -----------------------------------
+def test_item3_refuses_password_field_via_uia_and_never_sends_keystrokes(tmp_path):
+    from prometheus.pc_control.controller import PCController, PasswordFieldError
+
+    backend, state = _make_fake_backend()
+    # Real UIA focused_is_password check driven by PS JSON response (IsPassword=True OR name="Password")
+    for payload in (
+        {"name": "Input", "control_type": "Edit", "automation_id": "", "is_password": True},
+        {"name": "Password", "control_type": "Edit", "automation_id": "", "is_password": False},
+    ):
+        ctrl = PCController(
+            data_dir=tmp_path,
+            backend=backend,
+            ps_runner=lambda script, stop_check=None, p=payload: json.dumps(p),
+        )
+        with pytest.raises(PasswordFieldError, match="password"):
+            ctrl.type_text("my-pass")
+    assert state["events"] == []
+
+
+def test_item3_refuses_secret_text_in_controller_and_agent_before_approval(make_ctx, monkeypatch):
+    from prometheus.pc_control.agent import PCControlAgent
+    from prometheus.pc_control.controller import PCController, SecretTextError
+
+    backend, state = _make_fake_backend()
+    fake_api_key = "sk-ant-" + "A1b2C3d4E5f6G7h8I9j0K1L2"
+
+    ctrl = PCController(
+        data_dir=make_ctx().home,
+        backend=backend,
+        password_checker=lambda stop_check=None: (False, ""),
+    )
+    with pytest.raises(SecretTextError, match="secret"):
+        ctrl.type_text(fake_api_key)
+    assert state["events"] == []
+
+    monkeypatch.setattr(
+        "prometheus.pc_control.agent.make_controller",
+        lambda d, killswitch=None: PCController(
+            d, killswitch=killswitch, backend=backend, password_checker=lambda stop_check=None: (False, "")
+        ),
+    )
+    ctx = make_ctx()
+    agent = PCControlAgent()
+    res = agent.run("type key", {"action": "type", "text": fake_api_key}, ctx)
+    assert res.status == "failed"
+    assert fake_api_key not in res.summary
+    assert ctx.store.approvals(status="pending") == []  # never even stored in approvals DB!
+

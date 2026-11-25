@@ -12,9 +12,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from prometheus.pc_control import agent as _pc_control_agent  # noqa: F401
 from prometheus.phone import LAPTOP_AGENTS
 
 PHONE_AGENTS = frozenset({"phone"})
+EXTRA_LAPTOP = frozenset({"pc_control"})
 RUNS_ON_LABEL = {"laptop": "laptop only", "phone": "needs the phone", "both": ""}
 
 
@@ -32,7 +34,7 @@ class ToolSpec:
 def runs_on(name: str) -> str:
     if name in PHONE_AGENTS:
         return "phone"
-    if name in LAPTOP_AGENTS:
+    if name in LAPTOP_AGENTS or name in EXTRA_LAPTOP:
         return "laptop"
     return "both"
 
