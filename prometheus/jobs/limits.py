@@ -186,10 +186,11 @@ def _end(entry: dict) -> None:
 
     pid, pgid, job = entry["pid"], entry.get("pgid"), entry.get("win_job")
     if sys.platform == "win32":
+        # the program's own process is ended first (its owner still holds its handle, so the pid can't have been
+        # reused yet), then the Job Object is closed, which ends whatever is left of the tree (kill-on-close)
+        kill_process_tree(pid)
         if job is not None:
-            job.close()                  # kill-on-close ends the whole tree at once, with no pid lookup at all
-        else:
-            kill_process_tree(pid)       # the caller still holds the process handle, so this pid can't be reused yet
+            job.close()
         return
     if pgid is not None and pgid != os.getpgrp():
         try:
