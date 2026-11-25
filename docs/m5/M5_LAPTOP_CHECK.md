@@ -77,3 +77,27 @@ Started server from `C:\Users\saive\prometheus-m5` via `python -m prometheus.cli
 - Opened `/v3/agents?own=new`: verified `0` tools were ticked by default.
 - Created `notes_helper` (`about`: `"Reads text notes for me"`, `instructions`: `"Summarize notes concisely."`, only `read_files` ticked).
 - Redirected to `/v3/agents?show=notes_helper`; detail pane showed `Read` permission only (no `Web search` / `Web fetch` / `Open`), saved in `settings.json`, and persisted cleanly across server restart.
+
+---
+
+## Re-check on main (25 Nov 2026)
+
+**Branch / commit tested:** `main` at `2a75920` (unmodified code; this section is committed on `prometheus-v3` only).  
+**Clone tested:** `C:\Users\saive\prometheus-m5` (isolated `PROMETHEUS_HOME` ports `8057`/`8058`; verified `prometheus.__file__` imported from `C:\Users\saive\prometheus-m5\prometheus\__init__.py`).  
+**Available RAM during re-check:** `0.28 GB` to `0.34 GB` free (`95.6%–98%` of `7.69 GiB` used with normal laptop apps running).
+
+### 1. Full test suite (`python -m pytest -q`)
+
+- **Passed:** **`1974 passed, 42 skipped, 4 warnings in 2248.83s (0:37:28)`** (unmodified full run, `2,016` tests collected, `0` failed, `0` hung, `0` deselected).
+- Both issues from the first check (`test_own_agents_run_as_child_agents_in_a_task_graph` hang and `test_removing_an_agent_asks_first_and_then_cancels_its_running_jobs` failure) passed cleanly.
+
+### 2. Live checks from `C:\Users\saive\prometheus-m5`
+
+| Check | Result | What was seen |
+|---|---|---|
+| Start 5 jobs at once (only 2 run; 3 if > 3 GB RAM free) | **Passed** | Real RAM (`0.28–0.34 GB < 1 GB`): `1` ran at a time (`Step 1` running / `4` pending in `TaskGraph`; `Chat 4` running / `Chats 5–8` `"Waiting for a free slot"` via `/api/v3/send`). With `RamSlots` given `2.0 GB` (harness): `2` ran (`Child 1–2`, `4 python.exe` PIDs), `3` pending. With `4.0 GB` (harness): `3` ran (`Child 1–3`, `6 python.exe` PIDs), `2` pending. *(Note: because live free RAM on this 8 GB laptop was `< 1 GB`, the 2- and 3-slot concurrency tiers were checked using the harness `RamSlots` callback rather than freeing 3+ GB physically.)* |
+| Stop all: no Prometheus programs left in Task Manager | **Passed** | Tested on 5-step `TaskGraph`s at real RAM (`0.28 GB`), `2.0 GB`, and `4.0 GB`: `0` child `python.exe` processes remained in Windows (`psutil`) after `/kill` / `killswitch.trigger()`; stopped steps became `paused` (none mis-marked `done`), queued `pending` steps stayed `pending`. |
+| Restart Prometheus: running jobs show "paused" with a Resume button, nothing runs by itself | **Passed** *(chat tasks show Run again)* | Resumable 5-step `TaskGraph` after hard server crash (`proc.kill()`) + restart: `0` leftover processes, waited `2 s` and nothing started by itself, `/v3/agents` showed `paused` (`"Prometheus restarted"`) with **`Resume`** and **`Stop`** buttons, and clicking **`Resume`** resumed execution. Chat `task` jobs after `Stop all` + restart ran nothing by themselves: active `Chat 4` stayed `paused` with **`Run again`** + **`Stop`** (per `jobs_view.py`), and waiting `Chats 5–8` stayed `cancelled` with **`Run again`**. |
+| Branch a chat: the original stays the same | **Passed** | `/c/1` (`3` messages) -> branched from message 2 (`200`) to `/c/2` (`2` messages, `"From: Main Re-check Chat"` chip); `/c/1` stayed untouched (`3` messages); branching `/c/2` -> `/c/3` (`1` message, `"From: Main Re-check Chat (branch)"`) worked; deleting `/c/1` (`204`) left `/c/2`'s provenance chip as plain `<span>`. |
+| Make your own agent with one tool: it can't use any other tool | **Passed** | Toggled `Own agents` on in `Settings → Features`, `/v3/agents?own=new` started with `0` tools checked, created `notes_helper` with only `read_files` checked (`has_read=True`, no web tools), persisted across restart. Running saved `notes_helper` with `FakeProvider` requesting unticked `web_search` executed `oa.SEARCH` **`0` times** and refused in code (`"The tool 'web_search' is not allowed for this agent. Nothing was done."`). |
+
