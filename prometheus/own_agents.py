@@ -53,6 +53,19 @@ SCHEMA = {
 APPROVAL_KIND = "own_open_local"
 
 
+# Names of own agents removed while Prometheus runs: a run of one that is still going (also a chat step outside the
+# job tracker) stops at its next round instead of finishing (M5: the audit's open item).
+_REMOVED: set[str] = set()
+
+
+def mark_removed(name: str) -> None:
+    _REMOVED.add(name)
+
+
+def unmark_removed(name: str) -> None:
+    _REMOVED.discard(name)
+
+
 class OwnAgentError(ValueError):
     """The agent can't be saved; the message is in plain words for the owner."""
 
@@ -98,6 +111,7 @@ def clean(settings, spec: dict, builtin: set[str], cards: set[str], editing: str
 
 def add(settings, spec: dict, builtin: set[str], cards: set[str]) -> dict:
     new = clean(settings, spec, builtin, cards)
+    unmark_removed(new["name"])                 # a new agent with an old name is a new agent
     settings.own_agent_specs = specs(settings) + [new]
     return new
 
@@ -202,6 +216,8 @@ class OwnAgent(Agent):
         private = False
         for _ in range(MAX_ROUNDS):
             ctx.killswitch.check()
+            if self.name in _REMOVED:
+                return StepResult("failed", f"{self.name} was removed, so it stopped.")
             with self._model(ctx):
                 reply = ctx.router.complete("private" if private else "combine", messages, system, json_schema=SCHEMA,
                                             max_tokens=1500)

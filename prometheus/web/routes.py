@@ -379,6 +379,7 @@ def register_routes(app: FastAPI, services: Services) -> None:
                                  f"{'them' if len(running) != 1 else 'it'}?"}, status_code=409)
         stopped = own_agents.stop_jobs(services.jobs, getattr(services.graphs, "runner", None), services.graphs, running)
         own_agents.delete(services.settings, name)
+        own_agents.mark_removed(name)                     # a run still going in a chat stops at its next round
         own_apply()
         store.audit("user", "own_agent_remove", {"agent": name, "cancelled": stopped})
         return {"removed": name, "cancelled": stopped}
