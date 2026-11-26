@@ -17,6 +17,7 @@ Rules, all in code:
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import os
 import re
@@ -38,6 +39,10 @@ STATE_KEY = "cloudroom_state"                 # name -> {sha, id, at}: what this
 KNOWLEDGE, SYNC = "repo-knowledge.pcr", "sync-data.pcr"
 FILES = "https://www.googleapis.com/drive/v3/files"
 UPLOAD = "https://www.googleapis.com/upload/drive/v3/files"
+FORGET_KEY = "cloudroom_forget"               # names to remove from Drive (a chat deleted or no longer left out)
+HEADER = b"PCR-ITEM "                         # inside the sealed part: "PCR-ITEM <kind>/<name>\n", checked on opening
+# one lock for every Storage: "Backup now" and the nightly job must never upload the same outbox at once
+_LOCK = threading.RLock()
 
 
 class Offline(Exception):
@@ -51,7 +56,7 @@ class StorageError(Exception):
 def enabled(settings) -> bool:
     from prometheus.features import on
 
-    return on(settings, "cloudroom_storage")
+    return settings is not None and on(settings, "cloudroom_storage")
 
 
 def outbox_dir() -> Path:
@@ -160,7 +165,7 @@ class Storage:
     def __init__(self, store, outbox: Path, drive=None, key=None):
         self.store, self.outbox, self.drive = store, Path(outbox), drive
         self._key_source = key
-        self._lock = threading.RLock()
+        self._lock = _LOCK
 
     # -- the key (the one backups use) --------------------------------------------------------------------------
     def _key(self) -> tuple[bytes, bytes]:
@@ -188,6 +193,12 @@ class Storage:
 
     def pending(self) -> list[str]:
         return sorted(m["name"] for _, m in self._metas())
+
+    def _tag(self, kind: str, name: str, sha: str) -> str:
+        """What Drive is told about a file: made with the key, so it gives away nothing about the content and can't
+        be faked (it was the plain SHA-256 before the review of 6.3)."""
+        _salt, key = self._key()
+        return hmac.new(key, f"{kind}/{name}/{sha}".encode("utf-8"), hashlib.sha256).hexdigest()
 
     def _state(self) -> dict:
         s = self.store.kv_get(STATE_KEY, {})
@@ -217,7 +228,8 @@ class Storage:
             if self._unchanged(name, sha):
                 return False
             salt, key = self._key()
-            sealed = backup.encrypt_bytes(plain, salt, key)
+            # the kind and name go inside the sealed part, so a file moved onto another name is refused when opened
+            sealed = backup.encrypt_bytes(HEADER + f"{kind}/{name}\n".encode("utf-8") + plain, salt, key)
             self._add(kind, name, sha, lambda p: Path(p).write_bytes(sealed))
             return True
 
@@ -242,6 +254,12 @@ class Storage:
             if self._unchanged(name, sha):
                 return False
             self._add(kind, name, sha, write)
+            if kind == "backups":           # offline for weeks: keep only the newest backups waiting (disk space)
+                waiting = sorted(((m.get("queued", 0), m["name"], b) for b, m in self._metas()
+                                  if m.get("kind") == "backups"), reverse=True)
+                for _q, _n, old in waiting[backup.KEEP:]:
+                    old.unlink(missing_ok=True)
+                    old.with_suffix(".blob.json").unlink(missing_ok=True)
             return True
 
     # -- sending ------------------------------------------------------------------------------------------------------
@@ -256,6 +274,8 @@ class Storage:
         res = {"sent": 0, "waiting": 0, "clashes": 0, "refused": 0, "message": ""}
         with self._lock:
             if self.outbox.exists():
+                for half in self.outbox.glob("*.tmp"):            # left by a crash halfway through writing
+                    half.unlink(missing_ok=True)
                 known = {b for b, _ in self._metas()}
                 for stray in self.outbox.glob("*.blob"):
                     if stray not in known:
@@ -278,6 +298,7 @@ class Storage:
             try:
                 for blob, meta in ready:
                     self._send(blob, meta, res, memo)
+                self._forget(memo)
             except Offline:
                 res["message"] = "Offline: the uploads wait in the outbox and go when there is a connection."
             except GoogleError as e:
@@ -295,25 +316,41 @@ class Storage:
             memo[kind] = d.ensure_folder(OTHER if kind == "other" else KINDS[kind], memo["root"])
         return memo[kind]
 
+    def _forget(self, memo: dict) -> None:
+        """Remove from Drive what the laptop no longer keeps (the laptop copy is the main one)."""
+        names = self.store.kv_get(FORGET_KEY, []) or []
+        if not names:
+            return
+        state = self._state()
+        for name in list(names):
+            there = self._drive().find(name, self._folder(memo, "private"))
+            if there:
+                self._drive().delete(there["id"])
+            state.pop(name, None)
+            names.remove(name)
+            self.store.kv_set(STATE_KEY, state)
+            self.store.kv_set(FORGET_KEY, names)
+
     def _send(self, blob: Path, meta: dict, res: dict, memo: dict) -> None:
         d, name, kind, sha = self._drive(), meta["name"], meta["kind"], meta["sha"]
+        tag = self._tag(kind, name, sha)
         parent = self._folder(memo, kind)
         there = d.find(name, parent)
         last = self._state().get(name, {})
-        if there and there["sha"] == sha:
+        if there and there["sha"] == tag:
             fid = there["id"]                                              # already there
-        elif there and last.get("sha") == there["sha"]:
-            fid = d.put(name, blob, parent, sha, replace_id=there["id"])   # our own older copy: replace it
+        elif there and last.get("tag") and last.get("tag") == there["sha"]:
+            fid = d.put(name, blob, parent, tag, replace_id=there["id"])   # our own older copy: replace it
             res["sent"] += 1
         else:
             if there:                                                      # a clash: the laptop wins
                 d.keep_other_copy(there["id"], parent, self._folder(memo, "other"),
                                   f"{name} (other copy {time.strftime('%Y-%m-%d %H%M%S')})")
                 res["clashes"] += 1
-            fid = d.put(name, blob, parent, sha)
+            fid = d.put(name, blob, parent, tag)
             res["sent"] += 1
         state = self._state()
-        state[name] = {"sha": sha, "id": fid, "at": time.time()}
+        state[name] = {"sha": sha, "tag": tag, "id": fid, "at": time.time()}
         self.store.kv_set(STATE_KEY, state)
         blob.unlink(missing_ok=True)
         blob.with_suffix(".blob.json").unlink(missing_ok=True)
@@ -334,7 +371,7 @@ class Storage:
         with self._lock:
             for blob, meta in self._metas():
                 if meta["name"] == name:
-                    return backup.decrypt_bytes(blob.read_bytes(), key, salt)
+                    return self._unwrap(kind, name, backup.decrypt_bytes(blob.read_bytes(), key, salt))
         d = self._drive()
         root = d.ensure_folder(FOLDER)
         there = d.find(name, d.ensure_folder(KINDS[kind], root))
@@ -343,7 +380,17 @@ class Storage:
         with tempfile.TemporaryDirectory(prefix="prom-cloudroom-") as tmp:
             got = Path(tmp) / "item"
             d.fetch(there["id"], got)
-            return backup.decrypt_bytes(got.read_bytes(), key, salt)
+            return self._unwrap(kind, name, backup.decrypt_bytes(got.read_bytes(), key, salt))
+
+    @staticmethod
+    def _unwrap(kind: str, name: str, plain: bytes) -> bytes:
+        if kind == "backups":                       # sealed whole by backup.py: opened by restore, not here
+            return plain
+        want = HEADER + f"{kind}/{name}\n".encode("utf-8")
+        if not plain.startswith(want):
+            raise StorageError("That stored file doesn't belong to this name (it was moved or changed), so it wasn't "
+                               "used.")
+        return plain[len(want):]
 
     def lookup_private(self, chat_id: int) -> dict:
         """The stored private notes of a chat that was left out: {chat_id, title, messages}."""
@@ -372,11 +419,25 @@ class Storage:
         archive = getattr(services, "archive", None)
         left_out = getattr(archive, "left_out", None)
         if left_out is not None:
+            keep = set()
             for cid, title in store.chats():
                 if left_out(cid):
+                    keep.add(f"private-chat-{cid}.pcr")
                     put("private", f"private-chat-{cid}.pcr", {
                         "chat_id": cid, "title": title,
                         "messages": [{"role": m.role, "text": m.text, "created": m.created} for m in store.messages(cid)]})
+            # a chat deleted, or taken off "left out": its private notes go from the outbox and from Drive too
+            with self._lock:
+                gone = set()
+                for blob, meta in self._metas():
+                    if meta.get("kind") == "private" and meta["name"] not in keep:
+                        blob.unlink(missing_ok=True)
+                        blob.with_suffix(".blob.json").unlink(missing_ok=True)
+                        gone.add(meta["name"])
+                gone |= {n for n in self._state() if n.startswith("private-chat-") and n not in keep}
+                if gone:
+                    forget = set(self.store.kv_get(FORGET_KEY, []) or []) | gone
+                    self.store.kv_set(FORGET_KEY, sorted(forget))
         return queued
 
 

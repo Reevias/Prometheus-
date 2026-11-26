@@ -223,3 +223,97 @@ def test_the_spoken_brief_reads_phone_notifications_only_after_the_read_yes(app_
     assert "on your phone" not in brief._messages(services) and read == []
     services.store.add_allow_rule("phone_read", "phone:read", "Reading the phone screen and notifications")
     assert "1 notification on your phone" in brief._messages(services) and read == [1]
+
+
+# -- 6.3 Cloudroom storage --------------------------------------------------------------------------------------------
+from tests.test_m6_cloudroom_storage import KEY, SALT, FakeDrive  # noqa: E402
+
+
+def _storage(tmp_path, drive=None, store=None):
+    from prometheus import cloudroom_storage as cs
+    from prometheus.memory.store import Store
+
+    return cs.Storage(store or Store(tmp_path / "memory.db"), tmp_path / "outbox", drive=drive or FakeDrive(),
+                      key=lambda: (SALT, KEY))
+
+
+def test_drive_never_gets_a_fingerprint_of_the_plain_content(tmp_path):
+    """appProperties held SHA-256 of the plain text: anyone reading the Drive could check a guess at a short note."""
+    import hashlib
+
+    drive = FakeDrive()
+    st = _storage(tmp_path, drive)
+    plain = b'{"chat_id": 5, "title": "hi", "messages": []}'
+    st.queue("private", "private-chat-5.pcr", plain)
+    st.flush()
+    [f] = drive.files.values()
+    assert f["sha"] and f["sha"] != hashlib.sha256(plain).hexdigest()
+
+
+def test_a_sealed_item_cant_be_swapped_onto_another_name(tmp_path):
+    import pytest
+
+    from prometheus import backup
+    from prometheus import cloudroom_storage as cs
+
+    drive = FakeDrive()
+    st = _storage(tmp_path, drive)
+    st.queue("private", "private-chat-5.pcr", b'{"chat_id": 5}')
+    st.queue("private", "private-chat-7.pcr", b'{"chat_id": 7}')
+    st.flush()
+    by_name = {f["name"]: f for f in drive.files.values()}
+    by_name["private-chat-5.pcr"]["bytes"] = by_name["private-chat-7.pcr"]["bytes"]       # someone swaps the files
+    with pytest.raises(cs.StorageError):
+        st.lookup_private(5)
+    sealed = backup.encrypt_bytes(b"x", SALT, KEY)
+    with pytest.raises(backup.BackupError):                                               # nothing after the end
+        backup.decrypt_bytes(sealed + b"extra", KEY, SALT)
+
+
+def test_the_offline_outbox_keeps_only_the_newest_backups(tmp_path):
+    from prometheus import backup
+
+    drive = FakeDrive()
+    drive.online = False
+    st = _storage(tmp_path, drive)
+    for i in range(backup.KEEP + 6):
+        f = tmp_path / f"b{i}.pbak"
+        f.write_bytes(backup.encrypt_bytes(f"backup {i}".encode(), SALT, KEY))
+        st.queue_sealed("backups", f"prometheus-{i:03d}.pbak", f)
+    (tmp_path / "outbox" / "leftover.tmp").write_bytes(b"half")
+    st.flush()
+    waiting = [n for n in st.pending() if n.endswith(".pbak")]
+    assert len(waiting) == backup.KEEP and "prometheus-019.pbak" in waiting and "prometheus-000.pbak" not in waiting
+    assert not list((tmp_path / "outbox").glob("*.tmp"))
+
+
+def test_a_chat_no_longer_left_out_or_deleted_is_removed_from_drive(tmp_path):
+    from types import SimpleNamespace
+
+    from prometheus.memory.store import Store
+
+    store = Store(tmp_path / "memory.db")
+    drive = FakeDrive()
+    st = _storage(tmp_path, drive, store)
+    a, b = store.create_chat("left out A"), store.create_chat("left out B")
+    left = {a, b}
+    services = SimpleNamespace(archive=SimpleNamespace(left_out=lambda cid: cid in left))
+    st.snapshot(services)
+    st.flush()
+    assert {f"private-chat-{a}.pcr", f"private-chat-{b}.pcr"} <= set(drive.in_folder("Private notes"))
+    left.discard(a)                       # taken off the "left out" list
+    store.delete_chat(b)                  # deleted
+    st.snapshot(services)
+    st.flush()
+    assert not set(drive.in_folder("Private notes"))
+
+
+def test_every_storage_object_shares_one_lock():
+    """"Backup now" made its own Storage with its own lock, so it could upload the same outbox as the nightly job."""
+    from pathlib import Path
+
+    from prometheus import cloudroom_storage as cs
+
+    one, two = cs.Storage(None, Path("x")), cs.Storage(None, Path("y"))
+    assert one._lock is two._lock
+    assert cs.enabled(None) is False                       # no settings: the switch counts as off

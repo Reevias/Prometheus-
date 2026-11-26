@@ -206,6 +206,8 @@ def _decrypt_stream(fin, fout, main_key_for) -> None:
         fout.write(piece)
         n += 1
         if last:
+            if fin.read(1):              # nothing may follow the last piece (review of M6 6.3)
+                raise BackupError("Wrong recovery code, or the file was changed.")
             break
 
 
