@@ -39,6 +39,11 @@ def test_every_route_requires_login(app_client):
             assert client.get(path).json() == {"app": "prometheus"}
             continue
         url = re.sub(r"{[^}]+}", "1", path)
+        if path.startswith("/api/remote/"):             # the phone's own door (M6 6.4b): a paired device key, not the login
+            for method in getattr(route, "methods", set()) - {"HEAD", "OPTIONS"}:
+                resp = client.request(method, url, follow_redirects=False)
+                assert resp.status_code in (401, 403), f"{method} {path} -> {resp.status_code}"
+            continue
         for method in getattr(route, "methods", set()) - {"HEAD", "OPTIONS"}:
             resp = client.request(method, url, follow_redirects=False)
             assert resp.status_code in (303, 401), f"{method} {path} -> {resp.status_code}"

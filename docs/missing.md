@@ -15,6 +15,19 @@ Not yet run end to end on the owner's real laptop.
 - NOT VERIFIED live on an unlocked interactive desktop: `ImageGrab` screen capture (`OSError: screen grab failed`), `SetForegroundWindow` focus switching (`GetForegroundWindow() == 0`), typing into a live non-password box, and live UIA `IsPassword` refusal (Windows saw only HWND `Pane` wrappers while the screen was locked/asleep during the test session); covered with unit tests using fake Win32/UIA responses.
 - `prometheus/app.py` and `prometheus/agents/__init__.py` were left untouched per build boundaries, so registering `pc_control` at startup (before `prometheus.orchestrator.registry` is imported or before `PCControlAgent.run` runs after a restart with pending approvals) still waits on final wiring.
 
+## M6 6.4b control the laptop from the phone, 26 November 2026
+- Windows and the phone are faked in the tests: the laptop actions (laptop.py) and the mouse and keyboard (6.4a) run through the existing code, never tried from a real phone. NOT VERIFIED on your laptop or phone. There is no phone app screen for it yet (the phone side is the HTTP API `/api/remote/...` and its tests).
+- "Asks on the phone" is two calls: the laptop gives the phone a one-time yes token, and nothing runs without a second call carrying it. Showing the question and the tap is the phone app's job; a phone whose key is stolen could make both calls itself. The mouse and keyboard actions are the ones that also need your yes on the laptop.
+- It needs "Access from other devices" on (the laptop's existing host check refuses a phone's address otherwise) and the laptop listening on its Tailscale address. Only the Tailscale addresses and this laptop count as the private link: your home Wi-Fi addresses are refused.
+- A typed text is shown in full on the Approvals page (so you can judge it) and so it is also in Approvals' own "requested" log line; the phone-remote log lines hold only its length. Screenshots stay on the laptop (the phone gets their file name, not the picture). Power actions other than lock (shut down, restart), installing apps and joining Wi-Fi are not on the list.
+- Pending requests live in memory: a restart drops them and an old laptop approval then says "ask again". The existing test that every route needs a login now says the phone routes must answer 401 or 403 without a key.
+
+## M6 6.2 item 6 Render files and guide, 26 November 2026
+- **The always-on cloud copy is not hosted by these files.** They run only the Cloudroom server: Render's free service has one web port, 512 MB, and forgets its files on every restart (so a cloud copy there would lose its password, sync key and AI keys). Reminders still don't ring while the laptop is off. Opus needs to decide how to host it (or a smaller part of it); `docs/cloud-setup.md` says so.
+- The plan said "the cloud copy's jobs (reminders, alerts, sync) run there" and the owner's message said `cloud/space/`; the plan's own newer words are Render, so the folder is `cloud/render/`.
+- Docker was not run (no engine here, no Render account). Tested: the start command in a clean environment with only `requirements.txt`, health answers and an unsigned request is refused. The laptop's address screen for Cloudroom isn't built yet, so the guide's step 7 says so.
+- The uptime-checker step names UptimeRobot and cron-job.org as examples only; their free limits were not checked.
+
 ## M6 6.3 Cloudroom storage, 25 November 2026
 - Run against a pretend Drive and a pretend Google web server in tests only; never with your real Google Drive, on your laptop or on a Windows machine other than GitHub's. NOT VERIFIED.
 - It uses the recovery code you already made for backups (no new key). If backups were never set up, it stops and says so.

@@ -79,6 +79,7 @@ class Services:
     jobs: object = None
     job_runner: object = None
     graphs: object = None            # task graphs (M5 5.2)
+    remote: object = None            # control from the phone (M6 6.4b)
     runtime: object = None           # the runtimes every job starts through (M6 6.1)
 
     def notify(self, kind: str, text: str) -> bool:
@@ -667,6 +668,10 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
 
     services.laptop_jobs = _phone.LaptopJobs(services)
     approvals.register("laptop_job", lambda payload: services.laptop_jobs.run_approved(payload))
+    from prometheus.remote_control import APPROVAL_KIND as _remote_kind, RemoteControl
+
+    services.remote = RemoteControl(services)                           # M6 6.4b
+    approvals.register(_remote_kind, lambda payload: services.remote.run_approved(payload))
     from prometheus.phone_wait import PhoneWaiter
 
     services.phone_waiter = PhoneWaiter(services)          # phone jobs asked while the phone was away (M3.2)

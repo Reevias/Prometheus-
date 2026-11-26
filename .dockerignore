@@ -1,0 +1,14 @@
+# Keeps the Render build small and keeps private things out of any image (the Dockerfile copies only prometheus/).
+.git
+.venv
+android
+docs
+installer
+tests
+website
+scripts
+downloads
+dist
+*.egg-info
+__pycache__
+.env
