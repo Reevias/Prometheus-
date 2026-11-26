@@ -41,8 +41,7 @@ KEYS = {"back": "4", "home": "3", "recents": "187", "enter": "66", "volume up": 
 NEVER_OPEN = {"com.termux", "jackpal.androidterm", "com.android.shell"}
 
 
-class PhoneError(Exception):
-    pass
+from prometheus.phone import PhoneError
 
 
 def _run(args: list[str], timeout: int = 30) -> tuple[int, bytes]:
