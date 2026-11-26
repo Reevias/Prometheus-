@@ -196,6 +196,35 @@ Each builder does the items in order, a failing test first each time.
 4. `docs/reports/M6_REPORT.md`, CHANGELOG, `docs/missing.md`, `docs/bugs.md`; anything not run on the laptop or the
    phone is NOT VERIFIED.
 
+## Review of 6.3–6.5 (Opus, 26 Nov 2026)
+Independent review (Opus did not build these steps). Each finding below was checked in the code, then fixed with a test
+that failed first (`tests/test_m6_review_63_65.py`, 24 tests). Tested here (Linux) and on GitHub's windows-latest run;
+NOT VERIFIED on the owner's laptop or phone.
+
+| Item | Status before the review | Fixed in the review |
+|---|---|---|
+| Approvals waiting across a restart | **partly**: `pc_control_read`, `pc_control_input` and `phone_read` had no handler until their agent ran again, so a yes after a restart failed; Stop all's hook for PC control was missing until then | all registered at start; Stop all hooked at start |
+| 6.3 encryption | **partly**: AES-256-GCM sound (own salt and nonces per file, wrong key caught), but Drive got the plain-text SHA-256 of each item, a sealed file could be moved onto another name, bytes after the end were accepted | Drive gets a tag made with the key; kind and name sealed inside each item and checked on opening; nothing may follow the last piece |
+| 6.3 offline / privacy | **partly**: the outbox grew with every night offline; private notes of deleted or re-included chats stayed on Drive; "Backup now" and the nightly job could upload at once | newest 14 backups kept waiting; such notes removed from Drive; one lock for all |
+| 6.4a approvals for every click / key / text | **partly**: every input asked (no "always" rule possible), but the yes showed only 37 characters of up to 500 typed | the whole text is in the yes |
+| 6.4a reading the screen | **Critical**: the window title reached PowerShell inside quotes that the curly quotes ‘ ’ ‚ ‛ could end, so an AI-chosen title could run a command (and one "remember" yes covers every later read) | the title goes in as base64 |
+| 6.4a password fields | **partly**: typing was refused in password boxes, single keys and Ctrl+V were not | keys that write text are refused there too |
+| 6.4a coordinates | **missing**: screenshots shrunk to 1600 px but clicks use real screen points; the AI wasn't told | the scale and the screen's left/top are said with every screenshot |
+| 6.4b device key | **done**: random 256-bit key, stored hashed, compared in constant time; private-link check refuses LAN and proxy headers; pairing code 5 minutes, 5 tries | — |
+| 6.4b approvals | **partly**: typed text showed in the Windows pop-up; phone laptop-actions ignored the "apps" Features switch; a waiting laptop yes still ran after remote control was switched off; a cancel could slip in during a confirm | pop-up says only the number of characters; the switch is obeyed; switched off = nothing runs; state set inside the lock |
+| 6.5 approvals | **partly**: every tap/type/app change asked, but the screen was read before the one-time read yes (tap by name, battery, the spoken brief); an approved tap ran even if the button had moved; approvals hid the "91" added to WhatsApp numbers and that an SMS text isn't filled in | read yes first; the tap is refused unless the approved button is still there; the yes shows exactly what happens |
+| 6.5 mobile-mcp | **partly**: version not pinned (`npx -y` ran the newest); any command could be saved without the password | pinned to 1.0.20; another command needs the password |
+| Stop all | **partly**: checked before an action, but not between the steps of one phone action (dialer, number, Call) | checked before every call to the phone |
+| Removed adb code | **partly**: removed, but `phone_wait.phone_back` still called the removed `shell()`, so requests waiting for the phone never resumed | works with mobile-mcp |
+
+Left as known risks (Minor, written down in `docs/missing.md`): a stolen device key can give the phone yes itself
+(the laptop yes still guards clicks and typing); no rate limit for a paired phone; device keys can't be rotated (revoke
+and pair again); `win` alone, `alt+f4` and `ctrl+w` are only guarded by the per-action yes; the window under the cursor
+isn't re-checked for clicks; `read_controls` shows ordinary text-box values to the AI; the process isn't DPI-aware;
+the phone app list is read before asking (not the screen); `setting` only opens the right Settings page; npx gets the
+laptop's environment variables; an older copy of the same item on Drive can't be told from the newest (rollback);
+a new recovery code doesn't re-seal unchanged items; a Google 5xx stops the rest of one flush (nothing is lost).
+
 ## Who does what
 **Opus decides, builds the risky core and checks; Antigravity does the Windows and phone hands-on work on the laptop;
 Sonnet builds storage, the phone screen and the glue.** Nobody audits their own work.

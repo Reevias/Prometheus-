@@ -2,7 +2,32 @@
 
 Every bug found and fixed, newest first, so the count is always exact. Add a line for each new one.
 
-**Total fixed: 198** (as of 25 November 2026). M5 accounts for 28 of them (171–198); see `docs/reports/M5_REPORT.md`.
+**Total fixed: 218** (as of 26 November 2026). M5 accounts for 28 of them (171–198); see `docs/reports/M5_REPORT.md`.
+
+## 26 November 2026, review of M6 6.3–6.5 (20)
+
+| # | Bug | Fixed by |
+|---|---|---|
+| 218 | "Backup now" and the nightly job could upload the same outbox at once | Review of 6.3–6.5, test in `tests/test_m6_review_63_65.py` |
+| 217 | Private notes of deleted or re-included chats stayed on Drive | Review of 6.3–6.5, test in `tests/test_m6_review_63_65.py` |
+| 216 | The offline outbox kept every night's backup, without limit | Review of 6.3–6.5, test in `tests/test_m6_review_63_65.py` |
+| 215 | A sealed Cloudroom file moved onto another name was opened without complaint; bytes after the end were accepted | Review of 6.3–6.5, test in `tests/test_m6_review_63_65.py` |
+| 214 | Drive got the plain-text SHA-256 of each Cloudroom item | Review of 6.3–6.5, test in `tests/test_m6_review_63_65.py` |
+| 213 | Phone approvals hid the number really used for WhatsApp and that an SMS text isn't filled in | Review of 6.3–6.5, test in `tests/test_m6_review_63_65.py` |
+| 212 | An approved phone tap ran even when the approved button had moved | Review of 6.3–6.5, test in `tests/test_m6_review_63_65.py` |
+| 211 | Stop all didn't stop the next step of a phone action | Review of 6.3–6.5, test in `tests/test_m6_review_63_65.py` |
+| 210 | The phone screen was read before the one-time read yes (tap by name, battery, the spoken brief) | Review of 6.3–6.5, test in `tests/test_m6_review_63_65.py` |
+| 209 | Requests waiting for the phone never resumed (the removed adb shell() was still called) | Review of 6.3–6.5, test in `tests/test_m6_review_63_65.py` |
+| 208 | The mobile-mcp version wasn't pinned, and its command could be changed without the password | Review of 6.3–6.5, test in `tests/test_m6_review_63_65.py` |
+| 207 | A cancel could slip in while the phone's yes was being taken | Review of 6.3–6.5, test in `tests/test_m6_review_63_65.py` |
+| 206 | A waiting laptop yes still ran after control from the phone was switched off | Review of 6.3–6.5, test in `tests/test_m6_review_63_65.py` |
+| 205 | Phone actions on the laptop ignored the "apps" Features switch | Review of 6.3–6.5, test in `tests/test_m6_review_63_65.py` |
+| 204 | Typed text from the phone appeared in the laptop's pop-up notification | Review of 6.3–6.5, test in `tests/test_m6_review_63_65.py` |
+| 203 | Shrunk screenshots didn't say their scale, so clicks could miss | Review of 6.3–6.5, test in `tests/test_m6_review_63_65.py` |
+| 202 | Single keys and Ctrl+V could go into a password box on the PC | Review of 6.3–6.5, test in `tests/test_m6_review_63_65.py` |
+| 201 | The yes for typing on the PC showed only 37 of up to 500 characters | Review of 6.3–6.5, test in `tests/test_m6_review_63_65.py` |
+| 200 | A window title could break out of the PowerShell quotes with ‘ ’ ‚ ‛ and run a command (PC control) | Review of 6.3–6.5, test in `tests/test_m6_review_63_65.py` |
+| 199 | PC-control and phone-read approvals had no handler after a restart, so a yes failed; Stop all wasn't hooked into PC control until it first ran | Review of 6.3–6.5, test in `tests/test_m6_review_63_65.py` |
 
 ## 25 November 2026, M5 open items finished (3)
 

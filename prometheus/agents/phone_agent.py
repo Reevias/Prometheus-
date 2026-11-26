@@ -195,6 +195,8 @@ class PhoneAgent(Agent):
             if action == "battery":
                 if hasattr(p, "ensure_connected"):
                     p.ensure_connected()
+                elif hasattr(p, "device_id"):
+                    p.device_id()          # is the phone there? (lists devices only: nothing on its screen is read)
                 return self._ask_read_once(ctx, "Read your phone battery level", {"action": "battery"})
 
             if action == "notifications":

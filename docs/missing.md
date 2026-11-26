@@ -3,6 +3,15 @@
 Updated 11 November 2026. Version 2.3. Built and tested here: 883 tests pass.
 Not yet run end to end on the owner's real laptop.
 
+## M6 review of 6.3–6.5, 26 November 2026
+20 findings fixed (bug log 199–218). Still open (Minor, known risks): a stolen device key can give the phone yes itself
+(the laptop yes still guards clicks and typing); no rate limit for a paired phone; device keys can't be rotated; `win`,
+`alt+f4`, `ctrl+w` only guarded by the per-action yes; the window under the cursor isn't re-checked for clicks;
+`read_controls` shows ordinary text-box values to the AI; not DPI-aware; the phone's app list is read before asking;
+phone `setting` only opens the page; npx gets the laptop's environment variables; Drive rollback to an older copy of an
+item isn't detected; a new recovery code doesn't re-seal unchanged items; a Google 5xx stops the rest of one flush.
+NOT VERIFIED on the laptop or the phone: everything in this review.
+
 ## M6 so far, 26 November 2026 (steps 6.0 to 6.5 built; 6.6 audit and report not done)
 - Built on the branch: runtime (6.1), Cloudroom laptop side and server (6.2, items 1–5), Render files and guide (6.2 item 6), Cloudroom storage (6.3), PC control (6.4a), control from the phone (6.4b), phone control through mobile-mcp (6.5). No M6 bugs are in the bug log: the fixes found while building (real Windows and real phone checks) were made inside those steps; the Opus review and the audit (6.6) will log any they find.
 - Checked on real hardware: only parts of 6.0 (Node.js, npm, adb, UI Automation), 6.4a (window listing, screen bounds, terminal blocking, Stop all) and 6.5 (the plugged-in phone: devices, apps, screenshot, controls, one tap). Everything else is checked on GitHub's Windows machines or with pretend servers only: NOT VERIFIED on your laptop.
