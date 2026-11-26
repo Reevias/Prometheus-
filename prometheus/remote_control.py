@@ -197,6 +197,9 @@ ACTIONS: dict[str, Action] = {
                          lambda s, p, payload: PC_INPUT({**payload, "data_dir": _data_dir()}, s.killswitch), True,
                          "switch_app"),
 }
+# what the Features switch "Opening apps and changing laptop settings" covers, from the phone too (review 6.3–6.5)
+LAPTOP_ACTIONS = frozenset({"bluetooth", "volume", "mute", "brightness", "dark_mode", "do_not_disturb", "app_open",
+                            "app_close", "lock"})
 
 
 def clean_params(action: Action, raw) -> dict:
@@ -383,14 +386,21 @@ class RemoteControl:
             if not hmac.compare_digest(str(token or "").encode(), req["confirm"].encode()):
                 raise RemoteError("That isn't the yes for this request.", 403)
             req["confirm"] = None                                      # a yes works once
+            # the next state is set while still holding the lock, so a cancel can't slip in between (review 6.3–6.5)
+            if req["risk"] == "dangerous":
+                req["state"], req["laptop_since"] = "waiting_laptop", self.clock()
+            else:
+                req["state"] = "running"
         self._log("confirmed", **self._what(req))
         if req["risk"] == "dangerous":
-            req["state"], req["laptop_since"] = "waiting_laptop", self.clock()
             s = self.services
             s.approvals.request(APPROVAL_KIND, f"Your phone ({req['device_name']}) wants to: {req['summary']}",
                                 {"request": req["id"], "action": req["action"]})
             try:
-                s.notify("waiting", f"Your phone wants to control this laptop: {req['summary'][:80]}. Approve it first.")
+                # the pop-up never shows typed text (it can be a PIN); the Approvals page shows it in full
+                said = (f"Type {len(req['params'].get('text', ''))} characters" if req["action"] == "type"
+                        else req["summary"][:80])
+                s.notify("waiting", f"Your phone wants to control this laptop: {said}. Approve it first.")
             except Exception:                                          # noqa: BLE001
                 pass
             return self._view(req)
@@ -400,6 +410,11 @@ class RemoteControl:
         action = ACTIONS[req["action"]]
         req["state"] = "running"
         try:
+            if not action.pc_name and req["action"] in LAPTOP_ACTIONS:
+                from prometheus.features import on
+
+                if not on(self.services.settings, "apps"):         # the Features switch covers the phone too
+                    raise RemoteError("Opening apps and changing laptop settings is switched off in Features.", 409)
             req["result"] = str(action.run(self.services, req["params"], req["payload"]))[:2000]
             req["state"] = "done"
             self._log("ran", **self._what(req))
@@ -440,6 +455,9 @@ class RemoteControl:
                 return f"That request is {req['state'].replace('_', ' ')}, so nothing was done. Ask again from the phone."
             if self.stopped():
                 return "Everything is stopped, so nothing was done."
+            if not self.enabled():
+                req["state"] = "cancelled"
+                return "Control from the phone is switched off in Features, so nothing was done."
             self._log("laptop_yes", **self._what(req))
             out = self._execute(req)
         return out["result"] or out["error"] or "Done."

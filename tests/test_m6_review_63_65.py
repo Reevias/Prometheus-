@@ -68,3 +68,39 @@ def test_a_shrunk_screenshot_says_how_to_turn_its_pixels_into_screen_points(tmp_
     monkeypatch.setattr(agent, "make_controller", lambda d, killswitch=None: PCController(d, backend=backend, grabber=lambda: raw))
     said = agent._execute_read({"action": "screenshot", "data_dir": str(tmp_path)})
     assert "1600x450" in said and "x 2.4" in said and "-1920" in said
+
+
+# -- 6.4b control the laptop from the phone ------------------------------------------------------------------------------
+from prometheus import remote_control as rc  # noqa: E402
+from tests.test_m6_remote_control import confirm, pair, rig, run  # noqa: E402,F401  (fixture and helpers)
+
+
+def test_typed_text_from_the_phone_never_reaches_a_pop_up(rig):
+    """The laptop yes shows the whole text (that is what you approve), but the Windows notification only says how
+    many characters, so a PIN typed from the phone doesn't pop up on screen."""
+    client, services, h, pc, notes = rig
+    phone, auth, _ = pair(rig)
+    started = run(phone, auth, "type", text="my bank pin is 4321 and more").json()
+    confirm(phone, auth, started)
+    assert notes and all("4321" not in text for _, text in notes)
+    [waiting] = [a for a in services.store.approvals() if a.kind == rc.APPROVAL_KIND]
+    assert "my bank pin is 4321 and more" in waiting.summary            # the yes covers every character
+
+
+def test_laptop_actions_from_the_phone_respect_the_apps_switch(rig):
+    client, services, h, pc, notes = rig
+    services.settings.features_off = ["apps"]
+    phone, auth, _ = pair(rig)
+    started = run(phone, auth, "app_open", name="notepad").json()
+    got = confirm(phone, auth, started).json()
+    assert got["state"] != "done" and not [c for c in services.laptop.calls if c[0] == "app_open"]
+
+
+def test_a_waiting_laptop_yes_does_nothing_after_remote_control_is_switched_off(rig):
+    client, services, h, pc, notes = rig
+    phone, auth, _ = pair(rig)
+    started = run(phone, auth, "click", x=10, y=20).json()
+    confirm(phone, auth, started)
+    services.settings.remote_control = False
+    said = services.remote.run_approved({"request": started["id"]})
+    assert not pc["input"] and "off" in said.lower()
