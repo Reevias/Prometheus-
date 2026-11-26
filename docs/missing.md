@@ -8,6 +8,22 @@ Not yet run end to end on the owner's real laptop.
 - NOT VERIFIED live on an unlocked interactive desktop: `ImageGrab` screen capture (`OSError: screen grab failed`), `SetForegroundWindow` focus switching (`GetForegroundWindow() == 0`), typing into a live non-password box, and live UIA `IsPassword` refusal (Windows saw only HWND `Pane` wrappers while the screen was locked/asleep during the test session); covered with unit tests using fake Win32/UIA responses.
 - `prometheus/app.py` and `prometheus/agents/__init__.py` were left untouched per build boundaries, so registering `pc_control` at startup (before `prometheus.orchestrator.registry` is imported or before `PCControlAgent.run` runs after a restart with pending approvals) still waits on final wiring.
 
+## M6 6.3 Cloudroom storage, 25 November 2026
+- Run against a pretend Drive and a pretend Google web server in tests only; never with your real Google Drive, on your laptop or on a Windows machine other than GitHub's. NOT VERIFIED.
+- It uses the recovery code you already made for backups (no new key). If backups were never set up, it stops and says so.
+- The private notes are the title and messages of each chat left out in Memory → Privacy, stored as they are (sealed). A chat taken out of "left out" later, or deleted, keeps its old stored copy until you remove it on Drive. There is no screen to read them yet: `Storage.lookup_private(chat_id)` does it in code.
+- Needs a connection to read the cloud copy back; while an upload is still waiting, it is read from the laptop's queue. Files in the Drive folder are only readable with your recovery code: if you lose it, they can't be opened.
+- The Google sign-in used by backups decides what Drive lets the app see; a file you made by hand in that folder is not seen.
+- The old "Prometheus Backups" folder is left alone (not moved or deleted) when you switch this on.
+
+## M6 6.2 Cloudroom (items 1–5), 25 November 2026
+- Not run on a real Render service yet: tested against the same server code in-process (NOT VERIFIED on Render and on the laptop). The Render files and the setup guide are item 6 (Sonnet).
+- Only Python tasks with no internet can move (the free machine has 512 MB; at most 256 MB, 300 s, 5 MB of files per task). Nothing in Prometheus asks to move a task yet; that needs a button or a plan step (later step).
+- Cancelling a task that is already running on Render marks it cancelled and drops its result, but the sandboxed program runs to its own time limit there.
+- Render keeps everything in memory: after a Render restart its running and finished tasks are gone (the laptop marks them failed, never resends). The one-time signatures are remembered only until a restart; their 5-minute time limit still applies.
+- A sandbox is a guard, not a wall: the Cloudroom server adds the key's folder and /proc to the sandbox's closed places, but the task runs as the same user as the server.
+- If the laptop restarts before Cloudroom confirmed a task that had files, the task is marked failed (the files aren't kept for a resend).
+
 ## M6 6.1 ExecutionRuntime, 25 November 2026
 - Only the laptop runtime exists; a move to Cloudroom is refused until 6.2 adds it and wires your yes (the approval check refuses everything for now).
 - Cancelling and pausing from the jobs view still go to M5's runner and graphs directly; only starting goes through the runtime (the plan's item 3).

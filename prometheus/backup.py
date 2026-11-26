@@ -142,60 +142,91 @@ def _file_key(key: bytes, file_salt: bytes) -> bytes:
     return HKDF(algorithm=hashes.SHA256(), length=32, salt=file_salt, info=b"prometheus backup").derive(key)
 
 
-def encrypt_file(src: Path, dst: Path, salt: bytes, key: bytes) -> None:
+def _encrypt_stream(fin, fout, salt: bytes, key: bytes) -> None:
     from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
     file_salt = secrets.token_bytes(16)
     aes = AESGCM(_file_key(key, file_salt))
     prefix = secrets.token_bytes(4)
     MAGIC_ = MAGIC2
+    fout.write(MAGIC2 + salt + file_salt + prefix)
+    n = 0
+    while True:
+        piece = fin.read(CHUNK)
+        last = len(piece) < CHUNK
+        nonce = prefix + struct.pack(">Q", n)
+        sealed = aes.encrypt(nonce, piece, MAGIC_ + struct.pack(">Q?", n, last))
+        fout.write(struct.pack(">I", len(sealed)) + sealed)
+        n += 1
+        if last:
+            break
+
+
+def encrypt_file(src: Path, dst: Path, salt: bytes, key: bytes) -> None:
     with open(src, "rb") as fin, open(dst, "wb") as fout:
-        fout.write(MAGIC2 + salt + file_salt + prefix)
-        n = 0
-        while True:
-            piece = fin.read(CHUNK)
-            last = len(piece) < CHUNK
-            nonce = prefix + struct.pack(">Q", n)
-            sealed = aes.encrypt(nonce, piece, MAGIC_ + struct.pack(">Q?", n, last))
-            fout.write(struct.pack(">I", len(sealed)) + sealed)
-            n += 1
-            if last:
-                break
+        _encrypt_stream(fin, fout, salt, key)
 
 
-def decrypt_file(src: Path, dst: Path, code: str) -> None:
+def encrypt_bytes(plain: bytes, salt: bytes, key: bytes) -> bytes:
+    """The same sealing as a backup, for something small that is already in memory (Cloudroom storage, M6 6.3)."""
+    out = io.BytesIO()
+    _encrypt_stream(io.BytesIO(plain), out, salt, key)
+    return out.getvalue()
+
+
+def _decrypt_stream(fin, fout, main_key_for) -> None:
+    """main_key_for(salt) gives the main key for the file's salt (from a recovery code, or the key kept on the laptop)."""
     from cryptography.exceptions import InvalidTag
     from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
-    with open(src, "rb") as fin, open(dst, "wb") as fout:
-        magic = fin.read(len(MAGIC))
-        if magic == MAGIC2:
-            salt, file_salt, prefix = fin.read(16), fin.read(16), fin.read(4)
-            aes = AESGCM(_file_key(derive_key(code, salt), file_salt))
-        elif magic == MAGIC:
-            salt, prefix = fin.read(16), fin.read(4)
-            aes = AESGCM(derive_key(code, salt))
-        else:
-            raise BackupError("That isn't a Prometheus backup file.")
-        n = 0
-        while True:
-            size_raw = fin.read(4)
-            if len(size_raw) < 4:
-                raise BackupError("The backup file is cut short (download it again).")
-            sealed = fin.read(struct.unpack(">I", size_raw)[0])
-            nonce = prefix + struct.pack(">Q", n)
-            for last in (False, True):
-                try:
-                    piece = aes.decrypt(nonce, sealed, magic + struct.pack(">Q?", n, last))
-                    break
-                except InvalidTag:
-                    piece = None
-            if piece is None:
-                raise BackupError("Wrong recovery code, or the file was changed.")
-            fout.write(piece)
-            n += 1
-            if last:
+    magic = fin.read(len(MAGIC))
+    if magic == MAGIC2:
+        salt, file_salt, prefix = fin.read(16), fin.read(16), fin.read(4)
+        aes = AESGCM(_file_key(main_key_for(salt), file_salt))
+    elif magic == MAGIC:
+        salt, prefix = fin.read(16), fin.read(4)
+        aes = AESGCM(main_key_for(salt))
+    else:
+        raise BackupError("That isn't a Prometheus backup file.")
+    n = 0
+    while True:
+        size_raw = fin.read(4)
+        if len(size_raw) < 4:
+            raise BackupError("The backup file is cut short (download it again).")
+        sealed = fin.read(struct.unpack(">I", size_raw)[0])
+        nonce = prefix + struct.pack(">Q", n)
+        for last in (False, True):
+            try:
+                piece = aes.decrypt(nonce, sealed, magic + struct.pack(">Q?", n, last))
                 break
+            except InvalidTag:
+                piece = None
+        if piece is None:
+            raise BackupError("Wrong recovery code, or the file was changed.")
+        fout.write(piece)
+        n += 1
+        if last:
+            break
+
+
+def decrypt_file(src: Path, dst: Path, code: str) -> None:
+    with open(src, "rb") as fin, open(dst, "wb") as fout:
+        _decrypt_stream(fin, fout, lambda salt: derive_key(code, salt))
+
+
+def decrypt_bytes(sealed: bytes, key: bytes, salt: bytes) -> bytes:
+    """Open something sealed with encrypt_bytes, using the key kept on this laptop (and its salt)."""
+    def main_key(file_salt: bytes) -> bytes:
+        if file_salt != salt:
+            raise BackupError("Wrong recovery code, or the file was changed.")
+        return key
+
+    out = io.BytesIO()
+    try:
+        _decrypt_stream(io.BytesIO(sealed), out, main_key)
+    except struct.error as e:
+        raise BackupError("The file is cut short.") from e
+    return out.getvalue()
 
 
 # -- Drive --------------------------------------------------------------------------------------
@@ -260,6 +291,18 @@ def run(services, google=None, kind: str = "laptop") -> str:
         plain.unlink()
         size = sealed.stat().st_size
         name = f"Prometheus {kind} {time.strftime('%Y-%m-%d %H%M')}.pbak"
+        from prometheus import cloudroom_storage
+
+        if cloudroom_storage.enabled(getattr(services, "settings", None)):      # M6 6.3: the Cloudroom folder instead
+            storage = cloudroom_storage.queue_backup(services, sealed, name)
+            try:
+                waiting = storage.flush()["waiting"]
+            except Exception:                                                   # noqa: BLE001 - it stays queued
+                waiting = len(storage.pending())
+            services.store.kv_set("backup_last", json.dumps({"when": time.time(), "files": counts["files"],
+                                                             "bytes": size, "name": name}))
+            return (f"Backed up {counts['files']} files ({size / 1024 ** 2:.1f} MB, encrypted) for the Cloudroom "
+                    f"folder on Drive as {name}" + ("; it waits to be uploaded." if waiting else "; uploaded."))
         if google is None:
             from prometheus.connectors.google import Google
 

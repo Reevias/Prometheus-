@@ -77,6 +77,7 @@ FEATURES: tuple[Feature, ...] = (
     Feature("github", "GitHub and new skills from repos", "Online", agents=("github", "repo_scout", "antigravity")),
     Feature("sync", "Sync with the cloud copy", "Online"),
     Feature("backup", "Nightly backup to Google Drive", "Online", attr="backup_on"),
+    Feature("cloudroom_storage", "Cloudroom storage", "Online", attr="cloudroom_storage"),
     Feature("auto_update", "Install updates by itself", "Online", attr="auto_update"),
 )
 BY_KEY = {f.key: f for f in FEATURES}
