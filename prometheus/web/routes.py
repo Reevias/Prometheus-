@@ -1760,6 +1760,19 @@ def register_routes(app: FastAPI, services: Services) -> None:
         store.audit("user", "phone_connected", {})
         return settings_page(request, notice=said)
 
+    @app.post("/settings/phone/mobile-mcp", response_class=HTMLResponse)
+    def phone_connect_mobile_mcp(request: Request, target: str = Form("")):
+        from prometheus.agents import apps_agent
+        from prometheus.connectors.manager import MOBILE_MCP_NAME, MOBILE_MCP_TARGET, ensure_mobile_mcp
+
+        cmd = (target or "").strip()[:500] or MOBILE_MCP_TARGET
+        ensure_mobile_mcp(services.settings, target=cmd, enable=True)
+        save_settings(services.settings)
+        if apps_agent.MANAGER is not None:
+            apps_agent.MANAGER.drop(MOBILE_MCP_NAME)
+        store.audit("user", "app_connected", {"name": MOBILE_MCP_NAME, "kind": "command"})
+        return settings_page(request, notice="Connected mobile-mcp under Other apps (MCP).")
+
     @app.post("/settings/cloud", response_class=HTMLResponse)
     def save_cloud(request: Request, url: str = Form(""), key: str = Form(""), password: str = Form("")):
         denied = _key_gate(request, password)

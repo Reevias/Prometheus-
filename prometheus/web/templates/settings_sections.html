@@ -439,12 +439,15 @@
   </div>
 
   </section>
-  <section class="set" id="phone" data-tab="connections" data-keys="android phone adb wireless debugging tap">
-  <h3>Phone control {{ help("Lets Prometheus tap and type on your Android phone over Wi-Fi (Android calls it wireless debugging). Every action on the phone asks you first.") }}</h3>
+  <section class="set" id="phone" data-tab="connections" data-keys="android phone adb wireless debugging tap mobile-mcp">
+  <h3>Phone control {{ help("Lets Prometheus look at, tap, and type on your Android phone through mobile-mcp (Apache-2.0) running as a separate MCP server under Other apps. Every tap, typed text, and app change asks you first.") }}</h3>
   <div class="panel" style="display:grid;gap:8px">
-    <p class="muted" style="margin:0">Prometheus can control your Android phone (open apps, see and tap the screen, settings,
-      alarms, messages and calls; taps, typing, messages and calls are asked first). Steps are in
-      <code>docs/phone-setup.md</code> (section 6). On the phone: Settings → Developer options → <strong>Wireless debugging</strong>.</p>
+    <p class="muted" style="margin:0">Prometheus controls your Android phone through <strong>mobile-mcp</strong> in
+      <a href="#connections">Other apps (MCP)</a> (needs Node.js 20+ and Android Platform Tools <code>adb</code> on this
+      laptop, with USB debugging or Wireless debugging turned on). Steps are in <code>docs/phone-setup.md</code>.</p>
+    <form class="row" hx-post="/settings/phone/mobile-mcp" hx-target="body" style="flex-wrap:wrap">
+      <button type="submit" class="primary">Connect mobile-mcp (Other apps)</button>
+    </form>
     {% if phone_error %}<p class="error" style="margin:0">{{ phone_error }}</p>{% endif %}
     <form class="row" hx-post="/settings/phone/pair" hx-target="body" style="flex-wrap:wrap">
       <span class="muted">1. Pair once: tap “Pair device with pairing code” on the phone, then type what it shows</span>

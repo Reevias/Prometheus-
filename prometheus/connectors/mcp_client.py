@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import os
 import shlex
+import shutil
 import subprocess
 import threading
 
@@ -31,6 +32,9 @@ class StdioServer:
             argv = [a[1:-1] if len(a) >= 2 and a[0] == a[-1] and a[0] in "\"'" else a for a in argv]
         if not argv:
             raise MCPError("The server needs a command.")
+        exe = shutil.which(argv[0])
+        if exe:
+            argv[0] = exe
         try:
             self.proc = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                                          env={**os.environ, **(env or {})}, text=True, encoding="utf-8", bufsize=1)
@@ -168,10 +172,19 @@ class Connection:
         t = next((t for t in self.tools if t.get("name") == tool), {})
         return bool((t.get("annotations") or {}).get("readOnlyHint"))
 
-    def call(self, tool: str, arguments: dict) -> str:
+    def call_raw(self, tool: str, arguments: dict | None = None) -> dict:
         if not any(t.get("name") == tool for t in self.tools):
             raise MCPError(f"{self.name} has no tool called {tool}.")
         result = self.server.request("tools/call", {"name": tool, "arguments": arguments or {}})
+        if result.get("isError"):
+            msg = "\n".join(
+                item.get("text", "") for item in result.get("content", []) if item.get("type") == "text"
+            ).strip()
+            raise MCPError(msg[:500] or "The tool reported an error.")
+        return result
+
+    def call(self, tool: str, arguments: dict) -> str:
+        result = self.call_raw(tool, arguments)
         parts = []
         for item in result.get("content", []):
             if item.get("type") == "text":
@@ -182,7 +195,4 @@ class Connection:
                 parts.append(f"[{item.get('type')} content]")
         if result.get("structuredContent") and not parts:
             parts.append(json.dumps(result["structuredContent"])[:8000])
-        text = "\n".join(parts)[:20_000]
-        if result.get("isError"):
-            raise MCPError(text[:500] or "The tool reported an error.")
-        return text
+        return "\n".join(parts)[:20_000]
