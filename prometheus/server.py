@@ -162,7 +162,7 @@ def create_app(services: Services, background: bool = False) -> FastAPI:
     @app.middleware("http")
     async def guard(request: Request, call_next):
         path = request.url.path
-        if path in OPEN_PATHS or path.startswith(("/static/", "/hooks/")) or path in (
+        if path in OPEN_PATHS or path.startswith(("/static/", "/hooks/", "/api/remote/")) or path in (
                 "/hooks", "/api/mcp", "/api/sync", "/api/notify", "/api/laptop-jobs"):
             # hooks and the tool server check their own secret
             return await call_next(request)
@@ -376,4 +376,7 @@ def create_app(services: Services, background: bool = False) -> FastAPI:
     from prometheus.web.routes import register_routes
 
     register_routes(app, services)
+    from prometheus.web.remote_routes import register_remote_routes
+
+    register_remote_routes(app, services)           # M6 6.4b: the phone's own key checks, not the browser login
     return app

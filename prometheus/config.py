@@ -116,6 +116,7 @@ class Settings:
     tray: bool = True                      # icon by the clock; closing the window keeps Prometheus running      # run scripts in Windows Sandbox when this laptop has it
     repo_of_day: bool = True
     cloudroom_storage: bool = False             # M6 6.3: encrypted knowledge, sync data and backups in a Drive folder (Features)
+    remote_control: bool = False                # M6 6.4b: the phone may control this laptop (paired key, private link; Features)
     own_agents: bool = False                    # M5 5.4: the owner's own agents (Features switch, off)
     own_agent_specs: list = field(default_factory=list)   # their saved definitions (prometheus/own_agents.py)
     parallel_steps: bool = False                # M5 5.2: run a plan's independent steps at once (Features)

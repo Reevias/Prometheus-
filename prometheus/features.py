@@ -61,6 +61,7 @@ FEATURES: tuple[Feature, ...] = (
             agents=("apps", "system", "settings", "opener")),
     Feature("browser", "Browser control", "Computer and phone", agents=("browser",)),
     Feature("own_agents", "Own agents", "Computer and phone", attr="own_agents"),
+    Feature("remote_control", "Control the laptop from the phone", "Computer and phone", attr="remote_control"),
     Feature("code", "Running code (sandbox)", "Computer and phone", agents=("code",)),
     Feature("phone", "Phone control", "Computer and phone", agents=("phone",)),
     Feature("laptop_jobs", "Jobs sent from the phone to the laptop", "Computer and phone"),

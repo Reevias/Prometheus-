@@ -131,6 +131,38 @@
       {% else %}<p class="muted small">Prometheus can read the phone's battery only with phone control (wireless debugging) on: Settings → Phone control.</p>{% endif %}
       <a class="pill" href="/phone">Get it on your phone</a>
     </section>
+    <section class="sys-card" id="remote-card">
+      <h2>Control the laptop from your phone</h2>
+      {% if remote_on %}
+      <p class="muted small">Only a phone you pair here can do this, only over your private link, and every action asks on the
+        phone first (mouse and keyboard also ask here). It needs “Access from other devices” on in Settings.</p>
+      {% for d in remote_devices %}
+      <div class="own-row" data-device="{{ d.id }}"><b>{{ d.name }}</b>
+        <span class="muted">paired {{ d.created|day }}{% if d.last_seen %}, last seen {{ d.last_seen|day }} {{ d.last_seen|clock }}{% endif %}</span>
+        <button type="button" class="pill danger" data-revoke="/api/v3/remote/devices/{{ d.id }}/revoke">Remove</button></div>
+      {% else %}<p class="muted small">No phone is paired yet.</p>{% endfor %}
+      <button type="button" class="pill" id="remote-pair" data-api-url="/api/v3/remote/pairing-code">New pairing code</button>
+      <p class="job-note" id="remote-code" role="status" hidden></p>
+      <script>
+      (function () {
+        function post(url) { return fetch(url, { method: "POST", credentials: "same-origin",
+          headers: { "X-CSRF-Token": document.body.dataset.csrf } }); }
+        var b = document.getElementById("remote-pair"), out = document.getElementById("remote-code");
+        b.addEventListener("click", function () {
+          post(b.dataset.apiUrl).then(function (r) { return r.json(); }).then(function (j) {
+            out.hidden = false;
+            out.textContent = j.code ? "Type this on your phone within 5 minutes: " + j.code : (j.error || "Couldn't make a code.");
+          });
+        });
+        document.querySelectorAll("[data-revoke]").forEach(function (x) {
+          x.addEventListener("click", function () { post(x.dataset.revoke).then(function () { location.reload(); }); });
+        });
+      })();
+      </script>
+      {% else %}
+      <p class="muted small">Switched off. Turn on “Control the laptop from the phone” in <a href="/settings#features">Settings → Features</a> to pair a phone.</p>
+      {% endif %}
+    </section>
   </div>
   <script>
   (function () {
