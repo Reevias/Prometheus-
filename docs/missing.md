@@ -3,6 +3,11 @@
 Updated 11 November 2026. Version 2.3. Built and tested here: 883 tests pass.
 Not yet run end to end on the owner's real laptop.
 
+## M6 so far, 26 November 2026 (steps 6.0 to 6.5 built; 6.6 audit and report not done)
+- Built on the branch: runtime (6.1), Cloudroom laptop side and server (6.2, items 1–5), Render files and guide (6.2 item 6), Cloudroom storage (6.3), PC control (6.4a), control from the phone (6.4b), phone control through mobile-mcp (6.5). No M6 bugs are in the bug log: the fixes found while building (real Windows and real phone checks) were made inside those steps; the Opus review and the audit (6.6) will log any they find.
+- Checked on real hardware: only parts of 6.0 (Node.js, npm, adb, UI Automation), 6.4a (window listing, screen bounds, terminal blocking, Stop all) and 6.5 (the plugged-in phone: devices, apps, screenshot, controls, one tap). Everything else is checked on GitHub's Windows machines or with pretend servers only: NOT VERIFIED on your laptop.
+- Open decisions and gaps, each written in its own section below: where the always-on cloud copy runs (the Render files don't host it), the screen for the Render address and a button to move a task (not built), a phone app screen for control from the phone (only the API exists), and the review of the encryption, the permissions and the phone control by Opus.
+
 ## M6 6.5 Phone control through mobile-mcp, 26 November 2026
 - Live plugged-in check on the owner's OnePlus Nord 5 (`CPH2707`, ID `3C15BH001TW00000`, Android 16) via `npx -y @mobilenext/mobile-mcp --stdio` verified device discovery, installed app listing (`com.oneplus.calculator`, `com.oneplus.deskclock`, `com.oneplus.note`, `com.android.settings`), launching Calculator, capturing a 30,966-byte screenshot, reading all 36 live Calculator UI controls, tapping, and pressing Home.
 - NOT VERIFIED live while unlocked: multi-tap Calculator entry, `type_text` into a real unlocked app box, reading unlocked Settings/Clock elements, and live password-field refusal (the phone auto-locked mid-check, exposing the lock screen `8:57` / `Device locked` / `Charging 87%`); covered by fake `mobile-mcp` unit tests.
@@ -37,7 +42,7 @@ Not yet run end to end on the owner's real laptop.
 - The old "Prometheus Backups" folder is left alone (not moved or deleted) when you switch this on.
 
 ## M6 6.2 Cloudroom (items 1–5), 25 November 2026
-- Not run on a real Render service yet: tested against the same server code in-process (NOT VERIFIED on Render and on the laptop). The Render files and the setup guide are item 6 (Sonnet).
+- Not run on a real Render service yet: tested against the same server code in-process (NOT VERIFIED on Render and on the laptop). The Render files and the setup guide (item 6) are built: see the next section.
 - Only Python tasks with no internet can move (the free machine has 512 MB; at most 256 MB, 300 s, 5 MB of files per task). Nothing in Prometheus asks to move a task yet; that needs a button or a plan step (later step).
 - Cancelling a task that is already running on Render marks it cancelled and drops its result, but the sandboxed program runs to its own time limit there.
 - Render keeps everything in memory: after a Render restart its running and finished tasks are gone (the laptop marks them failed, never resends). The one-time signatures are remembered only until a restart; their 5-minute time limit still applies.
@@ -45,7 +50,7 @@ Not yet run end to end on the owner's real laptop.
 - If the laptop restarts before Cloudroom confirmed a task that had files, the task is marked failed (the files aren't kept for a resend).
 
 ## M6 6.1 ExecutionRuntime, 25 November 2026
-- Only the laptop runtime exists; a move to Cloudroom is refused until 6.2 adds it and wires your yes (the approval check refuses everything for now).
+- `CloudroomRuntime` now exists (6.2) with your exact one-time yes, but the app doesn't register or offer it anywhere yet, so every job still runs on the laptop.
 - Cancelling and pausing from the jobs view still go to M5's runner and graphs directly; only starting goes through the runtime (the plan's item 3).
 - A job's result is kept in memory for the latest 256 jobs (graph steps keep theirs in their record), so after a restart only graph-step results are known.
 - NOT VERIFIED on the owner's laptop.
