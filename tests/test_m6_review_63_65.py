@@ -104,3 +104,122 @@ def test_a_waiting_laptop_yes_does_nothing_after_remote_control_is_switched_off(
     services.settings.remote_control = False
     said = services.remote.run_approved({"request": started["id"]})
     assert not pc["input"] and "off" in said.lower()
+
+
+# -- 6.5 phone control through mobile-mcp ---------------------------------------------------------------------------
+from tests.test_v3_m6_mobile_mcp import _wire_mobile_mcp  # noqa: E402
+
+
+def test_changing_the_mobile_mcp_command_needs_the_password(app_client):
+    """It is a program Prometheus starts on every phone action; "Other apps" already asks for the password."""
+    from conftest import login
+
+    from prometheus.connectors.manager import MOBILE_MCP_TARGET
+
+    client, services = app_client()
+    h = {"X-CSRF-Token": login(client)}
+    r = client.post("/settings/phone/mobile-mcp", data={"target": "evil.exe --stdio"}, headers=h)
+    assert not any("evil.exe" in (e.get("target") or "") for e in services.settings.mcp_servers)
+    assert r.status_code in (401, 403)
+    assert client.post("/settings/phone/mobile-mcp", headers=h).status_code == 200      # the default needs no password
+    assert "@mobilenext/mobile-mcp@1.0.20" in MOBILE_MCP_TARGET                          # pinned, as in the credits
+
+
+def test_the_phone_wait_check_works_with_mobile_mcp(monkeypatch):
+    """phone_back called the removed adb shell(): AttributeError, so queued phone requests never resumed."""
+    from prometheus import phone_wait
+    from prometheus.phone import MobilePhone
+
+    _, conn, calls, _ = _wire_mobile_mcp(monkeypatch)
+    assert phone_wait.phone_back(MobilePhone(conn=conn)) is True
+    assert phone_wait.phone_back(MobilePhone("1.2.3.4:5555", conn=conn)) is True
+
+
+def test_nothing_on_the_phone_screen_is_read_before_the_one_time_yes(make_ctx, monkeypatch):
+    pa, conn, calls, _ = _wire_mobile_mcp(monkeypatch)
+    ctx = make_ctx()
+    agent = pa.PhoneAgent()
+    calls.clear()
+    tap = agent.run("tap accept", {"action": "tap", "target": "Accept"}, ctx)
+    bat = agent.run("battery", {"action": "battery"}, ctx)
+    read_tools = {"mobile_list_elements_on_screen", "mobile_take_screenshot"}
+    assert not [t for t, _ in calls if t in read_tools], calls
+    assert tap.status == "waiting_approval" and bat.status == "waiting_approval"
+    assert [a.kind for a in ctx.store.approvals()] == ["phone_read", "phone_read"] or \
+        all(a.kind == "phone_read" for a in ctx.store.asks_for_chat(ctx.chat_id()))
+
+
+def test_stop_all_stops_the_next_step_of_a_phone_action(monkeypatch):
+    """A call is several steps (open the dialer, type, find Call, tap): Stop all must stop the rest."""
+    import pytest
+
+    from prometheus.connectors.android import PhoneError
+    from prometheus.phone import MobilePhone
+    from prometheus.safety.killswitch import KillSwitch
+
+    pa, conn, calls, _ = _wire_mobile_mcp(monkeypatch)
+    ks = KillSwitch()
+    pa.SERVICES.killswitch = ks
+    p = MobilePhone(conn=conn)
+    real = conn.call
+
+    def stop_after_first(tool, args=None):
+        out = real(tool, args)
+        ks.trigger("test")
+        return out
+
+    monkeypatch.setattr(conn, "call", stop_after_first)
+    with pytest.raises(PhoneError):
+        p.call("9876543210")
+    assert not [t for t, _ in calls if t == "mobile_click_on_screen_at_coordinates"]
+
+
+def test_an_approved_tap_only_lands_on_what_was_approved(monkeypatch):
+    """A tap waits for its yes (even across a restart); if the approved button isn't there any more it is refused."""
+    import pytest
+
+    pa, conn, calls, srv = _wire_mobile_mcp(monkeypatch)
+    payload = {"action": "tap", "x": 300, "y": 1850, "label": "Accept", "ref": "@e1"}
+    srv.elements = [{"ref": "@e9", "text": "Pay ₹499", "clickable": True, "coordinates": {"x": 300, "y": 1850}}]
+    with pytest.raises(RuntimeError):
+        pa.action_handler(payload)
+    assert not [t for t, _ in calls if t == "mobile_click_on_screen_at_coordinates"]
+    srv.elements = [{"ref": "@e1", "text": "Accept", "clickable": True, "coordinates": {"x": 305, "y": 1849}}]
+    assert "Tapped" in pa.action_handler(payload)
+
+
+def test_phone_approvals_show_exactly_what_will_happen(make_ctx, monkeypatch):
+    pa, conn, calls, _ = _wire_mobile_mcp(monkeypatch)
+    ctx = make_ctx()
+    agent = pa.PhoneAgent()
+    long = "hi " + "x" * 300 + " end of message"
+    agent.run("type", {"action": "type", "text": long}, ctx)
+    agent.run("wa", {"action": "message", "to": "9876543210", "text": "hello"}, ctx)
+    agent.run("sms", {"action": "message", "to": "9876543210", "text": "hello there", "app": "sms"}, ctx)
+    summaries = [a.summary for a in ctx.store.approvals()]
+    assert any(long in s for s in summaries)
+    assert any("919876543210" in s for s in summaries if "WhatsApp" in s)        # the number that is really used
+    assert any("you type" in s.lower() for s in summaries if "SMS" in s)          # the SMS text isn't filled in
+
+
+def test_the_spoken_brief_reads_phone_notifications_only_after_the_read_yes(app_client, monkeypatch):
+    """The voice brief read every label on the phone screen by itself; reading the phone needs the one-time yes."""
+    import prometheus.connectors.android as android
+    from prometheus.voice import brief
+
+    _, services = app_client()
+    services.settings.phone_target = "100.64.0.9:5555"
+    read = []
+
+    class FakePhone:
+        def __init__(self, target=""):
+            pass
+
+        def notifications(self):
+            read.append(1)
+            return [{"app": "com.whatsapp", "title": "Mum", "text": ""}]
+
+    monkeypatch.setattr(android, "Phone", FakePhone)
+    assert "on your phone" not in brief._messages(services) and read == []
+    services.store.add_allow_rule("phone_read", "phone:read", "Reading the phone screen and notifications")
+    assert "1 notification on your phone" in brief._messages(services) and read == [1]

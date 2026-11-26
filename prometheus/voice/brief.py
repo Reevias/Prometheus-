@@ -74,7 +74,11 @@ def _messages(services) -> str:
         bits.append(f"{total} unread email{'s' if total != 1 else ''}" + (f", including {' and '.join(who)}" if who
                                                                               else "") + ".")
     target = getattr(services.settings, "phone_target", "") or ""
-    if target:
+    try:        # reading the phone needs the owner's one-time yes, like every other read (review of 6.3–6.5)
+        may_read = services.store.allowed("phone_read", ["phone:read", "phone:read"])
+    except Exception:
+        may_read = False
+    if target and may_read:
         try:
             from prometheus.connectors.android import Phone
 

@@ -9,7 +9,8 @@ from prometheus.connectors.mcp_client import Connection, HttpServer, MCPError, S
 
 NAME = re.compile(r"^[A-Za-z][A-Za-z0-9 _-]{0,30}$")
 MOBILE_MCP_NAME = "mobile-mcp"
-MOBILE_MCP_TARGET = "npx -y @mobilenext/mobile-mcp --stdio"
+# pinned to the version checked in 6.0 (licence and code): -y with no version would run whatever is newest
+MOBILE_MCP_TARGET = "npx -y @mobilenext/mobile-mcp@1.0.20 --stdio"
 
 
 RESERVED = {"MCP_SERVER_TOKEN"}          # Prometheus's own key for apps that call IT

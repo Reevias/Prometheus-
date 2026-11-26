@@ -1761,11 +1761,15 @@ def register_routes(app: FastAPI, services: Services) -> None:
         return settings_page(request, notice=said)
 
     @app.post("/settings/phone/mobile-mcp", response_class=HTMLResponse)
-    def phone_connect_mobile_mcp(request: Request, target: str = Form("")):
+    def phone_connect_mobile_mcp(request: Request, target: str = Form(""), password: str = Form("")):
         from prometheus.agents import apps_agent
         from prometheus.connectors.manager import MOBILE_MCP_NAME, MOBILE_MCP_TARGET, ensure_mobile_mcp
 
         cmd = (target or "").strip()[:500] or MOBILE_MCP_TARGET
+        if cmd != MOBILE_MCP_TARGET:            # another program, started on every phone action: the password first
+            denied = _key_gate(request, password)
+            if denied is not None:
+                return denied
         ensure_mobile_mcp(services.settings, target=cmd, enable=True)
         save_settings(services.settings)
         if apps_agent.MANAGER is not None:

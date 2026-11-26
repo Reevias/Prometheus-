@@ -101,7 +101,14 @@ def action_handler(payload: dict) -> str:
         if a == "open_url":
             return p.open_url(str(payload.get("url") or ""))
         if a == "tap":
-            p.tap(int(payload["x"]), int(payload["y"]), str(payload.get("ref", "")))
+            x, y, label = int(payload["x"]), int(payload["y"]), str(payload.get("label", ""))
+            if label and label != "screen spot":
+                # the yes was for this button: if it isn't at that spot any more, nothing is tapped (review 6.3–6.5)
+                here = p.find(label)
+                if here is None or abs(int(here["x"]) - x) > 60 or abs(int(here["y"]) - y) > 60:
+                    raise RuntimeError(f"'{label}' isn't where it was on your phone screen any more, so nothing was "
+                                       "tapped. Ask again.")
+            p.tap(x, y, str(payload.get("ref", "")))
             return f"Tapped '{payload.get('label', '')}' on your phone."
         if a == "type":
             return p.type_text(str(payload.get("text", "")))
@@ -188,8 +195,6 @@ class PhoneAgent(Agent):
             if action == "battery":
                 if hasattr(p, "ensure_connected"):
                     p.ensure_connected()
-                elif not ctx.store.allowed("phone_read", ["phone:read", "phone:read"]):
-                    p.battery()
                 return self._ask_read_once(ctx, "Read your phone battery level", {"action": "battery"})
 
             if action == "notifications":
@@ -256,7 +261,7 @@ class PhoneAgent(Agent):
                 problem = secret_problem(text)
                 if problem:
                     return StepResult("failed", problem)
-                return self._ask_every_time(ctx, f"Type on your phone: “{text[:200]}”", {"action": "type", "text": text})
+                return self._ask_every_time(ctx, f"Type on your phone: “{text}”", {"action": "type", "text": text})
 
             if action == "message":
                 to, text = str(inputs.get("to") or ""), str(inputs.get("text") or "")
@@ -267,9 +272,15 @@ class PhoneAgent(Agent):
                 problem = secret_problem(text)
                 if problem:
                     return StepResult("failed", problem)
+                if app == "sms":                # mobile-mcp only opens Messages: say so, the text isn't filled in
+                    said = f"Open Messages for an SMS to {who} ({number}); you type and send “{text[:500]}” yourself"
+                else:
+                    digits = number.lstrip("+")
+                    shown = ("91" + digits) if len(digits) == 10 else digits    # the number WhatsApp really gets
+                    said = f"Send a WhatsApp to {who} (+{shown}): “{text[:1000]}”"
                 return self._ask_every_time(
                     ctx,
-                    f"Send {'an SMS' if app == 'sms' else 'a WhatsApp'} to {who} ({number}): “{text[:500]}”",
+                    said,
                     {"action": "message", "to": number, "text": text, "app": app, "who": who},
                 )
 
@@ -305,6 +316,10 @@ class PhoneAgent(Agent):
 
         if "x" in inputs and "y" in inputs:
             el = {"label": target or "screen spot", "x": int(inputs["x"]), "y": int(inputs["y"]), "ref": ""}
+        elif not ctx.store.allowed("phone_read", ["phone:read", "phone:read"]):
+            # finding the button means reading the screen: that needs the one-time yes first
+            return self._ask_read_once(ctx, f"Read your phone screen (to find '{target}' to tap)",
+                                       {"action": "look", "question": f"Where is '{target}' on the screen?"})
         else:
             el = p.find(target)
             if el is None:

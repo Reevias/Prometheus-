@@ -429,9 +429,19 @@ class MobilePhone:
         except MCPError as e:
             raise PhoneError(str(e)) from e
 
+    @staticmethod
+    def _check_stop() -> None:
+        """Stop all stops a phone action between its steps (a call is several: dialer, number, Call)."""
+        from prometheus.agents import phone_agent
+
+        ks = getattr(getattr(phone_agent, "SERVICES", None), "killswitch", None)
+        if ks is not None and ks.is_set:
+            raise PhoneError("Stopped: everything is paused (Stop all).")
+
     def _call(self, tool: str, arguments: dict | None = None) -> str:
         from prometheus.connectors.mcp_client import MCPError
 
+        self._check_stop()
         conn = self._get_conn()
         try:
             return conn.call(tool, arguments or {})
@@ -441,6 +451,7 @@ class MobilePhone:
     def _call_raw(self, tool: str, arguments: dict | None = None) -> dict:
         from prometheus.connectors.mcp_client import MCPError
 
+        self._check_stop()
         conn = self._get_conn()
         try:
             return conn.call_raw(tool, arguments or {})
