@@ -357,3 +357,51 @@ def test_item5_old_adb_control_code_and_tests_removed():
 
     assert not (root / "tests" / "test_v19_android.py").exists()
 
+
+def test_real_mobile_mcp_prose_and_box_coordinate_parsing():
+    from prometheus.connectors.mcp_client import Connection
+    from prometheus.phone import MobilePhone
+
+    apps_str = (
+        "Found these apps on device: Calculator (com.oneplus.calculator), "
+        "Clock (com.oneplus.deskclock), Notes (com.oneplus.note), Settings (com.android.settings)"
+    )
+    els_str = (
+        'Found these elements on screen: [{"ref":"@e1","type":"android.widget.Button",'
+        '"text":"7","coordinates":{"x":100,"y":200,"width":80,"height":60}}]'
+    )
+
+    class RealFmtServer:
+        def request(self, method, params=None, timeout=120):
+            if method == "initialize":
+                return {}
+            if method == "tools/list":
+                return {
+                    "tools": [
+                        {"name": "mobile_list_available_devices"},
+                        {"name": "mobile_list_apps"},
+                        {"name": "mobile_list_elements_on_screen"},
+                    ]
+                }
+            tool = (params or {}).get("name")
+            if tool == "mobile_list_available_devices":
+                return {"content": [{"type": "text", "text": json.dumps({"devices": [{"id": "dev1", "state": "online"}]})}]}
+            if tool == "mobile_list_apps":
+                return {"content": [{"type": "text", "text": apps_str}]}
+            return {"content": [{"type": "text", "text": els_str}]}
+
+        def notify(self, method, params=None):
+            pass
+
+        def close(self):
+            pass
+
+    conn = Connection("mobile-mcp", RealFmtServer())
+    conn.start()
+    p = MobilePhone(conn=conn)
+    assert p.find_app("Calculator") == "com.oneplus.calculator"
+    assert p.find_app("Clock") == "com.oneplus.deskclock"
+    assert p.find_app("Notes") == "com.oneplus.note"
+    el = p.find("7")
+    assert el is not None and el["x"] == 140 and el["y"] == 230 and el["ref"] == "@e1"
+

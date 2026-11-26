@@ -327,6 +327,13 @@ def _parse_json_or_lines(text: str):
     txt = (text or "").strip()
     if not txt:
         return None
+    for ch in ("[", "{"):
+        pos = txt.find(ch)
+        if pos != -1:
+            try:
+                return json.loads(txt[pos:])
+            except ValueError:
+                pass
     try:
         return json.loads(txt)
     except ValueError:
@@ -345,6 +352,9 @@ def _normalize_element(raw: dict) -> dict | None:
     coords = raw.get("coordinates") or raw.get("center") or {}
     x = coords.get("x", raw.get("x"))
     y = coords.get("y", raw.get("y"))
+    if x is not None and y is not None and "width" in coords and "height" in coords:
+        x = int(x) + max(0, int(coords["width"])) // 2
+        y = int(y) + max(0, int(coords["height"])) // 2
     if (x is None or y is None) and isinstance(raw.get("bounds"), dict):
         b = raw["bounds"]
         if all(k in b for k in ("x", "y", "width", "height")):
@@ -355,9 +365,10 @@ def _normalize_element(raw: dict) -> dict | None:
             y = (int(b["top"]) + int(b["bottom"])) // 2
     if x is None or y is None:
         return None
+    cls_name = str(raw.get("className") or raw.get("type") or "").lower()
+    ident = str(raw.get("identifier") or raw.get("id") or "")
     is_pwd = bool(raw.get("password") or raw.get("isPassword"))
-    if not is_pwd and _PWD_HINT_RE.search(label):
-        cls_name = str(raw.get("className") or raw.get("type") or "").lower()
+    if not is_pwd and _PWD_HINT_RE.search(f"{label} {ident}"):
         if any(k in cls_name for k in ("edit", "input", "text", "")):
             is_pwd = True
     return {
@@ -367,7 +378,7 @@ def _normalize_element(raw: dict) -> dict | None:
         "ref": str(raw.get("ref") or ""),
         "clickable": bool(raw.get("clickable", True)),
         "password": is_pwd,
-        "editable": bool(raw.get("editable") or "edit" in str(raw.get("className") or "").lower()),
+        "editable": bool(raw.get("editable") or "edit" in cls_name),
     }
 
 
@@ -492,10 +503,16 @@ class MobilePhone:
                     if pkg:
                         out.append({"package": pkg, "name": name})
         elif isinstance(parsed, str):
-            for line in parsed.splitlines():
-                m = re.search(r"([a-zA-Z][a-zA-Z0-9_]*\.[a-zA-Z0-9_.]+)", line)
-                if m:
-                    out.append({"package": m.group(1), "name": line.strip()})
+            text_body = re.sub(r"^Found these apps on device:\s*", "", parsed.strip(), flags=re.IGNORECASE)
+            pairs = list(re.finditer(r"([^,()]+?)\s*\(([A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z0-9_]+)+)\)", text_body))
+            if pairs:
+                for m in pairs:
+                    out.append({"package": m.group(2).strip(), "name": m.group(1).strip()})
+            else:
+                for line in text_body.splitlines():
+                    m = re.search(r"([a-zA-Z][a-zA-Z0-9_]*\.[a-zA-Z0-9_.]+)", line)
+                    if m:
+                        out.append({"package": m.group(1), "name": line.strip()})
         return out
 
     def find_app(self, name: str) -> str:
@@ -508,18 +525,23 @@ class MobilePhone:
             if low in NEVER_OPEN:
                 raise PhoneError("Prometheus never opens terminal apps on the phone.")
             return low
-        if low in APPS:
-            return APPS[low]
         installed = self.packages()
         words = re.findall(r"[a-z0-9]+", low)
-        matches = [
-            p["package"]
-            for p in installed
-            if all(w in (p["package"] + " " + p["name"]).lower() for w in words)
-        ]
-        if not matches:
-            raise PhoneError(f"I can't find an app called '{name}' on your phone.")
-        pkg = sorted(matches, key=len)[0]
+        exact_name = [p["package"] for p in installed if p["name"].lower() == low]
+        if exact_name:
+            pkg = exact_name[0]
+        else:
+            matches = [
+                p["package"]
+                for p in installed
+                if all(w in (p["package"] + " " + p["name"]).lower() for w in words)
+            ]
+            if matches:
+                pkg = sorted(matches, key=len)[0]
+            elif low in APPS:
+                pkg = APPS[low]
+            else:
+                raise PhoneError(f"I can't find an app called '{name}' on your phone.")
         if pkg in NEVER_OPEN:
             raise PhoneError("Prometheus never opens terminal apps on the phone.")
         return pkg

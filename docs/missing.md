@@ -3,6 +3,13 @@
 Updated 11 November 2026. Version 2.3. Built and tested here: 883 tests pass.
 Not yet run end to end on the owner's real laptop.
 
+## M6 6.5 Phone control through mobile-mcp, 26 November 2026
+- Live plugged-in check on the owner's OnePlus Nord 5 (`CPH2707`, ID `3C15BH001TW00000`, Android 16) via `npx -y @mobilenext/mobile-mcp --stdio` verified device discovery, installed app listing (`com.oneplus.calculator`, `com.oneplus.deskclock`, `com.oneplus.note`, `com.android.settings`), launching Calculator, capturing a 30,966-byte screenshot, reading all 36 live Calculator UI controls, tapping, and pressing Home.
+- NOT VERIFIED live while unlocked: multi-tap Calculator entry, `type_text` into a real unlocked app box, reading unlocked Settings/Clock elements, and live password-field refusal (the phone auto-locked mid-check, exposing the lock screen `8:57` / `Device locked` / `Charging 87%`); covered by fake `mobile-mcp` unit tests.
+- `look` vision reading in live Prometheus defaults `routes["vision"]` to online `anthropic` (`claude-opus-5-5`); during the automated live phone check `FakeProvider` handled the `look` call locally so no phone screenshot left the laptop, while `mobile_list_elements_on_screen` reads the Android view tree locally over ADB/MCP with no AI model.
+- `setting`, `alarm`, `timer`, `message` (SMS), `call`, and `battery` rely on UI navigation / visible screen elements through `mobile-mcp` rather than direct `dumpsys` / `cmd` ADB commands, and `setting` / `alarm` / `timer` stop after opening the relevant Settings/Clock tab rather than autonomously scrolling deep OS sub-menus.
+- `prometheus/app.py` was untouched per build boundaries, so `phone_read` one-time approval handler registration (beyond `action_handler`) initializes on the first `PhoneAgent.run()` call.
+
 ## M6 6.4a Control PC: screen, mouse, keyboard, 25 November 2026
 - On the owner's Windows 11 laptop, `EnumWindows` (`list_windows`), `GetSystemMetrics` virtual screen bounds (`(0, 0, 3840, 1080)`), terminal window blocking (`powershell.exe`), `UIAutomationClient` control listing against a test WinForms window (`PromCheckWin.exe`), and `< 1s` Stop all termination of an active PowerShell subprocess ran and passed.
 - NOT VERIFIED live on an unlocked interactive desktop: `ImageGrab` screen capture (`OSError: screen grab failed`), `SetForegroundWindow` focus switching (`GetForegroundWindow() == 0`), typing into a live non-password box, and live UIA `IsPassword` refusal (Windows saw only HWND `Pane` wrappers while the screen was locked/asleep during the test session); covered with unit tests using fake Win32/UIA responses.
