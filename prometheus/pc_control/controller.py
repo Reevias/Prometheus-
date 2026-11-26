@@ -40,6 +40,16 @@ def check_safe_text(text: str) -> None:
         raise SecretTextError("Blocked: this contains what looks like a secret token. Remove it and try again.")
 
 
+def _writes_text(canon: str) -> bool:
+    """True when a key combination puts text into the focused box (a character, space, or a paste)."""
+    parts = canon.split("+")
+    mods = {p for p in parts if p in ("ctrl", "alt", "shift", "win")}
+    main = [p for p in parts if p not in mods]
+    if mods & {"ctrl"} and main == ["v"] or mods == {"shift"} and main == ["insert"]:
+        return True
+    return not (mods - {"shift"}) and len(main) == 1 and (len(main[0]) == 1 or main[0] == "space")
+
+
 class PCController:
     """Controls desktop inspection and input with strict foreground and stop checks."""
 
@@ -155,5 +165,12 @@ class PCController:
         self._check_stop()
         canon, vks = normalize_combo(keys)
         fg = self._check_foreground_allowed()
+        if _writes_text(canon):      # a letter, a digit, a space or a paste is typing: never into a password box
+            checker = self._password_checker or (
+                lambda stop_check=None: focused_is_password(stop_check=stop_check, ps_runner=self._ps_runner)
+            )
+            is_pwd, reason = checker(stop_check=self.is_stopped)
+            if is_pwd:
+                raise PasswordFieldError(f"Refused to press {canon} in a password field: {reason}")
         self.backend.press_keys(vks, stop_check=self.is_stopped)
         return {"keys": canon, "window": fg.title if fg else ""}

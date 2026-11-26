@@ -19,6 +19,8 @@ class ScreenshotResult:
     width: int
     height: int
     timestamp: float
+    source_width: int = 0          # the real screen's size before shrinking (0: not shrunk / unknown)
+    source_height: int = 0
 
 
 def default_grab() -> Image.Image:
@@ -41,6 +43,7 @@ def capture_screenshot(
         raise PCControlError("Screenshot grabber returned nothing.")
 
     w, h = img.size
+    sw, sh = w, h
     if w > max_width > 0:
         nh = max(1, round(h * (max_width / w)))
         img = img.resize((max_width, nh), Image.Resampling.LANCZOS)
@@ -51,4 +54,4 @@ def capture_screenshot(
     ts = time.time()
     out_path = out_dir / f"screen_{int(ts * 1000)}.png"
     img.save(out_path, format="PNG")
-    return ScreenshotResult(path=out_path, width=w, height=h, timestamp=ts)
+    return ScreenshotResult(path=out_path, width=w, height=h, timestamp=ts, source_width=sw, source_height=sh)

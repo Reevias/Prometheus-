@@ -43,7 +43,16 @@ def _execute_read(payload: dict, killswitch=None) -> str:
     action = payload["action"]
     if action == "screenshot":
         shot = ctrl.screenshot()
-        return f"Screenshot captured ({shot.width}x{shot.height}): {shot.path}"
+        said = f"Screenshot captured ({shot.width}x{shot.height}): {shot.path}"
+        try:
+            left, top, _w, _h = ctrl.backend.virtual_screen_rect()
+        except Exception:
+            left = top = 0
+        scale = (shot.source_width / shot.width) if shot.width else 1.0
+        if scale != 1.0 or left or top:     # clicks use real screen points: say how to turn image pixels into them
+            said += (f". The image is the whole screen shrunk x {scale:g}: for a point (px, py) in the image click "
+                     f"x = {left} + px x {scale:g}, y = {top} + py x {scale:g}.")
+        return said
     if action == "read_controls":
         res = ctrl.read_controls(window_title=payload.get("window_title", ""), limit=int(payload.get("limit", 80)))
         return _format_controls(res)
@@ -108,8 +117,8 @@ def _describe_input(action: str, inputs: dict) -> tuple[str, dict]:
     if action == "type":
         text = str(inputs.get("text") or "")
         check_safe_text(text)
-        preview = text if len(text) <= 40 else text[:37] + "..."
-        summary = f"Type text ({len(text)} chars) into active window: {preview!r}"
+        # the whole text: a yes must cover every character that will be typed (review of 6.3–6.5)
+        summary = f"Type text ({len(text)} chars) into active window: {text!r}"
         return summary, {"action": "type", "text": text}
 
     if action == "press_keys":

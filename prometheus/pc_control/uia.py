@@ -93,12 +93,12 @@ def run_ps_abortable(
             _ACTIVE_PROCS.discard(proc)
 
 
-def _ps_quote(value: str) -> str:
-    return "'" + (value or "").replace("'", "''") + "'"
-
-
 def _build_read_script(window_title: str, limit: int) -> str:
-    qtitle = _ps_quote(window_title.strip())
+    # base64 (letters, digits, + / =): nothing in a title can end the string; PowerShell also takes ‘ ’ ‚ ‛ as quotes
+    import base64
+
+    b64 = base64.b64encode(window_title.strip().encode("utf-8")).decode("ascii")
+    qtitle = f"[System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String('{b64}'))"
     lim = max(1, min(int(limit), 200))
     return f"""
 $ErrorActionPreference = 'Stop'
