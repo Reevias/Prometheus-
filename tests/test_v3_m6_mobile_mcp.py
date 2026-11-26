@@ -343,3 +343,17 @@ def test_item4_offline_device_queues_phone_wait_and_phrases(make_ctx, monkeypatc
     assert understand("what's on my phone screen").steps[0]["inputs"]["action"] == "look"
     assert understand("open spotify").steps[0]["agent"] == "system"
 
+
+# -- Item 5: Old adb control code and its tests removed ------------------------------------------------------------
+def test_item5_old_adb_control_code_and_tests_removed():
+    root = Path(__file__).resolve().parent.parent
+    android_py = (root / "prometheus" / "connectors" / "android.py").read_text(encoding="utf-8")
+    agent_py = (root / "prometheus" / "agents" / "phone_agent.py").read_text(encoding="utf-8")
+
+    for forbidden in ("type_escape", "uiautomator", "screencap", "input tap", "input swipe", "input text",
+                      "input keyevent", "def tap(", "def type_text(", "def open_app("):
+        assert forbidden not in android_py, f"Old adb control code {forbidden!r} still in android.py"
+        assert forbidden not in agent_py, f"Old adb control code {forbidden!r} still in phone_agent.py"
+
+    assert not (root / "tests" / "test_v19_android.py").exists()
+
