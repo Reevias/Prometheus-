@@ -67,6 +67,38 @@ git pull
 27. Real Android app: your phone's files and photos, notifications, voice.
 28. If the laptop is too slow: move the planner/research part to a cheap cloud server.
 
+## What's new in version 3 (M5 and M6, in plain words)
+
+Built on the branch and tested here and on GitHub's Windows machines. **Not yet tried on your laptop**, so please
+test each one and tell me what breaks. Everything that can change something on your laptop or phone **asks first**.
+
+**Several things at once (M5)**
+- **Agents page → Jobs:** every job and task graph that is running or finished badly, with its real times and
+  progress. Stop, Pause, Resume or "Run again" appear only when they really work. It refreshes every few seconds.
+- **At most 2 jobs at once** (3 when more than 3 GB of memory is free, and one at a time when memory is low).
+- **Your own agents:** Settings → Features → turn on "Own agents", then Agents → "New agent": a name, what it does,
+  instructions, and the tools you tick (it starts with none). Pick it by typing `@name`. Opening a file always asks.
+- **Branch a chat:** "Branch from here" on any message makes a new chat with the history up to that point.
+- **Reading a web page for the browser agent:** it can list a page's buttons and fields (a "snapshot") and click or
+  type by those. Paying and sending still ask, and it never types a password.
+
+**The cloud and the phone (M6)**
+- **Cloudroom** (a free Render service, no card): a task can run there only after you say yes on the Approvals
+  page. Setup is in [`cloud-setup.md`](cloud-setup.md). The screen to enter its address and a button to move a task
+  are not built yet. **Reminders do not ring while the laptop is off yet.**
+- **Cloudroom storage:** Settings → Features → "Cloudroom storage". Your repo knowledge, sync data and the private
+  notes of chats you left out are scrambled on the laptop and kept in a "Prometheus Cloudroom" folder on Google Drive.
+  You need your backup recovery code to open them. Without internet they wait and go later.
+- **Prometheus using your screen, mouse and keyboard:** it can look at the screen and click, type, press keys or
+  switch apps on the laptop. Every click, typing or key asks first and shows what it will do. It never types into
+  password fields. Stop all stops it within a second.
+- **Control the laptop from the phone:** Settings → Features → "Control the laptop from the phone", then System →
+  Devices → "New pairing code" and type it on the phone within 5 minutes. Only a paired phone works, only over your
+  private link (Tailscale), and every action asks on the phone first. Mouse and keyboard actions also ask on the laptop.
+  There is no phone screen for it yet: it works through the phone side's web address.
+- **Controlling your Android phone from Prometheus:** Settings → Connections → Phone control, with the phone plugged in
+  and USB debugging on. Reading the screen asks once; taps, typed text and changes ask every time.
+
 ---
 
 ## Safety rules you should know (short)
@@ -78,3 +110,4 @@ git pull
 - Prometheus only sees folders you allow.
 - Code from GitHub runs only in the sandbox, and only after you approve.
 - Prometheus cannot edit its own safety code.
+- Anything that clicks, types, or controls your laptop or phone asks first; Stop all stops it.
