@@ -679,6 +679,11 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
 
     _pa.SERVICES = services
     approvals.register("phone_action", _pa.action_handler)
+    # every approval kind gets its handler at start, so a yes given after a restart works (review of 6.3–6.5)
+    _pa.register_approvals(approvals, router=router)
+    from prometheus.pc_control.agent import register_approvals as _pc_approvals
+
+    _pc_approvals(approvals, killswitch=services.killswitch)          # also hooks Stop all into PC control
 
     def _to_laptop(chat_id: int, text: str, plan, read_only: bool = False) -> str:
         """On the cloud copy: a request that needs the laptop (its screen, files or apps) waits for the laptop."""
