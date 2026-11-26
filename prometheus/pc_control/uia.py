@@ -50,7 +50,7 @@ def run_ps_abortable(
     script: str,
     *,
     stop_check: Callable[[], bool] | None = None,
-    timeout: float = 8.0,
+    timeout: float = 15.0,
 ) -> str:
     """Run Windows PowerShell with fast polling and instant termination on stop."""
     if sys.platform != "win32":
@@ -132,10 +132,19 @@ function ShortType($ct) {{
     return ($ct.ProgrammaticName -replace '^ControlType\\.', '')
 }}
 $items = New-Object System.Collections.Generic.List[object]
-$all = $root.FindAll([System.Windows.Automation.TreeScope]::Descendants, $condTrue)
-$max = [Math]::Min($all.Count, {lim})
-for ($i = 0; $i -lt $max; $i++) {{
-    $el = $all.Item($i)
+$walker = [System.Windows.Automation.TreeWalker]::ControlViewWalker
+$queue = New-Object System.Collections.Generic.Queue[System.Windows.Automation.AutomationElement]
+$child = $null
+try {{ $child = $walker.GetFirstChild($root) }} catch {{ $child = $null }}
+while ($null -ne $child -and $queue.Count -lt ({lim} * 4)) {{
+    $queue.Enqueue($child)
+    try {{ $child = $walker.GetNextSibling($child) }} catch {{ $child = $null }}
+}}
+$visited = 0
+$maxVisit = {lim} * 4
+while ($queue.Count -gt 0 -and $items.Count -lt {lim} -and $visited -lt $maxVisit) {{
+    $el = $queue.Dequeue()
+    $visited++
     try {{
         $c = $el.Current
         $isPwd = [bool]$c.IsPassword
@@ -164,6 +173,12 @@ for ($i = 0; $i -lt $max; $i++) {{
             is_password = $isPwd
             value = $val
         }})
+        $sub = $null
+        try {{ $sub = $walker.GetFirstChild($el) }} catch {{ $sub = $null }}
+        while ($null -ne $sub -and $queue.Count -lt $maxVisit) {{
+            $queue.Enqueue($sub)
+            try {{ $sub = $walker.GetNextSibling($sub) }} catch {{ $sub = $null }}
+        }}
     }} catch {{}}
 }}
 $focusedInfo = $null
