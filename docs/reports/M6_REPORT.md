@@ -126,6 +126,8 @@ under load); 15 repeats and the next full run passed. The report's own commit is
 - Full suite after these: 2156 passed, 0 failed, 70 skipped (Linux here).
 
 ## Your part (what you need to add)
+The exact clicks are in [`docs/m6/M6_OWNER_GUIDE.md`](../m6/M6_OWNER_GUIDE.md).
+
 1. A Render account (free, no card) and the service from `cloud/render/render.yaml` (`docs/cloud-setup.md`, steps 1–5).
 2. Your Cloudroom key as a Render **Secret File** named `CLOUDROOM_TOKEN`, then Deploy.
 3. The Render address and the same key in Settings → Connections → Cloudroom (Render), with your password.
