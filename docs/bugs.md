@@ -2,7 +2,26 @@
 
 Every bug found and fixed, newest first, so the count is always exact. Add a line for each new one.
 
-**Total fixed: 218** (as of 26 November 2026). M5 accounts for 28 of them (171–198); see `docs/reports/M5_REPORT.md`.
+**Total fixed: 232** (as of 27 November 2026). M5 accounts for 28 of them (171–198); see `docs/reports/M5_REPORT.md`.
+
+## 27 November 2026, M6 audit (14)
+
+| # | Bug | Fixed by |
+|---|---|---|
+| 232 | Cloudroom wasn't connected anywhere in the app, so a yes on the Approvals page had nothing to start it | Connected when its Render address and key are set; Resume and Stop of a Cloudroom job go to Cloudroom |
+| 231 | A move that failed after the yes kept the yes in memory | The yes is forgotten when the move doesn't happen |
+| 230 | The question cut the code at 600 characters, so the owner couldn't see everything that would go up | All the code is shown |
+| 229 | A file changed between the check of the yes and the send went up without the yes | What is sent is checked against the yes at the moment it is read |
+| 228 | Pause then Resume could leave two watchers following one Cloudroom task | Each watcher has a number; an older one stops |
+| 227 | A sandboxed script got 65 seconds of CPU whatever its time limit (a 300-second Cloudroom task was killed early) | The CPU limit follows the task's own time limit |
+| 226 | The Cloudroom server read each result file whole before checking its size, and kept run folders | Sizes checked first; run folders deleted after each task |
+| 225 | The Cloudroom server kept every task with its uploads for ever (the free machine has 512 MB) | Uploads dropped after the run; only the last 50 finished tasks kept (request ids still remembered) |
+| 224 | Anyone could send the Cloudroom server a huge unsigned body, read whole before any check | Refused unsigned or over 8 MB before the body is read |
+| 223 | A Cloudroom watcher that hit something unexpected (key removed, odd answer) died and left the task 'running' for ever | The task is marked failed with the reason |
+| 222 | A move cut off by a laptop restart before (or right at) its receipt stayed 'pending' for ever | It is paused after a restart and Resume carries on; receipt and 'running' are recorded together |
+| 221 | One proxy error page or a 401 while following a Cloudroom task called it 'restarted' and failed it, though it still ran | Errors are retried; a 401 says to check the key and the clock; only a real new boot id means a restart |
+| 220 | The Cloudroom server's start-up environment (with the token) was readable through /proc by its own user | The server process is made not dumpable |
+| 219 | A sandboxed task could start a shell through _posixsubprocess (no audit event) and read the Cloudroom token | On Cloudroom the kernel refuses any new process from a task (process limit 0); checked as a non-root user |
 
 ## 26 November 2026, review of M6 6.3–6.5 (20)
 

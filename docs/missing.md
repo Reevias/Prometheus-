@@ -36,6 +36,13 @@ NOT VERIFIED on the laptop or the phone: everything in this review.
 - A typed text is shown in full on the Approvals page (so you can judge it) and so it is also in Approvals' own "requested" log line; the phone-remote log lines hold only its length. Screenshots stay on the laptop (the phone gets their file name, not the picture). Power actions other than lock (shut down, restart), installing apps and joining Wi-Fi are not on the list.
 - Pending requests live in memory: a restart drops them and an old laptop approval then says "ask again". The existing test that every route needs a login now says the phone routes must answer 401 or 403 without a key.
 
+## M6 audit, 27 November 2026 (report: `docs/reports/M6_AUDIT.md`)
+- No screen yet for the Render address (`cloudroom_url` setting), and nothing in the chat offers to move a task to Cloudroom.
+- Cancelling a task already running on Render doesn't stop its program there (it runs to its own time limit).
+- On a Linux laptop the sandbox can still be left through `_posixsubprocess` (the kernel process limit is used only on Cloudroom; Windows has its Job Object).
+- Phone: typing, several taps, password refusal and reading Settings/Clock NOT VERIFIED live (the phone locked during the check).
+- NOT VERIFIED on the owner's laptop and on a real Render service.
+
 ## M6 6.2 item 6 Render files and guide, 26 November 2026
 - **The always-on cloud copy is not hosted by these files.** They run only the Cloudroom server: Render's free service has one web port, 512 MB, and forgets its files on every restart (so a cloud copy there would lose its password, sync key and AI keys). Reminders still don't ring while the laptop is off. Opus needs to decide how to host it (or a smaller part of it); `docs/cloud-setup.md` says so.
 - The plan said "the cloud copy's jobs (reminders, alerts, sync) run there" and the owner's message said `cloud/space/`; the plan's own newer words are Render, so the folder is `cloud/render/`.
