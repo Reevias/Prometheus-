@@ -2,12 +2,13 @@
 
 Every bug found and fixed, newest first, so the count is always exact. Add a line for each new one.
 
-**Total fixed: 236** (as of 27 November 2026). M5 accounts for 28 of them (171–198); see `docs/reports/M5_REPORT.md`. M6 accounts for 38 (199–236); see `docs/reports/M6_REPORT.md`.
+**Total fixed: 237** (as of 27 November 2026). M5 accounts for 28 of them (171–198); see `docs/reports/M5_REPORT.md`. M6 accounts for 39 (199–237); see `docs/reports/M6_REPORT.md`.
 
-## 27 November 2026, M6 open items (4)
+## 27 November 2026, M6 open items (5)
 
 | # | Bug | Fixed by |
 |---|---|---|
+| 237 | Ending a terminal command could freeze with a task graph being stopped (two locks taken in opposite order; it hung GitHub's Windows run of main) | The programs list's lock is now always taken last and never waits for the database; the graph pauses itself after letting go of the database lock |
 | 236 | On a Linux laptop a sandboxed script could still start another program through _posixsubprocess | A kernel filter (seccomp) refuses running any other program from a sandboxed script, by any route; threads still work |
 | 235 | The Cloudroom key went to Render as an environment variable | It goes as a Secret File (/etc/secrets/CLOUDROOM_TOKEN); the setup and guide say so |
 | 234 | Stop on a task running in Cloudroom left its program running there until its time limit | The sandbox checks for Stop while it runs and ends the program at once; the next task doesn't wait |
