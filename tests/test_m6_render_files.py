@@ -55,10 +55,11 @@ def test_render_yaml_asks_for_the_free_docker_web_service_with_a_health_check():
 
 
 def test_the_token_is_never_in_the_file_only_asked_for_in_render():
-    y = text("render.yaml")
-    block = y[y.index("CLOUDROOM_TOKEN"):]
-    assert re.match(r"CLOUDROOM_TOKEN\s*\n?\s*sync:\s*false", block) or "sync: false" in block.split("\n", 3)[1]
-    assert not re.search(r"CLOUDROOM_TOKEN\s*\n?\s*value:", y)
+    # the key goes to Render as a Secret File (/etc/secrets/CLOUDROOM_TOKEN), never as an environment variable
+    # or a value in this file (M6 audit, open item 3)
+    y = (ROOT / "cloud/render/render.yaml").read_text(encoding="utf-8")
+    assert "envVars" not in y and not re.search(r"CLOUDROOM_TOKEN\s*\n?\s*value:", y)
+    assert "Secret File" in y
 
 
 def test_requirements_use_the_same_versions_as_the_project():
