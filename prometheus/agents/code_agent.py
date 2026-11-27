@@ -51,7 +51,8 @@ class CodeAgent(Agent):
     description = ("Runs a Python script safely (no internet, only its own folder) for sums, statistics, data from a "
                    "CSV or Excel file, charts (matplotlib saves .png) and converting files. Inputs: code (the whole "
                    "script; print the answer; save files in the current folder), files (optional list of the "
-                   "owner's files to copy in). Files it saves show in Outputs.")
+                   "owner's files to copy in), cloudroom (true only when the owner asks to run it in Cloudroom, their "
+                   "Render service; it asks on the Approvals page first). Files it saves show in Outputs.")
     tools = {"run_code"}
     accepts_private = True          # the owner's data stays on the laptop
     private_with_files = True       # a script given your files: what it prints is private, so only the laptop's AI reads it
@@ -81,6 +82,8 @@ class CodeAgent(Agent):
         if said is not None:                     # nothing to work out: say it, no sandbox and no question
             return StepResult("done", said[:4000])
         code, _ = with_inputs(code, data)
+        if inputs.get("cloudroom") in (True, "true", "yes", 1, "1"):
+            return self._to_cloudroom(goal, code, files, data, ctx)
         digest = hashlib.sha256(code.encode()).hexdigest()[:16]
         shown = code          # the WHOLE script, never a cut-down one: what you approve is exactly what runs
         payload = {"code": code, "files": files, "task_id": ctx.task_id, "chat_id": ctx.chat_id(), "network": False,
@@ -89,6 +92,42 @@ class CodeAgent(Agent):
                        payload, exact=f"code:{digest}", broad="code:any",
                        broad_label="Always run scripts without asking",
                        waiting="I'd like to run a short Python script. It's shown below: allow it?")
+
+
+    @staticmethod
+    def _to_cloudroom(goal: str, code: str, files: list[str], data: dict, ctx: AgentContext) -> StepResult:
+        """The owner asked for Cloudroom: ask on the Approvals page (it shows what goes up); nothing goes before a yes."""
+        from prometheus.runtime import JobSpec, RuntimeRefused
+
+        cloud = _cloudroom()
+        if cloud is None:
+            return StepResult("failed", "Cloudroom isn't set up: add its Render address and key in Settings → "
+                                        "Connections → Cloudroom (Render). The script can run on the laptop instead.")
+        named = {Path(f).name: f for f in files}
+        if data:
+            from prometheus.config import data_dir
+
+            folder = data_dir() / "cloudroom-uploads"
+            folder.mkdir(parents=True, exist_ok=True)
+            blob = json.dumps(data, ensure_ascii=False)
+            path = folder / f"inputs-{hashlib.sha256(blob.encode()).hexdigest()[:16]}.json"
+            path.write_text(blob, encoding="utf-8")
+            named["inputs.json"] = str(path)
+        title = (goal or "Python script")[:80]
+        spec = JobSpec("cloudroom", title, payload={"cloud": {"kind": "python", "code": code, "files": named},
+                                                    "chat_id": ctx.chat_id()}, runtime="cloudroom")
+        try:
+            cloud.request_move(ctx.approvals, spec)
+        except RuntimeRefused as e:
+            return StepResult("failed", f"{e} It can run on the laptop instead.")
+        return StepResult("waiting_approval", "Moving this script to Cloudroom needs your yes on the Approvals page "
+                                              "(it shows exactly what goes up). The answer will come back here.")
+
+
+def _cloudroom():
+    """The app's Cloudroom runtime, when it is set up (M6)."""
+    rt = getattr(SERVICES, "runtime", None) if SERVICES is not None else None
+    return rt.get("cloudroom") if rt is not None else None
 
 
 def run_handler(payload: dict) -> str:

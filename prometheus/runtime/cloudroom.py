@@ -73,6 +73,7 @@ class CloudroomRuntime(ExecutionRuntime):
         self._stop: set[int] = set()
         self._lock = threading.Lock()
         self._local = threading.local()                    # which watcher generation this thread is
+        self.on_finished: Callable | None = None           # told when a moved task ends (the app: its chat)
 
     # -- what goes up, checked and described (item 2 and the fit check of item 5) -----------------------------------
     def _gather(self, spec: JobSpec) -> tuple[dict, dict, str]:
@@ -127,7 +128,8 @@ class CloudroomRuntime(ExecutionRuntime):
 
     def move_payload(self, spec: JobSpec) -> dict:
         shown, _, digest = self._gather(spec)
-        return {"title": spec.title, "kind": spec.kind, "cloud": shown, "digest": digest}
+        return {"title": spec.title, "kind": spec.kind, "cloud": shown, "digest": digest,
+                "chat_id": (spec.payload or {}).get("chat_id")}
 
     # -- the owner's yes -----------------------------------------------------------------------------------------
     def request_move(self, approvals, spec: JobSpec) -> int:
@@ -144,7 +146,8 @@ class CloudroomRuntime(ExecutionRuntime):
             cloud["files"] = {n: m["path"] for n, m in (cloud.get("files") or {}).items()}
             try:
                 job = runtimes.start(JobSpec(payload.get("kind") or "cloudroom", payload["title"],
-                                             payload={"cloud": cloud}, runtime=self.name, approval=move_id))
+                                             payload={"cloud": cloud, "chat_id": payload.get("chat_id")},
+                                             runtime=self.name, approval=move_id))
             except Exception:
                 with self._lock:
                     self._yes.pop(move_id, None)           # a move that didn't happen keeps no yes (M6 audit A11)
@@ -184,7 +187,8 @@ class CloudroomRuntime(ExecutionRuntime):
         public = {**shown, "files": {n: {"size": m["size"], "sha256": m["sha256"]} for n, m in shown["files"].items()}}
         job = self.store.create_job(kind=spec.kind or "cloudroom", title=spec.title, parent_id=spec.parent_id,
                                     payload={"where": self.name, "request_id": uuid.uuid4().hex, "cloud": public,
-                                             "digest": digest, "remote_seen": []})
+                                             "digest": digest, "remote_seen": [],
+                                             "chat_id": (spec.payload or {}).get("chat_id")})
         self._watch_in_background(job.id, files_b64)
         return self.store.get_job(job.id)
 
@@ -418,3 +422,24 @@ class CloudroomRuntime(ExecutionRuntime):
                 self.store.set_state(job_id, DONE, progress="")
             else:
                 self.store.set_state(job_id, FAILED, error=(final.get("text") or kept["output"])[:500])
+        if self.on_finished is not None:
+            try:
+                self.on_finished(self.store.get_job(job_id))
+            except Exception:                              # noqa: BLE001 - telling the chat never breaks the task
+                pass
+
+
+def tell_chat(store) -> Callable:
+    """When a moved task ends, its answer is written in the chat it came from."""
+    def tell(job) -> None:
+        chat_id = job.payload.get("chat_id")
+        if not chat_id:
+            return
+        res = job.payload.get("result") or {}
+        out = str(res.get("output") or "").strip() or "(it printed nothing)"
+        files = res.get("files") or []
+        head = (f"Cloudroom finished “{job.title}”:" if job.state == DONE
+                else f"Cloudroom couldn't finish “{job.title}” ({job.error or 'it failed'}):")
+        more = f"\nFiles it made there: {', '.join(files)}" if files else ""
+        store.add_message(int(chat_id), "assistant", f"{head}\n{out[:4000]}{more}", "cloudroom")
+    return tell

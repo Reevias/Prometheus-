@@ -1744,6 +1744,8 @@ def register_routes(app: FastAPI, services: Services) -> None:
             last = {**last, "when_text": _t.strftime("%d %b %Y %H:%M", _t.localtime(last["when"])),
                     "mb": f"{last['bytes'] / 1024 ** 2:.1f}"}
         return {"sync_status": store.kv_get("sync_status") or "", "sync_key_set": bool(get_secret("SYNC_TOKEN")),
+                "cloudroom_key_set": bool(get_secret("CLOUDROOM_TOKEN")),
+                "cloudroom_on": bool(getattr(services, "runtime", None) and services.runtime.get("cloudroom")),
                 "backup_ready": bool(get_secret("BACKUP_KEY")), "backup_last": last,
                 "backup_error": store.kv_get("backup_error") or ""}
 
@@ -1786,6 +1788,31 @@ def register_routes(app: FastAPI, services: Services) -> None:
             apps_agent.MANAGER.drop(MOBILE_MCP_NAME)
         store.audit("user", "app_connected", {"name": MOBILE_MCP_NAME, "kind": "command"})
         return settings_page(request, notice="Connected mobile-mcp under Other apps (MCP).")
+
+    @app.post("/settings/cloudroom", response_class=HTMLResponse)
+    def save_cloudroom(request: Request, url: str = Form(""), key: str = Form(""), password: str = Form("")):
+        """Cloudroom (M6 6.2): the Render address and its key. Saved behind the password, then connected at once."""
+        denied = _key_gate(request, password)
+        if denied is not None:
+            return denied
+        url = url.strip().rstrip("/")
+        if url and not re.fullmatch(r"https://[A-Za-z0-9.-]+(:\d+)?", url):
+            return settings_page(request, 400, error="The Cloudroom address looks like https://your-room.onrender.com")
+        from prometheus import config as _cfg
+
+        if key.strip():
+            try:
+                _cfg.set_secret("CLOUDROOM_TOKEN", key.strip())
+            except ValueError as e:
+                return settings_page(request, 400, error=str(e))
+        services.settings.cloudroom_url = url
+        save_settings(services.settings)
+        store.audit("user", "cloudroom", {"set": bool(url)})
+        from prometheus.app import connect_cloudroom
+
+        if url and connect_cloudroom(services):
+            return settings_page(request, notice="Cloudroom is connected. Ask for a script to run in Cloudroom.")
+        return settings_page(request, notice="Saved." if not url else "Saved, but the Cloudroom key is missing.")
 
     @app.post("/settings/cloud", response_class=HTMLResponse)
     def save_cloud(request: Request, url: str = Form(""), key: str = Form(""), password: str = Form("")):

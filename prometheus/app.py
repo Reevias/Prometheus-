@@ -737,6 +737,9 @@ def connect_cloudroom(services) -> bool:
     from prometheus.runtime.cloudroom import CloudroomRuntime
 
     cloud = CloudroomRuntime(services.jobs, httpx.Client(base_url=url, timeout=20))
+    from prometheus.runtime.cloudroom import tell_chat
+
+    cloud.on_finished = tell_chat(services.store)       # the answer comes back to the chat it was asked in
     services.runtime.register(cloud)
     cloud.connect_approvals(services.approvals, services.runtime)
     return True
