@@ -120,6 +120,40 @@ def hook(event, args):
                 and not _inside(path or ".", READ_ROOTS):
             _no("it can only look inside its own folder.")
 
+def _no_new_programs():
+    """Linux: a kernel filter (seccomp) refuses execve/execveat for this process and anything it forks, so no route
+    (not even _posixsubprocess.fork_exec, which raises no audit event) can start another program. Threads still work.
+    Installed before the script runs; it can't be removed afterwards (M6 audit, open item 4)."""
+    if not sys.platform.startswith("linux"):
+        return
+    import ctypes, platform, struct
+    table = {"x86_64": (0xC000003E, (59, 322), True), "aarch64": (0xC00000B7, (221, 281), False)}
+    arch, nrs, x32 = table.get(platform.machine(), (None, (), False))
+    if arch is None:
+        return
+    ALLOW, DENY = 0x7FFF0000, 0x00050000 | 1                    # SECCOMP_RET_ALLOW, SECCOMP_RET_ERRNO | EPERM
+    prog = [(0x20, 0, 0, 4),                                     # load the architecture
+            (0x15, 0, 4, arch),                                  # another architecture: allow (it can't exec ours)
+            (0x20, 0, 0, 0),                                     # load the system call number
+            (0x35, 3, 0, 0x40000000) if x32 else (0x15, 0, 0, 0xFFFFFFFF),   # x32 calls: refuse
+            (0x15, 2, 0, nrs[0]), (0x15, 1, 0, nrs[1]),          # execve / execveat: refuse
+            (0x06, 0, 0, ALLOW), (0x06, 0, 0, DENY)]
+    raw = b"".join(struct.pack("HBBI", *i) for i in prog)
+    buf = ctypes.create_string_buffer(raw, len(raw))
+    class FProg(ctypes.Structure):
+        _fields_ = [("len", ctypes.c_ushort), ("filter", ctypes.c_void_p)]
+    fprog = FProg(len(prog), ctypes.cast(buf, ctypes.c_void_p))
+    libc = ctypes.CDLL(None, use_errno=True)
+    if libc.prctl(38, 1, 0, 0, 0) == 0:                          # PR_SET_NO_NEW_PRIVS
+        libc.prctl(22, 2, ctypes.byref(fprog), 0, 0)             # PR_SET_SECCOMP, SECCOMP_MODE_FILTER
+    for name in [m for m in sys.modules if m == "ctypes" or m.startswith("ctypes.")]:
+        del sys.modules[name]                                    # the script imports ctypes afresh, under the guard
+
+try:
+    _no_new_programs()
+except Exception:
+    pass                                                         # the other limits still apply
+
 sys.argv = [SCRIPT]
 sys.path.insert(0, SCRATCH)
 os.chdir(SCRATCH)
@@ -252,7 +286,8 @@ def _new_files(folder: Path) -> list[Path]:
 
 
 def run_locked(code: str, folder: Path, network: bool = False, timeout: int = TIME_LIMIT,
-               memory_mb: int = MEMORY_MB, python: str = "", no_new_processes: bool = False) -> RunResult:
+               memory_mb: int = MEMORY_MB, python: str = "", no_new_processes: bool = False,
+               should_stop=None) -> RunResult:
     from prometheus.jobs.runner import raise_if_step_stopped
 
     raise_if_step_stopped()                 # a cancelled or paused graph step starts no program
@@ -279,24 +314,36 @@ def run_locked(code: str, folder: Path, network: bool = False, timeout: int = TI
     from prometheus.jobs import limits
 
     program = limits.track(proc.pid)        # run by a child agent: cancel, pause and Stop all end it (M5 audit F4)
-    timed_out = False
+    timed_out = stopped = False
     try:
-        out, _ = proc.communicate(timeout=timeout)
-    except subprocess.TimeoutExpired:
-        proc.kill()
-        out, _ = proc.communicate()
-        timed_out = True
+        end = time.monotonic() + timeout
+        while True:                                  # checks `should_stop` while it runs (Cloudroom's cancel)
+            try:
+                out, _ = proc.communicate(timeout=0.5 if should_stop else max(0.1, end - time.monotonic()))
+                break
+            except subprocess.TimeoutExpired:
+                if should_stop is not None and should_stop():
+                    stopped = True
+                elif time.monotonic() < end:
+                    continue
+                else:
+                    timed_out = True
+                proc.kill()
+                out, _ = proc.communicate()
+                break
     finally:
         limits.untrack(program)
         del job
     text = out.decode("utf-8", "replace")
+    if stopped:
+        text += "\n(Stopped before it finished.)"
     needs = NEEDS_NET in text
     text = text.replace(NEEDS_NET, "").replace(str(folder / GUARD_NAME), "sandbox")
     text = _tidy_traceback(text)
     if len(text) > OUTPUT_CHARS:
         text = text[:OUTPUT_CHARS] + "\n... (cut short)"
-    return RunResult(proc.returncode == 0 and not timed_out, text, _new_files(folder), needs and not network,
-                     timed_out=timed_out)
+    return RunResult(proc.returncode == 0 and not timed_out and not stopped, text, _new_files(folder),
+                     needs and not network, timed_out=timed_out)
 
 
 def _tidy_traceback(text: str) -> str:

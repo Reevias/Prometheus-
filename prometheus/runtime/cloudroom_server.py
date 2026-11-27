@@ -77,7 +77,8 @@ def sandbox_runner(base: Path, secret_paths: list[str]) -> Callable[[dict], dict
         try:
             # no new process or thread may start from the task, by any route (the kernel refuses; M6 audit A1)
             res = sandbox.run_locked(task["code"], folder, network=False, timeout=int(task["seconds"]),
-                                     memory_mb=int(task["memory_mb"]), no_new_processes=True)
+                                     memory_mb=int(task["memory_mb"]), no_new_processes=True,
+                                     should_stop=task.get("should_stop"))   # Cancel ends the program at once
             files, size = {}, 0
             for p in res.files:
                 n = p.stat().st_size                        # checked before reading (M6 audit A5)
@@ -149,6 +150,7 @@ def create_app(token: str, base: Path | str, runner: Callable[[dict], dict] | No
                     task["files"] = {}
                     continue
                 event(task, "running")
+                task["should_stop"] = lambda t=task: t["state"] == "cancelled"
             try:
                 result = run(task)
             except Exception as e:                         # noqa: BLE001 - a broken task is its own result
