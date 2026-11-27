@@ -241,6 +241,7 @@ The plan is one document, [`docs/PLAN.md`](docs/PLAN.md), with 11 milestones and
 
 - [The plan and roadmap](docs/PLAN.md) · [M2 build plan](docs/m2/M2_PLAN.md) · [M2 report](docs/reports/M2_REPORT.md)
 - [Step-by-step setup guide](docs/guide.md) · [Cloudroom on Render](docs/cloud-setup.md) · [Phone](docs/phone-setup.md)
+- [M6: your setup and check, step by step](docs/m6/M6_OWNER_GUIDE.md) (Cloudroom on Render, the first task, PC and phone control)
 - [Changelog](CHANGELOG.md) · [Security](SECURITY.md) · [Contributing](CONTRIBUTING.md)
 
 ## For developers
