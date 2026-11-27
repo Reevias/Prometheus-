@@ -2,7 +2,16 @@
 
 Every bug found and fixed, newest first, so the count is always exact. Add a line for each new one.
 
-**Total fixed: 232** (as of 27 November 2026). M5 accounts for 28 of them (171–198); see `docs/reports/M5_REPORT.md`.
+**Total fixed: 236** (as of 27 November 2026). M5 accounts for 28 of them (171–198); see `docs/reports/M5_REPORT.md`.
+
+## 27 November 2026, M6 open items (4)
+
+| # | Bug | Fixed by |
+|---|---|---|
+| 236 | On a Linux laptop a sandboxed script could still start another program through _posixsubprocess | A kernel filter (seccomp) refuses running any other program from a sandboxed script, by any route; threads still work |
+| 235 | The Cloudroom key went to Render as an environment variable | It goes as a Secret File (/etc/secrets/CLOUDROOM_TOKEN); the setup and guide say so |
+| 234 | Stop on a task running in Cloudroom left its program running there until its time limit | The sandbox checks for Stop while it runs and ends the program at once; the next task doesn't wait |
+| 233 | Cloudroom couldn't be used: no place for its Render address and nothing could move a task there | Settings → Connections → Cloudroom (Render); the code agent moves a script there when you ask, after your yes, and the answer comes back to the chat |
 
 ## 27 November 2026, M6 audit (14)
 
