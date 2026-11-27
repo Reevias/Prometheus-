@@ -344,6 +344,11 @@ class JobStore:
                 "UPDATE jobs SET state = 'cancelled', finished = ?, "
                 "error = 'Ended when Prometheus closed (it starts again by itself)' "
                 "WHERE state = 'running' AND json_extract(payload, '$.service') = 1", (now,))
+            # a move to Cloudroom still waiting for its receipt has nothing following it any more: it is paused too,
+            # so Resume can pick it up (M6 audit A3; the server never runs a request id twice)
+            cloud_waiting = "state = 'pending' AND json_extract(payload, '$.where') = 'cloudroom'"
+            self._events_for(cloud_waiting, (), PAUSED, "Prometheus restarted")
+            self._db.execute(f"UPDATE jobs SET state = 'paused', error = 'Prometheus restarted' WHERE {cloud_waiting}")
             self._events_for("state = 'running'", (), PAUSED, "Prometheus restarted")
             cur = self._db.execute(
                 "UPDATE jobs SET state = 'paused', error = 'Prometheus restarted' WHERE state = 'running'"

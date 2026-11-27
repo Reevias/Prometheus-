@@ -68,8 +68,11 @@ class CloudroomRuntime(ExecutionRuntime):
         self.give_up_after = give_up_after
         self.runner = JobRunner(store)
         self._yes: dict[str, str] = {}                     # move id -> digest of exactly what the owner said yes to
+        self._approved: dict[str, str] = {}                # a yes just used -> its digest, checked again in start()
+        self._gen: dict[int, int] = {}                     # job id -> which watcher may follow it (M6 audit A8)
         self._stop: set[int] = set()
         self._lock = threading.Lock()
+        self._local = threading.local()                    # which watcher generation this thread is
 
     # -- what goes up, checked and described (item 2 and the fit check of item 5) -----------------------------------
     def _gather(self, spec: JobSpec) -> tuple[dict, dict, str]:
@@ -116,7 +119,7 @@ class CloudroomRuntime(ExecutionRuntime):
         """The question the owner sees: what goes up and what it may do there."""
         shown, _, _ = self._gather(spec)
         files = "; ".join(f"{n} ({m['size']} bytes)" for n, m in shown["files"].items()) or "none"
-        code = shown["code"] if len(shown["code"]) <= 600 else shown["code"][:600] + " ... (cut here; all of it goes)"
+        code = shown["code"]                               # all of it: what you approve is what goes (M6 audit A10)
         return (f"Move '{spec.title}' to Cloudroom (your free Render service)?\n"
                 f"Files that go up: {files}.\nCode that goes up:\n{code}\n"
                 f"There it runs Python in a sandbox with no internet, for at most {shown['seconds']} seconds and "
@@ -139,8 +142,13 @@ class CloudroomRuntime(ExecutionRuntime):
             self._record_yes(move_id, payload)
             cloud = dict(payload["cloud"])
             cloud["files"] = {n: m["path"] for n, m in (cloud.get("files") or {}).items()}
-            job = runtimes.start(JobSpec(payload.get("kind") or "cloudroom", payload["title"],
-                                         payload={"cloud": cloud}, runtime=self.name, approval=move_id))
+            try:
+                job = runtimes.start(JobSpec(payload.get("kind") or "cloudroom", payload["title"],
+                                             payload={"cloud": cloud}, runtime=self.name, approval=move_id))
+            except Exception:
+                with self._lock:
+                    self._yes.pop(move_id, None)           # a move that didn't happen keeps no yes (M6 audit A11)
+                raise
             return f"Moved to Cloudroom (job {job.id})."
         approvals.register(APPROVAL_KIND, on_yes)
 
@@ -160,11 +168,19 @@ class CloudroomRuntime(ExecutionRuntime):
             raise RuntimeRefused("Something changed after your yes (a file or the code), so nothing was moved. Ask "
                                  "again to see what would go up now.")
         with self._lock:
-            return self._yes.pop(approval, None) is not None
+            if self._yes.pop(approval, None) is None:
+                return False
+            self._approved[approval] = digest              # start() sends only this exact content (M6 audit A9)
+            return True
 
     # -- the five runtime calls ------------------------------------------------------------------------------------
     def start(self, spec: JobSpec):
         shown, files_b64, digest = self._gather(spec)
+        with self._lock:
+            approved = self._approved.pop(spec.approval or "", None)
+        if approved is None or approved != digest:
+            raise RuntimeRefused("Something changed after your yes (a file or the code), so nothing was moved. Ask "
+                                 "again to see what would go up now.")
         public = {**shown, "files": {n: {"size": m["size"], "sha256": m["sha256"]} for n, m in shown["files"].items()}}
         job = self.store.create_job(kind=spec.kind or "cloudroom", title=spec.title, parent_id=spec.parent_id,
                                     payload={"where": self.name, "request_id": uuid.uuid4().hex, "cloud": public,
@@ -221,13 +237,29 @@ class CloudroomRuntime(ExecutionRuntime):
     def _watch_in_background(self, job_id: int, files_b64: dict | None) -> None:
         with self._lock:
             self._stop.discard(job_id)
-        self.runner.run_existing(job_id, self._watch, args=(job_id, files_b64), name=f"cloudroom-{job_id}",
+            gen = self._gen.get(job_id, 0) + 1             # an older watcher of this job stops at its next look
+            self._gen[job_id] = gen
+        self.runner.run_existing(job_id, self._watch_safely, args=(job_id, files_b64, gen), name=f"cloudroom-{job_id}",
                                  mark_running=False)
+
+    def _watch_safely(self, job_id: int, files_b64: dict | None, gen: int) -> None:
+        """Follow the task; anything unexpected marks it failed instead of leaving it 'running' (M6 audit A4)."""
+        self._local.gen = gen
+        try:
+            self._watch(job_id, files_b64)
+        except RuntimeRefused as e:
+            if not self._stopped(job_id):
+                self._fail(job_id, str(e))
+        except Exception as e:                             # noqa: BLE001
+            if not self._stopped(job_id):
+                self._fail(job_id, f"Following the task in Cloudroom broke ({type(e).__name__}); it isn't sent again.")
 
     def _stopped(self, job_id: int) -> bool:
         with self._lock:
             if job_id in self._stop:
                 return True
+            if self._gen.get(job_id) != getattr(self._local, "gen", self._gen.get(job_id)):
+                return True                                # a newer watcher took over
         job = self.store.get_job(job_id)
         return job is None or job.state not in (PENDING, RUNNING)
 
@@ -287,7 +319,10 @@ class CloudroomRuntime(ExecutionRuntime):
                         or receipt.get("digest") != task_digest(task):
                     self._fail(job_id, "Cloudroom's receipt didn't match what was sent, so the task was stopped.")
                     return None
-                self.store.merge_payload(job_id, receipt=receipt, remote_seen=[])
+                with self.store._lock:                     # receipt and "running" together (M6 audit A3)
+                    self.store.merge_payload(job_id, receipt=receipt, remote_seen=[])
+                    if self.store.get_job(job_id).state == PENDING:
+                        self.store.set_state(job_id, RUNNING, progress="Running in Cloudroom")
                 return receipt
             why = (resp.json() or {}).get("error", "") if resp.headers.get("content-type", "").startswith(
                 "application/json") else ""
@@ -314,15 +349,31 @@ class CloudroomRuntime(ExecutionRuntime):
                     return
                 time.sleep(self.waits[min(misses, len(self.waits)) - 1])
                 continue
-            last_contact, misses = time.monotonic(), 0
-            data = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {}
-            if resp.status_code == 404 or data.get("boot_id") != boot:
+            data = {}
+            if resp.headers.get("content-type", "").startswith("application/json"):
+                try:
+                    data = resp.json()
+                except ValueError:
+                    data = {}
+            if resp.status_code == 401:
+                self._fail(job_id, "Cloudroom refused the signature: check the Cloudroom key in Settings and the "
+                                   "laptop's clock (it must be within 5 minutes). The task isn't sent again.")
+                return
+            # only a real answer from Cloudroom with another boot id means it restarted; a proxy page, a 5xx or a
+            # 429 is retried until GIVE_UP_AFTER (M6 audit A2)
+            if (resp.status_code == 404 and data.get("boot_id") and data["boot_id"] != boot) or \
+                    (resp.status_code == 200 and data.get("boot_id") != boot):
                 self._fail(job_id, "Cloudroom restarted and forgot this task, so it was lost there. It isn't sent "
                                    "again; ask again if you need it.")
                 return
             if resp.status_code != 200:
-                time.sleep(self.poll)
+                if time.monotonic() - last_contact > self.give_up_after:
+                    self._fail(job_id, "Cloudroom kept answering with errors; the task isn't sent again.")
+                    return
+                misses += 1
+                time.sleep(self.waits[min(misses, len(self.waits)) - 1])
                 continue
+            last_contact, misses = time.monotonic(), 0
             final = None
             for ev in sorted({e["seq"]: e for e in data.get("events", [])}.values(), key=lambda e: e["seq"]):
                 if ev["seq"] <= last:
