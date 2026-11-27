@@ -41,9 +41,12 @@ Don't share it and don't put it in a file in the repository.
 1. In Render: **New → Blueprint**, connect your repository **Reevias/Prometheus-** (Render asks to allow its GitHub
    app for that one repository; it is private, so this is needed).
 2. Pick the branch, and set **Blueprint file path** to `cloud/render/render.yaml`.
-3. Render shows one service, `prometheus-cloudroom`, on the **free** plan, and asks for **CLOUDROOM_TOKEN**: paste the
-   key from step 2.
-4. Apply. The first build takes a few minutes. It only copies the `prometheus` code folder into a small Python image
+3. Render shows one service, `prometheus-cloudroom`, on the **free** plan. Apply.
+4. Open the service → **Environment** → **Secret Files** → **Add Secret File**. Name it exactly `CLOUDROOM_TOKEN` and paste
+   the key from step 2 as its contents. Save. Render keeps it at `/etc/secrets/CLOUDROOM_TOKEN`, where the Cloudroom
+   server reads it. (A Secret File, not an environment variable: a program can't read it from the server's start-up
+   settings.) Then press **Manual Deploy → Deploy latest commit**.
+5. Wait for the build. The first build takes a few minutes. It only copies the `prometheus` code folder into a small Python image
    (it never gets your data or other keys) and starts the Cloudroom server.
 
 When it says **Live**, copy the address (like `https://prometheus-cloudroom.onrender.com`). Open
@@ -71,9 +74,14 @@ Without it, the service sleeps after 15 minutes, and the first request wakes it 
 moved task (Prometheus waits), but nothing on Render can ring a reminder while it sleeps.
 
 ## 7. Tell Prometheus
-The key from step 2 goes in Prometheus as **Cloudroom key** (Settings → Connections → Keys). **NOT VERIFIED / not built
-yet:** the screen where you type the Render *address*, and moving a task from the chat, aren't wired into the app in this
-step; the laptop side (`CloudroomRuntime`) exists and is tested against a pretend server only.
+In Prometheus: **Settings → Connections → Cloudroom (Render)** (under "Show advanced settings"). Paste the Render
+address (like `https://prometheus-cloudroom.onrender.com`) and the key from step 2, type your Prometheus password and
+press Save. Prometheus connects to Cloudroom straight away.
+
+To use it, ask in the chat for a script to run **in Cloudroom** (for example "work this out in Cloudroom"). Prometheus
+asks on the Approvals page first and shows exactly what goes up (the code and any files) and what it may do there; after
+your yes it runs on Render and the answer comes back to the same chat. Stop in the jobs view stops it on Render too.
+**NOT VERIFIED on a real Render service yet** (tested against the same server code on the laptop).
 
 ## What this does not do yet (please read)
 - **The cloud copy is not part of these files.** The old always-on cloud copy (reminders, email and money alerts,

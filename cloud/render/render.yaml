@@ -9,6 +9,5 @@ services:
     dockerContext: .
     healthCheckPath: /v1/health
     autoDeploy: false
-    envVars:
-      - key: CLOUDROOM_TOKEN
-        sync: false
+    # The Cloudroom key is NOT an environment variable: add it in the Render dashboard as a Secret File named
+    # CLOUDROOM_TOKEN (Render puts it at /etc/secrets/CLOUDROOM_TOKEN, which the server reads). See docs/cloud-setup.md.
