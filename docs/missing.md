@@ -12,10 +12,16 @@ phone `setting` only opens the page; npx gets the laptop's environment variables
 item isn't detected; a new recovery code doesn't re-seal unchanged items; a Google 5xx stops the rest of one flush.
 NOT VERIFIED on the laptop or the phone: everything in this review.
 
-## M6 so far, 26 November 2026 (steps 6.0 to 6.5 built; 6.6 audit and report not done)
-- Built on the branch: runtime (6.1), Cloudroom laptop side and server (6.2, items 1–5), Render files and guide (6.2 item 6), Cloudroom storage (6.3), PC control (6.4a), control from the phone (6.4b), phone control through mobile-mcp (6.5). No M6 bugs are in the bug log: the fixes found while building (real Windows and real phone checks) were made inside those steps; the Opus review and the audit (6.6) will log any they find.
-- Checked on real hardware: only parts of 6.0 (Node.js, npm, adb, UI Automation), 6.4a (window listing, screen bounds, terminal blocking, Stop all) and 6.5 (the plugged-in phone: devices, apps, screenshot, controls, one tap). Everything else is checked on GitHub's Windows machines or with pretend servers only: NOT VERIFIED on your laptop.
-- Open decisions and gaps, each written in its own section below: where the always-on cloud copy runs (the Render files don't host it), the screen for the Render address and a button to move a task (not built), a phone app screen for control from the phone (only the API exists), and the review of the encryption, the permissions and the phone control by Opus.
+## M6 done on the branch, 27 November 2026 (report: `docs/reports/M6_REPORT.md`)
+Waiting for the owner to merge. All six steps are built, reviewed (bugs 199–218) and audited (bugs 219–232); 34 M6 bugs
+in all. The audit was run by the session that built 6.1 and 6.2, so it is not fully independent. NOT VERIFIED on your
+laptop, on Render and on the phone, except these hand checks: Node.js, npm, adb and UI Automation are present (6.0);
+window listing, screen size, terminal blocking and Stop all in under a second (6.4a); the plugged-in phone found,
+apps listed, Calculator opened, a screenshot, 36 controls read, one tap (6.5). Never tried: a real Render deploy, the
+Docker build, Cloudroom storage with your real Google Drive, control from a real phone. `docs/m6/M6_LAPTOP_CHECK.md`
+doesn't exist. Open: where the always-on cloud copy runs, the screen for the Render address and a button to move a
+task, a phone screen for control from the phone, and the items in the audit's "Left open" list (a cancelled Render task
+runs to its time limit; the token is an environment variable; the minor risks of the review).
 
 ## M6 6.5 Phone control through mobile-mcp, 26 November 2026
 - Live plugged-in check on the owner's OnePlus Nord 5 (`CPH2707`, ID `3C15BH001TW00000`, Android 16) via `npx -y @mobilenext/mobile-mcp --stdio` verified device discovery, installed app listing (`com.oneplus.calculator`, `com.oneplus.deskclock`, `com.oneplus.note`, `com.android.settings`), launching Calculator, capturing a 30,966-byte screenshot, reading all 36 live Calculator UI controls, tapping, and pressing Home.
