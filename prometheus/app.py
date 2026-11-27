@@ -465,6 +465,7 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
     services.graphs = orchestrator.graphs
     services.job_runner = job_runner
     services.runtime = runtimes
+    connect_cloudroom(services)                 # M6 6.2: only when the Render address and the Cloudroom key are set
 
     def _carry_on_after_answer(approval_id: int, status: str, result: str) -> None:
         """A loop task that waited for this yes carries on by itself once everything it waited for is answered."""
@@ -721,3 +722,21 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
 
 
 __all__ = ["Services", "build_services", "TaskOutcome"]
+
+
+def connect_cloudroom(services) -> bool:
+    """Register Cloudroom (the owner's Render service) and its approvals, when its address and key are set (M6 audit
+    A12). Returns whether it is connected now."""
+    url = str(getattr(services.settings, "cloudroom_url", "") or "").strip().rstrip("/")
+    from prometheus.config import get_secret
+
+    if not url.startswith("https://") or not get_secret("CLOUDROOM_TOKEN"):
+        return False
+    import httpx
+
+    from prometheus.runtime.cloudroom import CloudroomRuntime
+
+    cloud = CloudroomRuntime(services.jobs, httpx.Client(base_url=url, timeout=20))
+    services.runtime.register(cloud)
+    cloud.connect_approvals(services.approvals, services.runtime)
+    return True

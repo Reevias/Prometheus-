@@ -87,6 +87,7 @@ class Settings:
     phone_target: str = ""                 # the phone's wireless-debugging address, e.g. 100.64.1.2:41234
     role: str = "laptop"                   # "laptop", or "cloud" for the always-on copy
     cloud_url: str = ""                    # on the laptop: the cloud copy's private address (Tailscale)
+    cloudroom_url: str = ""                # M6 6.2: the owner's Render service (https://...onrender.com); no screen yet
     backup_on: bool = False                # nightly encrypted backup to Google Drive
     research_brain: str = "auto"           # auto, or a model from the list in models/router.py
     code_windows_sandbox: bool = True

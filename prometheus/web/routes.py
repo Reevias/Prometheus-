@@ -428,6 +428,16 @@ def register_routes(app: FastAPI, services: Services) -> None:
             services.start_task(chat_id, text, read_only=bool(job.payload.get("read_only")))
             store.audit("user", "job_rerun", {"job": job_id})
             return page(request, "v3/jobs_panel.html", **jobs_context())
+        if job is not None and job.payload.get("where") == "cloudroom" and action in ("resume", "stop") \
+                and action in jobs_view.controls_for(job, runner, services.graphs):
+            cloud = services.runtime.get("cloudroom") if getattr(services, "runtime", None) else None
+            if cloud is None:                               # M6 audit A3: Cloudroom jobs go to their own runtime
+                return page(request, "v3/jobs_panel.html", status_code=409,
+                            **jobs_context("Cloudroom isn't set up on this laptop now (its address or key is missing)."))
+            done = cloud.resume(job_id) if action == "resume" else cloud.cancel(job_id, "Stopped by you")
+            store.audit("user", f"job_{action}", {"job": job_id})
+            return page(request, "v3/jobs_panel.html", status_code=200 if done else 409,
+                        **jobs_context("" if done else "That changed just now. Look again."))
         code, message = jobs_view.act(services.jobs, runner, services.graphs, job_id, action)
         if code == 404:
             return JSONResponse({"error": message}, status_code=404)
