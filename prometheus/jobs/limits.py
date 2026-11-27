@@ -114,7 +114,7 @@ def wait_for_slot(slots: Slots, give_up: Callable[[], bool], waiting: Callable[[
 # -- programs started by child agents --------------------------------------------------------------------------
 CURRENT_ATTEMPT: contextvars.ContextVar[int] = contextvars.ContextVar("prometheus_step_attempt", default=0)
 _PROGRAMS: dict[int, dict] = {}
-_PROGRAMS_LOCK = threading.RLock()
+_PROGRAMS_LOCK = threading.RLock()       # taken last: nothing waits for another lock while holding it
 _TOKENS = itertools.count(1)
 
 
@@ -157,7 +157,8 @@ def track(pid: int, pgid: int | None = None, win_job=None) -> int | None:
              "attempt": CURRENT_ATTEMPT.get()}
     with _PROGRAMS_LOCK:
         _PROGRAMS[token] = entry
-        _save(store, jid)
+        progs = _programs_of(jid)
+    _save(store, jid, progs)                 # written after letting go of the lock (see _PROGRAMS_LOCK)
     if _KILLSWITCH is not None and getattr(_KILLSWITCH, "is_set", False):
         _end(entry)                          # started while everything is stopped: it doesn't get to run
     return token
@@ -168,14 +169,21 @@ def untrack(token: int | None) -> None:
         return
     with _PROGRAMS_LOCK:
         entry = _PROGRAMS.pop(token, None)
-        if entry is not None:
-            _save(entry["store"], entry["job_id"])
+        progs = _programs_of(entry["job_id"]) if entry is not None else None
+    if entry is not None:
+        _save(entry["store"], entry["job_id"], progs)
 
 
-def _save(store, jid: int) -> None:
-    """The job's record lists its live programs, so a crash can be cleaned up at the next start."""
+def _programs_of(jid: int) -> list[dict]:
+    """Called with _PROGRAMS_LOCK held."""
+    return [{"pid": e["pid"], "created": e["created"]} for e in _PROGRAMS.values() if e["job_id"] == jid]
+
+
+def _save(store, jid: int, progs: list[dict]) -> None:
+    """The job's record lists its live programs, so a crash can be cleaned up at the next start. Never called with
+    _PROGRAMS_LOCK held: that lock is the last one taken, so it never waits for the database (the deadlock that hung
+    GitHub's Windows run of main on 27 Nov: a graph driver held the database lock and wanted this one)."""
     try:
-        progs = [{"pid": e["pid"], "created": e["created"]} for e in _PROGRAMS.values() if e["job_id"] == jid]
         store.merge_payload(jid, programs=progs)
     except Exception:                    # noqa: BLE001 - a full disk must not stop the program from being ended
         log.exception("Couldn't write down a child's programs")

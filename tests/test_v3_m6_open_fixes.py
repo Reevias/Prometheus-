@@ -194,3 +194,40 @@ def test_threads_still_work_in_the_linux_sandbox(tmp_path):
     code = "import threading\nout=[]\nt=threading.Thread(target=lambda: out.append(42))\nt.start(); t.join()\nprint(out)"
     res = sandbox.run_locked(code, sandbox.new_folder(tmp_path), timeout=20)
     assert "[42]" in res.output, res.output
+
+
+# -- the deadlock found on GitHub's Windows run of main (27 Nov): the programs lock never waits for the database ------
+def test_writing_down_programs_never_waits_for_the_database_while_holding_the_programs_lock(tmp_path):
+    from prometheus.jobs import limits
+
+    store = JobStore(tmp_path / "jobs.db")
+    job = store.create_job("graph_step", "s")
+    token = 987654
+    limits._PROGRAMS[token] = {"job_id": job.id, "pid": 1, "pgid": None, "win_job": None, "created": None,
+                               "store": store, "attempt": 0}
+    try:
+        with store._lock:                       # a graph driver holds the database lock and then needs the programs lock
+            t = threading.Thread(target=limits.untrack, args=(token,), daemon=True)
+            t.start()
+            time.sleep(0.2)
+            got = limits._PROGRAMS_LOCK.acquire(timeout=1)
+            assert got, "untrack holds the programs lock while waiting for the database: the two can deadlock"
+            limits._PROGRAMS_LOCK.release()
+        t.join(5)
+    finally:
+        limits._PROGRAMS.pop(token, None)
+
+
+def test_the_graph_driver_pauses_outside_the_database_lock():
+    import inspect
+
+    from prometheus.jobs.graph import GraphRunner
+
+    src = inspect.getsource(GraphRunner._drive)
+    locked = [l for l in src.split("with self.store._lock:", 1)[1].split("\n")]
+    inside = []
+    for line in locked[1:]:
+        if line.strip() and (len(line) - len(line.lstrip())) <= 12:      # back at the `with` level: the lock is let go
+            break
+        inside.append(line)
+    assert inside and not any("self.pause(" in l for l in inside)
