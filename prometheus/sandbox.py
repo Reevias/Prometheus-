@@ -178,14 +178,19 @@ def _env(folder: Path) -> dict:
     return env
 
 
-def _posix_limits(memory_mb: int):
+def _posix_limits(memory_mb: int, seconds: int = TIME_LIMIT, processes: int | None = None):
+    """Limits for the script's process. CPU time follows its own time limit (M6 audit A6). With processes=0 the kernel
+    refuses any new process or thread from it, by any route (M6 audit A1: `_posixsubprocess.fork_exec` raises no audit
+    event, so the guard alone can't stop it); root ignores this limit, so Cloudroom never runs as root."""
     def apply():
         import resource
 
         limit = memory_mb * 1024 * 1024
         resource.setrlimit(resource.RLIMIT_AS, (limit, limit))
-        resource.setrlimit(resource.RLIMIT_CPU, (TIME_LIMIT + 5, TIME_LIMIT + 5))
+        resource.setrlimit(resource.RLIMIT_CPU, (int(seconds) + 5, int(seconds) + 5))
         resource.setrlimit(resource.RLIMIT_FSIZE, (200 * 1024 * 1024, 200 * 1024 * 1024))
+        if processes is not None:
+            resource.setrlimit(resource.RLIMIT_NPROC, (processes, processes))
     return apply
 
 
@@ -247,7 +252,7 @@ def _new_files(folder: Path) -> list[Path]:
 
 
 def run_locked(code: str, folder: Path, network: bool = False, timeout: int = TIME_LIMIT,
-               memory_mb: int = MEMORY_MB, python: str = "") -> RunResult:
+               memory_mb: int = MEMORY_MB, python: str = "", no_new_processes: bool = False) -> RunResult:
     from prometheus.jobs.runner import raise_if_step_stopped
 
     raise_if_step_stopped()                 # a cancelled or paused graph step starts no program
@@ -268,7 +273,7 @@ def run_locked(code: str, folder: Path, network: bool = False, timeout: int = TI
     if os.name == "nt":
         kw["creationflags"] = 0x08000000          # CREATE_NO_WINDOW
     else:
-        kw["preexec_fn"] = _posix_limits(memory_mb)
+        kw["preexec_fn"] = _posix_limits(memory_mb, timeout, 0 if no_new_processes else None)
     proc = subprocess.Popen(cmd, **kw)
     job = _windows_job(proc, memory_mb) if os.name == "nt" else None
     from prometheus.jobs import limits
