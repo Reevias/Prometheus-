@@ -109,7 +109,7 @@ under load); 15 repeats and the next full run passed. The report's own commit is
   changed between the check of the yes and the send; the question cut the code at 600 characters; a failed move kept
   its yes; Cloudroom wasn't connected in the app.
 
-## After this report: the audit's open items fixed (27 Nov, bugs 233–236)
+## After this report: the audit's open items fixed (27 Nov, bugs 233–237)
 - **Cloudroom is usable:** Settings → Connections → Cloudroom (Render) (under "Show advanced settings") takes the Render
   address and key behind your password and connects at once. Ask for a script to run "in Cloudroom": the code agent
   asks on the Approvals page (all the code and the files are shown), and after your yes the answer comes back to the
@@ -120,7 +120,10 @@ under load); 15 repeats and the next full run passed. The report's own commit is
   `render.yaml` and the guide say so.
 - **Linux sandbox:** a kernel filter (seccomp, x86-64 and ARM64) refuses starting any other program from a sandboxed
   script, by any route, even as root; threads still work. (Windows: the sandbox's Job Object already allows one process.)
-- Full suite after these: 2154 passed, 0 failed, 70 skipped (Linux here).
+- A freeze (bug 237) found by GitHub's Windows run of main right after the first merge: two locks taken in opposite
+  order when a graph was stopped while one of its programs ended. Fixed; the main branch was merged again after a green
+  Windows run.
+- Full suite after these: 2156 passed, 0 failed, 70 skipped (Linux here).
 
 ## Your part (what you need to add)
 1. A Render account (free, no card) and the service from `cloud/render/render.yaml` (`docs/cloud-setup.md`, steps 1–5).

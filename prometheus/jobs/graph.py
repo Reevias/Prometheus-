@@ -312,34 +312,36 @@ class GraphRunner:
                 parent = self.store.get_job(graph_id)
                 if parent is None or parent.state != RUNNING:
                     return                                       # paused or cancelled: the buttons did the rest
-                if self._stopped_all():
-                    self.pause(graph_id, "Stopped by user")     # Stop all: nothing new starts (laptop check, 25 Nov)
-                    return
-                steps = {j.payload.get("step"): j for j in self.store.list_jobs(parent_id=graph_id)}
-                self._spread_failures(steps)
-                if all(j.state in TERMINAL_STATES for j in steps.values()):
-                    self._forget(graph_id)                       # finished: its functions are let go
-                    failed = [s for s, j in steps.items() if j.state == FAILED]
-                    if failed:
-                        raise GraphFailed(f"Step {', '.join(failed)} failed; the steps that needed it were cancelled.")
-                    if any(j.state == CANCELLED for j in steps.values()):
-                        self.store.set_state(graph_id, CANCELLED, error="A step was cancelled")
-                    return
-                waiting_for_slot = False
-                for sid, j in steps.items():
-                    if self._stopped_all():
-                        break
-                    if j.state != PENDING or not all(steps[n].state == DONE for n in j.payload.get("needs", [])):
-                        continue
-                    if not self.slots.try_acquire():
-                        waiting_for_slot = True
-                        if j.progress != "Waiting for a free slot":
-                            self.store.update_job(j.id, progress="Waiting for a free slot")
-                        continue
-                    self._launch(graph_id, j, {n: steps[n].payload.get("result") for n in j.payload.get("needs", [])})
-                note = f"Waiting: {self.slots.reason}" if waiting_for_slot and self.slots.reason else ""
-                if parent.progress != note:
-                    self.store.update_job(graph_id, progress=note)
+                stopped_all = self._stopped_all()
+                if not stopped_all:
+                    steps = {j.payload.get("step"): j for j in self.store.list_jobs(parent_id=graph_id)}
+                    self._spread_failures(steps)
+                    if all(j.state in TERMINAL_STATES for j in steps.values()):
+                        self._forget(graph_id)                       # finished: its functions are let go
+                        failed = [s for s, j in steps.items() if j.state == FAILED]
+                        if failed:
+                            raise GraphFailed(f"Step {', '.join(failed)} failed; the steps that needed it were cancelled.")
+                        if any(j.state == CANCELLED for j in steps.values()):
+                            self.store.set_state(graph_id, CANCELLED, error="A step was cancelled")
+                        return
+                    waiting_for_slot = False
+                    for sid, j in steps.items():
+                        if self._stopped_all():
+                            break
+                        if j.state != PENDING or not all(steps[n].state == DONE for n in j.payload.get("needs", [])):
+                            continue
+                        if not self.slots.try_acquire():
+                            waiting_for_slot = True
+                            if j.progress != "Waiting for a free slot":
+                                self.store.update_job(j.id, progress="Waiting for a free slot")
+                            continue
+                        self._launch(graph_id, j, {n: steps[n].payload.get("result") for n in j.payload.get("needs", [])})
+                    note = f"Waiting: {self.slots.reason}" if waiting_for_slot and self.slots.reason else ""
+                    if parent.progress != note:
+                        self.store.update_job(graph_id, progress=note)
+            if stopped_all:                                  # Stop all: nothing new starts (laptop check, 25 Nov);
+                self.pause(graph_id, "Stopped by user")     # paused outside the database lock (deadlock, 27 Nov)
+                return
             wake.wait(0.1)
             wake.clear()
 
