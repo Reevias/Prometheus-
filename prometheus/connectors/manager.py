@@ -8,6 +8,9 @@ from prometheus.config import get_secret
 from prometheus.connectors.mcp_client import Connection, HttpServer, MCPError, StdioServer
 
 NAME = re.compile(r"^[A-Za-z][A-Za-z0-9 _-]{0,30}$")
+MOBILE_MCP_NAME = "mobile-mcp"
+# pinned to the version checked in 6.0 (licence and code): -y with no version would run whatever is newest
+MOBILE_MCP_TARGET = "npx -y @mobilenext/mobile-mcp@1.0.20 --stdio"
 
 
 RESERVED = {"MCP_SERVER_TOKEN"}          # Prometheus's own key for apps that call IT
@@ -88,3 +91,35 @@ class ConnectionManager:
                 ro = " (reads only)" if (t.get("annotations") or {}).get("readOnlyHint") else ""
                 lines.append(f"- {e['name']} / {t.get('name')}{ro}: {desc}")
         return "\n".join(lines)
+
+
+def ensure_mobile_mcp(settings, *, target: str = MOBILE_MCP_TARGET, enable: bool = True) -> dict:
+    """Register or update mobile-mcp as a separate MCP server under Settings -> Other apps."""
+    servers = list(getattr(settings, "mcp_servers", None) or [])
+    existing = next((e for e in servers if isinstance(e, dict) and e.get("name", "").lower() == MOBILE_MCP_NAME), None)
+    if existing is not None:
+        if not existing.get("target"):
+            existing["target"] = target
+        existing["kind"] = existing.get("kind") or "command"
+        existing["enabled"] = bool(enable)
+        settings.mcp_servers = servers
+        return existing
+    entry = {"name": MOBILE_MCP_NAME, "kind": "command", "target": target, "enabled": bool(enable)}
+    servers.append(entry)
+    settings.mcp_servers = servers
+    return entry
+
+
+def find_mobile_mcp(manager: ConnectionManager) -> Connection:
+    """Connect to the mobile-mcp server registered in Other apps (by name or matching mobile toolset)."""
+    if manager is None:
+        raise MCPError("Connections aren't set up.")
+    entry = manager.entry(MOBILE_MCP_NAME)
+    if entry is not None and entry.get("enabled"):
+        return manager.get(entry["name"])
+    for e in manager.entries():
+        if not e.get("enabled"):
+            continue
+        if "mobile-mcp" in str(e.get("target", "")).lower():
+            return manager.get(e["name"])
+    raise MCPError("Phone control uses mobile-mcp in Other apps. Connect mobile-mcp in Settings → Connections.")

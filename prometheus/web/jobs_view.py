@@ -57,6 +57,8 @@ def controls_for(job, runner, graphs=None) -> list[str]:
                 and job.payload.get("chat_id") is not None and job.payload.get("text"):
             return ["rerun"]
         return []
+    if job.payload.get("where") == "cloudroom" and job.state == PAUSED:
+        return ["resume", "stop"]         # a move cut off by a restart: Resume follows its receipt (M6 audit A3)
     if is_graph(job) and job.kind == "task_graph":
         return ["stop"]                   # a chat task's graph: Stop ends the task (pause would fake a "done")
     if is_graph(job):

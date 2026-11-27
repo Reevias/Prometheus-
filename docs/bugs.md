@@ -2,7 +2,60 @@
 
 Every bug found and fixed, newest first, so the count is always exact. Add a line for each new one.
 
-**Total fixed: 198** (as of 25 November 2026). M5 accounts for 28 of them (171–198); see `docs/reports/M5_REPORT.md`.
+**Total fixed: 236** (as of 27 November 2026). M5 accounts for 28 of them (171–198); see `docs/reports/M5_REPORT.md`. M6 accounts for 38 (199–236); see `docs/reports/M6_REPORT.md`.
+
+## 27 November 2026, M6 open items (4)
+
+| # | Bug | Fixed by |
+|---|---|---|
+| 236 | On a Linux laptop a sandboxed script could still start another program through _posixsubprocess | A kernel filter (seccomp) refuses running any other program from a sandboxed script, by any route; threads still work |
+| 235 | The Cloudroom key went to Render as an environment variable | It goes as a Secret File (/etc/secrets/CLOUDROOM_TOKEN); the setup and guide say so |
+| 234 | Stop on a task running in Cloudroom left its program running there until its time limit | The sandbox checks for Stop while it runs and ends the program at once; the next task doesn't wait |
+| 233 | Cloudroom couldn't be used: no place for its Render address and nothing could move a task there | Settings → Connections → Cloudroom (Render); the code agent moves a script there when you ask, after your yes, and the answer comes back to the chat |
+
+## 27 November 2026, M6 audit (14)
+
+| # | Bug | Fixed by |
+|---|---|---|
+| 232 | Cloudroom wasn't connected anywhere in the app, so a yes on the Approvals page had nothing to start it | Connected when its Render address and key are set; Resume and Stop of a Cloudroom job go to Cloudroom |
+| 231 | A move that failed after the yes kept the yes in memory | The yes is forgotten when the move doesn't happen |
+| 230 | The question cut the code at 600 characters, so the owner couldn't see everything that would go up | All the code is shown |
+| 229 | A file changed between the check of the yes and the send went up without the yes | What is sent is checked against the yes at the moment it is read |
+| 228 | Pause then Resume could leave two watchers following one Cloudroom task | Each watcher has a number; an older one stops |
+| 227 | A sandboxed script got 65 seconds of CPU whatever its time limit (a 300-second Cloudroom task was killed early) | The CPU limit follows the task's own time limit |
+| 226 | The Cloudroom server read each result file whole before checking its size, and kept run folders | Sizes checked first; run folders deleted after each task |
+| 225 | The Cloudroom server kept every task with its uploads for ever (the free machine has 512 MB) | Uploads dropped after the run; only the last 50 finished tasks kept (request ids still remembered) |
+| 224 | Anyone could send the Cloudroom server a huge unsigned body, read whole before any check | Refused unsigned or over 8 MB before the body is read |
+| 223 | A Cloudroom watcher that hit something unexpected (key removed, odd answer) died and left the task 'running' for ever | The task is marked failed with the reason |
+| 222 | A move cut off by a laptop restart before (or right at) its receipt stayed 'pending' for ever | It is paused after a restart and Resume carries on; receipt and 'running' are recorded together |
+| 221 | One proxy error page or a 401 while following a Cloudroom task called it 'restarted' and failed it, though it still ran | Errors are retried; a 401 says to check the key and the clock; only a real new boot id means a restart |
+| 220 | The Cloudroom server's start-up environment (with the token) was readable through /proc by its own user | The server process is made not dumpable |
+| 219 | A sandboxed task could start a shell through _posixsubprocess (no audit event) and read the Cloudroom token | On Cloudroom the kernel refuses any new process from a task (process limit 0); checked as a non-root user |
+
+## 26 November 2026, review of M6 6.3–6.5 (20)
+
+| # | Bug | Fixed by |
+|---|---|---|
+| 218 | "Backup now" and the nightly job could upload the same outbox at once | Review of 6.3–6.5, test in `tests/test_m6_review_63_65.py` |
+| 217 | Private notes of deleted or re-included chats stayed on Drive | Review of 6.3–6.5, test in `tests/test_m6_review_63_65.py` |
+| 216 | The offline outbox kept every night's backup, without limit | Review of 6.3–6.5, test in `tests/test_m6_review_63_65.py` |
+| 215 | A sealed Cloudroom file moved onto another name was opened without complaint; bytes after the end were accepted | Review of 6.3–6.5, test in `tests/test_m6_review_63_65.py` |
+| 214 | Drive got the plain-text SHA-256 of each Cloudroom item | Review of 6.3–6.5, test in `tests/test_m6_review_63_65.py` |
+| 213 | Phone approvals hid the number really used for WhatsApp and that an SMS text isn't filled in | Review of 6.3–6.5, test in `tests/test_m6_review_63_65.py` |
+| 212 | An approved phone tap ran even when the approved button had moved | Review of 6.3–6.5, test in `tests/test_m6_review_63_65.py` |
+| 211 | Stop all didn't stop the next step of a phone action | Review of 6.3–6.5, test in `tests/test_m6_review_63_65.py` |
+| 210 | The phone screen was read before the one-time read yes (tap by name, battery, the spoken brief) | Review of 6.3–6.5, test in `tests/test_m6_review_63_65.py` |
+| 209 | Requests waiting for the phone never resumed (the removed adb shell() was still called) | Review of 6.3–6.5, test in `tests/test_m6_review_63_65.py` |
+| 208 | The mobile-mcp version wasn't pinned, and its command could be changed without the password | Review of 6.3–6.5, test in `tests/test_m6_review_63_65.py` |
+| 207 | A cancel could slip in while the phone's yes was being taken | Review of 6.3–6.5, test in `tests/test_m6_review_63_65.py` |
+| 206 | A waiting laptop yes still ran after control from the phone was switched off | Review of 6.3–6.5, test in `tests/test_m6_review_63_65.py` |
+| 205 | Phone actions on the laptop ignored the "apps" Features switch | Review of 6.3–6.5, test in `tests/test_m6_review_63_65.py` |
+| 204 | Typed text from the phone appeared in the laptop's pop-up notification | Review of 6.3–6.5, test in `tests/test_m6_review_63_65.py` |
+| 203 | Shrunk screenshots didn't say their scale, so clicks could miss | Review of 6.3–6.5, test in `tests/test_m6_review_63_65.py` |
+| 202 | Single keys and Ctrl+V could go into a password box on the PC | Review of 6.3–6.5, test in `tests/test_m6_review_63_65.py` |
+| 201 | The yes for typing on the PC showed only 37 of up to 500 characters | Review of 6.3–6.5, test in `tests/test_m6_review_63_65.py` |
+| 200 | A window title could break out of the PowerShell quotes with ‘ ’ ‚ ‛ and run a command (PC control) | Review of 6.3–6.5, test in `tests/test_m6_review_63_65.py` |
+| 199 | PC-control and phone-read approvals had no handler after a restart, so a yes failed; Stop all wasn't hooked into PC control until it first ran | Review of 6.3–6.5, test in `tests/test_m6_review_63_65.py` |
 
 ## 25 November 2026, M5 open items finished (3)
 

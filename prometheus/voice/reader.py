@@ -87,10 +87,10 @@ class Reader:
         self._stop.clear()
         self.state = "reading"
         if self._thread is None or not self._thread.is_alive():
-            from prometheus.jobs.runner import get_default_runner, start_job
+            from prometheus.runtime import start_job, thread_of
 
             job = start_job("voice_reader", f"Reading {self.title}", self._run, name="prometheus-reader")
-            self._thread = get_default_runner().get_thread(job.id)
+            self._thread = thread_of(job)
         return f"Reading {self.title} ({len(self.parts)} parts)."
 
     def _run(self) -> None:

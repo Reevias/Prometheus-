@@ -145,7 +145,7 @@ class AutoUpdater:
         (leave or os._exit)(0)
 
     def start(self, background: bool = False) -> None:
-        from prometheus.jobs.runner import start_job
+        from prometheus.runtime import start_job
 
         start_job("autoupdate", "AutoUpdater loop", self.loop, args=(background,), name="prometheus-update", service=True)
 

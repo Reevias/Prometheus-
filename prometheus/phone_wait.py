@@ -55,6 +55,11 @@ def phone_back(phone) -> bool:
     """Is the phone reachable? Reconnects once if it was paired before (wireless debugging)."""
     from prometheus.connectors.android import PhoneError
 
+    if not hasattr(phone, "shell"):              # mobile-mcp (M6 6.5): reachable if it lists the phone
+        try:
+            return bool(phone.device_id())
+        except (PhoneError, AttributeError):
+            return False
     if not getattr(phone, "target", ""):
         return False
     try:
@@ -133,7 +138,7 @@ class PhoneWaiter:
                 pass
 
     def start(self) -> None:
-        from prometheus.jobs.runner import start_job
+        from prometheus.runtime import start_job
 
         start_job("phone_wait", "Phone waiter loop", self.loop, name="prometheus-phone-waiter", service=True)
 

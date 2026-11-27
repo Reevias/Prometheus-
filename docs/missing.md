@@ -3,6 +3,77 @@
 Updated 11 November 2026. Version 2.3. Built and tested here: 883 tests pass.
 Not yet run end to end on the owner's real laptop.
 
+## M6 review of 6.3–6.5, 26 November 2026
+20 findings fixed (bug log 199–218). Still open (Minor, known risks): a stolen device key can give the phone yes itself
+(the laptop yes still guards clicks and typing); no rate limit for a paired phone; device keys can't be rotated; `win`,
+`alt+f4`, `ctrl+w` only guarded by the per-action yes; the window under the cursor isn't re-checked for clicks;
+`read_controls` shows ordinary text-box values to the AI; not DPI-aware; the phone's app list is read before asking;
+phone `setting` only opens the page; npx gets the laptop's environment variables; Drive rollback to an older copy of an
+item isn't detected; a new recovery code doesn't re-seal unchanged items; a Google 5xx stops the rest of one flush.
+NOT VERIFIED on the laptop or the phone: everything in this review.
+
+## M6 done on the branch, 27 November 2026 (report: `docs/reports/M6_REPORT.md`)
+Waiting for the owner to merge. All six steps are built, reviewed (bugs 199–218) and audited (bugs 219–232); 34 M6 bugs
+in all. The audit was run by the session that built 6.1 and 6.2, so it is not fully independent. NOT VERIFIED on your
+laptop, on Render and on the phone, except these hand checks: Node.js, npm, adb and UI Automation are present (6.0);
+window listing, screen size, terminal blocking and Stop all in under a second (6.4a); the plugged-in phone found,
+apps listed, Calculator opened, a screenshot, 36 controls read, one tap (6.5). Never tried: a real Render deploy, the
+Docker build, Cloudroom storage with your real Google Drive, control from a real phone. `docs/m6/M6_LAPTOP_CHECK.md`
+doesn't exist. Open: where the always-on cloud copy runs, the screen for the Render address and a button to move a
+task, a phone screen for control from the phone, and the items in the audit's "Left open" list (a cancelled Render task
+runs to its time limit; the token is an environment variable; the minor risks of the review).
+
+## M6 6.5 Phone control through mobile-mcp, 26 November 2026
+- Live plugged-in check on the owner's OnePlus Nord 5 (`CPH2707`, ID `3C15BH001TW00000`, Android 16) via `npx -y @mobilenext/mobile-mcp --stdio` verified device discovery, installed app listing (`com.oneplus.calculator`, `com.oneplus.deskclock`, `com.oneplus.note`, `com.android.settings`), launching Calculator, capturing a 30,966-byte screenshot, reading all 36 live Calculator UI controls, tapping, and pressing Home.
+- NOT VERIFIED live while unlocked: multi-tap Calculator entry, `type_text` into a real unlocked app box, reading unlocked Settings/Clock elements, and live password-field refusal (the phone auto-locked mid-check, exposing the lock screen `8:57` / `Device locked` / `Charging 87%`); covered by fake `mobile-mcp` unit tests.
+- `look` vision reading in live Prometheus defaults `routes["vision"]` to online `anthropic` (`claude-opus-5-5`); during the automated live phone check `FakeProvider` handled the `look` call locally so no phone screenshot left the laptop, while `mobile_list_elements_on_screen` reads the Android view tree locally over ADB/MCP with no AI model.
+- `setting`, `alarm`, `timer`, `message` (SMS), `call`, and `battery` rely on UI navigation / visible screen elements through `mobile-mcp` rather than direct `dumpsys` / `cmd` ADB commands, and `setting` / `alarm` / `timer` stop after opening the relevant Settings/Clock tab rather than autonomously scrolling deep OS sub-menus.
+- `prometheus/app.py` was untouched per build boundaries, so `phone_read` one-time approval handler registration (beyond `action_handler`) initializes on the first `PhoneAgent.run()` call.
+
+## M6 6.4a Control PC: screen, mouse, keyboard, 25 November 2026
+- On the owner's Windows 11 laptop, `EnumWindows` (`list_windows`), `GetSystemMetrics` virtual screen bounds (`(0, 0, 3840, 1080)`), terminal window blocking (`powershell.exe`), `UIAutomationClient` control listing against a test WinForms window (`PromCheckWin.exe`), and `< 1s` Stop all termination of an active PowerShell subprocess ran and passed.
+- NOT VERIFIED live on an unlocked interactive desktop: `ImageGrab` screen capture (`OSError: screen grab failed`), `SetForegroundWindow` focus switching (`GetForegroundWindow() == 0`), typing into a live non-password box, and live UIA `IsPassword` refusal (Windows saw only HWND `Pane` wrappers while the screen was locked/asleep during the test session); covered with unit tests using fake Win32/UIA responses.
+- `prometheus/app.py` and `prometheus/agents/__init__.py` were left untouched per build boundaries, so registering `pc_control` at startup (before `prometheus.orchestrator.registry` is imported or before `PCControlAgent.run` runs after a restart with pending approvals) still waits on final wiring.
+
+## M6 6.4b control the laptop from the phone, 26 November 2026
+- Windows and the phone are faked in the tests: the laptop actions (laptop.py) and the mouse and keyboard (6.4a) run through the existing code, never tried from a real phone. NOT VERIFIED on your laptop or phone. There is no phone app screen for it yet (the phone side is the HTTP API `/api/remote/...` and its tests).
+- "Asks on the phone" is two calls: the laptop gives the phone a one-time yes token, and nothing runs without a second call carrying it. Showing the question and the tap is the phone app's job; a phone whose key is stolen could make both calls itself. The mouse and keyboard actions are the ones that also need your yes on the laptop.
+- It needs "Access from other devices" on (the laptop's existing host check refuses a phone's address otherwise) and the laptop listening on its Tailscale address. Only the Tailscale addresses and this laptop count as the private link: your home Wi-Fi addresses are refused.
+- A typed text is shown in full on the Approvals page (so you can judge it) and so it is also in Approvals' own "requested" log line; the phone-remote log lines hold only its length. Screenshots stay on the laptop (the phone gets their file name, not the picture). Power actions other than lock (shut down, restart), installing apps and joining Wi-Fi are not on the list.
+- Pending requests live in memory: a restart drops them and an old laptop approval then says "ask again". The existing test that every route needs a login now says the phone routes must answer 401 or 403 without a key.
+
+## M6 audit, 27 November 2026 (reports: `docs/reports/M6_AUDIT.md`, `docs/reports/M6_REPORT.md`)
+- The audit's open items are fixed (bugs 233–236). Still NOT VERIFIED: a real Render service, the laptop check of M6, and on the phone typing, several taps and password refusal (the phone locked during the check).
+- On a Linux CPU other than x86-64 or ARM64 the sandbox's program block isn't installed (Windows uses its Job Object).
+
+## M6 6.2 item 6 Render files and guide, 26 November 2026
+- **The always-on cloud copy is not hosted by these files.** They run only the Cloudroom server: Render's free service has one web port, 512 MB, and forgets its files on every restart (so a cloud copy there would lose its password, sync key and AI keys). Reminders still don't ring while the laptop is off. Opus needs to decide how to host it (or a smaller part of it); `docs/cloud-setup.md` says so.
+- The plan said "the cloud copy's jobs (reminders, alerts, sync) run there" and the owner's message said `cloud/space/`; the plan's own newer words are Render, so the folder is `cloud/render/`.
+- Docker was not run (no engine here, no Render account). Tested: the start command in a clean environment with only `requirements.txt`, health answers and an unsigned request is refused. The laptop's address screen for Cloudroom isn't built yet, so the guide's step 7 says so.
+- The uptime-checker step names UptimeRobot and cron-job.org as examples only; their free limits were not checked.
+
+## M6 6.3 Cloudroom storage, 25 November 2026
+- Run against a pretend Drive and a pretend Google web server in tests only; never with your real Google Drive, on your laptop or on a Windows machine other than GitHub's. NOT VERIFIED.
+- It uses the recovery code you already made for backups (no new key). If backups were never set up, it stops and says so.
+- The private notes are the title and messages of each chat left out in Memory → Privacy, stored as they are (sealed). A chat taken out of "left out" later, or deleted, keeps its old stored copy until you remove it on Drive. There is no screen to read them yet: `Storage.lookup_private(chat_id)` does it in code.
+- Needs a connection to read the cloud copy back; while an upload is still waiting, it is read from the laptop's queue. Files in the Drive folder are only readable with your recovery code: if you lose it, they can't be opened.
+- The Google sign-in used by backups decides what Drive lets the app see; a file you made by hand in that folder is not seen.
+- The old "Prometheus Backups" folder is left alone (not moved or deleted) when you switch this on.
+
+## M6 6.2 Cloudroom (items 1–5), 25 November 2026
+- Not run on a real Render service yet: tested against the same server code in-process (NOT VERIFIED on Render and on the laptop). The Render files and the setup guide (item 6) are built: see the next section.
+- Only Python tasks with no internet can move (the free machine has 512 MB; at most 256 MB, 300 s, 5 MB of files per task). Nothing in Prometheus asks to move a task yet; that needs a button or a plan step (later step).
+- Cancelling a task that is already running on Render marks it cancelled and drops its result, but the sandboxed program runs to its own time limit there.
+- Render keeps everything in memory: after a Render restart its running and finished tasks are gone (the laptop marks them failed, never resends). The one-time signatures are remembered only until a restart; their 5-minute time limit still applies.
+- A sandbox is a guard, not a wall: the Cloudroom server adds the key's folder and /proc to the sandbox's closed places, but the task runs as the same user as the server.
+- If the laptop restarts before Cloudroom confirmed a task that had files, the task is marked failed (the files aren't kept for a resend).
+
+## M6 6.1 ExecutionRuntime, 25 November 2026
+- `CloudroomRuntime` now exists (6.2) with your exact one-time yes, but the app doesn't register or offer it anywhere yet, so every job still runs on the laptop.
+- Cancelling and pausing from the jobs view still go to M5's runner and graphs directly; only starting goes through the runtime (the plan's item 3).
+- A job's result is kept in memory for the latest 256 jobs (graph steps keep theirs in their record), so after a restart only graph-step results are known.
+- NOT VERIFIED on the owner's laptop.
+
 ## M5 done on the branch, 25 November 2026 (report: `docs/reports/M5_REPORT.md`)
 Waiting for the owner to merge. NOT VERIFIED on the owner's laptop after the audit fixes: run the laptop check of
 `docs/m5/M5_LAPTOP_CHECK.md` again (5 jobs at once, Stop all, restart and Run again, branching, an own agent, the full

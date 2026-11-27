@@ -61,6 +61,7 @@ FEATURES: tuple[Feature, ...] = (
             agents=("apps", "system", "settings", "opener")),
     Feature("browser", "Browser control", "Computer and phone", agents=("browser",)),
     Feature("own_agents", "Own agents", "Computer and phone", attr="own_agents"),
+    Feature("remote_control", "Control the laptop from the phone", "Computer and phone", attr="remote_control"),
     Feature("code", "Running code (sandbox)", "Computer and phone", agents=("code",)),
     Feature("phone", "Phone control", "Computer and phone", agents=("phone",)),
     Feature("laptop_jobs", "Jobs sent from the phone to the laptop", "Computer and phone"),
@@ -77,6 +78,7 @@ FEATURES: tuple[Feature, ...] = (
     Feature("github", "GitHub and new skills from repos", "Online", agents=("github", "repo_scout", "antigravity")),
     Feature("sync", "Sync with the cloud copy", "Online"),
     Feature("backup", "Nightly backup to Google Drive", "Online", attr="backup_on"),
+    Feature("cloudroom_storage", "Cloudroom storage", "Online", attr="cloudroom_storage"),
     Feature("auto_update", "Install updates by itself", "Online", attr="auto_update"),
 )
 BY_KEY = {f.key: f for f in FEATURES}

@@ -18,10 +18,13 @@
 <p align="center">Or in PowerShell: <code>irm https://raw.githubusercontent.com/Reevias/Prometheus-/main/scripts/install-windows.ps1 | iex</code><br>
 <sub>by <a href="https://github.com/Reevias">Reevias</a></sub></p>
 
-> **Where this is.** `main` now has the new interface (Prometheus 3.0, milestone M2): the orange core, a sidebar with
-> every page, Projects, an automation builder and a task board. It is not released yet (the version stays 2.3.0 until
-> the plan is done), so the downloads above are still the v2.3 release; installing from `main` or updating gets the
-> new look. The full plan is in [`docs/PLAN.md`](docs/PLAN.md).
+> **Where this is.** `main` has Prometheus 3.0 up to milestone **M6**: the new interface (M2), a step-by-step agent
+> engine with model routing (M3), skills learned from GitHub repositories (M4), many agents at once with a jobs view
+> (M5), and M6: one runtime for every job, **Cloudroom** (your free Render service can run a script for you after your
+> yes), encrypted storage on Google Drive, control of the laptop's screen, mouse and keyboard, the phone controlling the
+> laptop, and phone control through mobile-mcp. It is not released yet (the version stays 2.3.0 until the plan is
+> done), so the downloads above are still the v2.3 release. Not everything is checked on the owner's own laptop yet:
+> see the milestone reports in [`docs/reports/`](docs/reports/). The full plan is in [`docs/PLAN.md`](docs/PLAN.md).
 
 ## Why Prometheus
 
@@ -55,11 +58,12 @@ already own, keeps your memory and your files there, and reaches for the interne
 - **Study:** flashcards and quizzes (spaced review, Anki export, quiz PDFs), an exam countdown planner, lecture
   recordings to notes and slides, read-aloud, a homework checker that gives hints and never the answer, an assignment
   tracker.
-- **Computer and phone:** sees your screen ("what's this error?"), uses websites in its own browser, controls Wi-Fi,
-  apps and settings, controls an Android phone (apps, screen, alarms, WhatsApp, calls), runs Python in a sandbox, and
-  can learn a GitHub repository as a skill after checking it.
-- **Always with you:** an installable phone app with notifications, an always-on cloud copy that syncs with the
-  laptop, encrypted nightly backups to Google Drive, and use from other AI apps over MCP.
+- **Computer and phone:** sees your screen ("what's this error?"), reads, clicks and types on the laptop (every click
+  or typed text asks first), uses websites in its own browser, controls Wi-Fi, apps and settings, controls an Android
+  phone through mobile-mcp (taps and typing ask first), lets your paired phone control the laptop, runs Python in a
+  sandbox (on the laptop, or in Cloudroom when you ask), and can learn a GitHub repository as a skill after checking it.
+- **Always with you:** an installable phone app with notifications, Cloudroom on your free Render service, encrypted
+  backups and Cloudroom storage on Google Drive (sealed on the laptop first), and use from other AI apps over MCP.
 
 ## Built-in agents
 
@@ -139,8 +143,9 @@ in Chrome and open it (Android asks once to allow installing from Chrome). **iPh
 Safari. It's the same interface as the laptop, laid out for a phone (the menu opens from the top left). You get
 notifications (the bell), hold-to-talk and sending photos:
 
-1. Set up the always-on **cloud copy** once (free Oracle Cloud machine): [`docs/cloud-setup.md`](docs/cloud-setup.md).
-2. Install **Tailscale** on the phone and sign in.
+1. Install **Tailscale** on the laptop and the phone and sign in (free); optional: Cloudroom on Render, no card
+   needed: [`docs/cloud-setup.md`](docs/cloud-setup.md).
+2. To let the phone control the laptop: Settings → Features → "Control the laptop from the phone", then pair it.
 3. On the laptop open ☰ → **Get it on your phone**, scan the QR code and follow the steps there.
 
 Everything else (notifications, bank SMS, letting Prometheus control the phone):
@@ -205,34 +210,37 @@ OneDrive. Only the matching parts of earlier chats are fetched for a new questio
 - YouTube and GitHub links open straight away; any other website or any file on your laptop waits for your approval;
   programs and scripts are never opened.
 - Cloning repos and self-edits wait on the **Approvals** page. The safety code itself can't be self-edited.
-- **STOP ALL** at the top of every page stops every agent at once.
+- **STOP ALL** at the top of every page stops every agent at once, including laptop and phone control and their
+  programs.
+- Cloudroom: nothing moves without your yes, which shows exactly what goes up; only its own key signs the messages and
+  none of your other keys ever go up; tasks there have no internet and can't start other programs.
+- Clicking and typing on the laptop or the phone asks first every time; passwords are never typed by Prometheus.
 
 ## Where it's going
 
-The plan is one document, [`docs/PLAN.md`](docs/PLAN.md), with 11 milestones and 60 steps. **M0, M1 and M2 are
-finished; everything below that is a plan, not a feature.**
+The plan is one document, [`docs/PLAN.md`](docs/PLAN.md), with 11 milestones and 60 steps. **M0 to M6 are on
+`main`; M7 onwards is a plan, not a feature.**
 
 | Milestone | Steps | Status |
 |---|---|---|
 | M0 Baseline | 5 | ✅ Done |
 | M1 Tool primitives | 5 | ✅ Done |
-| M2 Desktop interface | 5 | ✅ Done (not yet checked on the owner's laptop) |
-| M3 Orchestration and model routing | 6 | ⬜ Not started |
-| M4 Repository-to-skill | 7 | ⬜ Not started |
-| M5 Many agents | 6 | ⬜ Not started |
-| M6 Runtime and Cloudroom | 5 | ⬜ Not started |
+| M2 Desktop interface | 5 | ✅ Done |
+| M3 Orchestration and model routing | 6 | ✅ Done |
+| M4 Repository-to-skill | 8 | ✅ Done |
+| M5 Many agents | 6 | ✅ Done (laptop re-check written in `docs/m5/`) |
+| M6 Runtime and Cloudroom | 5 | ✅ Done (not yet run on a real Render service or fully on the laptop) |
 | M7 Security hardening | 5 | ⬜ Not started |
 | M8 Memory engine | 7 | ⬜ Not started |
 | M9 Evaluation and release | 6 | ⬜ Not started |
 | M10 Autonomy | 3 | ⬜ Reserved until M0–M9 are done |
 
-**Next up, M3:** brings a router that picks simple, medium or complex handling, a typed tool registry, a
-think-act-observe loop, **streaming answers**, and live context in the prompt.
+**Next up, M7:** security hardening and the safe-stop system (plan: [`docs/PLAN.md`](docs/PLAN.md)).
 
 ## Documentation
 
 - [The plan and roadmap](docs/PLAN.md) · [M2 build plan](docs/m2/M2_PLAN.md) · [M2 report](docs/reports/M2_REPORT.md)
-- [Step-by-step setup guide](docs/guide.md) · [Cloud copy](docs/cloud-setup.md) · [Phone](docs/phone-setup.md)
+- [Step-by-step setup guide](docs/guide.md) · [Cloudroom on Render](docs/cloud-setup.md) · [Phone](docs/phone-setup.md)
 - [Changelog](CHANGELOG.md) · [Security](SECURITY.md) · [Contributing](CONTRIBUTING.md)
 
 ## For developers

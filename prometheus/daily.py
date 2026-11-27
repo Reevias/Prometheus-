@@ -77,6 +77,13 @@ class DailyJobs:
             except Exception as e:           # offline, or Google needs signing in again: try tomorrow
                 done.append(f"Backup skipped: {type(e).__name__}: {str(e)[:120]}")
                 store.kv_set("backup_error", f"{type(e).__name__}: {str(e)[:200]}")
+        if getattr(s, "cloudroom_storage", False):
+            try:
+                from prometheus import cloudroom_storage
+
+                done.append(cloudroom_storage.run_once(self.services))
+            except Exception as e:           # offline, no recovery code or Google needs signing in: try tomorrow
+                done.append(f"Cloudroom storage skipped: {type(e).__name__}: {str(e)[:120]}")
         updater = self.services.updater
         if updater is not None:
             msg = updater.check_once()
@@ -104,7 +111,7 @@ class DailyJobs:
                 return
 
     def start(self, background: bool = False) -> None:
-        from prometheus.jobs.runner import start_job
+        from prometheus.runtime import start_job
 
         start_job("daily", "Daily background jobs loop", self.loop, args=(background,), name="prometheus-daily", service=True)
 

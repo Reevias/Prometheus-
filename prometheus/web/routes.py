@@ -428,6 +428,16 @@ def register_routes(app: FastAPI, services: Services) -> None:
             services.start_task(chat_id, text, read_only=bool(job.payload.get("read_only")))
             store.audit("user", "job_rerun", {"job": job_id})
             return page(request, "v3/jobs_panel.html", **jobs_context())
+        if job is not None and job.payload.get("where") == "cloudroom" and action in ("resume", "stop") \
+                and action in jobs_view.controls_for(job, runner, services.graphs):
+            cloud = services.runtime.get("cloudroom") if getattr(services, "runtime", None) else None
+            if cloud is None:                               # M6 audit A3: Cloudroom jobs go to their own runtime
+                return page(request, "v3/jobs_panel.html", status_code=409,
+                            **jobs_context("Cloudroom isn't set up on this laptop now (its address or key is missing)."))
+            done = cloud.resume(job_id) if action == "resume" else cloud.cancel(job_id, "Stopped by you")
+            store.audit("user", f"job_{action}", {"job": job_id})
+            return page(request, "v3/jobs_panel.html", status_code=200 if done else 409,
+                        **jobs_context("" if done else "That changed just now. Look again."))
         code, message = jobs_view.act(services.jobs, runner, services.graphs, job_id, action)
         if code == 404:
             return JSONResponse({"error": message}, status_code=404)
@@ -491,7 +501,7 @@ def register_routes(app: FastAPI, services: Services) -> None:
             if v.start() and v.loop is not None:
                 v.loop.listen_now()
 
-        from prometheus.jobs.runner import start_job
+        from prometheus.runtime import start_job
 
         start_job("voice_button", "Start voice and listen", start_then_listen, name="prometheus-voice-button")
         return {"starting": True}
@@ -1734,6 +1744,8 @@ def register_routes(app: FastAPI, services: Services) -> None:
             last = {**last, "when_text": _t.strftime("%d %b %Y %H:%M", _t.localtime(last["when"])),
                     "mb": f"{last['bytes'] / 1024 ** 2:.1f}"}
         return {"sync_status": store.kv_get("sync_status") or "", "sync_key_set": bool(get_secret("SYNC_TOKEN")),
+                "cloudroom_key_set": bool(get_secret("CLOUDROOM_TOKEN")),
+                "cloudroom_on": bool(getattr(services, "runtime", None) and services.runtime.get("cloudroom")),
                 "backup_ready": bool(get_secret("BACKUP_KEY")), "backup_last": last,
                 "backup_error": store.kv_get("backup_error") or ""}
 
@@ -1759,6 +1771,48 @@ def register_routes(app: FastAPI, services: Services) -> None:
         save_settings(services.settings)
         store.audit("user", "phone_connected", {})
         return settings_page(request, notice=said)
+
+    @app.post("/settings/phone/mobile-mcp", response_class=HTMLResponse)
+    def phone_connect_mobile_mcp(request: Request, target: str = Form(""), password: str = Form("")):
+        from prometheus.agents import apps_agent
+        from prometheus.connectors.manager import MOBILE_MCP_NAME, MOBILE_MCP_TARGET, ensure_mobile_mcp
+
+        cmd = (target or "").strip()[:500] or MOBILE_MCP_TARGET
+        if cmd != MOBILE_MCP_TARGET:            # another program, started on every phone action: the password first
+            denied = _key_gate(request, password)
+            if denied is not None:
+                return denied
+        ensure_mobile_mcp(services.settings, target=cmd, enable=True)
+        save_settings(services.settings)
+        if apps_agent.MANAGER is not None:
+            apps_agent.MANAGER.drop(MOBILE_MCP_NAME)
+        store.audit("user", "app_connected", {"name": MOBILE_MCP_NAME, "kind": "command"})
+        return settings_page(request, notice="Connected mobile-mcp under Other apps (MCP).")
+
+    @app.post("/settings/cloudroom", response_class=HTMLResponse)
+    def save_cloudroom(request: Request, url: str = Form(""), key: str = Form(""), password: str = Form("")):
+        """Cloudroom (M6 6.2): the Render address and its key. Saved behind the password, then connected at once."""
+        denied = _key_gate(request, password)
+        if denied is not None:
+            return denied
+        url = url.strip().rstrip("/")
+        if url and not re.fullmatch(r"https://[A-Za-z0-9.-]+(:\d+)?", url):
+            return settings_page(request, 400, error="The Cloudroom address looks like https://your-room.onrender.com")
+        from prometheus import config as _cfg
+
+        if key.strip():
+            try:
+                _cfg.set_secret("CLOUDROOM_TOKEN", key.strip())
+            except ValueError as e:
+                return settings_page(request, 400, error=str(e))
+        services.settings.cloudroom_url = url
+        save_settings(services.settings)
+        store.audit("user", "cloudroom", {"set": bool(url)})
+        from prometheus.app import connect_cloudroom
+
+        if url and connect_cloudroom(services):
+            return settings_page(request, notice="Cloudroom is connected. Ask for a script to run in Cloudroom.")
+        return settings_page(request, notice="Saved." if not url else "Saved, but the Cloudroom key is missing.")
 
     @app.post("/settings/cloud", response_class=HTMLResponse)
     def save_cloud(request: Request, url: str = Form(""), key: str = Form(""), password: str = Form("")):
@@ -1817,7 +1871,7 @@ def register_routes(app: FastAPI, services: Services) -> None:
             except Exception as e:
                 store.kv_set("backup_error", f"{type(e).__name__}: {str(e)[:200]}")
 
-        from prometheus.jobs.runner import start_job
+        from prometheus.runtime import start_job
 
         start_job("backup", "Backup now", work, name="prometheus-backup")
         return settings_page(request, notice="Backing up in the background. Refresh in a minute to see it.")
@@ -1869,7 +1923,7 @@ def register_routes(app: FastAPI, services: Services) -> None:
                 finally:
                     services._redteam_running = False
 
-            from prometheus.jobs.runner import start_job
+            from prometheus.runtime import start_job
 
             start_job("safety_check", "Safety check", work, name="prometheus-safety-check")
         store.audit("user", "safety_check", {})

@@ -87,6 +87,7 @@ class Settings:
     phone_target: str = ""                 # the phone's wireless-debugging address, e.g. 100.64.1.2:41234
     role: str = "laptop"                   # "laptop", or "cloud" for the always-on copy
     cloud_url: str = ""                    # on the laptop: the cloud copy's private address (Tailscale)
+    cloudroom_url: str = ""                # M6 6.2: the owner's Render service (https://...onrender.com); no screen yet
     backup_on: bool = False                # nightly encrypted backup to Google Drive
     research_brain: str = "auto"           # auto, or a model from the list in models/router.py
     code_windows_sandbox: bool = True
@@ -115,6 +116,8 @@ class Settings:
     study_reminder: str = "18:00"          # daily "cards are due" reminder; "" for none
     tray: bool = True                      # icon by the clock; closing the window keeps Prometheus running      # run scripts in Windows Sandbox when this laptop has it
     repo_of_day: bool = True
+    cloudroom_storage: bool = False             # M6 6.3: encrypted knowledge, sync data and backups in a Drive folder (Features)
+    remote_control: bool = False                # M6 6.4b: the phone may control this laptop (paired key, private link; Features)
     own_agents: bool = False                    # M5 5.4: the owner's own agents (Features switch, off)
     own_agent_specs: list = field(default_factory=list)   # their saved definitions (prometheus/own_agents.py)
     parallel_steps: bool = False                # M5 5.2: run a plan's independent steps at once (Features)
@@ -199,6 +202,7 @@ KEY_NAMES = {
     "GOOGLE_TOKEN": "Google sign-in",
     "BACKUP_KEY": "Backup key (made from your recovery code)",
     "SYNC_TOKEN": "Cloud copy sync key",
+    "CLOUDROOM_TOKEN": "Cloudroom key (your Render service)",
     "VAPID_PRIVATE": "Phone notifications key",
     "ELEVENLABS_API_KEY": "ElevenLabs (voice)",
     "OLLAMA_CLOUD_API_KEY": "Ollama cloud",

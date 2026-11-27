@@ -74,8 +74,11 @@ def test_the_phone_agent_queues_when_the_phone_is_away(make_ctx, monkeypatch):
     import prometheus.agents.phone_agent as pa
 
     class Away:
-        def battery(self):
+        def device_id(self):        # reachability only: the battery itself is read after the yes (review of M6 6.5)
             raise PhoneError("The phone isn't connected right now. Open Settings → Phone control → Connect")
+
+        def battery(self):
+            raise AssertionError("read before the yes")
 
     class S:
         notify = staticmethod(lambda *a, **k: None)

@@ -1,63 +1,100 @@
-# Prometheus cloud copy (always on, free)
+# Prometheus in the cloud (free, no card): Cloudroom on Render
 
-A second Prometheus on Oracle Cloud's free machine keeps reminders, email and money alerts, deadlines and the
-morning and evening summaries going when your laptop is off, and answers from your phone. It has no screen, files or
-voice of its own. The two copies sync every 10 minutes over a private link; while the laptop is on, the cloud copy
-stays quiet so nothing arrives twice.
+Updated 26 November 2026. About 20 minutes, once.
 
-About 30 minutes, once.
+Two different things used to live on one "free cloud machine". Please keep them apart:
 
-## 1. Make the free machine (Oracle Cloud)
-1. Sign up at **cloud.oracle.com** ("Start for free"). A card is asked for to check you're real; the Always Free
-   machine is never charged.
-2. Menu → Compute → Instances → **Create instance**.
-3. Image: **Ubuntu 24.04**. Shape: **Ampere (VM.Standard.A1.Flex)**, 4 OCPUs, 24 GB memory (all inside Always Free).
-4. Under "Add SSH keys", choose **Generate a key pair** and download the private key.
-5. Create. When it's running, copy its **Public IP address**.
+1. **Cloudroom** is a small free machine that can run **one task at a time** for you when you say yes. The steps below
+   set this up on **Render**, which needs **no card**.
+2. **The always-on cloud copy** (reminders, email and money alerts and phone answers while your laptop is off). **The
+   Render files do not run this yet.** See "What this does not do yet" at the end. Please read it before you count on
+   reminders while the laptop is off.
 
-## 2. Tailscale (the private link) on your phone and laptop
-1. Install **Tailscale** on your laptop (tailscale.com/download) and your phone (Play Store), and sign in with the
-   same account (Google is fine). Free for personal use.
+Oracle Cloud was dropped: it needs a card, and yours didn't work.
 
-## 3. Run the setup on the machine
-From your laptop (PowerShell), with the key file you downloaded:
+## What Render's free machine is really like (read this first)
+- **It sleeps after 15 minutes** without a visitor and takes about a minute to wake. A free "uptime checker" (step 6)
+  visits it **every 10 minutes** to keep it awake.
+- **750 free hours a month** for the whole Render account. One always-awake service uses about 744 of them, so only
+  **one** service can stay awake all month.
+- **Its files are wiped** every time it restarts, sleeps, or you redeploy. **Nothing is kept only there**: a moved task
+  keeps its progress as receipts on your laptop, and your knowledge stays on the laptop and, sealed, on Google Drive.
+- **Small: 512 MB of memory.** A moved task gets at most **256 MB, 300 seconds, 5 MB of files and no internet.** If a
+  task doesn't fit, Prometheus says so and keeps it on the laptop.
+- It can restart at any time, has no SSH, and Render itself says free services are not for important work. Free
+  services that send a lot of data can be suspended. It is fine for a personal helper like this one.
+- Every task needs your yes first, and every request is signed with your own key: a request without it is refused.
 
-```
-ssh -i path\to\ssh-key.key ubuntu@<public IP>
-```
+## 1. A Render account (no card)
+Go to **render.com** and sign up with your GitHub account. No card is asked for the free plan.
 
-Then on the machine:
-
-```
-curl -fsSLO https://raw.githubusercontent.com/Reevias/Prometheus-/main/scripts/cloud-setup.sh
-```
-
-(The repository is private, so if that link doesn't work, copy `scripts/cloud-setup.sh` from your Prometheus folder
-with `scp -i path\to\ssh-key.key scripts\cloud-setup.sh ubuntu@<public IP>:`.)
+## 2. Make your Cloudroom key
+On your laptop (PowerShell), make a long random key and keep it for step 3 and step 7:
 
 ```
-bash cloud-setup.sh
+python -c "import secrets; print(secrets.token_urlsafe(48))"
 ```
 
-It asks for:
-- a **GitHub token** that can read your Prometheus repository (github.com/settings/tokens → Fine-grained → only that
-  repository → Contents: Read-only);
-- a **password** for this copy (it can be the same as your laptop's);
-- a Tailscale sign-in link: open it and approve.
+Don't share it and don't put it in a file in the repository.
 
-At the end it prints a **private address** (https://prometheus-cloud.….ts.net) and a **sync key**.
+## 3. Put the service on Render
+1. In Render: **New → Blueprint**, connect your repository **Reevias/Prometheus-** (Render asks to allow its GitHub
+   app for that one repository; it is private, so this is needed).
+2. Pick the branch, and set **Blueprint file path** to `cloud/render/render.yaml`.
+3. Render shows one service, `prometheus-cloudroom`, on the **free** plan. Apply.
+4. Open the service → **Environment** → **Secret Files** → **Add Secret File**. Name it exactly `CLOUDROOM_TOKEN` and paste
+   the key from step 2 as its contents. Save. Render keeps it at `/etc/secrets/CLOUDROOM_TOKEN`, where the Cloudroom
+   server reads it. (A Secret File, not an environment variable: a program can't read it from the server's start-up
+   settings.) Then press **Manual Deploy → Deploy latest commit**.
+5. Wait for the build. The first build takes a few minutes. It only copies the `prometheus` code folder into a small Python image
+   (it never gets your data or other keys) and starts the Cloudroom server.
 
-## 4. Connect your laptop
-Prometheus on the laptop → Settings → **Cloud copy**: paste the address and the sync key, type your password, Save.
-It syncs at once and every 10 minutes after that.
+When it says **Live**, copy the address (like `https://prometheus-cloudroom.onrender.com`). Open
+`<address>/v1/health`: you should see `{"ok":true}`. Anything else on the service is refused without your key.
 
-## 5. Your phone
-Open the private address in your phone's browser (with Tailscale on) and sign in. The phone link step adds
-notifications and an app icon.
+(Render doesn't update it by itself: `autoDeploy` is off, so a new version goes up only when you press Deploy.)
 
-## Keys on the cloud copy
-To answer from your phone it needs an AI key: open its Settings from the phone and add your OpenRouter or Claude key.
-Email and Google: connect them there the same way if you want the cloud copy to read mail while the laptop is off.
+## 4. Check it
+- `<address>/v1/health` answers `{"ok":true}` (no key needed, this is what the uptime checker uses).
+- Anything else, for example opening `<address>/v1/tasks` in a browser, is refused.
 
-## Updating
-It updates itself every night like the laptop does.
+## 5. Private link for your phone (Tailscale)
+This is what lets your phone control the laptop (Settings → Features → "Control the laptop from the phone"), and it is
+free for personal use.
+1. Install **Tailscale** on your laptop (tailscale.com/download) and on your phone, signed in to the same account.
+2. On the laptop, turn on "Access from other devices" in Settings, so the phone can reach it by its Tailscale address.
+3. Phone control only answers over this private link and only to a phone you paired on the laptop (System → Devices).
+
+## 6. The free uptime checker (keeps it awake)
+Use any free uptime or "cron" web service that can visit an address **every 10 minutes** (for example UptimeRobot or
+cron-job.org; their free limits change, so check the current ones). Add one monitor that visits
+`<address>/v1/health`. It gets only `{"ok":true}`: it has no key and sees none of your data.
+
+Without it, the service sleeps after 15 minutes, and the first request wakes it in about a minute. That is fine for a
+moved task (Prometheus waits), but nothing on Render can ring a reminder while it sleeps.
+
+## 7. Tell Prometheus
+In Prometheus: **Settings → Connections → Cloudroom (Render)** (under "Show advanced settings"). Paste the Render
+address (like `https://prometheus-cloudroom.onrender.com`) and the key from step 2, type your Prometheus password and
+press Save. Prometheus connects to Cloudroom straight away.
+
+To use it, ask in the chat for a script to run **in Cloudroom** (for example "work this out in Cloudroom"). Prometheus
+asks on the Approvals page first and shows exactly what goes up (the code and any files) and what it may do there; after
+your yes it runs on Render and the answer comes back to the same chat. Stop in the jobs view stops it on Render too.
+**NOT VERIFIED on a real Render service yet** (tested against the same server code on the laptop).
+
+## What this does not do yet (please read)
+- **The cloud copy is not part of these files.** The old always-on cloud copy (reminders, email and money alerts,
+  morning and evening summaries and phone answers while the laptop is off; `scripts/cloud-setup.sh`) is a full
+  Prometheus. These files run **only the Cloudroom server**, for three reasons: Render's free service has **one web
+  port** (the cloud copy and Cloudroom would both need it), **512 MB** is tight for both, and the free machine **forgets
+  all its files on every restart**, so a cloud copy there would lose its password, its sync key and its AI keys each time.
+  So **reminders still do not ring while the laptop is off**, and the old way of running a cloud copy needs a machine
+  that keeps its files. How to host it (or a smaller version of it) is an open decision for the next review; I did not
+  guess.
+- If you already have another always-on Linux machine that keeps its files, `scripts/cloud-setup.sh` still sets the
+  cloud copy up there: it asks for a GitHub token, a password and a Tailscale sign-in, then prints an address and a
+  sync key for Settings → Cloud copy. Its header still mentions Oracle; the steps don't depend on it.
+- **NOT VERIFIED:** the Docker build and the real Render deploy have not been run (no Docker engine and no Render account
+  were available). What was tested: the start command in a clean environment with only `requirements.txt`, answering
+  `/v1/health` and refusing an unsigned request. Please try it once and tell me what Render says.

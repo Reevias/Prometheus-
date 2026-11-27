@@ -117,7 +117,7 @@ class AntigravityRunner:
 
     @staticmethod
     def _thread(fn) -> None:
-        from prometheus.jobs.runner import start_job
+        from prometheus.runtime import start_job
         start_job(kind="antigravity_agent", title="Antigravity agent task", func=fn)
 
     def submit(self, payload: dict) -> str:

@@ -439,12 +439,15 @@
   </div>
 
   </section>
-  <section class="set" id="phone" data-tab="connections" data-keys="android phone adb wireless debugging tap">
-  <h3>Phone control {{ help("Lets Prometheus tap and type on your Android phone over Wi-Fi (Android calls it wireless debugging). Every action on the phone asks you first.") }}</h3>
+  <section class="set" id="phone" data-tab="connections" data-keys="android phone adb wireless debugging tap mobile-mcp">
+  <h3>Phone control {{ help("Lets Prometheus look at, tap, and type on your Android phone through mobile-mcp (Apache-2.0) running as a separate MCP server under Other apps. Every tap, typed text, and app change asks you first.") }}</h3>
   <div class="panel" style="display:grid;gap:8px">
-    <p class="muted" style="margin:0">Prometheus can control your Android phone (open apps, see and tap the screen, settings,
-      alarms, messages and calls; taps, typing, messages and calls are asked first). Steps are in
-      <code>docs/phone-setup.md</code> (section 6). On the phone: Settings → Developer options → <strong>Wireless debugging</strong>.</p>
+    <p class="muted" style="margin:0">Prometheus controls your Android phone through <strong>mobile-mcp</strong> in
+      <a href="#connections">Other apps (MCP)</a> (needs Node.js 20+ and Android Platform Tools <code>adb</code> on this
+      laptop, with USB debugging or Wireless debugging turned on). Steps are in <code>docs/phone-setup.md</code>.</p>
+    <form class="row" hx-post="/settings/phone/mobile-mcp" hx-target="body" style="flex-wrap:wrap">
+      <button type="submit" class="primary">Connect mobile-mcp (Other apps)</button>
+    </form>
     {% if phone_error %}<p class="error" style="margin:0">{{ phone_error }}</p>{% endif %}
     <form class="row" hx-post="/settings/phone/pair" hx-target="body" style="flex-wrap:wrap">
       <span class="muted">1. Pair once: tap “Pair device with pairing code” on the phone, then type what it shows</span>
@@ -480,6 +483,20 @@
       {% if s.cloud_url %}<div class="row"><button type="button" hx-post="/settings/cloud/sync" hx-target="body">Sync now</button>
         <span class="muted">{{ sync_status }}</span></div>{% endif %}
     {% endif %}
+  </div>
+  </section>
+  <section class="set adv" id="cloudroom" data-tab="connections" data-keys="cloudroom render cloud task move key address">
+  <h3>Cloudroom (Render) {{ help("Your free Render service that can run a Python script for you when you ask, after your yes. Setup: docs/cloud-setup.md.") }}</h3>
+  <div class="panel" style="display:grid;gap:8px">
+    <p class="muted" style="margin:0">{{ "Connected." if cloudroom_on else "Not connected." }} A script moves there only when you ask
+      ("work this out in Cloudroom") and say yes on the Approvals page, which shows exactly what goes up. No internet there,
+      at most 300 seconds and 256 MB; none of your other keys go up. Setup guide: <code>docs/cloud-setup.md</code>.</p>
+    <form class="row" hx-post="/settings/cloudroom" hx-target="body" style="flex-wrap:wrap">
+      <input name="url" value="{{ s.cloudroom_url }}" placeholder="https://your-room.onrender.com" style="flex:1;min-width:240px">
+      <input type="text" class="secret" spellcheck="false" data-lpignore="true" data-1p-ignore name="key" placeholder="{{ 'Cloudroom key saved ✓ (paste to replace)' if cloudroom_key_set else 'Cloudroom key (from the setup guide)' }}" autocomplete="off" style="width:220px">
+      <input type="password" name="password" placeholder="Your Prometheus password" autocomplete="current-password" required style="width:200px">
+      <button type="submit">Save</button>
+    </form>
   </div>
   </section>
   <section class="set" id="backup" data-tab="privacy" data-keys="backup google drive restore recovery code encrypted">

@@ -120,6 +120,40 @@ def hook(event, args):
                 and not _inside(path or ".", READ_ROOTS):
             _no("it can only look inside its own folder.")
 
+def _no_new_programs():
+    """Linux: a kernel filter (seccomp) refuses execve/execveat for this process and anything it forks, so no route
+    (not even _posixsubprocess.fork_exec, which raises no audit event) can start another program. Threads still work.
+    Installed before the script runs; it can't be removed afterwards (M6 audit, open item 4)."""
+    if not sys.platform.startswith("linux"):
+        return
+    import ctypes, platform, struct
+    table = {"x86_64": (0xC000003E, (59, 322), True), "aarch64": (0xC00000B7, (221, 281), False)}
+    arch, nrs, x32 = table.get(platform.machine(), (None, (), False))
+    if arch is None:
+        return
+    ALLOW, DENY = 0x7FFF0000, 0x00050000 | 1                    # SECCOMP_RET_ALLOW, SECCOMP_RET_ERRNO | EPERM
+    prog = [(0x20, 0, 0, 4),                                     # load the architecture
+            (0x15, 0, 4, arch),                                  # another architecture: allow (it can't exec ours)
+            (0x20, 0, 0, 0),                                     # load the system call number
+            (0x35, 3, 0, 0x40000000) if x32 else (0x15, 0, 0, 0xFFFFFFFF),   # x32 calls: refuse
+            (0x15, 2, 0, nrs[0]), (0x15, 1, 0, nrs[1]),          # execve / execveat: refuse
+            (0x06, 0, 0, ALLOW), (0x06, 0, 0, DENY)]
+    raw = b"".join(struct.pack("HBBI", *i) for i in prog)
+    buf = ctypes.create_string_buffer(raw, len(raw))
+    class FProg(ctypes.Structure):
+        _fields_ = [("len", ctypes.c_ushort), ("filter", ctypes.c_void_p)]
+    fprog = FProg(len(prog), ctypes.cast(buf, ctypes.c_void_p))
+    libc = ctypes.CDLL(None, use_errno=True)
+    if libc.prctl(38, 1, 0, 0, 0) == 0:                          # PR_SET_NO_NEW_PRIVS
+        libc.prctl(22, 2, ctypes.byref(fprog), 0, 0)             # PR_SET_SECCOMP, SECCOMP_MODE_FILTER
+    for name in [m for m in sys.modules if m == "ctypes" or m.startswith("ctypes.")]:
+        del sys.modules[name]                                    # the script imports ctypes afresh, under the guard
+
+try:
+    _no_new_programs()
+except Exception:
+    pass                                                         # the other limits still apply
+
 sys.argv = [SCRIPT]
 sys.path.insert(0, SCRATCH)
 os.chdir(SCRATCH)
@@ -178,14 +212,19 @@ def _env(folder: Path) -> dict:
     return env
 
 
-def _posix_limits(memory_mb: int):
+def _posix_limits(memory_mb: int, seconds: int = TIME_LIMIT, processes: int | None = None):
+    """Limits for the script's process. CPU time follows its own time limit (M6 audit A6). With processes=0 the kernel
+    refuses any new process or thread from it, by any route (M6 audit A1: `_posixsubprocess.fork_exec` raises no audit
+    event, so the guard alone can't stop it); root ignores this limit, so Cloudroom never runs as root."""
     def apply():
         import resource
 
         limit = memory_mb * 1024 * 1024
         resource.setrlimit(resource.RLIMIT_AS, (limit, limit))
-        resource.setrlimit(resource.RLIMIT_CPU, (TIME_LIMIT + 5, TIME_LIMIT + 5))
+        resource.setrlimit(resource.RLIMIT_CPU, (int(seconds) + 5, int(seconds) + 5))
         resource.setrlimit(resource.RLIMIT_FSIZE, (200 * 1024 * 1024, 200 * 1024 * 1024))
+        if processes is not None:
+            resource.setrlimit(resource.RLIMIT_NPROC, (processes, processes))
     return apply
 
 
@@ -247,7 +286,8 @@ def _new_files(folder: Path) -> list[Path]:
 
 
 def run_locked(code: str, folder: Path, network: bool = False, timeout: int = TIME_LIMIT,
-               memory_mb: int = MEMORY_MB, python: str = "") -> RunResult:
+               memory_mb: int = MEMORY_MB, python: str = "", no_new_processes: bool = False,
+               should_stop=None) -> RunResult:
     from prometheus.jobs.runner import raise_if_step_stopped
 
     raise_if_step_stopped()                 # a cancelled or paused graph step starts no program
@@ -268,30 +308,42 @@ def run_locked(code: str, folder: Path, network: bool = False, timeout: int = TI
     if os.name == "nt":
         kw["creationflags"] = 0x08000000          # CREATE_NO_WINDOW
     else:
-        kw["preexec_fn"] = _posix_limits(memory_mb)
+        kw["preexec_fn"] = _posix_limits(memory_mb, timeout, 0 if no_new_processes else None)
     proc = subprocess.Popen(cmd, **kw)
     job = _windows_job(proc, memory_mb) if os.name == "nt" else None
     from prometheus.jobs import limits
 
     program = limits.track(proc.pid)        # run by a child agent: cancel, pause and Stop all end it (M5 audit F4)
-    timed_out = False
+    timed_out = stopped = False
     try:
-        out, _ = proc.communicate(timeout=timeout)
-    except subprocess.TimeoutExpired:
-        proc.kill()
-        out, _ = proc.communicate()
-        timed_out = True
+        end = time.monotonic() + timeout
+        while True:                                  # checks `should_stop` while it runs (Cloudroom's cancel)
+            try:
+                out, _ = proc.communicate(timeout=0.5 if should_stop else max(0.1, end - time.monotonic()))
+                break
+            except subprocess.TimeoutExpired:
+                if should_stop is not None and should_stop():
+                    stopped = True
+                elif time.monotonic() < end:
+                    continue
+                else:
+                    timed_out = True
+                proc.kill()
+                out, _ = proc.communicate()
+                break
     finally:
         limits.untrack(program)
         del job
     text = out.decode("utf-8", "replace")
+    if stopped:
+        text += "\n(Stopped before it finished.)"
     needs = NEEDS_NET in text
     text = text.replace(NEEDS_NET, "").replace(str(folder / GUARD_NAME), "sandbox")
     text = _tidy_traceback(text)
     if len(text) > OUTPUT_CHARS:
         text = text[:OUTPUT_CHARS] + "\n... (cut short)"
-    return RunResult(proc.returncode == 0 and not timed_out, text, _new_files(folder), needs and not network,
-                     timed_out=timed_out)
+    return RunResult(proc.returncode == 0 and not timed_out and not stopped, text, _new_files(folder),
+                     needs and not network, timed_out=timed_out)
 
 
 def _tidy_traceback(text: str) -> str:

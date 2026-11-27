@@ -1,0 +1,13 @@
+# Render Blueprint for Prometheus Cloudroom (M6 6.2): one free web service, built from cloud/render/Dockerfile.
+# Use it with "New -> Blueprint" and set the Blueprint file path to cloud/render/render.yaml.
+services:
+  - type: web
+    name: prometheus-cloudroom
+    runtime: docker
+    plan: free
+    dockerfilePath: ./cloud/render/Dockerfile
+    dockerContext: .
+    healthCheckPath: /v1/health
+    autoDeploy: false
+    # The Cloudroom key is NOT an environment variable: add it in the Render dashboard as a Secret File named
+    # CLOUDROOM_TOKEN (Render puts it at /etc/secrets/CLOUDROOM_TOKEN, which the server reads). See docs/cloud-setup.md.

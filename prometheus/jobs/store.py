@@ -37,6 +37,15 @@ CREATE TABLE IF NOT EXISTS jobs (
 );
 CREATE INDEX IF NOT EXISTS idx_jobs_state ON jobs (state);
 CREATE INDEX IF NOT EXISTS idx_jobs_parent ON jobs (parent_id);
+CREATE TABLE IF NOT EXISTS job_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    job_id INTEGER NOT NULL,
+    seq INTEGER NOT NULL,
+    at REAL NOT NULL,
+    state TEXT NOT NULL,
+    text TEXT NOT NULL DEFAULT ''
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_job_events_seq ON job_events (job_id, seq);
 """
 
 
@@ -135,9 +144,33 @@ class JobStore:
                    VALUES (?, ?, ?, ?, ?, 0.0, 0.0, '', '', 0, ?)""",
                 (kind, title, state, parent_id, created_ts, payload_json),
             )
-            self._db.commit()
             job_id = cur.lastrowid
+            self._event(job_id, state, "", created_ts)
+            self._db.commit()
             return self.get_job(job_id)
+
+    # -- the job's numbered events (M6 6.1): every state change, in order, for the runtime's events() -------------
+    _EVENT_SQL = ("INSERT INTO job_events (job_id, seq, at, state, text) VALUES "
+                  "(?, COALESCE((SELECT MAX(seq) FROM job_events WHERE job_id = ?), 0) + 1, ?, ?, ?)")
+
+    def _event(self, job_id: int, state: str, text: str = "", at: float | None = None) -> None:
+        """Record one event (the caller holds the lock and commits)."""
+        self._db.execute(self._EVENT_SQL, (job_id, job_id, time.time() if at is None else at, state, str(text)[:500]))
+
+    def _events_for(self, where: str, params: tuple, state: str, text: str) -> None:
+        """One event for every job a bulk UPDATE is about to change (same lock and transaction). `where` is always
+        one of this file's fixed strings, never outside text."""
+        ids = [r[0] for r in self._db.execute(f"SELECT id FROM jobs WHERE {where} ORDER BY id", params).fetchall()]
+        now = time.time()
+        for jid in ids:
+            self._event(jid, state, text, now)
+
+    def events(self, job_id: int, after: int = 0) -> list[dict]:
+        """The job's events after number `after`, oldest first: {seq, at, state, text}."""
+        with self._lock:
+            rows = self._db.execute("SELECT seq, at, state, text FROM job_events WHERE job_id = ? AND seq > ? "
+                                    "ORDER BY seq", (job_id, int(after))).fetchall()
+        return [{"seq": int(r[0]), "at": float(r[1]), "state": str(r[2]), "text": str(r[3])} for r in rows]
 
     def get_job(self, job_id: int) -> Job | None:
         with self._lock:
@@ -207,6 +240,8 @@ class JobStore:
             for i in range(0, len(parents), 500):
                 part = parents[i:i + 500]
                 marks = ",".join("?" * len(part))
+                self._db.execute(f"DELETE FROM job_events WHERE job_id IN (SELECT id FROM jobs WHERE parent_id "
+                                 f"IN ({marks}) AND {old}) OR job_id IN ({marks})", (*part, cutoff, *part))
                 gone += self._db.execute(f"DELETE FROM jobs WHERE parent_id IN ({marks}) AND {old}",
                                          (*part, cutoff)).rowcount
                 gone += self._db.execute(f"DELETE FROM jobs WHERE id IN ({marks})", part).rowcount
@@ -272,7 +307,7 @@ class JobStore:
             started = now if new_state == RUNNING and not job.started else None
             finished = now if new_state in TERMINAL_STATES else None
 
-            return self.update_job(
+            out = self.update_job(
                 job_id,
                 state=new_state,
                 started=started,
@@ -280,6 +315,9 @@ class JobStore:
                 error=error,
                 progress=progress,
             )
+            self._event(job_id, new_state, error or "", now)
+            self._db.commit()
+            return out
 
     def finish(self, job_id: int, final: str, error: str | None = None) -> Job | None:
         """End a job, also one that waits as paused or pending, through the allowed moves only
@@ -300,10 +338,18 @@ class JobStore:
         "service") are started again by Prometheus itself, so their old record is closed as cancelled."""
         now = time.time()
         with self._lock:
+            self._events_for("state = 'running' AND json_extract(payload, '$.service') = 1", (), CANCELLED,
+                             "Ended when Prometheus closed (it starts again by itself)")
             self._db.execute(
                 "UPDATE jobs SET state = 'cancelled', finished = ?, "
                 "error = 'Ended when Prometheus closed (it starts again by itself)' "
                 "WHERE state = 'running' AND json_extract(payload, '$.service') = 1", (now,))
+            # a move to Cloudroom still waiting for its receipt has nothing following it any more: it is paused too,
+            # so Resume can pick it up (M6 audit A3; the server never runs a request id twice)
+            cloud_waiting = "state = 'pending' AND json_extract(payload, '$.where') = 'cloudroom'"
+            self._events_for(cloud_waiting, (), PAUSED, "Prometheus restarted")
+            self._db.execute(f"UPDATE jobs SET state = 'paused', error = 'Prometheus restarted' WHERE {cloud_waiting}")
+            self._events_for("state = 'running'", (), PAUSED, "Prometheus restarted")
             cur = self._db.execute(
                 "UPDATE jobs SET state = 'paused', error = 'Prometheus restarted' WHERE state = 'running'"
             )
@@ -314,6 +360,8 @@ class JobStore:
         """Pause all running jobs when killswitch is triggered. Service loops keep running (they check the kill
         switch themselves), so they are never shown as paused."""
         with self._lock:
+            self._events_for("state = 'running' AND COALESCE(json_extract(payload, '$.service'), 0) != 1", (),
+                             PAUSED, reason)
             cur = self._db.execute(
                 "UPDATE jobs SET state = 'paused', error = ? WHERE state = 'running' "
                 "AND COALESCE(json_extract(payload, '$.service'), 0) != 1",

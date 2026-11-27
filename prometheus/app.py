@@ -79,6 +79,8 @@ class Services:
     jobs: object = None
     job_runner: object = None
     graphs: object = None            # task graphs (M5 5.2)
+    remote: object = None            # control from the phone (M6 6.4b)
+    runtime: object = None           # the runtimes every job starts through (M6 6.1)
 
     def notify(self, kind: str, text: str) -> bool:
         """A Windows notification, if the owner wants this kind (Settings → Notifications). Every notification is
@@ -118,10 +120,10 @@ class Services:
             finally:
                 self.running.pop(chat_id, None)
 
-        from prometheus.jobs.runner import get_default_runner, start_job
+        from prometheus.runtime import start_job, thread_of
 
         job = start_job("rewrite", f"Rewrite message {message_id}", work, name="prometheus-rewrite")
-        thread = get_default_runner().get_thread(job.id)
+        thread = thread_of(job)
         return thread
 
     def _task_slot(self, chat_id: int | None) -> bool:
@@ -157,11 +159,11 @@ class Services:
             if outcome is not None:
                 self.after_task(outcome, text, time.monotonic() - started)
 
-        from prometheus.jobs.runner import get_default_runner, start_job
+        from prometheus.runtime import start_job, thread_of
 
         job = start_job("task", f"Task in chat {chat_id}: {text[:50]}", work, name=f"prometheus-task-{chat_id}",
                         payload={"chat_id": chat_id, "text": text, "read_only": bool(read_only)})
-        thread = get_default_runner().get_thread(job.id)
+        thread = thread_of(job)
         return thread
 
     def resume_task(self, task_id: int) -> threading.Thread:
@@ -188,10 +190,10 @@ class Services:
             if outcome is not None:
                 self.after_task(outcome, t.get("text") or "", time.monotonic() - started)
 
-        from prometheus.jobs.runner import get_default_runner, start_job
+        from prometheus.runtime import start_job, thread_of
 
         job = start_job("task_resume", f"Resume task {task_id}", work, name=f"prometheus-resume-{task_id}")
-        thread = get_default_runner().get_thread(job.id)
+        thread = thread_of(job)
         return thread
 
 
@@ -297,12 +299,11 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
     home = Path(home or Path.home())
     store = Store(data / "memory.db")
     store.mark_interrupted()
-    from prometheus.jobs.runner import JobRunner, set_default_runner
     from prometheus.jobs.store import JobStore
 
     job_store = JobStore(store)
     job_store.recover_after_restart()       # before anything of this run starts a job (M5 review R1)
-    from prometheus.jobs.graph import GraphRunner, recover_graphs
+    from prometheus.jobs.graph import recover_graphs
 
     recover_graphs(job_store)               # graphs that can't carry on in a new run are closed with a reason
     job_store.prune_finished(days=30)       # finished jobs older than a month are tidied away (M5 audit F6)
@@ -314,8 +315,10 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
         import logging
 
         logging.getLogger(__name__).exception("Couldn't end programs left over from the last run")
-    job_runner = JobRunner(job_store)
-    set_default_runner(job_runner)
+    from prometheus.runtime import setup_local
+
+    runtimes = setup_local(job_store)       # M6 6.1: every job starts through the runtime (the laptop by default)
+    job_runner = runtimes.local.runner
     if providers is None and settings.embed_model:
         try:
             from prometheus.models.ollama import OllamaEmbedder
@@ -333,7 +336,7 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
     archive.allowed = lambda chat_id: memory_collects(settings, chat_id)      # replaced below by the live settings
     archive.left_out = lambda chat_id: chat_id in (settings.memory_off_chats or [])
     store.listeners.append(archive.sync)
-    from prometheus.jobs.runner import start_job
+    from prometheus.runtime import start_job
 
     start_job("archive_sync", "Sync chat archives", archive.sync_all, name="prometheus-archive-sync")   # file away chats from older versions
     policy = PathPolicy(home=home, data_dir=data, code_dir=CODE_DIR, protected=(memory_folder,),
@@ -427,7 +430,8 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
     orchestrator.live_context = lambda: _live_line(services)   # M3.6 (services is filled in below)
     orchestrator.extra_catalog = apps_agent.MANAGER.catalog_text
     orchestrator.settings = settings          # Features switches and Stop everything
-    orchestrator.graphs = GraphRunner(job_store, job_runner, killswitch=killswitch)   # M5 5.2 task graphs
+    orchestrator.graphs = runtimes.local.make_graphs(killswitch)     # M5 5.2 task graphs, run by the runtime
+    orchestrator.runtime = runtimes.local
     from prometheus import features as _features
 
     _features.CURRENT = settings
@@ -460,6 +464,8 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
     services.jobs = job_store
     services.graphs = orchestrator.graphs
     services.job_runner = job_runner
+    services.runtime = runtimes
+    connect_cloudroom(services)                 # M6 6.2: only when the Render address and the Cloudroom key are set
 
     def _carry_on_after_answer(approval_id: int, status: str, result: str) -> None:
         """A loop task that waited for this yes carries on by itself once everything it waited for is answered."""
@@ -663,6 +669,10 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
 
     services.laptop_jobs = _phone.LaptopJobs(services)
     approvals.register("laptop_job", lambda payload: services.laptop_jobs.run_approved(payload))
+    from prometheus.remote_control import APPROVAL_KIND as _remote_kind, RemoteControl
+
+    services.remote = RemoteControl(services)                           # M6 6.4b
+    approvals.register(_remote_kind, lambda payload: services.remote.run_approved(payload))
     from prometheus.phone_wait import PhoneWaiter
 
     services.phone_waiter = PhoneWaiter(services)          # phone jobs asked while the phone was away (M3.2)
@@ -670,6 +680,11 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
 
     _pa.SERVICES = services
     approvals.register("phone_action", _pa.action_handler)
+    # every approval kind gets its handler at start, so a yes given after a restart works (review of 6.3–6.5)
+    _pa.register_approvals(approvals, router=router)
+    from prometheus.pc_control.agent import register_approvals as _pc_approvals
+
+    _pc_approvals(approvals, killswitch=services.killswitch)          # also hooks Stop all into PC control
 
     def _to_laptop(chat_id: int, text: str, plan, read_only: bool = False) -> str:
         """On the cloud copy: a request that needs the laptop (its screen, files or apps) waits for the laptop."""
@@ -707,3 +722,24 @@ def build_services(settings: Settings, providers: dict[str, Provider] | None = N
 
 
 __all__ = ["Services", "build_services", "TaskOutcome"]
+
+
+def connect_cloudroom(services) -> bool:
+    """Register Cloudroom (the owner's Render service) and its approvals, when its address and key are set (M6 audit
+    A12). Returns whether it is connected now."""
+    url = str(getattr(services.settings, "cloudroom_url", "") or "").strip().rstrip("/")
+    from prometheus.config import get_secret
+
+    if not url.startswith("https://") or not get_secret("CLOUDROOM_TOKEN"):
+        return False
+    import httpx
+
+    from prometheus.runtime.cloudroom import CloudroomRuntime
+
+    cloud = CloudroomRuntime(services.jobs, httpx.Client(base_url=url, timeout=20))
+    from prometheus.runtime.cloudroom import tell_chat
+
+    cloud.on_finished = tell_chat(services.store)       # the answer comes back to the chat it was asked in
+    services.runtime.register(cloud)
+    cloud.connect_approvals(services.approvals, services.runtime)
+    return True

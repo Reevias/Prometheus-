@@ -173,7 +173,7 @@ class ClipMemory:
                 pass
 
     def start(self) -> None:
-        from prometheus.jobs.runner import start_job
+        from prometheus.runtime import start_job
 
         start_job("clipboard", "Clipboard watcher loop", self.loop, name="prometheus-clipboard", service=True)
 

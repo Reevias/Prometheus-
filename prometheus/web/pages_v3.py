@@ -955,7 +955,7 @@ BACKGROUND = [("Reminders and alarms", "prometheus-reminders", "reminders"),
               ("Voice", "prometheus-voice", "voice")]
 ACTION_WORDS = {"delete": "Deleted", "add": "Added", "edit": "Edited", "forget": "Forgot", "undo": "Undid",
                 "switch": "Switched", "remove": "Removed", "retry": "Ran again", "stop": "Stopped", "cancel": "Cancelled",
-                "wipe": "Wiped", "export": "Exported", "try": "Tried", "pause": "Paused"}
+                "wipe": "Wiped", "export": "Exported", "try": "Tried", "pause": "Paused", "remote": "Phone remote"}
 
 
 def plain_action(action: str) -> str:
@@ -1054,7 +1054,9 @@ def register_system_pages(app: FastAPI, services, shell) -> None:
         since = float(store.kv_get("sync_since", 0) or 0)
         return {"cloud_url": (s.cloud_url or "").rstrip("/"), "sync_status": store.kv_get("sync_status", "") or "",
                 "synced": since, "phone_target": getattr(s, "phone_target", "") or "", "push_devices": subs,
-                "role": getattr(s, "role", "laptop")}
+                "role": getattr(s, "role", "laptop"),
+                "remote_on": bool(getattr(s, "remote_control", False)),
+                "remote_devices": services.remote.devices() if getattr(services, "remote", None) else []}
 
     @app.get("/v3/system")
     def system_page(request: Request, tab: str = "overview", q: str = ""):
@@ -2249,7 +2251,7 @@ def register_switchover_pages(app: FastAPI, services, shell) -> None:
         r = _reader.CURRENT
         if r is None or not getattr(r, "active", lambda: True)():
             return bad("Nothing is being read now.", 409)
-        from prometheus.jobs.runner import start_job
+        from prometheus.runtime import start_job
 
         act = {"pause": lambda: r.pause(), "continue": lambda: r.resume(), "back": lambda: r.move(-1),
                "skip": lambda: r.move(1), "slower": lambda: r.set_speed(False), "faster": lambda: r.set_speed(True),

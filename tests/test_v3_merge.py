@@ -82,7 +82,7 @@ def test_study_and_money_have_no_research_tab(app_client):
 TABS = {"general": ["appearance", "features", "notifications", "updates", "about", "log-out"],
         "ai": ["ai", "spending", "costs", "models", "practice-tests"],
         "voice": ["voice"],
-        "connections": ["connection-status", "connections", "github", "other-keys", "phone", "cloud-copy", "obsidian",
+        "connections": ["connection-status", "connections", "github", "other-keys", "phone", "cloud-copy", "cloudroom", "obsidian",
                         "use-prometheus-from-other-ai-apps", "webhook"],
         "daily": ["daily-summary", "focus-mode", "assignments", "study-coach", "money-tracker",
                   "clipboard-and-screenshot-memory", "watchers", "search-inside-files"],
